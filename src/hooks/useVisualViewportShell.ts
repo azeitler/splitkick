@@ -22,9 +22,10 @@ function setKeyboardOpen(next: boolean) {
  * keyboard. It pans the visual viewport instead, which pushes the session
  * header off the top, and on iOS 26 the pan can stay after the keyboard closes
  * (`offsetTop > 0`), leaving a gap under the composer and the header under the
- * status bar. So the shell follows `visualViewport.height` through
- * `--app-height`, and any pan is scrolled back to 0. Every surface inside the
- * shell (chat, terminal) then sits above the keyboard without its own padding.
+ * status bar. So while the keyboard is open the shell follows
+ * `visualViewport.height` through `--app-height`, and any pan is scrolled back
+ * to 0. Every surface inside the shell (chat, terminal) then sits above the
+ * keyboard without its own padding.
  *
  * Mount once, in the window root. Off in the native app, which resizes its
  * webview with the window.
@@ -44,8 +45,11 @@ export function useVisualViewportShell(enabled: boolean) {
       // Pinch zoom also shrinks the visual viewport; leave the layout alone.
       if (vv.scale > 1.01) return
       const height = Math.round(vv.height)
-      root.style.setProperty('--app-height', `${height}px`)
       const open = window.innerHeight - height > KEYBOARD_THRESHOLD_PX
+      // At rest the shell stays at 100dvh: a measured height can be stale, and
+      // in an iOS 26 Home Screen app it is short by the status bar (#63).
+      if (open) root.style.setProperty('--app-height', `${height}px`)
+      else root.style.removeProperty('--app-height')
       root.toggleAttribute('data-keyboard-open', open)
       if (window.scrollY !== 0 || vv.offsetTop !== 0) window.scrollTo(0, 0)
       // Set the height before notifying, so subscribers measure the new layout.

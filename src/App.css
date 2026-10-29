@@ -392,6 +392,18 @@
     @apply bg-background;
   }
 
+  /* iOS 26 sizes a Home Screen app with viewport-fit=cover and the
+     black-translucent status bar short by the status bar height while the page
+     is shorter than the screen, which left a band under the app (#63, WebKit
+     301108). One inset taller and iOS hands over the full viewport, where this
+     computes to 100%. min() caps it for an opaque status bar.
+     https://bugs.webkit.org/show_bug.cgi?id=301108 */
+  @media (display-mode: standalone) {
+    html {
+      min-height: min(100lvh, calc(100% + var(--safe-area-top)));
+    }
+  }
+
   body {
     @apply text-foreground;
     /* Grayscale AA looks cleaner on HiDPI / Retina. On 1x external LCDs it

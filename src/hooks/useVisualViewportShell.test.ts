@@ -67,11 +67,38 @@ describe('useVisualViewportShell', () => {
     })
   })
 
-  it('sets --app-height to the visible height', () => {
-    installVisualViewport(844)
-    const { unmount } = renderHook(() => useVisualViewportShell(true))
-    expect(root.style.getPropertyValue('--app-height')).toBe('844px')
+  it('leaves the shell at 100dvh while the keyboard is closed', () => {
+    // iOS 26 Home Screen apps report a viewport short by the status bar
+    // (WebKit 301108). Pinning the shell to that number kept the page short,
+    // so iOS never handed over the full screen and a band stayed below (#63).
+    installVisualViewport(797)
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 797,
+    })
+    renderHook(() => useVisualViewportShell(true))
+    expect(root.style.getPropertyValue('--app-height')).toBe('')
     expect(root.hasAttribute('data-keyboard-open')).toBe(false)
+  })
+
+  it('drops --app-height again when the keyboard closes', () => {
+    const vv = installVisualViewport(508)
+    const { unmount } = renderHook(() => useVisualViewportShell(true))
+    expect(root.style.getPropertyValue('--app-height')).toBe('508px')
+
+    vv.height = 844
+    act(() => {
+      vv.dispatch('resize')
+      vi.advanceTimersByTime(20)
+    })
+    expect(root.style.getPropertyValue('--app-height')).toBe('')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(false)
+
+    vv.height = 508
+    act(() => {
+      vv.dispatch('resize')
+      vi.advanceTimersByTime(20)
+    })
     unmount()
     expect(root.style.getPropertyValue('--app-height')).toBe('')
   })
@@ -97,6 +124,7 @@ describe('useVisualViewportShell', () => {
     renderHook(() => useVisualViewportShell(true))
     const open = renderHook(() => useSoftKeyboardOpen())
     expect(open.result.current).toBe(false)
+    expect(root.style.getPropertyValue('--app-height')).toBe('')
   })
 
   it('scrolls a leftover pan back to the top after the keyboard closes', () => {
@@ -122,7 +150,8 @@ describe('useVisualViewportShell', () => {
       vv.dispatch('resize')
       vi.advanceTimersByTime(20)
     })
-    expect(root.style.getPropertyValue('--app-height')).toBe('844px')
+    expect(root.style.getPropertyValue('--app-height')).toBe('')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(false)
   })
 
   it('does nothing when disabled', () => {
