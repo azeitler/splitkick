@@ -68,15 +68,13 @@ export function SidebarRecentSessions() {
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      // Revealing the row in the hidden tree would expand it for nothing.
-      navigateToSession(
-        {
-          projectId: shortcut.projectId,
-          worktreeId: shortcut.worktreeId,
-          sessionId: shortcut.sessionId,
-        },
-        { revealInSidebar: false }
-      )
+      // The hidden Projects tree follows, so the session is already in view
+      // when the user switches tabs (#60).
+      navigateToSession({
+        projectId: shortcut.projectId,
+        worktreeId: shortcut.worktreeId,
+        sessionId: shortcut.sessionId,
+      })
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }

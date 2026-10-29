@@ -770,6 +770,11 @@ body:not(.native-app) kbd {
     var(--sb-worktree-top, 0px) + var(--sb-row-h) + var(--sb-row-gap) + 0.5rem
   );
 }
+/* A revealed project lands in its own sticky slot, below the section headers
+   (#60). */
+.sidebar-sticky-scroll [data-sidebar-row-id^='project:'] {
+  scroll-margin-top: var(--sb-project-top, 0px);
+}
 /* Hairline under the lowest stuck row only, across the full sidebar width
    (set by useSidebarStickyStack). */
 [data-sidebar-stack-bottom]::after {

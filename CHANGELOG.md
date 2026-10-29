@@ -75,6 +75,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   worktree has uncommitted changes. When the worktree has moved past the merged
   PR, the link follows the current branch instead of archiving. A merged PR
   archives a worktree only once, also after an unarchive and a restart. (#50)
+- **The Projects tree follows navigation from the Recent tab.** A session you
+  open from Recent is now expanded and scrolled into view in the Projects tree,
+  so it shows as soon as you switch to Projects; Recent stays the active tab.
+  A project or session picked in ⌘K while Recent shows now switches the
+  sidebar to Projects and reveals it there. A project revealed above the view
+  now lands below the stuck section headers, not under them. (#60)
 
 ## [1.0.15] - 2026-10-27
 
