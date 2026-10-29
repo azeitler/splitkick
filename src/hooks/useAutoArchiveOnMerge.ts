@@ -3,6 +3,10 @@
  *
  * Listens for PR status updates and archives worktrees automatically
  * when their associated PR is merged, if the preference is enabled.
+ *
+ * The backend command `auto_archive_merged_worktree` makes the decision: it
+ * defers while a session is busy or the tree has changes, relinks when HEAD
+ * left the merged PR, and archives each merged PR at most once (#50).
  */
 
 import { useCallback, useRef } from 'react'
@@ -14,7 +18,7 @@ import { logger } from '@/lib/logger'
 import { usePreferences } from '@/services/preferences'
 import { usePrStatusEvents } from '@/services/pr-status'
 import { projectsQueryKeys, isTauri } from '@/services/projects'
-import type { PrStatusEvent } from '@/types/pr-status'
+import type { AutoArchiveOutcome, PrStatusEvent } from '@/types/pr-status'
 import type { Worktree } from '@/types/projects'
 
 /**
@@ -26,8 +30,9 @@ export function useAutoArchiveOnMerge() {
   const { data: preferences } = usePreferences()
   const queryClient = useQueryClient()
 
-  // Track which worktrees we've already processed to avoid duplicate archives
-  const processedWorktrees = useRef(new Set<string>())
+  // Worktrees with a request in flight. Cleared after each request, so a
+  // deferred archive is tried again on the next PR status poll.
+  const inFlightWorktrees = useRef(new Set<string>())
 
   const handlePrStatusUpdate = useCallback(
     async (status: PrStatusEvent) => {
@@ -41,13 +46,11 @@ export function useAutoArchiveOnMerge() {
         return
       }
 
-      // Avoid processing the same worktree multiple times
-      if (processedWorktrees.current.has(status.worktree_id)) {
+      // One request per worktree at a time
+      if (inFlightWorktrees.current.has(status.worktree_id)) {
         return
       }
-
-      // Mark as processed immediately to prevent race conditions
-      processedWorktrees.current.add(status.worktree_id)
+      inFlightWorktrees.current.add(status.worktree_id)
 
       try {
         // Check if worktree is already archived by looking at cached data
@@ -85,9 +88,12 @@ export function useAutoArchiveOnMerge() {
 
         const { projectId, projectPath, worktree } = match
 
-        // Skip if already archived
-        if (worktree.archived_at) {
-          logger.debug('Worktree already archived, skipping auto-archive', {
+        // Skip if already archived, or this PR already auto-archived it once
+        if (
+          worktree.archived_at ||
+          worktree.auto_archived_pr_url === status.pr_url
+        ) {
+          logger.debug('Worktree already auto-archived, skipping', {
             worktreeId: status.worktree_id,
           })
           return
@@ -118,33 +124,43 @@ export function useAutoArchiveOnMerge() {
 
         // Archive or delete the worktree based on removal_behavior preference
         const shouldDelete = preferences?.removal_behavior === 'delete'
-        const action = shouldDelete ? 'Deleting' : 'Archiving'
-        logger.info(`Auto-${action.toLowerCase()} worktree (PR merged)`, {
+        const outcome = await invoke<AutoArchiveOutcome>(
+          'auto_archive_merged_worktree',
+          {
+            worktreeId: status.worktree_id,
+            prUrl: status.pr_url,
+            headOid: status.head_ref_oid,
+            delete: shouldDelete,
+          }
+        )
+        logger.info('Auto-archive on PR merge', {
           worktreeId: status.worktree_id,
           prNumber: status.pr_number,
+          outcome,
         })
 
-        await invoke(shouldDelete ? 'delete_worktree' : 'archive_worktree', {
-          worktreeId: status.worktree_id,
-        })
+        if (outcome === 'deferred' || outcome === 'skipped') {
+          return
+        }
 
         // Invalidate worktrees query to refresh the list
         queryClient.invalidateQueries({
           queryKey: projectsQueryKeys.worktrees(projectId),
         })
 
-        // Show toast notification
-        const pastAction = shouldDelete ? 'Deleted' : 'Archived'
-        toast.success(
-          `${pastAction} "${worktree.name}" (PR #${status.pr_number} merged)`
-        )
+        if (outcome === 'archived' || outcome === 'deleted') {
+          const pastAction = outcome === 'deleted' ? 'Deleted' : 'Archived'
+          toast.success(
+            `${pastAction} "${worktree.name}" (PR #${status.pr_number} merged)`
+          )
+        }
       } catch (error) {
         logger.error('Failed to auto-archive worktree', {
           worktreeId: status.worktree_id,
           error,
         })
-        // Remove from processed set so we can retry
-        processedWorktrees.current.delete(status.worktree_id)
+      } finally {
+        inFlightWorktrees.current.delete(status.worktree_id)
       }
     },
     [

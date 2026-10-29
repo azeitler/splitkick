@@ -62,6 +62,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   It now waits the full 5 minutes. The same applies to Codex and Grok usage.
   (#58)
 
+- **Auto-archive on a merged PR no longer stops a running session.** A worktree
+  stayed linked to its first, merged PR after the agent switched to a new
+  branch, and every PR status check archived it again and cancelled the run.
+  Now the archive waits while a session runs or waits for input, and while the
+  worktree has uncommitted changes. When the worktree has moved past the merged
+  PR, the link follows the current branch instead of archiving. A merged PR
+  archives a worktree only once, also after an unarchive and a restart. (#50)
+
 ## [1.0.15] - 2026-10-27
 
 Built on Jean 0.1.73.

@@ -2386,6 +2386,7 @@ pub async fn restore_session_with_base(
         label: None,
         archived_at: None,
         auto_archived: false,
+        auto_archived_pr_url: None,
         last_opened_at: None,
     };
 

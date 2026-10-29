@@ -414,6 +414,28 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects"]);
             Ok(Value::Null)
         }
+        "auto_archive_merged_worktree" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let pr_url: String = field(&args, "prUrl", "pr_url")?;
+            let head_oid: Option<String> = field_opt(&args, "headOid", "head_oid")?;
+            let delete: bool = from_field(&args, "delete")?;
+            let outcome = crate::projects::auto_archive_merged_worktree(
+                app.clone(),
+                worktree_id,
+                pr_url,
+                head_oid,
+                delete,
+            )
+            .await?;
+            if !matches!(
+                outcome,
+                crate::projects::AutoArchiveOutcome::Deferred
+                    | crate::projects::AutoArchiveOutcome::Skipped
+            ) {
+                emit_cache_invalidation(app, &["projects"]);
+            }
+            to_value(outcome)
+        }
         "unarchive_worktree" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let result = crate::projects::unarchive_worktree(app.clone(), worktree_id).await?;

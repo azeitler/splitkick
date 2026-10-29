@@ -85,6 +85,7 @@ function makeMergedPrStatus(worktreeId: string): PrStatusEvent {
     check_status: 'success',
     display_status: 'merged',
     mergeable: null,
+    head_ref_oid: 'abc123',
     checked_at: 1,
   }
 }
@@ -113,18 +114,79 @@ describe('useAutoArchiveOnMerge', () => {
     vi.clearAllMocks()
   })
 
-  it('archives regular worktrees when their linked PR is merged', async () => {
+  it('lets the backend decide the archive of a regular worktree', async () => {
+    mockInvoke.mockResolvedValueOnce('archived')
     const { handler } = setup(makeWorktree())
 
     await act(async () => {
       await handler(makeMergedPrStatus('worktree-1'))
     })
 
-    expect(mockInvoke).toHaveBeenCalledWith('archive_worktree', {
+    expect(mockInvoke).toHaveBeenCalledWith('auto_archive_merged_worktree', {
+      worktreeId: 'worktree-1',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      headOid: 'abc123',
+      delete: false,
+    })
+    // A direct archive would cancel running sessions without any guard (#50)
+    expect(mockInvoke).not.toHaveBeenCalledWith('archive_worktree', {
       worktreeId: 'worktree-1',
     })
-    expect(mockInvoke).not.toHaveBeenCalledWith('clear_worktree_pr', {
-      worktreeId: 'worktree-1',
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      'Archived "feature-session" (PR #42 merged)'
+    )
+  })
+
+  it('tries again on the next poll when the backend defers', async () => {
+    mockInvoke.mockResolvedValueOnce('deferred')
+    mockInvoke.mockResolvedValueOnce('archived')
+    const { handler } = setup(makeWorktree())
+
+    await act(async () => {
+      await handler(makeMergedPrStatus('worktree-1'))
+    })
+    expect(mockToastSuccess).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await handler(makeMergedPrStatus('worktree-1'))
+    })
+
+    const calls = mockInvoke.mock.calls.filter(
+      ([command]) => command === 'auto_archive_merged_worktree'
+    )
+    expect(calls).toHaveLength(2)
+    expect(mockToastSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not invoke again for a PR that already auto-archived the worktree', async () => {
+    const { handler } = setup(
+      makeWorktree({
+        auto_archived_pr_url: 'https://github.com/owner/repo/pull/42',
+      })
+    )
+
+    await act(async () => {
+      await handler(makeMergedPrStatus('worktree-1'))
+    })
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the worktree list without a toast when the link moved to the current branch', async () => {
+    mockInvoke.mockResolvedValueOnce('relinked')
+    const { handler, queryClient, project } = setup(makeWorktree())
+
+    await act(async () => {
+      await handler(makeMergedPrStatus('worktree-1'))
+    })
+
+    expect(mockToastSuccess).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryCache().find({
+          queryKey: projectsQueryKeys.worktrees(project.id),
+        })?.state.isInvalidated
+      ).toBe(true)
     })
   })
 

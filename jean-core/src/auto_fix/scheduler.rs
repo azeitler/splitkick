@@ -1048,6 +1048,7 @@ mod tests {
             origin,
             archived_at,
             auto_archived: false,
+            auto_archived_pr_url: None,
             labels: Vec::new(),
             label: None,
             last_opened_at: None,

@@ -1,3 +1,4 @@
+mod auto_archive;
 pub mod checkpoints;
 mod commands;
 pub mod git;
@@ -15,6 +16,7 @@ pub mod storage;
 pub mod types;
 
 // Re-export commands for registration in lib.rs
+pub use auto_archive::*;
 pub use checkpoints::{
     analyze_ai_checkpoint_restore, apply_ai_checkpoint_restore_proposal, create_ai_checkpoint,
     delete_ai_checkpoint, finalize_ai_checkpoint, get_ai_checkpoint, get_ai_checkpoint_diff,

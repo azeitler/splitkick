@@ -308,6 +308,10 @@ pub struct Worktree {
     /// by the retention cleanup (the folder may sit on an unmounted drive).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_archived: bool,
+    /// URL of the merged PR that auto-archived this worktree. A merged PR
+    /// auto-archives a worktree once; after an unarchive it stays (#50).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_archived_pr_url: Option<String>,
     /// Unix timestamp when worktree was last opened/viewed by the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<u64>,
