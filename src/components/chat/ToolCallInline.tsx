@@ -42,6 +42,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { InlineFileDiff } from './InlineFileDiff'
+import { getLinkedSessionId, SessionLinkInsert } from './SessionLinkInsert'
 
 /** Placeholder outputs that add no value next to already-rendered tool details. */
 function isPlaceholderToolOutput(output: string | undefined | null): boolean {
@@ -485,6 +486,7 @@ export function ToolCallInline({
           </div>
         </CollapsibleContent>
       </div>
+      <ToolCallSessionLink toolCall={toolCall} />
     </Collapsible>
   )
 }
@@ -723,6 +725,11 @@ export function StackedGroup({
           </div>
         </CollapsibleContent>
       </div>
+      <SessionLinkInserts
+        toolCalls={items.flatMap(item =>
+          item.type === 'thinking' ? [] : [item.tool]
+        )}
+      />
     </Collapsible>
   )
 }
@@ -855,6 +862,61 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
         </CollapsibleContent>
       </div>
     </Collapsible>
+  )
+}
+
+/** Bare Splitkick tool name and linked session id of a tool call, if any (#62). */
+function getToolCallSessionLink(
+  toolCall: ToolCall
+): { bareName: string; sessionId: string } | null {
+  const bareName = extractJeanMcpBareToolName(
+    normalizeToolCallForDisplay(
+      toolCall.name,
+      toolCall.input && typeof toolCall.input === 'object'
+        ? (toolCall.input as Record<string, unknown>)
+        : {}
+    ).name
+  )
+  const sessionId = getLinkedSessionId(bareName, toolCall.output)
+  return bareName && sessionId ? { bareName, sessionId } : null
+}
+
+/** "Started session ‘…’ View →" under a Splitkick MCP call that started or messaged a session (#62). */
+function ToolCallSessionLink({ toolCall }: { toolCall: ToolCall }) {
+  const link = getToolCallSessionLink(toolCall)
+  if (!link) return null
+  return (
+    <SessionLinkInsert
+      bareToolName={link.bareName}
+      sessionId={link.sessionId}
+    />
+  )
+}
+
+/**
+ * Session inserts for a set of tool calls, shown outside a collapsed group so
+ * they stay visible. One insert per session: the first call that names it.
+ */
+export function SessionLinkInserts({ toolCalls }: { toolCalls: ToolCall[] }) {
+  const seen = new Set<string>()
+  const links: { key: string; bareName: string; sessionId: string }[] = []
+  for (const toolCall of toolCalls) {
+    const link = getToolCallSessionLink(toolCall)
+    if (!link || seen.has(link.sessionId)) continue
+    seen.add(link.sessionId)
+    links.push({ key: toolCall.id, ...link })
+  }
+  if (links.length === 0) return null
+  return (
+    <>
+      {links.map(link => (
+        <SessionLinkInsert
+          key={link.key}
+          bareToolName={link.bareName}
+          sessionId={link.sessionId}
+        />
+      ))}
+    </>
   )
 }
 

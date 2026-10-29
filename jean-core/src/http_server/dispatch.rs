@@ -1195,6 +1195,12 @@ pub async fn dispatch_command(
             let result = crate::chat::get_session_status(app.clone(), session_id).await?;
             to_value(result)
         }
+        "get_session_link" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result =
+                crate::chat::session_links::get_session_link(app.clone(), session_id).await?;
+            to_value(result)
+        }
         "list_all_sessions" => {
             let result = crate::chat::list_all_sessions(app.clone()).await?;
             to_value(result)

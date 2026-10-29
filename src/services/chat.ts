@@ -22,6 +22,7 @@ import type {
   ChatHistory,
   LoadedMessages,
   PlanHandoff,
+  SessionLink,
   Session,
   WorktreeSessions,
   Question,
@@ -634,6 +635,20 @@ function mergePersistedSessionLabels(response: AllSessionsResponse) {
   useChatStore.setState(state => ({
     sessionLabels: { ...state.sessionLabels, ...updates },
   }))
+}
+
+/**
+ * Resolve a session id to its current name, location and archive state.
+ * `null` data means the session no longer exists here (#62).
+ */
+export function useSessionLink(sessionId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['session-link', sessionId],
+    queryFn: () =>
+      invoke<SessionLink | null>('get_session_link', { sessionId }),
+    enabled: !!sessionId,
+    staleTime: 30 * 1000,
+  })
 }
 
 export function useAllSessions(enabled = true) {

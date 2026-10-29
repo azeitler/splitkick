@@ -25,6 +25,7 @@ pub mod recap;
 pub mod registry;
 pub mod run_log;
 pub mod search;
+pub mod session_links;
 pub mod storage;
 pub mod tail;
 pub mod types;

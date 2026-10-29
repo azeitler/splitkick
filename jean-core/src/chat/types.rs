@@ -911,6 +911,12 @@ pub struct Session {
     /// Plans handed off from this session to a new session or worktree
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plan_handoffs: Vec<PlanHandoff>,
+    /// Session that started this one through the Splitkick MCP (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_by_session_id: Option<String>,
+    /// Session this one was forked from (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
     /// File path to the current plan (extracted from Write tool calls)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_file_path: Option<String>,
@@ -1065,6 +1071,8 @@ impl Session {
             waiting_for_input_type: None,
             approved_plan_message_ids: vec![],
             plan_handoffs: vec![],
+            started_by_session_id: None,
+            forked_from_session_id: None,
             plan_file_path: None,
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
@@ -1294,6 +1302,8 @@ impl SessionMetadata {
             waiting_for_input_type: self.waiting_for_input_type.clone(),
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
             plan_handoffs: self.plan_handoffs.clone(),
+            started_by_session_id: self.started_by_session_id.clone(),
+            forked_from_session_id: self.forked_from_session_id.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             enabled_mcp_servers: self.enabled_mcp_servers.clone(),
@@ -1867,6 +1877,10 @@ pub struct SessionMetadata {
     /// Session this one was forked from (provenance only; never cleared).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<String>,
+    /// Session that started this one through the Splitkick MCP (first wins).
+    /// Only `chat::session_links` writes it; it is never synced back from `Session`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_by_session_id: Option<String>,
     /// One-shot marker consumed by the fork's first send.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_fork: Option<PendingFork>,
@@ -1999,6 +2013,7 @@ impl SessionMetadata {
             runs: vec![],
             scheduled_wakeup: None,
             forked_from_session_id: None,
+            started_by_session_id: None,
             pending_fork: None,
             version: 1,
         }

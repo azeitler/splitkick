@@ -48,6 +48,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   message (the selected text or the whole message), or let the agent add them
   through the `add_follow_up` MCP tool. Each session keeps its own list; it
   stays after a restart and shows in web access. (#46)
+- **Sessions show which session started them.** When an agent starts a session
+  through the Splitkick MCP, its chat shows "Started session ‘…’ View →" where
+  it did so, and a later message into another session shows "Sent to session
+  ‘…’". The started session shows "Started by ‘…’" at the top, and a fork shows
+  "Forked from ‘…’". The names follow renames, and an archived or deleted
+  session is marked as such. (#62)
 
 ### Fixed
 

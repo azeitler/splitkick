@@ -328,6 +328,10 @@ export interface Session {
   approved_plan_message_ids?: string[]
   /** Plans sent from this session to a new session or worktree */
   plan_handoffs?: PlanHandoff[]
+  /** Session that started this one through the Splitkick MCP (#62) */
+  started_by_session_id?: string | null
+  /** Session this one was forked from */
+  forked_from_session_id?: string | null
   /** File path to the current plan (extracted from Write tool calls) */
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */
@@ -1835,4 +1839,15 @@ export interface LabelData {
   color: string
   /** Show this worktree label as a project-view filter tab when used in the current project */
   pinned?: boolean
+}
+
+/** A linked session resolved by id (`get_session_link`, #62) */
+export interface SessionLink {
+  sessionId: string
+  name: string
+  worktreeId: string
+  projectId: string
+  /** The session or its worktree is archived */
+  archived: boolean
+  startedBySessionId?: string | null
 }
