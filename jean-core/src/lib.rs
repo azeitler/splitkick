@@ -58,6 +58,7 @@ pub mod jean_mcp_core;
 pub mod jean_mcp_socket;
 pub mod jean_mcp_stdio;
 mod kimi_cli;
+pub mod links;
 mod opencode_cli;
 mod opencode_server;
 mod opinionated;

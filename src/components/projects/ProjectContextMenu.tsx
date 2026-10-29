@@ -6,6 +6,7 @@ import {
   FolderOpen,
   GitBranch,
   Home,
+  Link,
   Plus,
   Settings,
   Terminal,
@@ -42,6 +43,7 @@ import {
 import { useGitClient } from '@/components/open-in/use-git-client'
 import { getFileManagerName } from '@/lib/platform'
 import { isNativeApp } from '@/lib/environment'
+import { copySplitkickLink } from '@/lib/splitkick-links'
 
 interface ProjectContextMenuProps {
   project: Project
@@ -178,6 +180,13 @@ export function ProjectContextMenu({
         <ContextMenuItem onClick={handleOpenOnGitHub}>
           <ExternalLink className="mr-2 h-4 w-4" />
           Open on GitHub
+        </ContextMenuItem>
+
+        <ContextMenuItem
+          onClick={() => copySplitkickLink('project', project.id, project.name)}
+        >
+          <Link className="mr-2 h-4 w-4" />
+          Copy Link
         </ContextMenuItem>
 
         <ContextMenuSeparator />

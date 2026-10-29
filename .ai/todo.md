@@ -798,3 +798,12 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 - [x] Shell follows the visual viewport (`useVisualViewportShell`); no per-surface keyboard padding
 - [x] Fix stale "Jean Chat" matcher in the e2e fixture (7 desktop e2e failures since the rename)
 - Result: unit 3252/3252, e2e 46/46. Not checked on an iPhone: no simulator on this machine.
+
+## 2026-10-29 — Links to sessions, worktrees and projects (#44)
+
+- [x] `splitkick://session|worktree|project/<id>`; `resolve_splitkick_link` (jean-core, dispatch)
+- [x] Chat renders name, icon, `archived` / `not found` badge; click opens modal / worktree / project
+- [x] MCP `link` in `list_all_sessions`, `search_sessions`; `get_current_context` links; instructions
+- [x] Copy Link in session, worktree (sidebar + modal header) and project menus
+- [x] Proof: check:all steps green (typecheck, lint, branding, fmt, clippy, 412 test files, rust tests); clippy 1.99.1 x3; web-access screenshots of chat links and click
+- Not done (later per issue): OS scheme registration, https links, unarchive from the badge

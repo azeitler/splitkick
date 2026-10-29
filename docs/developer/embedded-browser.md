@@ -96,6 +96,29 @@ The markdown renderer sends every link through `MarkdownLink`
     whole string is the name. `chat-links.ts` uses the same rule, so the
     classifier and the opener never disagree.
 
+### Links to sessions, worktrees and projects
+
+`splitkick://session/<id>`, `splitkick://worktree/<id>` and
+`splitkick://project/<id>` (#44) do not go to `openChatLink()`. `MarkdownLink`
+hands them to `SplitkickLink` (`src/components/chat/SplitkickLink.tsx`):
+
+- It resolves the target with `resolve_splitkick_link` (`jean-core/src/links.rs`)
+  through the window's transport. Ids are per instance, so a remote window
+  asks its remote backend. There is no instance id in the link.
+- Link text that is only the raw link is replaced by the target name. A badge
+  marks a target that is `archived` or `not found`; a click on it only toasts.
+- A session opens in the modal (`navigateToSession`), a worktree through
+  `navigateToWorktree`, a project through `navigateToProject`.
+- `markdownUrlTransform` keeps `splitkick://` hrefs.
+- **Copy Link** in the session, worktree and project menus copies a markdown
+  link, `[name](splitkick://…)` (`copySplitkickLink` in
+  `src/lib/splitkick-links.ts`). A bare `splitkick://…` in prose is not
+  autolinked; `<splitkick://…>` is.
+- The MCP tools `list_all_sessions` and `search_sessions` return a `link` per
+  session; `get_current_context` returns `sessionLink`, `worktreeLink` and
+  `projectLink`.
+- The OS does not know the scheme yet (no `tauri-plugin-deep-link`).
+
 ## Jean MCP `open_in_browser`
 
 Agents can show a page themselves with the `open_in_browser` tool

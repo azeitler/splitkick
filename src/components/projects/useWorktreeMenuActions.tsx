@@ -15,6 +15,7 @@ import { useSessions } from '@/services/chat'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import { useGitClient } from '@/components/open-in/use-git-client'
+import { copySplitkickLink } from '@/lib/splitkick-links'
 
 interface UseWorktreeMenuActionsProps {
   worktree: Worktree
@@ -110,6 +111,11 @@ export function useWorktreeMenuActions({
     setShowDeleteConfirm(false)
   }, [deleteWorktree, worktree.id, projectId])
 
+  const handleCopyLink = useCallback(
+    () => copySplitkickLink('worktree', worktree.id, worktree.name),
+    [worktree.id, worktree.name]
+  )
+
   return {
     // State
     showDeleteConfirm,
@@ -130,5 +136,6 @@ export function useWorktreeMenuActions({
     handleOpenInGitClient,
     handleArchiveOrClose,
     handleDelete,
+    handleCopyLink,
   }
 }

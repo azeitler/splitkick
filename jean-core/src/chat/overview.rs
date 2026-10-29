@@ -152,6 +152,8 @@ pub struct SessionOverviewRecord {
     pub project_name: String,
     pub worktree_id: String,
     pub worktree_name: String,
+    /// `splitkick://session/<id>`, for the agent to link the session in chat.
+    pub link: String,
     /// Effective status: idle, running, resumable, cancelled or error.
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -256,6 +258,7 @@ pub fn build_record(
         project_name: project_name.to_string(),
         worktree_id: worktree.id.clone(),
         worktree_name: worktree.name.clone(),
+        link: crate::links::splitkick_link("session", &session.id),
         status: run_status_label(actively_managed, session.last_run_status.as_ref()).to_string(),
         last_message_at: session.last_message_at,
         idle_days: idle_days(last_activity, now),

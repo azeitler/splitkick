@@ -160,7 +160,8 @@ function tableToMarkdown(data: string[][]): string {
  * react-markdown's default transform blanks every scheme except http(s),
  * mailto, irc(s) and xmpp. Image sources and link targets also keep file://
  * URLs and Windows drive paths, which MarkdownImage and MarkdownLink resolve
- * themselves; image sources also keep inline data images. All other URL
+ * themselves; image sources also keep inline data images. Link targets also
+ * keep `splitkick://` links, which MarkdownLink opens itself. All other URL
  * attributes keep the default filtering.
  */
 const markdownUrlTransform: UrlTransform = (url, key, node) => {
@@ -173,6 +174,7 @@ const markdownUrlTransform: UrlTransform = (url, key, node) => {
     return url
   }
   if (isImageSrc && /^data:image\//i.test(url)) return url
+  if (isLinkHref && /^splitkick:\/\//i.test(url)) return url
   return defaultUrlTransform(url)
 }
 

@@ -119,6 +119,33 @@ export function navigateToSession(
   }
 }
 
+/**
+ * Open a worktree from anywhere, as a worktree link does (#44).
+ *
+ * Opens the session the user last had open there, else its first session
+ * that is not archived (from the cross-project session list, when it is
+ * loaded). With neither, the project canvas opens with the worktree selected.
+ */
+export function navigateToWorktree(
+  projectId: string,
+  worktreeId: string
+): void {
+  const remembered = useChatStore.getState().activeSessionIds[worktreeId]
+  const sessionId =
+    remembered ??
+    queryClient
+      .getQueryData<AllSessionsResponse>(['all-sessions'])
+      ?.entries.find(e => e.worktree_id === worktreeId)
+      ?.sessions.find(s => !s.archived_at)?.id
+  if (sessionId) {
+    navigateToSession({ projectId, worktreeId, sessionId })
+    return
+  }
+
+  navigateToProject(projectId)
+  useProjectsStore.getState().selectWorktree(worktreeId)
+}
+
 export interface ProjectNavigationOptions {
   /**
    * Open the session the user last opened in this project, when it still
