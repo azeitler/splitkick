@@ -207,7 +207,7 @@ pub async fn search_remote_sessions(
             .filter(|(_, info)| info.instance_id != own_id)
             .flat_map(|(dir, info)| search_instance(&dir, &info, &local, &query_lower, &options))
             .collect();
-        hits.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        hits.sort_by_key(|hit| std::cmp::Reverse(hit.updated_at));
         let truncated = hits.len() > limit;
         hits.truncate(limit);
         log::info!(
