@@ -18,6 +18,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **The image viewer shows "Open in browser" in a remote session.** "Reveal in
   Finder" pointed at a path on the other machine. Remote sessions and Web Access
   now open the image URL that machine serves; local sessions keep Reveal. (#68)
+### Changed
+
+- **Error toasts stay until you close them.** They have a close button, and a
+  right-click (long-press on touch) opens "Copy error", which copies the title
+  and the description as plain text. Other toasts keep their timing. (#69)
 
 ## [1.2.0] - 2026-10-29
 
