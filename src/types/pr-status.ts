@@ -39,5 +39,15 @@ export interface PrStatusEvent {
   check_status: CheckStatus | null
   display_status: PrDisplayStatus
   mergeable: MergeableStatus | null
+  /** Head commit of the PR; auto-archive compares it with the worktree HEAD */
+  head_ref_oid: string | null
   checked_at: number
 }
+
+/** Result of `auto_archive_merged_worktree` */
+export type AutoArchiveOutcome =
+  | 'archived'
+  | 'deleted'
+  | 'deferred'
+  | 'relinked'
+  | 'skipped'

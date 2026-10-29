@@ -61,6 +61,8 @@ struct GhPrViewResponse {
     review_decision: Option<String>,
     status_check_rollup: Option<Vec<StatusCheck>>,
     mergeable: Option<String>,
+    #[serde(default)]
+    head_ref_oid: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -81,6 +83,8 @@ pub struct PrStatus {
     pub check_status: Option<CheckStatus>,
     pub display_status: PrDisplayStatus,
     pub mergeable: Option<MergeableStatus>,
+    /// Head commit of the PR. Auto-archive compares it with the worktree HEAD.
+    pub head_ref_oid: Option<String>,
     pub checked_at: u64,
 }
 
@@ -101,7 +105,7 @@ pub fn get_pr_status(
             "view",
             &pr_number.to_string(),
             "--json",
-            "state,isDraft,reviewDecision,statusCheckRollup,mergeable",
+            "state,isDraft,reviewDecision,statusCheckRollup,mergeable,headRefOid",
         ])
         .output()
         .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
@@ -150,6 +154,7 @@ pub fn get_pr_status(
         check_status,
         display_status,
         mergeable,
+        head_ref_oid: response.head_ref_oid,
         checked_at,
     })
 }
@@ -284,6 +289,7 @@ mod tests {
             check_status: Some(CheckStatus::Success),
             display_status: PrDisplayStatus::Review,
             mergeable: Some(MergeableStatus::Mergeable),
+            head_ref_oid: None,
             checked_at: 1234567890,
         };
 
@@ -291,6 +297,15 @@ mod tests {
         assert!(json.contains("\"display_status\":\"review\""));
         assert!(json.contains("\"check_status\":\"success\""));
         assert!(json.contains("\"mergeable\":\"mergeable\""));
+    }
+
+    #[test]
+    fn test_gh_response_reads_head_ref_oid() {
+        let response: GhPrViewResponse = serde_json::from_str(
+            r#"{"state":"MERGED","isDraft":false,"reviewDecision":null,"statusCheckRollup":[],"mergeable":"UNKNOWN","headRefOid":"abc123"}"#,
+        )
+        .unwrap();
+        assert_eq!(response.head_ref_oid.as_deref(), Some("abc123"));
     }
 
     #[test]

@@ -212,6 +212,8 @@ export interface Worktree {
   archived_at?: number
   /** Archived by the app because its folder was missing; restored when it is back */
   auto_archived?: boolean
+  /** URL of the merged PR that already auto-archived this worktree (#50) */
+  auto_archived_pr_url?: string
   /** Unix timestamp when worktree was last opened/viewed by the user */
   last_opened_at?: number
 }
