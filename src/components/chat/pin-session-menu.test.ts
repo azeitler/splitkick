@@ -53,7 +53,7 @@ describe('pin session to project', () => {
       const source = read(path)
 
       expect(source).toContain('<PinnedSessionsSection')
-      expect(source).toContain('resolvePinnedSessionRows')
+      expect(source).toContain('resolveProjectShortcutRows')
       // Both surfaces open a pinned session through the shared navigation helper.
       expect(source).toContain('navigateToSession')
     }

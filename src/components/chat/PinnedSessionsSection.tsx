@@ -1,4 +1,4 @@
-import { Pin } from 'lucide-react'
+import { Pin, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   SessionShortcutRows,
@@ -6,14 +6,24 @@ import {
 } from './SessionShortcutRows'
 import { SidebarSectionRow } from './SidebarSectionRow'
 import type { SessionCardData } from './session-card-utils'
-import type { PinnedSessionRow } from './pinned-sessions'
+import {
+  getProjectShortcutKind,
+  type ProjectShortcutKind,
+  type ProjectShortcutRow,
+} from './pinned-sessions'
 import {
   SIDEBAR_SESSION_LIST,
   SIDEBAR_WORKTREE_SECTION_PADDING,
 } from '@/components/projects/sidebar-row-styles'
 
+const LABELS: Record<ProjectShortcutKind, string> = {
+  pinned: 'Pinned',
+  starred: 'Starred',
+  both: 'Pinned & Starred',
+}
+
 export interface PinnedSessionEntryRow {
-  row: PinnedSessionRow
+  row: ProjectShortcutRow
   card: SessionCardData
 }
 
@@ -27,12 +37,13 @@ interface PinnedSessionsSectionProps {
   expanded?: boolean
   /** Sidebar only: toggles `expanded`. Without it the row keeps no disclosure. */
   onToggleExpanded?: () => void
-  onOpen: (row: PinnedSessionRow) => void
+  onOpen: (row: ProjectShortcutRow) => void
 }
 
 /**
- * Sessions the user pinned to the project root, shown on the project canvas and
- * in the sidebar tree. Rows stay out of the canvas keyboard navigation, which
+ * The project's top section: sessions pinned to the project root or starred in
+ * this project, shown on the project canvas and in the sidebar tree. The label
+ * follows the mix of rows: "Pinned", "Starred" or "Pinned & Starred" (#41). Rows stay out of the canvas keyboard navigation, which
  * indexes worktree sections. The sidebar parent is a real tree row, so it is a
  * native button and answers Enter and Space; that is browser focus, not the
  * canvas index.
@@ -48,8 +59,20 @@ export function PinnedSessionsSection({
   onToggleExpanded,
   onOpen,
 }: PinnedSessionsSectionProps) {
+  const kind = getProjectShortcutKind(rows.map(({ row }) => row))
+  if (!kind) return null
 
-  if (rows.length === 0) return null
+  const label = LABELS[kind]
+  const icon = (size: string) => (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {kind !== 'starred' && <Pin className={size} />}
+      {kind !== 'pinned' && <Star className={size} />}
+    </span>
+  )
+  // A glyph every row carries is noise; one only some rows carry says why
+  // each row is here.
+  const showPinGlyph = !rows.every(({ row }) => row.isPinned)
+  const showStarGlyph = !rows.every(({ row }) => row.isStarred)
 
   const isSidebar = variant === 'sidebar'
   const isOpen = !isSidebar || expanded
@@ -80,8 +103,8 @@ export function PinnedSessionsSection({
         // A workspace-style row, so the pinned block reads as a sibling of the
         // workspaces rather than a caption pasted above them.
         <SidebarSectionRow
-          icon={<Pin className="size-2.5 shrink-0" />}
-          label="Pinned"
+          icon={icon('size-2.5')}
+          label={label}
           count={rows.length}
           expanded={expanded}
           onToggle={onToggleExpanded}
@@ -89,8 +112,8 @@ export function PinnedSessionsSection({
         />
       ) : (
         <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-          <Pin className="size-3 shrink-0" />
-          <span>Pinned</span>
+          {icon('size-3')}
+          <span>{label}</span>
           <span className="text-muted-foreground/60">{rows.length}</span>
         </div>
       )}
@@ -106,8 +129,8 @@ export function PinnedSessionsSection({
             <SessionShortcutRows
               shortcuts={shortcuts}
               variant="sidebar"
-              // Every row here is a pin; marking each would be noise.
-              showPinGlyph={false}
+              showPinGlyph={showPinGlyph}
+              showStarGlyph={showStarGlyph}
               onOpen={handleOpen}
             />
           </div>
@@ -115,7 +138,8 @@ export function PinnedSessionsSection({
           <SessionShortcutRows
             shortcuts={shortcuts}
             variant="canvas"
-            showPinGlyph={false}
+            showPinGlyph={showPinGlyph}
+            showStarGlyph={showStarGlyph}
             onOpen={handleOpen}
           />
         ))}

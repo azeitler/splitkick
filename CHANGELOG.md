@@ -23,6 +23,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Settings show only the editors, terminals and git clients you have
   installed** (macOS). The app you chose stays in the list. (#43)
+### Changed
+
+- **A starred session now also shows at the top of its project.** The
+  project's top section, in the sidebar and on the project canvas, lists the
+  project's pinned and starred sessions, most recent first. Its label follows
+  the mix: "Pinned", "Starred" or "Pinned & Starred". A pin or star glyph
+  shows on a row when not every row has it. You no longer have to pin a
+  starred session to keep it at the top. (#41)
 
 ### Fixed
 
