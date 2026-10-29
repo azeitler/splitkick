@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-29
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **You can set how many sessions the sidebar Recent tab shows.** Settings →
@@ -2059,7 +2063,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.15...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.1.0...HEAD
+[1.1.0]: https://github.com/azeitler/jean/compare/splitkick-v1.0.15...splitkick-v1.1.0
 [1.0.15]: https://github.com/azeitler/jean/compare/splitkick-v1.0.14...splitkick-v1.0.15
 [1.0.14]: https://github.com/azeitler/jean/compare/splitkick-v1.0.13...splitkick-v1.0.14
 [1.0.13]: https://github.com/azeitler/jean/compare/splitkick-v1.0.12...splitkick-v1.0.13
