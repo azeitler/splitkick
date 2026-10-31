@@ -23,12 +23,12 @@ comes later.
 - **Recommendation:** (1) measure how often and why the app reloads today,
   (2) make the reload cheap in the frontend (service worker + per-device view
   restore). This work is also needed inside a native app, so no work is lost.
-  (3) Then a Tauri v2 iOS shell spike on the device, to measure if native
-  reloads less.
-- A native shell that **bundles** the frontend fights the release cadence: 14
-  Splitkick releases from 2026-10-18 to 2026-10-29. A native shell must
-  **cache the server's own frontend** instead, with the token in the Keychain,
-  through TestFlight internal testing only.
+  (3) In parallel (decided): a Tauri v2 iOS shell spike on the device, to
+  measure if native reloads less.
+- The goal is the App Store (decided). Guideline 2.5.2 then requires a
+  **bundled** frontend, and a bundled frontend fights the release cadence: 14
+  Splitkick releases from 2026-10-18 to 2026-10-29. Version skew is the main
+  design problem; see [Decisions](#decisions).
 
 ## What the fork has today
 
@@ -303,8 +303,8 @@ Success: after an iOS process end, the phone shows the same session it showed
 before, in under 0.5 s for the shell, and shows the app (not a Safari error)
 when the Mac is not reachable.
 
-**Phase 2 — native shell spike (if the reload is still visible or frequent).**
-Tauri v2 iOS shell in its own crate (for example `src-ios/`), option (c):
+**Phase 2 — native shell spike (in parallel with phase 1, decided).**
+Tauri v2 iOS shell in its own crate (for example `src-ios/`):
 
 1. Toolchain: Xcode 26, iOS Rust targets, CocoaPods, an Apple Development
    certificate (Xcode makes it).
@@ -312,13 +312,14 @@ Tauri v2 iOS shell in its own crate (for example `src-ios/`), option (c):
    iPhone, with the reload log from phase 1. Compare reloads per day with the
    PWA. Handle `webViewWebContentProcessDidTerminate` with an instant local
    reload.
-3. If it reloads clearly less: cache the server's frontend in the app container
-   (download on a new `webBuildId`, serve through the custom scheme), "remote
-   only" start screen with the connection list, token in the Keychain,
-   TestFlight internal.
+3. If it reloads clearly less: bundled frontend (App Store, guideline 2.5.2),
+   protocol version range and "update the app" screen, "remote only" start
+   screen with the connection list, token in the Keychain, the native features
+   for guideline 4.2. TestFlight internal first, then App Store review.
 
-**Phase 3 — later: push notifications.** Web Push (VAPID) for the PWA, or APNs
-if the native shell is the result of phase 2.
+**Phase 3 — push notifications.** Web Push (VAPID) for the PWA, or APNs for the
+native app. For the App Store, APNs is also a strong native feature (4.2), so
+this phase can move into phase 2.
 
 ## Decisions
 
@@ -327,12 +328,38 @@ Made on 2026-10-31:
 - iPhone URL: **Tailscale HTTPS** (`tailscale serve`).
 - Push notifications: **later** (phase 3).
 - The PWA exists and reloads often; that is the reason for this issue.
+- A reload is **a complete reload**: the whole page starts again, so all
+  in-memory state is lost. This agrees with an iOS process end, not with a
+  reload from the app code.
+- **Phase order: phase 1 and phase 2 in parallel.**
+- **Distribution: the App Store is the goal.** The app is not a plain shell; it
+  has native features, or features that look native.
+
+### What the App Store goal changes in the plan
+
+- **Guideline 2.5.2 blocks option (c).** An App Store build cannot download and
+  run the server's frontend. The frontend must be **bundled** in the binary.
+  Phase 2 step 3 changes from "cache the server's frontend" to "bundle the
+  frontend".
+- **Version skew becomes the main design problem.** With 14 releases in 12 days
+  and an App Review for each app update, the app is often older than the
+  server. The plan needs:
+  - a protocol version in `/api/init` and in the bundled frontend, with a
+    supported range (not only the app version, as `remote-version.ts` does now);
+  - a clear "update the app" screen when the server is out of the range, in
+    place of today's warning-and-connect;
+  - a rule for the server to keep old command names and arguments working for a
+    time, because the app cannot follow each server release.
+- **Guideline 4.2 risk stays.** Reviewers judge features that use iOS, not a web
+  UI that looks native. Native candidates: APNs push, Keychain login with Face
+  ID, share sheet, Home Screen widget or Live Activity for a running session,
+  native connection list. Push moves closer for this reason.
+- TestFlight internal testing stays the first channel; it needs no review and
+  shows early whether a bundled build can follow the server.
 
 Open:
 
-1. **Phase order:** frontend fixes and the reload log first (phase 1), or the
-   native shell spike first and in parallel?
-2. **If native comes:** is TestFlight internal testing enough? The App Store is
-   likely a rejection under 4.2 / 2.5.2.
-3. **What is lost on a reload today:** the open view (likely, see above), the
-   scroll position, the text in the composer, or the login?
+1. **Version skew policy:** how many server releases must an App Store build
+   support? This sets how long the server keeps old commands.
+2. **Native features for 4.2:** which of the candidates above are in the first
+   App Store version? APNs push is the strongest; it was "later" before.
