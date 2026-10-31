@@ -356,3 +356,9 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - When a session starts a real app build for testing, also set
   `SPLITKICK_DATA_DIR` to a folder in `tmp/`, until every installed copy
   has the fix.
+
+## Confirm the user's real pain before an evaluation recommends
+
+- An issue title names a solution ("cache the app code"); the trigger behind it can be different ("the PWA reloads often").
+- Before the recommendation, list the possible pains (load time, reloads, lost view, lost login) and check which one the user sees. Ask when the issue text does not say it.
+- Do not recommend the option the user already has as the fix for the pain that made them open the issue.

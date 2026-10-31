@@ -7,18 +7,28 @@ Issue: [#72](https://github.com/azeitler/splitkick/issues/72). Related:
 
 ## Summary
 
-- **Recommendation: start with a PWA service worker, not a native app.** It gives
-  most of the load-time gain, it works offline for the shell, it needs no Apple
-  review and it has no version-skew problem.
-- The PWA needs a secure context. Plain `http://<tailscale-name>:<port>` is not
-  one. Use `tailscale serve` (HTTPS on the `*.ts.net` name) or the Cloudflare
-  Tunnel URL, which is HTTPS already.
+The trigger for this issue: the Home Screen app **reloads often** (Andreas,
+2026-10-31). Decided: the iPhone uses Tailscale HTTPS (`tailscale serve`); push
+comes later.
+
+- **No option stops iOS from ending the page.** iOS ends the web content process
+  of a background Home Screen app, and a native `WKWebView` app has the same kind
+  of process. A native app can reload less often (normal app life cycle) and can
+  detect the end, but this is not proven. See
+  [Why the Home Screen app reloads](#why-the-home-screen-app-reloads).
+- **So the goal is a reload that the user does not see:** the shell comes from
+  the device in about 0.1 s, the phone opens on _its own_ last view, and login
+  and connections stay. Today a reload costs 0.6–4.7 s of network on mobile, and
+  the phone opens on the view that the _desktop_ saved last.
+- **Recommendation:** (1) measure how often and why the app reloads today,
+  (2) make the reload cheap in the frontend (service worker + per-device view
+  restore). This work is also needed inside a native app, so no work is lost.
+  (3) Then a Tauri v2 iOS shell spike on the device, to measure if native
+  reloads less.
 - A native shell that **bundles** the frontend fights the release cadence: 14
-  Splitkick releases from 2026-10-18 to 2026-10-29. The bundled UI would be
-  older than the server almost every day.
-- If a native app is necessary later, make it a Tauri v2 iOS shell that **caches
-  the server's own frontend** (the same model as the service worker), with the
-  token in the Keychain. Distribute it through TestFlight internal testing only.
+  Splitkick releases from 2026-10-18 to 2026-10-29. A native shell must
+  **cache the server's own frontend** instead, with the token in the Keychain,
+  through TestFlight internal testing only.
 
 ## What the fork has today
 
@@ -123,10 +133,42 @@ and the iOS 26 SDK since 2026-04-28.
 
 Conclusion: for an app used daily, **storage eviction is not the main problem**.
 The day counter resets on each start, and `persist()` is likely granted for a
-Home Screen app. The pain today is the network on each start (`index.html`
-`no-store`, then auth, WebSocket and init) and the Safari error page when the
-server or Tailscale is not reachable. A service worker fixes the first part and
-the error page.
+Home Screen app. The pain is the reload (next section).
+
+## Why the Home Screen app reloads
+
+Reload sources in the code (browser mode, `grep location.reload src`):
+
+| Source                                                                | When                                    | Seen by the user as a "random" reload?            |
+| --------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------- |
+| iOS ends the web content process of the background app                | After a switch to another app, any time | **Yes, the likely main cause**                    |
+| `WsTransport` wake handler (`visibilitychange`, `pageshow`, `online`) | Resume                                  | No: it reconnects the socket, no reload (#64 fix) |
+| `recoverRemoteAfterDrop()` in `transport.ts`                          | Socket drop                             | No: native remote windows only                    |
+| "Reload" toast in `web-client-version.ts`                             | New server build                        | No: user taps it                                  |
+| Error boundaries, token submit, connection switch, palette "Reload"   | Errors, user actions                    | Only after a crash                                |
+
+Facts and limits:
+
+- Reloads of Home Screen web apps after an app switch are a known, old
+  complaint, and Apple does not document the rule
+  ([2015 report](https://zacster.blogspot.com/2015/04/broken-web-apps-launched-from-ios-home.html),
+  [WHATWG thread](https://lists.w3.org/Archives/Public/public-whatwg-archive/2015Jun/0008.html)).
+- Native `WKWebView` apps see the same symptom
+  ([Home Assistant iOS #2719](https://github.com/home-assistant/ios/issues/2719)).
+  A native app can do more about it: `webViewWebContentProcessDidTerminate`
+  tells it that the page ended, and it can reload from a local copy at once.
+  Whether it reloads _less often_ is not measured.
+- What a reload loses today:
+  - `sessionStorage` reload state (`src/lib/web-reload-state.ts`) is kept for
+    60 s only, and iOS drops `sessionStorage` when it ends the process.
+  - The phone then restores the **host's shared UI state**. That state is the
+    last view of whichever client saved last, often the desktop
+    (`mobile-gap-analysis.md`, gap 2). This is likely the "lost state".
+  - The token and the connection list are in `localStorage` and stay.
+  - The JS bundle: from the HTTP cache if iOS kept it, else 1.16 MB again.
+
+Measurement gap: there is no data on how often the app reloads, and why. Phase 1
+step 1 adds it.
 
 ## Options
 
@@ -236,42 +278,61 @@ Run Web Access behind `tailscale serve` so that the iPhone opens
 `https://<mac>.<tailnet>.ts.net/`. Re-add the Home Screen app from that URL. Add
 the steps to the user docs. The Cloudflare Tunnel URL is HTTPS already.
 
-**Phase 1 — smallest useful step: app-shell service worker.**
+**Phase 1 — smallest useful step: measure, then make the reload cheap.**
+All of it is frontend work that a native shell reuses.
 
-1. `public/sw.js` or a Vite plugin step that writes the precache list (the
-   `index.html` references). Shell network first with a
-   3 s timeout; assets cache first; never `/api/*`, `/ws`, `/preview/*`,
-   `jean-build.json`.
-2. Register only in browser mode (`!isNativeApp()`) and only in a secure context.
-   Call `navigator.storage.persist()` once.
-3. Serve `sw.js` with `Cache-Control: no-store` in `server.rs` (like `index.html`).
-4. On a new `webBuildId`: update the worker, then the existing "Reload" toast.
-5. Rename the manifest to Splitkick.
-6. Test on an iPhone (iOS 26): start time, airplane mode start, Access login
-   redirect, `navigator.storage.persisted()` in the Home Screen app.
+1. **Reload log.** On `pagehide`, write a timestamp to `localStorage`. On start,
+   record the navigation type and the time since the last hide. A start shortly
+   after a hide without a user reload is an iOS process end. Show the count in
+   Settings → Web Access, or log it. Use the app for a few days. This gives the
+   baseline to compare a native spike against.
+2. **Per-device view restore.** Save the phone's own view (project, worktree,
+   open session modal, active session) in `localStorage`, not the 60 s
+   `sessionStorage`, and prefer it over the host's shared UI state on a phone.
+   This also fixes `mobile-gap-analysis.md` gap 2.
+3. **Service worker** (spike above): `public/sw.js` or a Vite step that writes
+   the precache list. Shell network first with a 3 s timeout; assets cache
+   first; never `/api/*`, `/ws`, `/preview/*`, `jean-build.json`. Register in
+   browser mode and secure context only; serve `sw.js` with `no-store`; call
+   `navigator.storage.persist()`; on a new `webBuildId` update the worker, then
+   the existing "Reload" toast. Rename the manifest to Splitkick.
+4. Test on an iPhone (iOS 26) over `https://<mac>.<tailnet>.ts.net/`: reload
+   count, time to shell, the view after a reload, airplane-mode start.
 
-Success: the Home Screen app shows the shell in under 0.5 s on a cold start
-over 4G, and shows the app (not a Safari error) when the Mac is not reachable.
+Success: after an iOS process end, the phone shows the same session it showed
+before, in under 0.5 s for the shell, and shows the app (not a Safari error)
+when the Mac is not reachable.
 
-**Phase 2 — only if phase 1 is not enough: Web Push.**
-Server keeps VAPID keys and subscriptions, sends a push when a session needs
-input or finishes. Works for the Home Screen app with no native code.
+**Phase 2 — native shell spike (if the reload is still visible or frequent).**
+Tauri v2 iOS shell in its own crate (for example `src-ios/`), option (c):
 
-**Phase 3 — only if the PWA still loses login or connections: native shell.**
-Tauri v2 iOS shell in its own crate, option (c): cache the server's frontend,
-token in the Keychain, connection list as start screen, TestFlight internal
-only. Before you start: install Xcode 26, iOS Rust targets and CocoaPods, and
-spike "`tauri://localhost` page → `wss://*.ts.net/ws`" in the simulator.
+1. Toolchain: Xcode 26, iOS Rust targets, CocoaPods, an Apple Development
+   certificate (Xcode makes it).
+2. Spike: `tauri://localhost` page → `wss://<mac>.<tailnet>.ts.net/ws` on a real
+   iPhone, with the reload log from phase 1. Compare reloads per day with the
+   PWA. Handle `webViewWebContentProcessDidTerminate` with an instant local
+   reload.
+3. If it reloads clearly less: cache the server's frontend in the app container
+   (download on a new `webBuildId`, serve through the custom scheme), "remote
+   only" start screen with the connection list, token in the Keychain,
+   TestFlight internal.
 
-## Open decisions for Andreas
+**Phase 3 — later: push notifications.** Web Push (VAPID) for the PWA, or APNs
+if the native shell is the result of phase 2.
 
-1. **Which URL does the iPhone use?** Tailscale (`tailscale serve` HTTPS) or the
-   Cloudflare Tunnel + Access URL, or both. Phase 1 needs HTTPS either way.
-2. **Is phase 1 (PWA service worker) the right first step,** or is a native app a
-   goal for its own sake (more than speed and state)?
-3. **Push notifications:** wanted now (phase 2), later, or not at all?
-4. **If native comes:** is TestFlight internal testing enough, or must it be on
-   the App Store (likely rejected under 4.2 / 2.5.2)?
-5. **What "loses state" means today:** the login and connection, or the open view
-   and scroll position? The second is UI state restore, not caching; it needs
-   its own issue.
+## Decisions
+
+Made on 2026-10-31:
+
+- iPhone URL: **Tailscale HTTPS** (`tailscale serve`).
+- Push notifications: **later** (phase 3).
+- The PWA exists and reloads often; that is the reason for this issue.
+
+Open:
+
+1. **Phase order:** frontend fixes and the reload log first (phase 1), or the
+   native shell spike first and in parallel?
+2. **If native comes:** is TestFlight internal testing enough? The App Store is
+   likely a rejection under 4.2 / 2.5.2.
+3. **What is lost on a reload today:** the open view (likely, see above), the
+   scroll position, the text in the composer, or the login?
