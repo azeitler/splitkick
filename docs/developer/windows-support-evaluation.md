@@ -1,6 +1,7 @@
 # Windows support: evaluation (issue #71)
 
-Status: evaluation only, 2026-10-30. No app code was changed.
+Status: evaluation only, 2026-10-30; verification section updated 2026-10-31
+(Parallels licence renewed). No app code was changed.
 Issue: [azeitler/splitkick#71](https://github.com/azeitler/splitkick/issues/71).
 
 ## Summary
@@ -19,12 +20,16 @@ Issue: [azeitler/splitkick#71](https://github.com/azeitler/splitkick/issues/71).
   `.github/workflows/preflight.yml` is macOS-only end to end (DMG names,
   `codesign`/`xcrun`, a `latest.json` with only `darwin-aarch64`, the website
   download card). Windows code signing needs a decision and money.
-- **Recommendation:** verify on GitHub-hosted `windows-latest` runners (free,
-  the repo is public), x64 only, NSIS installer only, unsigned first as a
-  pre-release. Decide on signing before the first non-pre-release Windows build.
+- **Recommendation:** verify in two places. The local Parallels VM (licence
+  renewed, now running) is for fast iteration, real UI checks and screenshots
+  from an agent session through `prlctl`. GitHub-hosted `windows-latest`
+  runners (free, the repo is public) are the native-x64 gate on every push.
+  Ship x64 only, NSIS installer only, unsigned first as a pre-release. Decide
+  on signing before the first non-pre-release Windows build.
 
 Effort estimate overall: **M–L** (about 4–7 working days to a signed,
-auto-updating x64 build; about 1 day to a green Windows CI job).
+auto-updating x64 build; about 1–1½ days to a set-up VM and a green Windows
+CI job).
 
 ## How this was checked
 
@@ -54,7 +59,8 @@ auto-updating x64 build; about 1 day to a green Windows CI job).
 
 - Not checked: linking, `cargo test` on Windows, `bun run test:run` on
   Windows, a running app. These need a Windows machine (see
-  [Verification options](#verification-options)).
+  [Verification options](#verification-options)). The Parallels VM is ready
+  for this but has no dev tools yet (checked 2026-10-31).
 
 ## 1. Compile and clippy results
 
@@ -230,19 +236,98 @@ Upstream ships **unsigned** Windows installers (no Windows signing secrets in
 
 ## Verification options
 
-The Parallels VM (Windows 11 ARM, 4 CPU, 8 GB) cannot start: the license
-expired on 2025-11-21.
+### The Parallels VM (available again)
 
-| Option                              | Cost                                                                                                                                                                                                             | Good for                                                                                                                                                                  | Limits                                                                                                          |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **GitHub `windows-latest` runners** | Free (public repo); `windows-11-arm` also free for public repos ([Windows blog](https://blogs.windows.com/windowsdeveloper/2025/04/14/github-actions-now-supports-windows-on-arm-runners-for-all-public-repos/)) | Real MSVC build, link, `cargo test`, `vitest`, NSIS bundle, a headless smoke start (start the exe, wait for the log line / HTTP port, kill). Repeats on every push.       | No interactive UI; screenshots only via a script. Each run starts from zero (cache helps).                      |
-| Renew Parallels Standard            | About 100 USD/year ([Vendr](https://www.vendr.com/marketplace/parallels))                                                                                                                                        | Interactive UI checks on the existing VM, fastest Windows-on-ARM VM on Apple silicon. x64 builds run through Windows' x64 emulation.                                      | Paid; the VM is ARM, so it does not test native x64. US vendor.                                                 |
-| UTM (free, open source)             | Free                                                                                                                                                                                                             | Interactive checks; Windows 11 ARM ISO via CrystalFetch ([guide](https://www.thurrott.com/windows/windows-11/301460/quick-hands-on-macbook-air-m3-utm-windows-11-on-arm)) | New VM install (the Parallels disk is not reused easily), slower graphics, some driver issues on 24H2 reported. |
+Checked from the host on 2026-10-31, read-only. Nothing was installed.
 
-**Recommendation:** use GitHub runners as the primary gate (a
-`workflow_dispatch` job `windows-check.yml`, then the preflight row). Use UTM
-for the few manual UI checks (title bar, installer, updater, terminal). Renew
-Parallels only if Windows becomes a regular target and UTM is too slow.
+| Item           | Value                                                                                                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Licence        | Parallels Desktop 20.4.2, `state='valid'`; renewed by Andreas, active until **2026-11-27** (renew again if Windows work runs past that).                                                                         |
+| VM             | "Windows 11", **ARM64**, Windows 11 build 10.0.26100.4349, 4 vCPU, 8 GB RAM, 213 GB free on `C:`, internet access to github.com.                                                                                 |
+| Present        | WebView2 Runtime 156, PowerShell 5.1 (execution policy `Restricted`, so scripts need `-ExecutionPolicy Bypass`), App Installer / `winget` 1.29 (arm64).                                                          |
+| Missing        | Visual Studio Build Tools (MSVC), git, Node.js, Bun, rustup/cargo, LLVM/clang.                                                                                                                                   |
+| `prlctl exec`  | Default runs as `NT AUTHORITY\SYSTEM`; `winget` is **not** on its PATH. `--current-user` runs as the logged-in user `azeitler`, where `winget` is on PATH. The guest exit code is passed through (`exit 3` → 3). |
+| Shared folders | Off (`Host Shared Folders: (-)`). The source has to get into the VM another way (see below).                                                                                                                     |
+| Screenshots    | `prlctl capture "Windows 11" --file <abs path>.png` works from the host.                                                                                                                                         |
+
+**What it gives us**
+
+- **Native ARM64 Windows.** A real MSVC build and link, `cargo test`,
+  `vitest`, the NSIS installer, the in-app updater, and the UI (title bar,
+  shortcuts, terminal, WebView2), all driven from an agent session on the Mac
+  with `prlctl exec` and checked with `prlctl capture`.
+- **x64 under emulation.** Windows 11 on ARM runs x64 programs through its
+  built-in emulation. With the MSVC x64 tools and
+  `rustup target add x86_64-pc-windows-msvc`, the VM builds the **x64** app
+  (the one we plan to ship) and runs it emulated. This tests the x64 code and
+  installer, but not native x64 hardware or performance; the `windows-latest`
+  runner stays the native-x64 gate. To check in Phase 0: that the emulated x64
+  app finds the WebView2 runtime.
+- **Limits:** 4 vCPU / 8 GB make a full `release` build (LTO, one codegen
+  unit) slow. Use the debug build or `--profile release-fast` for iteration.
+  Only one session at a time can use the VM. The licence ends 2026-11-27.
+
+**Setup script (proposed, not run yet)**
+
+`scripts/windows-vm/setup.ps1`, run once with `prlctl exec --current-user`.
+All tools come from `winget` (built in; Chocolatey is not needed). IDs checked
+with `winget show` on 2026-10-31:
+
+| Tool                      | winget ID                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| VS 2022 Build Tools 17.14 | `Microsoft.VisualStudio.2022.BuildTools` | MSVC linker and Windows SDK ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/): "Desktop development with C++"). Components: `Microsoft.VisualStudio.Workload.VCTools`, `Microsoft.VisualStudio.Component.VC.Tools.ARM64`, `Microsoft.VisualStudio.Component.VC.Tools.x86.x64`, `Microsoft.VisualStudio.Component.VC.Llvm.Clang`, `--includeRecommended`. The clang component is required: `ring` needs clang on PATH for ARM64 Windows ([ring BUILDING.md](https://github.com/briansmith/ring/blob/main/BUILDING.md)). VS 2026 Build Tools (`Microsoft.VisualStudio.BuildTools`, 18.x) also exists; 2022 is what the Tauri and ring docs describe. |
+| rustup                    | `Rustlang.Rustup`                        | Native `aarch64-pc-windows-msvc` host toolchain, then `rustup target add x86_64-pc-windows-msvc`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Bun 1.4                   | `Oven-sh.Bun`                            | Native Windows ARM64 build exists ([Bun install docs](https://bun.com/docs/installation)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Node.js LTS               | `OpenJS.NodeJS.LTS`                      | CI scripts call `node` directly (`node scripts/...`, `node --test`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Git                       | `Git.Git`                                | Repo operations and the Git Bash that `shell: bash` CI steps use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+Each install: `winget install --id <ID> --exact --silent --accept-package-agreements --accept-source-agreements`
+(Build Tools with `--override "--quiet --wait --norestart --add …"`).
+Machine-wide installers (Build Tools, Git, Node) raise a UAC prompt when run
+as the user; someone clicks it once in the VM window, or the script is started
+once from an elevated PowerShell inside the VM. Optional: a Defender exclusion
+for `C:\src` speeds up cargo builds noticeably. Disk use is about 15–20 GB.
+
+**How a session runs a build and smoke test (proposed)**
+
+A host-side wrapper, `scripts/windows-vm/run.sh <step>`, so an agent session
+never types long `prlctl` lines:
+
+1. **Source in.** Recommended: turn on one Parallels shared folder for the
+   repo (`prlctl set "Windows 11" --shf-host-add splitkick --path <repo>`) and
+   mirror it to a local disk, because building on the share is slow and cargo
+   locks fail there:
+   `robocopy \\Mac\splitkick C:\src\splitkick /MIR /XD node_modules target tmp dist .git`.
+   This carries uncommitted changes. Alternative without a share: `git bundle`
+   to a file and `git clone` it in the VM (committed state only).
+2. **Gate** (same steps as `preflight.yml`):
+   ```sh
+   prlctl exec "Windows 11" --current-user powershell -NoProfile -ExecutionPolicy Bypass -Command \
+     "cd C:\src\splitkick; bun install --frozen-lockfile; bun run typecheck; bun run lint; \
+      bun run test:run; bun run check:branding; bun run rust:clippy; bun run rust:test"
+   ```
+   The exit code tells the session pass or fail; the output streams back.
+3. **Build:** `bun run tauri build --ci --no-bundle --target x86_64-pc-windows-msvc`
+   (x64, emulated) or without `--target` (native ARM64). Add `--bundles nsis`
+   to test the installer.
+4. **Smoke start:** start the exe detached in the user's session
+   (`Start-Process`), wait about 20 s, check that the process is still alive
+   and that the log under `%LOCALAPPDATA%\app.splitkick.desktop\logs` has the
+   startup lines, then `prlctl capture` a screenshot and stop the process.
+   Whether `--current-user` starts GUI apps on the visible desktop must be
+   checked in Phase 0.
+
+### Other options
+
+| Option                              | Cost                                                                                                                                                                                                             | Good for                                                                                                                                                                            | Limits                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **GitHub `windows-latest` runners** | Free (public repo); `windows-11-arm` also free for public repos ([Windows blog](https://blogs.windows.com/windowsdeveloper/2025/04/14/github-actions-now-supports-windows-on-arm-runners-for-all-public-repos/)) | Native x64 build, link, `cargo test`, `vitest`, NSIS bundle, a headless smoke start. Repeats on every push. Needs a push.                                                           | No interactive UI. Each run starts from zero (cache helps).           |
+| UTM (free, open source)             | Free                                                                                                                                                                                                             | Fallback if the Parallels licence is not renewed after 2026-11-27 ([guide](https://www.thurrott.com/windows/windows-11/301460/quick-hands-on-macbook-air-m3-utm-windows-11-on-arm)) | New VM install, slower graphics, some driver issues on 24H2 reported. |
+
+**Recommendation:** the Parallels VM for local iteration, UI checks and
+screenshots (no push needed, an agent session can drive it); the
+`windows-latest` preflight row as the native-x64 gate on every push. UTM only
+as a fallback after 2026-11-27.
 
 ## Product decisions (open)
 
@@ -262,6 +347,16 @@ Parallels only if Windows becomes a regular target and UTM is too slow.
 
 ## Phased plan
 
+**Phase 0a — VM setup (S, about ½ day, mostly install time).**
+
+- Add `scripts/windows-vm/setup.ps1` (winget installs above) and
+  `scripts/windows-vm/run.sh` (source mirror, gate, build, smoke, capture).
+- Turn on the shared folder for the repo; run the setup once (one UAC click).
+- Check the two open points: the emulated x64 app finds WebView2, and
+  `--current-user` starts the GUI on the visible desktop.
+- Result: an agent session can build, test and screenshot Windows without a
+  push.
+
 **Phase 0 — smallest useful step (S, about ½–1 day): a green Windows gate.**
 
 - `webview2-com = "0.39"`; gate `Stdio`; fix the 13 dead-code / `needless_return`
@@ -271,6 +366,8 @@ Parallels only if Windows becomes a regular target and UTM is too slow.
   publish steps are already gated on `macos-latest`, so this only builds and
   tests. If the job takes too long, start with a `workflow_dispatch`
   `windows-check.yml` that runs the same steps.
+- Run the same steps in the VM first (`run.sh gate`), so the fixes are known
+  to pass before the push.
 - Result: Windows breakage is caught on every push; we learn what `cargo test`
   and `vitest` really do on Windows.
 
@@ -284,7 +381,8 @@ Parallels only if Windows becomes a regular target and UTM is too slow.
 - `tauri.windows.conf.json` title; `bundle.windows.nsis` in the fork overlay.
 - Take the missing upstream Windows fixes (`a027751e`, `1232e650`, `8e204e61`,
   `c087a014`, `d5bb097c`) through `/upstream-review`.
-- Smoke start step in CI; one manual UI pass in UTM.
+- Smoke start step in CI; a UI pass in the Parallels VM (x64 build, emulated)
+  with screenshots via `prlctl capture`.
 
 **Phase 2 — unsigned pre-release (M, about 1–2 days).**
 
@@ -293,7 +391,8 @@ Parallels only if Windows becomes a regular target and UTM is too slow.
   `windows-x86_64` into one `latest.json`, creates the release and runs
   `sync-sites.sh` once.
 - Platform-neutral release notes; first Windows build as an `-rc`.
-- Verify an in-app update rc → rc on Windows.
+- Verify an in-app update rc → rc on Windows in the VM (install the older rc
+  with the NSIS installer, let the app update itself).
 
 **Phase 3 — signed stable release (M, depends on the certificate lead time).**
 
@@ -301,5 +400,5 @@ Parallels only if Windows becomes a regular target and UTM is too slow.
 - Website: one download card per platform (`sync-release.mjs`, `src/site.ts`
   in `Digitalheld/splitkick-website`); docs for Windows install.
 
-**Phase 4 — optional.** ARM64 build, taskbar badge, Windows git-client
+**Phase 4 — optional.** ARM64 build (the VM already tests it natively), taskbar badge, Windows git-client
 launcher, survivable PI runs over a named pipe.
