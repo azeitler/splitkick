@@ -320,6 +320,55 @@
   .note { font-size: 12px; color: var(--muted-foreground); line-height: 18px; }
   .note b { color: var(--foreground); }
   h3.sh { font-size: 13px; margin: 20px 0 8px; }
+
+  /* settings (agents pane) */
+  .setwrap { position: absolute; inset: 20px 36px; background: var(--background); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: grid; grid-template-columns: 210px 1fr; overflow: hidden; z-index: 30; }
+  .setnav { background: var(--sidebar); padding: 8px; overflow-y: auto; border-right: 1px solid var(--sidebar-border); }
+  .setnav .gl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: color-mix(in srgb, var(--foreground) 50%, transparent); padding: 10px 8px 4px; }
+  .setnav .it { display: flex; gap: 8px; align-items: center; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 13px; }
+  .setnav .it.on { background: var(--sidebar-accent); font-weight: 500; }
+  .setmain { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .setmain > header { height: 48px; flex-shrink: 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
+  .setmain > header b { color: var(--foreground); font-weight: 500; }
+  .apane { display: grid; grid-template-columns: 210px 1fr; flex: 1; min-height: 0; }
+  .alist { border-right: 1px solid var(--border); padding: 10px 8px; overflow-y: auto; }
+  .alist .ai { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .alist .ai:hover { background: var(--accent); }
+  .alist .ai.on { background: color-mix(in srgb, var(--foreground) 9%, transparent); }
+  .alist .ai .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .aed { padding: 16px 22px 30px; overflow-y: auto; }
+  .aed .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .swatches { display: flex; gap: 6px; } .swatches i { width: 18px; height: 18px; border-radius: 5px; display: block; cursor: pointer; }
+  .swatches i.on { outline: 2px solid var(--foreground); outline-offset: 2px; }
+  .entry { border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 5%, var(--background)); border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 14px; }
+  .entry b { font-weight: 600; } .entry ol { margin: 6px 0 0; padding-left: 18px; } .entry li { margin: 2px 0; }
+
+  /* session + graph panel */
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chead { height: 48px; flex-shrink: 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; }
+  .chead .sn { font-weight: 600; font-size: 14px; }
+  .chead .r { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .tbtn { height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted-foreground); border: 1px solid transparent; background: transparent; cursor: pointer; }
+  .tbtn:hover { color: var(--foreground); background: var(--accent); }
+  .tbtn.on { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 9%, transparent); border-color: var(--border); }
+  .msgs { flex: 1; overflow: auto; padding: 18px 26px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; line-height: 22px; }
+  .mu { align-self: flex-end; background: var(--muted); border-radius: 12px; padding: 8px 12px; max-width: 70%; }
+  .ma { max-width: 92%; }
+  .ma p { margin: 0 0 8px; }
+  .tool { font-size: 12px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; display: inline-flex; gap: 6px; align-items: center; margin: 2px 0; }
+  .tool code { font-size: 11px; }
+  .cin { margin: 0 16px 14px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 8px; }
+  .cin .ph { color: var(--muted-foreground); font-size: 14px; height: 40px; }
+  .cin .tb { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted-foreground); }
+  .gpanel { width: 380px; }
+  .mrow { display: flex; gap: 6px; align-items: center; font-size: 12px; padding: 3px 6px; border-radius: 5px; cursor: pointer; margin: 0 -6px; }
+  .mrow:hover { background: var(--accent); }
+  .mrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow.me { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .mrow.grp { font-weight: 600; margin-top: 6px; }
+  .you { font-size: 10px; color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 50%, transparent); border-radius: 4px; padding: 0 4px; line-height: 14px; }
+  .nodecard { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--card); }
+  .nodecard .nt { font-weight: 600; font-size: 14px; margin: 4px 0 2px; }
 </style>
 </head>
 <body>
@@ -366,6 +415,10 @@ const P = {
   ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
   ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+  term: '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
   commit: '<circle cx="12" cy="12" r="3"/><line x1="3" x2="9" y1="12" y2="12"/><line x1="15" x2="21" y1="12" y2="12"/>',
 };
 const I = (n, c = '') => `<svg class="i ${c}" viewBox="0 0 24 24">${P[n]}</svg>`;
@@ -373,11 +426,12 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 
 /* ===================== demo data ===================== */
 const GRAPHS = {
-  roadmap: { title: 'Splitkick roadmap', type: 'roadmap', loc: 'project', project: 'splitkick', file: '.splitkick/graphs/roadmap.yml' },
-  rel11:   { title: 'Release 1.1', type: 'release', loc: 'project', project: 'splitkick', file: '.splitkick/graphs/release-1-1.yml' },
-  web:     { title: 'Website relaunch', type: 'roadmap', loc: 'project', project: 'splitkick-website', file: '.splitkick/graphs/relaunch.yml' },
-  docs:    { title: 'Docs plan', type: 'docs', loc: 'project', project: 'splitkick-docs', file: '.splitkick/graphs/docs.yml' },
-  inst:    { title: 'Cross-project', type: 'portfolio', loc: 'instance' },
+  // A graph is a file. Location: inside a project's repo, in another repo, or in a folder outside any repo.
+  roadmap: { title: 'Splitkick roadmap', type: 'roadmap', loc: 'repo', project: 'splitkick', file: '.splitkick/graphs/roadmap.yml', where: 'splitkick repo' },
+  rel11:   { title: 'Release 1.1', type: 'release', loc: 'repo', project: 'splitkick', file: '.splitkick/graphs/release-1-1.yml', where: 'splitkick repo' },
+  web:     { title: 'Website relaunch', type: 'roadmap', loc: 'repo', project: 'splitkick-website', file: 'plans/relaunch.yml', where: 'splitkick-website repo' },
+  docs:    { title: 'Docs plan', type: 'docs', loc: 'other', project: 'splitkick-docs', file: 'roadmaps/docs.yml', where: 'azeitler/roadmaps repo' },
+  inst:    { title: 'Portfolio', type: 'portfolio', loc: 'folder', project: '~/Graphs', file: '~/Graphs/portfolio.yml', where: '~/Graphs · no git' },
 };
 // Nodes of the roadmap graph. rel: [kind, target]; target = node id, 'graph#node', or 'text:...'.
 const NODES = [
@@ -450,7 +504,7 @@ const M = {
   reverted: new Set(),
   answered: {},           // request id -> text
   viewAs: 'you',
-  newType: 'roadmap', newLoc: 'splitkick',
+  newType: 'roadmap', newLoc: 'repo', editAgent: 'vk',
   startAgent: 'vk', startPerm: 'manage', startWhere: 'base',
 };
 const stateOf = n => M.stateOverride[n.id] ?? n.state;
@@ -482,7 +536,7 @@ const pendingRequests = () => ['q1', 'q2', 'q3'].filter(q => !M.answered[q]).len
 const unseen = () => CHANGES.filter(c => !M.seen.has(c.id)).length;
 
 /* ===================== routing ===================== */
-const DEF = { s: 'outline', node: '', dlg: '', opt: 'branch', fail: '0', theme: 'light' };
+const DEF = { s: 'outline', node: '', dlg: '', opt: 'own', fail: '0', theme: 'light', who: 'worker', panel: '1' };
 function getQ() { const q = { ...DEF }; new URLSearchParams(location.hash.slice(1)).forEach((v, k) => q[k] = v); return q; }
 function setQ(patch) { const q = { ...getQ(), ...patch }; const p = new URLSearchParams(); for (const k in q) if (q[k] !== DEF[k]) p.set(k, q[k]); location.hash = p.toString(); }
 
@@ -494,35 +548,38 @@ const SCREENS = [
   ['review', '4 · Review (executive)', { s: 'review', dlg: '', node: '' }],
   ['agents', '5a · Agents', { s: 'agents', dlg: '', node: '' }],
   ['start', '5b · Start session from agent', { s: 'agents', dlg: 'start', node: '' }],
+  ['settings', '5c · Edit agent (Settings)', { s: 'settings', dlg: '', node: '' }],
   ['problem', '6 · Open problem: base branch', { s: 'problem', dlg: '', node: '' }],
+  ['session', '7 · Session graph panel', { s: 'session', dlg: '', node: '' }],
 ];
 const CAPS = {
-  new: '<b>Sidebar:</b> a new <b>Graphs</b> section under Starred, same row style and collapse behaviour. Orange count = requests waiting for you; grey = changes you have not seen. <b>+ New</b> asks for title, type and location (a project or this instance).',
+  new: '<b>Sidebar:</b> a new <b>Graphs</b> section under Starred, same row style and collapse behaviour. Each row shows where its file is. Orange count = requests waiting for you; grey = changes you have not seen. <b>+ New</b> asks for title, type and where the file goes: inside a project’s repo, in another repo, or in a folder outside any repo. Or open an existing graph file.',
   outline: '<b>Outline:</b> nodes grouped by <i>part-of</i>. Stored state as a chip; <b>derived</b> badges (active, blocked, progress) are computed from sessions and relations and never written. Dashed rows come from other graphs. Orange dot = changed since you last looked.',
   deps: '<b>Dependencies:</b> columns are dependency steps (no dates in the model), lanes are <i>part-of</i> groups. Solid arrows = depends-on (red while the target is not done), red diamonds = open blocked-by decisions, dashed blue = nodes in other graphs.',
   node: '<b>Node detail:</b> stored fields (description, state, properties, relations, attachments) and derived ones (serving sessions, reverse relations, blocked). Switch “view as” to see what a write or read session may change.',
   review: '<b>Review:</b> requests from the manager (accept “done”, send back with a note, answer a blocking decision) and the change log since you last looked, grouped by node, each with who, when and why. Mark seen or revert.',
+  settings: '<b>Edit agent:</b> Settings → Agents, next to Magic Prompts. Four ways in: this pane, <i>Edit</i> on the Agents page, the agent chip in a session header, and the command palette. Edits apply to new sessions only.',
+  session: '<b>Session graph panel:</b> a session that serves a node (or a whole graph) gets a <b>Graph</b> button in its header and a side panel, like the review panel. Worker: its node, what comes before and after, its siblings. Manager: requests, its unseen changes, the outline. Switch Worker / Manager above.',
   agents: '<b>Agents:</b> saved profiles, not a new session kind. Persona prompt + one coarse graph permission (read / write / manage) + default backend/model.',
   start: '<b>Start session:</b> a normal session started from a profile. The persona is added to the system prompt; the permission can be lowered, never raised; <i>serves</i> is set at start.',
-  problem: '<b>Open problem:</b> the base checkout is often on another branch. Pick an option and switch Normal / Failure to see what the user would see. Not decided.',
+  problem: '<b>Open problem:</b> the base checkout is often on another branch. Pick an option and switch Normal / Failure to see what the user would see. <b>Option 5</b> follows the direction “graphs are just files, the location is chosen at creation”. Not decided.',
 };
 
 /* ===================== render: sidebar ===================== */
 function sidebar(q) {
   const req = pendingRequests(), un = unseen();
   const graphRows = [
-    ['roadmap', 'splitkick', req, un],
-    ['rel11', 'splitkick', 0, 2],
-    ['web', 'splitkick-website', 0, 0],
-    ['inst', 'this instance', 0, 0],
-  ].map(([id, ctx, r, u]) => {
+    ['roadmap', req, un], ['rel11', 0, 2], ['web', 0, 0], ['docs', 0, 0], ['inst', 0, 0],
+  ].map(([id, r, u]) => {
+    const ctx = GRAPHS[id].where;
     const g = GRAPHS[id];
     const sel = id === 'roadmap' && ['outline', 'deps', 'review', 'problem'].includes(q.s);
     let warn = '';
     if (id === 'roadmap' && q.s === 'problem' && q.fail === '1') warn = `<span style="color:var(--wait)" title="Sync problem">${I('warn', 'i12')}</span>`;
     const badge = r ? `<span class="cnt" title="${r} requests for you">${r}</span>` : u ? `<span class="cnt soft" title="${u} unseen changes">${u}</span>` : '';
-    return `<div class="row srow grow ${sel ? 'sel' : ''}" data-go="${id === 'roadmap' ? 'outline' : ''}">
-      <span class="gi">${I('graph', 'i12')}</span>
+    const gi = GRAPHS[id].loc === 'folder' ? I('file', 'i12') : I('graph', 'i12');
+    return `<div class="row srow grow ${sel ? 'sel' : ''}" data-go="${id === 'roadmap' ? 'outline' : ''}" title="${GRAPHS[id].file}">
+      <span class="gi">${gi}</span>
       <span class="two"><span class="name">${esc(g.title)}</span><span class="ctx">${g.type} · ${ctx}</span></span>${warn}${badge}</div>`;
   }).join('');
   return `
@@ -530,8 +587,8 @@ function sidebar(q) {
   <div class="row pill hrow" style="margin:0;width:100%;border-radius:0">${I('house')}<span class="name">Home</span></div>
   <div class="sech">${I('star')}<span class="lbl">Starred</span><span class="chev">${I('chevd', 'i12')}</span></div>
   <div class="glist">
-    <div class="row srow"><span class="spin"></span><span class="name">Vision keeper</span><span class="ctx">splitkick / base</span></div>
-    <div class="row srow"><span class="dot st-waiting"></span><span class="name">Network view</span><span class="ctx">splitkick / issue-77</span></div>
+    <div class="row srow ${q.s === 'session' && q.who === 'manager' ? 'sel' : ''}" data-go="sess-manager"><span class="spin"></span><span class="name">Vision keeper</span><span class="ctx">splitkick / base</span></div>
+    <div class="row srow ${q.s === 'session' && q.who !== 'manager' ? 'sel' : ''}" data-go="sess-worker"><span class="dot st-waiting"></span><span class="name">Network view</span><span class="ctx">splitkick / issue-77</span></div>
   </div>
   <div class="sech" style="padding-right:8px">${I('graph')}<span class="lbl">Graphs<span class="tag-new">new</span></span>
     <button class="newbtn" data-act="new" title="New graph">${I('plus', 'i12')}New</button></div>
@@ -543,7 +600,7 @@ function sidebar(q) {
     <div class="row pill"><span class="avatar">s</span><span class="name">splitkick</span></div>
     <div class="wt">
       <div class="row wtrow"><span class="dot dot8 st-idle"></span><span class="name" style="font-size:13px">base <span style="font-size:11px;opacity:.7">· main</span></span></div>
-      <div class="row wtrow sel"><span class="spin"></span><span class="name" style="font-size:13px">issue-78-design-graph…</span></div>
+      <div class="row wtrow ${q.s === 'session' ? '' : 'sel'}"><span class="spin"></span><span class="name" style="font-size:13px">issue-78-design-graph…</span></div>
       <div class="row wtrow"><span class="dot dot8 st-waiting"></span><span class="name" style="font-size:13px">issue-77-session-network…</span></div>
       <div class="row wtrow"><span class="dot dot8 st-review"></span><span class="name" style="font-size:13px">issue-74-mermaid…</span></div>
     </div>
@@ -556,7 +613,7 @@ function sidebar(q) {
 /* ===================== render: graph header ===================== */
 function locChips(q) {
   const g = GRAPHS.roadmap;
-  if (q.s !== 'problem') return `<span class="chip">${I('folder', 'i12')}${g.project}</span><span class="chip mono">${g.file}</span><span class="chip">${I('branch', 'i12')}splitkick/graphs</span>`;
+  if (q.s !== 'problem') return `<span class="chip">${I('folder', 'i12')}splitkick repo</span><span class="chip mono">${g.file}</span><span class="chip">${I('branch', 'i12')}main</span>`;
   const f = q.fail === '1';
   switch (q.opt) {
     case 'base': return `<span class="chip">${I('folder', 'i12')}splitkick · base checkout</span><span class="chip mono">${g.file}</span>` +
@@ -565,6 +622,8 @@ function locChips(q) {
       (f ? `<span class="chip bad">${I('warn', 'i12')}push rejected · diverged</span>` : `<span class="chip ok">${I('check', 'i12')}synced · pulled 4 min ago</span><span class="chip">${I('up', 'i12')}1 commit to push</span>`);
     case 'default': return `<span class="chip">${I('folder', 'i12')}splitkick</span><span class="chip mono">origin/main:${g.file}</span>` +
       (f ? `<span class="chip bad">${I('warn', 'i12')}write failed · main moved</span>` : `<span class="chip ok">${I('check', 'i12')}read at 4e1c9a2 · 3 min ago</span>`);
+    case 'own': return `<span class="chip">${I('folder', 'i12')}azeitler/roadmaps repo</span><span class="chip mono">splitkick.yml</span><span class="chip">${I('branch', 'i12')}main</span>` +
+      (f ? `<span class="chip warn">${I('sync', 'i12')}2 behind · 1 ahead</span>` : `<span class="chip ok">${I('check', 'i12')}pulled 2 min ago</span>`);
     case 'data': return `<span class="chip">${I('drive', 'i12')}Splitkick data · mb14</span><span class="chip">not in git</span>` +
       (f ? `<span class="chip warn">${I('cloud', 'i12')}mb16 offline · 3 h</span>` : `<span class="chip ok">${I('cloud', 'i12')}synced with mb16 · 1 min ago</span>`);
   }
@@ -800,12 +859,12 @@ function review() {
 /* ===================== render: agents ===================== */
 function agents() {
   let h = `<div class="ghead" style="padding-bottom:14px"><div class="t">${I('bot', 'i16')}<h2>Agents</h2><span class="note">Saved profiles. A session started from one is a normal session with the persona added.</span>
-    <div class="acts"><button class="btn">${I('plus', 'i12')}New agent</button></div></div></div><div class="scroll"><div class="pad"><div class="agents">`;
+    <div class="acts"><button class="btn" data-editagent="vk">${I('gear', 'i12')}Manage in Settings</button><button class="btn" data-editagent="new">${I('plus', 'i12')}New agent</button></div></div></div><div class="scroll"><div class="pad"><div class="agents">`;
   for (const [id, a] of Object.entries(AGENTS)) {
     h += `<div class="agent"><div class="ah"><span class="av" style="background:${a.color}">${I('bot', 'i16')}</span><div style="flex:1"><div class="an">${a.name}</div><div class="note" style="font-size:11px">${a.model} · graph: ${a.graph}</div></div><span class="perm ${a.perm}">${a.perm}</span></div>
       <div class="sub" style="margin:0">Persona prompt</div><div class="persona">${esc(a.persona)}</div>
       <div class="note" style="font-size:11px">${a.sessions ? `${I('play', 'i12')} ${a.sessions} session running from this profile` : 'No session running'}</div>
-      <div class="row2" style="display:flex;gap:6px"><button class="btn pri" data-start="${id}">${I('play', 'i12')}Start session…</button><button class="btn ghost">Edit</button></div></div>`;
+      <div class="row2" style="display:flex;gap:6px"><button class="btn pri" data-start="${id}">${I('play', 'i12')}Start session…</button><button class="btn ghost" data-editagent="${id}">${I('pencil', 'i12')}Edit</button></div></div>`;
   }
   h += `</div><table class="ptab"><tr><th>Level</th><th>May (enforced in the MCP tools, per session)</th><th>Default for</th></tr>
     <tr><td><span class="perm">read</span></td><td>read graphs; set <code>serves</code> on its own session</td><td>every session</td></tr>
@@ -821,6 +880,7 @@ const OPTS = [
   ['branch', 'Option 1: dedicated branch'],
   ['default', 'Option 2: read default branch'],
   ['data', 'Option 3: Splitkick data only'],
+  ['own', 'Option 5: own repo or folder'],
 ];
 function problemBanner(q) {
   const f = q.fail === '1';
@@ -848,6 +908,13 @@ function problemBanner(q) {
       : `<div class="banner">${I('branch', 'i16')}<div class="bt"><b>Read from <code>origin/main</code> (git object, not the folder).</b>
           <p>The base checkout is on <code>issue-74-mermaid</code>; its copy is ignored. Writes become a small commit on local <code>main</code> without a checkout (plumbing). Local main is 1 commit ahead of origin.</p>
           <div class="ba"><span class="chip mono">4e1c9a2 graph: commit “Session network view”</span><button class="btn">${I('up', 'i12')}Push main…</button></div></div></div>`;
+    case 'own': return f
+      ? `<div class="banner warn">${I('sync', 'i16')}<div class="bt"><b>Your copy of <code>azeitler/roadmaps</code> is 2 commits behind origin, and you have 1 change not pushed.</b>
+          <p>mb16 changed this graph. The graph file is in a repo of its own, so no project branch is involved: it is an ordinary pull and merge, node by node. No conflict this time.</p>
+          <div class="ba"><button class="btn pri">${I('sync', 'i12')}Pull and merge</button><button class="btn">${I('up', 'i12')}Then push (asks you)</button><button class="btn ghost">Show incoming changes</button></div></div></div>`
+      : `<div class="banner">${I('folder', 'i16')}<div class="bt"><b>The graph file lives where you put it when you created it: here in <code>azeitler/roadmaps</code>, a repo only for graphs.</b>
+          <p>Graphs are just files. A repo that holds only graphs stays on <code>main</code>, so the base-branch problem does not come up. A file in a folder outside any repo (for example <code>~/Graphs</code> or iCloud Drive) has no git at all. Only a file <b>inside a project’s repo</b> still has the branch problem; then one of options 1–3 applies to it.</p>
+          <div class="ba"><span class="chip">${I('commit', 'i12')}1 change committed</span><button class="btn">${I('up', 'i12')}Push…</button><button class="btn ghost">Move file…</button></div></div></div>`;
     case 'data': return f
       ? `<div class="banner warn">${I('cloud', 'i16')}<div class="bt"><b>mb16 is offline since 3 h. Both machines edited this graph.</b>
           <p>Edits are kept on each machine and merged node by node on reconnect. 1 node changed on both sides (Graph support v1: quarter). You will choose then. Until then, mb16 works on its own copy.</p>
@@ -859,32 +926,137 @@ function problemBanner(q) {
 }
 function problemTable(q) {
   const rows = [
-    ['Real copy', 'file in base checkout', 'branch splitkick/graphs (hidden worktree)', 'origin/main as a git object', 'Splitkick data per instance'],
-    ['Independent of base branch', '<span class="n">no</span>', '<span class="y">yes</span>', '<span class="y">yes</span>', '<span class="y">yes</span>'],
-    ['Versioned in the repo', '<span class="y">yes</span>, on whatever branch', '<span class="y">yes</span>, own branch', '<span class="y">yes</span>, on main', '<span class="n">no</span> (export only)'],
-    ['Readable by any agent as a file', '<span class="y">yes</span>', '<span class="m">only in the hidden worktree</span>', '<span class="m">git show</span>', '<span class="n">no</span>, MCP only'],
-    ['Needs a push', 'with the branch', '<span class="m">yes, by Splitkick</span>', '<span class="m">yes, main</span>', '<span class="y">no</span>'],
-    ['Failure the user sees', 'wrong roadmap, silently', 'diverged branch, merge', 'race with own commits on main', 'offline peer, merge later'],
-    ['Cost to build', 'small', 'medium: worktree, commit, push, merge', 'medium: plumbing, retries', 'small–medium: sync merge'],
+    ['Real copy', 'file in base checkout', 'branch splitkick/graphs (hidden worktree)', 'origin/main as a git object', 'Splitkick data per instance', 'the file at the path chosen at creation'],
+    ['Independent of base branch', '<span class="n">no</span>', '<span class="y">yes</span>', '<span class="y">yes</span>', '<span class="y">yes</span>', '<span class="y">yes</span> for own repo / folder; <span class="n">no</span> inside a project repo'],
+    ['Versioned in the repo', '<span class="y">yes</span>, on whatever branch', '<span class="y">yes</span>, own branch', '<span class="y">yes</span>, on main', '<span class="n">no</span> (export only)', '<span class="y">yes</span> in a repo; <span class="n">no</span> in a folder'],
+    ['Readable by any agent as a file', '<span class="y">yes</span>', '<span class="m">only in the hidden worktree</span>', '<span class="m">git show</span>', '<span class="n">no</span>, MCP only', '<span class="y">yes</span>'],
+    ['Needs a push', 'with the branch', '<span class="m">yes, by Splitkick</span>', '<span class="m">yes, main</span>', '<span class="y">no</span>', '<span class="m">yes in a repo</span>'],
+    ['Failure the user sees', 'wrong roadmap, silently', 'diverged branch, merge', 'race with own commits on main', 'offline peer, merge later', 'behind origin: pull and merge'],
+    ['Cost to build', 'small', 'medium: worktree, commit, push, merge', 'medium: plumbing, retries', 'small–medium: sync merge', 'small: the user picks the path'],
   ];
-  const cols = ['base', 'branch', 'default', 'data'];
+  const cols = ['base', 'branch', 'default', 'data', 'own'];
   return `<h3 class="sh">Compare (option 4, “pin to the default branch’s worktree”, is not shown: it falls back to the draft decision when no such worktree exists)</h3>
     <table class="cmp"><tr><th></th>${OPTS.map(([k, l]) => `<th class="${q.opt === k ? 'on' : ''}" data-opt="${k}" style="cursor:pointer">${l}</th>`).join('')}</tr>
     ${rows.map(r => `<tr><th>${r[0]}</th>${r.slice(1).map((c, i) => `<td class="${q.opt === cols[i] ? 'on' : ''}">${c}</td>`).join('')}</tr>`).join('')}</table>
-    <p class="note" style="margin-top:10px">Questions to answer first: how many machines edit the same graph at the same time? Is “versioned in the repo” a must for v1? May Splitkick push on its own to a dedicated branch?</p>`;
+    <p class="note" style="margin-top:10px"><b>Direction from Andreas (2026-11-03):</b> graphs are just files; the location is chosen at creation (inside the repo, outside any repo, or in another repo). Option 5 shows that. The open question shrinks to: what happens for a file inside a project repo?</p>
+    <p class="note" style="margin-top:6px">Questions to answer first: how many machines edit the same graph at the same time? Is “versioned in the repo” a must for v1? May Splitkick push on its own to a dedicated branch?</p>`;
+}
+
+/* ===================== render: settings → agents ===================== */
+function settings() {
+  const id = M.editAgent === 'new' ? null : M.editAgent;
+  const a = id ? AGENTS[id] : { name: 'New agent', perm: 'read', color: '#a855f7', model: 'Claude Sonnet 5.5', persona: '' };
+  const nav = [['General', ['General', 'Appearance', 'Keybindings', 'Terminal']], ['AI', ['Claude', 'Codex', 'OpenCode', 'Providers', 'Magic Prompts', 'Agents']], ['Integrations', ['GitHub CLI', 'MCP Servers', 'Web Access']]];
+  const perms = [['read', 'Read graphs; set serves on its own session.'], ['write', 'Create and edit nodes, relations, attachments; propose; send requests.'], ['manage', 'Also commit, accept done, drop.']];
+  return `<div class="scrim" style="padding:0"></div><div class="setwrap">
+    <nav class="setnav">${nav.map(([g, its]) => `<div class="gl">${g}</div>${its.map(t => `<div class="it ${t === 'Agents' ? 'on' : ''}">${t === 'Agents' ? I('bot') : I('gear')}${t}${t === 'Agents' ? '<span class="tag-new">new</span>' : ''}</div>`).join('')}`).join('')}</nav>
+    <div class="setmain"><header>Settings ${I('chevr', 'i12')}<b>Agents</b><span style="margin-left:auto"><button class="btn ghost" data-act="closesettings">${I('x')}</button></span></header>
+    <div class="apane"><div class="alist">
+      ${Object.entries(AGENTS).map(([k, x]) => `<div class="ai ${k === id ? 'on' : ''}" data-editagent="${k}"><span class="sw" style="background:${x.color}"></span><span style="flex:1">${x.name}</span><span class="perm ${x.perm}" style="height:16px;line-height:14px;font-size:10px">${x.perm}</span></div>`).join('')}
+      <div class="ai ${id ? '' : 'on'}" data-editagent="new" style="color:var(--muted-foreground)">${I('plus', 'i12')}New agent</div></div>
+    <div class="aed">
+      <div class="entry"><b>Ways to get here</b><ol>
+        <li><b>Settings → Agents</b> (this pane, next to Magic Prompts): create, edit, duplicate, delete.</li>
+        <li><b>Agents page</b> (title bar → Agents): <i>Edit</i> on a card opens this pane on that agent.</li>
+        <li><b>Session header</b> of a session started from an agent: the agent chip → <i>Edit profile</i>.</li>
+        <li><b>Command palette</b>: “Edit agent…”, “New agent…”.</li></ol>
+        <div class="hint" style="margin-top:6px">Edits apply to sessions started <b>after</b> the save. Running sessions keep the persona they started with.</div></div>
+      <div class="grid2"><div class="field"><label>Name</label><input value="${esc(a.name)}"></div>
+        <div class="field"><label>Colour</label><div class="swatches">${['#ff5a1f', '#2563eb', '#16a34a', '#a855f7', '#eab308', '#64748b'].map(c => `<i style="background:${c}" class="${c === a.color ? 'on' : ''}"></i>`).join('')}</div></div></div>
+      <div class="field"><label>Persona prompt <span class="note" style="font-weight:400">added to the system prompt of every session started from this agent</span></label><textarea rows="7" style="font-size:12px;line-height:18px">${esc(a.persona)}</textarea>
+        <div class="hint">What the agent may decide lives here, in words. The code enforces only the permission below.</div></div>
+      <div class="field"><label>Graph permission</label><div class="opts">${perms.map(([p, d]) => `<div class="opt ${a.perm === p ? 'on' : ''}"><span class="rad"></span><span class="ot"><b>${p}</b><span>${d}</span></span></div>`).join('')}</div></div>
+      <div class="grid2"><div class="field"><label>Default backend and model</label><select><option>${a.model}</option><option>Claude Opus 5.5</option><option>Codex</option></select></div>
+        <div class="field"><label>Default effort and mode</label><select><option>high · build</option><option>medium · plan</option></select></div></div>
+      <div class="grid2"><div class="field"><label>Serves by default</label><select><option>${a.graph && a.graph !== '—' ? a.graph : '— ask at start —'}</option><option>Splitkick roadmap</option><option>Release 1.1</option></select></div>
+        <div class="field"><label>Stored in</label><select><option>Splitkick settings (this machine)</option><option>a file next to the graph (.splitkick/agents/…)</option></select><div class="hint">Open question: are agents files too, like graphs?</div></div></div>
+      <div class="foot" style="display:flex;gap:8px;margin-top:6px"><button class="btn danger" style="margin-right:auto">Delete</button><button class="btn">Duplicate</button><button class="btn pri">Save</button></div>
+    </div></div></div></div>`;
+}
+
+/* ===================== render: session with graph panel ===================== */
+function session(q) {
+  const mgr = q.who === 'manager';
+  const panelOn = q.panel !== '0';
+  const n = byId('n77');
+  const head = mgr
+    ? `<span class="spin"></span><span class="sn">Vision keeper</span><span class="note">splitkick / base</span>
+       <span class="chip brand" style="cursor:pointer" data-editagent="vk" title="Edit profile">${I('bot', 'i12')}Vision keeper · manage ${I('pencil', 'i12')}</span>`
+    : `<span class="dot st-waiting"></span><span class="sn">Network view</span><span class="note">splitkick / issue-77-session-network…</span>`;
+  const msgs = mgr ? `
+      <div class="mu">Morning check: what changed since yesterday, and what needs me?</div>
+      <div class="ma"><span class="tool">${I('graph', 'i12')}graph_read <code>roadmap</code></span> <span class="tool">${I('pr', 'i12')}list_github_prs <code>merged:&gt;1d</code></span>
+        <p style="margin-top:8px">PR #80 (Mermaid) is merged and released in 1.0.21. I sent you a request to accept <b>Mermaid diagrams in chat</b> as done.</p>
+        <p>The Windows evaluation finished. I added a blocked-by decision on <b>Windows support</b> and asked you: 1.x or later?</p>
+        <span class="tool">${I('graph', 'i12')}graph_update <code>n75 + depends-on n74</code> · why: “Charts reuse the render pipeline from #74.”</span></div>`
+    : `
+      <div class="mu">Build the session network view (#77). Start with a plan.</div>
+      <div class="ma"><span class="tool">${I('graph', 'i12')}graph_read <code>roadmap#n77</code></span> <span class="tool">${I('file', 'i12')}Read <code>SessionTree.tsx</code></span>
+        <p style="margin-top:8px">The node says: show sessions and their parent/child links as a network. It depends on #62, which is done, so <code>started_by_session_id</code> is there to use.</p>
+        <p><b>Plan</b> (waiting for your approval): 1. a layout from the parent/child links, 2. a panel next to the canvas, 3. live status dots.</p></div>`;
+  let panel = '';
+  if (panelOn && !mgr) {
+    const sib = children('g-graph');
+    panel = `<aside class="detail gpanel"><div class="dh"><button class="btn ghost x" data-act="panel0">${I('x')}</button>
+        <h4 style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);display:flex;gap:6px;align-items:center">${I('graph', 'i12')}Graph</h4>
+        <div class="note" style="margin-top:4px">This session <b>serves</b> one node in <a data-go="outline" style="cursor:pointer;text-decoration:underline">Splitkick roadmap</a>.</div></div>
+      <div class="sec"><div class="nodecard"><div style="display:flex;gap:6px;align-items:center"><span class="sc committed">committed</span><span class="db active"><span class="spin" style="width:7px;height:7px"></span>active</span></div>
+        <div class="nt">Session network view <span class="ref">#77</span></div><p class="desc" style="font-size:12px;line-height:17px;margin:0">${esc(n.desc)}</p>
+        <div class="row2" style="display:flex;gap:6px;margin-top:8px"><button class="btn" data-node-open="n77">${I('ext', 'i12')}Open in graph</button><button class="btn ghost">Change node…</button></div></div></div>
+      <div class="sec"><h4>Before and after</h4>
+        <div class="rl"><span class="kind">depends on</span><span class="tgt">${stateGlyph('done')}<a data-node-open="d62">Parent/child sessions</a></span></div>
+        <div class="rl computed"><span class="kind">needed by</span><span class="tgt">${stateGlyph('proposed')}<a data-node-open="nrel">Release notes 1.1</a></span></div>
+        <div class="rl computed"><span class="kind">related from</span><span class="tgt">${stateGlyph('committed')}<a data-node-open="gv1">Graph support v1</a><span class="db blocked">${I('ban', 'i12')}blocked</span></span></div>
+        <div class="hint" style="color:var(--success)">${I('check', 'i12')} Nothing blocks this node.</div></div>
+      <div class="sec"><h4>Part of: Graph layer <span class="r"><span class="prog" style="width:60px"><i style="width:25%"></i></span> 1/4</span></h4>
+        ${sib.map(c => `<div class="mrow ${c.id === 'n77' ? 'me' : ''}" data-node-open="${c.id}">${stateGlyph(stateOf(c))}<span class="t">${esc(c.title)}</span>${c.id === 'n77' ? '<span class="you">this session</span>' : isActive(c.id) ? '<span class="spin" style="width:7px;height:7px"></span>' : ''}${openBlockers(c).length ? `<span style="color:var(--destructive)">${I('ban', 'i12')}</span>` : ''}</div>`).join('')}</div>
+      <div class="sec"><h4>Other sessions on this node</h4><div class="note">None. The manager is <b>Vision keeper</b> (running).</div></div>
+      <div class="sec"><h4>This session may</h4><div class="note">Permission <b>read</b>: read graphs, change its own <i>serves</i>. To change the node, tell the manager or ask you.</div>
+        <div class="row2" style="display:flex;gap:6px;margin-top:8px"><button class="btn">${I('msg', 'i12')}Note to manager…</button></div></div></aside>`;
+  } else if (panelOn) {
+    const groups = NODES.filter(x => !x.rel.some(([k]) => k === 'part-of'));
+    panel = `<aside class="detail gpanel"><div class="dh"><button class="btn ghost x" data-act="panel0">${I('x')}</button>
+        <h4 style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);display:flex;gap:6px;align-items:center">${I('graph', 'i12')}Graph</h4>
+        <div class="note" style="margin-top:4px">This session <b>serves the whole graph</b> <a data-go="outline" style="cursor:pointer;text-decoration:underline">Splitkick roadmap</a> as its manager (permission <b>manage</b>).</div></div>
+      <div class="sec"><h4>Waiting for the executive <span class="r">${pendingRequests()} open</span></h4>
+        <div class="mrow" data-go="review"><span class="db req">accept done</span><span class="t">Mermaid diagrams in chat</span></div>
+        <div class="mrow" data-go="review"><span class="db blocked">decision</span><span class="t">Windows: 1.x or later?</span></div>
+        <div class="mrow" data-go="review"><span class="db blocked">decision</span><span class="t">Storage for project graphs</span></div></div>
+      <div class="sec"><h4>Your changes, not yet seen <span class="r">${unseen()} unseen</span></h4>
+        ${CHANGES.slice(0, 4).map(c => `<div class="mrow" data-node-open="${c.node}"><span class="t">${esc(byId(c.node).title)}: ${c.what.replace(/<[^>]+>/g, '')}</span><span class="ref">${c.ago}</span></div>`).join('')}</div>
+      <div class="sec"><h4>Outline</h4>
+        ${groups.map(g => { const [d, t] = progress(g.id); return `<div class="mrow grp" data-node-open="${g.id}">${stateGlyph(stateOf(g))}<span class="t">${esc(g.title)}</span><span class="progt">${d}/${t}</span></div>` +
+          children(g.id).map(c => `<div class="mrow" data-node-open="${c.id}" style="padding-left:20px">${stateGlyph(stateOf(c))}<span class="t">${esc(c.title)}</span>${isActive(c.id) ? '<span class="spin" style="width:7px;height:7px"></span>' : ''}${openBlockers(c).length ? `<span style="color:var(--destructive)">${I('ban', 'i12')}</span>` : ''}</div>`).join(''); }).join('')}</div></aside>`;
+  }
+  return `<div class="body"><div class="chat"><div class="chead">${head}<span class="r">
+      <button class="tbtn ${panelOn ? 'on' : ''}" data-act="${panelOn ? 'panel0' : 'panel1'}" title="Shown because this session serves a graph node">${I('graph', 'i12')}Graph</button>
+      <button class="tbtn">${I('eye', 'i12')}Review</button><button class="tbtn">${I('term', 'i12')}Terminal</button></span></div>
+    <div class="msgs">${msgs}</div>
+    <div class="cin"><div class="ph">Message ${mgr ? 'Vision keeper' : 'Network view'}…</div><div class="tb"><span class="chip">${mgr ? 'Claude Opus 5.5' : 'Claude Sonnet 5.5'}</span><span class="chip">${mgr ? 'build' : 'plan'}</span><span class="chip">${I('graph', 'i12')}serves: ${mgr ? 'Splitkick roadmap' : 'Session network view'}</span></div></div>
+    </div>${panel}</div>`;
 }
 
 /* ===================== dialogs ===================== */
 function dlgNew() {
-  const locs = [['splitkick', 'splitkick', 'Committed file .splitkick/graphs/&lt;slug&gt;.yml — shared through git'], ['splitkick-website', 'splitkick-website', 'Committed file in that repo'], ['splitkick-docs', 'splitkick-docs', 'Committed file in that repo'], ['instance', 'This instance (mb14)', 'Splitkick data, cross-project, not in git']];
-  return `<div class="scrim"><div class="dlg"><h3>New graph</h3><div class="dsub">A roadmap, release plan or research map. Sessions can serve its nodes.</div>
+  const L = M.newLoc;
+  const locs = [
+    ['repo', 'Inside a project’s repo', 'Versioned and shared with the project. The file follows the branch the checkout is on (screen 6).'],
+    ['other', 'In another repo', 'For example a repo only for graphs. It stays on its default branch.'],
+    ['folder', 'In a folder outside any repo', 'For example ~/Graphs or iCloud Drive. No git: not versioned, sync it yourself.'],
+  ];
+  const where = L === 'repo' ? `<div style="display:flex;gap:6px;margin-top:6px"><select style="width:40%"><option>splitkick</option><option>splitkick-website</option><option>splitkick-docs</option></select><input class="mono" value=".splitkick/graphs/release-1-2.yml"></div>
+      <div class="hint">${I('branch', 'i12')} git repo · base checkout on <b>main</b> · the file is new: “Commit graph” adds it.</div>`
+    : L === 'other' ? `<div style="display:flex;gap:6px;margin-top:6px"><select style="width:40%"><option>azeitler/roadmaps</option><option>splitkick-docs</option></select><input class="mono" value="splitkick/release-1-2.yml"></div>
+      <div class="hint">${I('branch', 'i12')} git repo · on <b>main</b> · 4 graph files already in it.</div>`
+    : `<div style="display:flex;gap:6px;margin-top:6px"><input class="mono" value="~/Graphs/release-1-2.yml"><button class="btn">Choose…</button></div>
+      <div class="hint">${I('folder', 'i12')} not a git repo · Splitkick saves the file and watches it for changes from outside.</div>`;
+  return `<div class="scrim"><div class="dlg"><h3>New graph</h3><div class="dsub">A graph is a YAML file. A roadmap, a release plan or a research map; sessions can serve its nodes.</div>
     <div class="field"><label>Title</label><input value="Release 1.2"></div>
     <div class="field"><label>Type <span class="note" style="font-weight:400">free word</span></label><input value="${M.newType}" data-act="type">
       <div class="types">${['roadmap', 'release', 'research', 'docs'].map(t => `<button class="chip" data-type="${t}" style="cursor:pointer;${M.newType === t ? 'border-color:var(--foreground);color:var(--foreground)' : ''}">${t}</button>`).join('')}</div></div>
-    <div class="field"><label>Location</label><div class="opts">${locs.map(([k, l, d]) => `<div class="opt ${M.newLoc === k ? 'on' : ''}" data-loc="${k}"><span class="rad"></span><span class="ot"><b>${l}</b><span>${d}</span></span></div>`).join('')}</div>
-      <div class="preview">${M.newLoc === 'instance' ? '&lt;app data&gt;/graphs/release-1-2.yml' : `${M.newLoc}/.splitkick/graphs/release-1-2.yml`}</div>
-      ${M.newLoc !== 'instance' ? '<div class="hint" style="color:var(--wait)">Where a project file is written depends on the open storage problem (see screen 6).</div>' : ''}</div>
-    <div class="foot"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="close">Create graph</button></div></div></div>`;
+    <div class="field"><label>Where the file goes</label><div class="opts">${locs.map(([k, l, d]) => `<div class="opt ${L === k ? 'on' : ''}" data-loc="${k}"><span class="rad"></span><span class="ot"><b>${l}</b><span>${d}</span></span></div>`).join('')}</div>
+      ${where}</div>
+    <div class="foot"><button class="btn ghost" style="margin-right:auto">${I('file', 'i12')}Open existing graph file…</button><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="close">Create graph</button></div></div></div>`;
 }
 function dlgStart() {
   const a = AGENTS[M.startAgent];
@@ -914,30 +1086,32 @@ function render() {
     bar += `<span class="sep"></span>${OPTS.map(([k, l]) => `<button class="${q.opt === k ? 'on' : ''}" data-opt="${k}">${l}</button>`).join('')}
       <span class="sep"></span><button class="${q.fail !== '1' ? 'on' : ''}" data-fail="0">Normal</button><button class="${q.fail === '1' ? 'on' : ''}" data-fail="1">Failure case</button>`;
   }
+  if (q.s === 'session') bar += `<span class="sep"></span><button class="${q.who !== 'manager' ? 'on' : ''}" data-who="worker">Worker session</button><button class="${q.who === 'manager' ? 'on' : ''}" data-who="manager">Manager session</button>`;
   document.getElementById('mkbar').innerHTML = bar;
   document.getElementById('cap').innerHTML = CAPS[cur] ?? CAPS[q.s] ?? '';
 
   let main = '';
-  if (q.s === 'agents') main = agents();
+  if (q.s === 'agents' || q.s === 'settings') main = agents();
+  else if (q.s === 'session') main = session(q);
   else {
     main = graphHead(q);
     if (q.s === 'problem') main += problemBanner(q);
     const content = q.s === 'deps' ? deps(q) : q.s === 'review' ? review() : outline(q);
     main += `<div class="body"><div class="scroll">${content}${q.s === 'problem' ? `<div class="pad" style="padding-top:0">${problemTable(q)}</div>` : ''}</div>${q.node ? detail(q) : ''}</div>`;
   }
-  const crumbs = q.s === 'agents' ? `<b>Agents</b>` : `<span>Graphs</span>${I('chevr', 'i12')}<b>Splitkick roadmap</b>`;
+  const crumbs = q.s === 'agents' || q.s === 'settings' ? `<b>Agents</b>` : q.s === 'session' ? (q.who === 'manager' ? `<span>splitkick</span>${I('chevr', 'i12')}<span>base</span>${I('chevr', 'i12')}<b>Vision keeper</b>` : `<span>splitkick</span>${I('chevr', 'i12')}<span>issue-77-session-network…</span>${I('chevr', 'i12')}<b>Network view</b>`) : `<span>Graphs</span>${I('chevr', 'i12')}<b>Splitkick roadmap</b>`;
   document.getElementById('win').innerHTML = `
     <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="crumbs">${crumbs}</div>
       <div class="right"><span class="row" data-go="agents" style="height:24px;padding:0 6px;border-radius:6px;gap:4px;font-size:12px">${I('bot')}Agents</span>
       <span class="bell" data-go="review" style="cursor:pointer" title="Requests for you">${I('bell', 'i16')}${pendingRequests() ? `<span class="n">${pendingRequests()}</span>` : ''}</span></div></div>
     <nav class="sidebar">${sidebar(q)}</nav>
-    <main class="main">${main}${q.dlg === 'new' ? dlgNew() : q.dlg === 'start' ? dlgStart() : ''}</main>`;
+    <main class="main">${main}${q.dlg === 'new' ? dlgNew() : q.dlg === 'start' ? dlgStart() : ''}</main>${q.s === 'settings' ? settings() : ''}`;
 }
 
 /* ===================== events ===================== */
-const GO = { outline: { s: 'outline', node: '', dlg: '' }, deps: { s: 'deps', dlg: '' }, review: { s: 'review', node: '', dlg: '' }, agents: { s: 'agents', node: '', dlg: '' }, problem: { s: 'problem', node: '', dlg: '' }, start: { dlg: 'start' } };
+const GO = { 'sess-worker': { s: 'session', who: 'worker', node: '', dlg: '' }, 'sess-manager': { s: 'session', who: 'manager', node: '', dlg: '' }, outline: { s: 'outline', node: '', dlg: '' }, deps: { s: 'deps', dlg: '' }, review: { s: 'review', node: '', dlg: '' }, agents: { s: 'agents', node: '', dlg: '' }, problem: { s: 'problem', node: '', dlg: '' }, start: { dlg: 'start' } };
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-screen],[data-theme],[data-opt],[data-fail],[data-go],[data-node],[data-act],[data-setstate],[data-ans],[data-seen],[data-revert],[data-type],[data-loc],[data-agent],[data-perm],[data-start]');
+  const t = e.target.closest('[data-screen],[data-theme],[data-opt],[data-fail],[data-go],[data-node],[data-act],[data-setstate],[data-ans],[data-seen],[data-revert],[data-type],[data-loc],[data-agent],[data-perm],[data-start],[data-who],[data-editagent],[data-node-open]');
   if (!t) { if (e.target.classList?.contains('scrim')) setQ({ dlg: '' }); return; }
   const d = t.dataset, q = getQ();
   if (d.screen) return setQ(SCREENS.find(s => s[0] === d.screen)[2]);
@@ -945,6 +1119,12 @@ document.addEventListener('click', e => {
   if (d.opt) return setQ({ opt: d.opt });
   if (d.fail) return setQ({ fail: d.fail });
   if (d.go) return GO[d.go] && setQ(GO[d.go]);
+  if (d.who) return setQ({ who: d.who });
+  if (d.editagent) { M.editAgent = d.editagent; if (q.s === 'settings') { render(); return; } return setQ({ s: 'settings', dlg: '', node: '' }); }
+  if (d.nodeOpen) return setQ({ s: 'outline', node: d.nodeOpen, dlg: '' });
+  if (d.act === 'panel0') return setQ({ panel: '0' });
+  if (d.act === 'panel1') return setQ({ panel: '1' });
+  if (d.act === 'closesettings') return setQ({ s: 'agents' });
   if (d.setstate) { const n = byId(q.node); if (n) { M.stateOverride[n.id] = d.setstate; render(); } return; }
   if (d.ans) { M.answered[d.ans] = d.v; render(); return; }
   if (d.seen) { d.seen.split(',').forEach(id => M.seen.add(id)); render(); return; }
