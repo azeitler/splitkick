@@ -104,6 +104,13 @@ Agents and permissions
 18. Does an agent profile belong to the instance or to a project (persona in the repo)?
 18a. Are agent profiles files too (for example `.splitkick/agents/<name>.md` next to the graphs), so they
     are versioned and shared like graphs? Or are they Splitkick settings on each machine?
+18c. A session started from an agent can be renamed (the mockup's manager session is “Roadmap upkeep”,
+    started from *Vision keeper*). The mockup shows the agent as a badge in the agent colour when the
+    name differs, and only a bot glyph in that colour when the name is still the agent name (“Release
+    manager” in Starred). The session header always shows the full agent chip, because it is also the way
+    to edit the profile. Open: is the badge wanted in every list (sidebar, Recent, serving sessions,
+    change log), or only in the header and on hover? Does the change log name the session, the agent, or
+    both? (The mockup: session name + agent badge.)
 18b. Edits to a profile apply only to new sessions. Is a "restart with the new persona" action wanted for
     a running manager?
 19. Does the manager serve the whole graph (`serves: graph:roadmap`), or only nodes? The mockup lets it

@@ -366,6 +366,10 @@
   .mrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mrow.me { background: color-mix(in srgb, var(--brand) 10%, transparent); }
   .mrow.grp { font-weight: 600; margin-top: 6px; }
+  .agb { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; height: 16px; padding: 0 5px; border-radius: 4px; flex-shrink: 0; white-space: nowrap; font-weight: 500;
+    color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); background: color-mix(in srgb, var(--c) 8%, transparent); }
+  .agb svg { width: 10px; height: 10px; }
+  .agl { display: inline-flex; color: var(--c); flex-shrink: 0; } .agl svg { width: 12px; height: 12px; }
   .you { font-size: 10px; color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 50%, transparent); border-radius: 4px; padding: 0 4px; line-height: 14px; }
   .nodecard { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--card); }
   .nodecard .nt { font-weight: 600; font-size: 14px; margin: 4px 0 2px; }
@@ -462,7 +466,7 @@ const XNODES = {
 const SESSIONS = [
   { id: 's1', name: 'Graph layer mockup', project: 'splitkick', wt: 'issue-78-design-graph…', status: 'running', serves: ['gdesign'], ago: 'now' },
   { id: 's0', name: 'Brainstorm: graph layer', project: 'splitkick', wt: 'issue-78-design-graph…', status: 'done', serves: ['gdesign'], ago: '5 h ago' },
-  { id: 's2', name: 'Vision keeper', project: 'splitkick', wt: 'base', status: 'running', serves: ['graph:roadmap'], agent: 'vk', ago: 'now' },
+  { id: 's2', name: 'Roadmap upkeep', project: 'splitkick', wt: 'base', status: 'running', serves: ['graph:roadmap'], agent: 'vk', ago: 'now' },
   { id: 's3', name: 'Network view', project: 'splitkick', wt: 'issue-77-session-network…', status: 'waiting', serves: ['n77'], ago: '14 min ago' },
   { id: 's4', name: 'Mermaid diagrams', project: 'splitkick', wt: 'issue-74-mermaid…', status: 'review', serves: ['n74'], ago: '3 h ago' },
   { id: 's5', name: 'Vega charts spike', project: 'splitkick', wt: 'issue-75-vega…', status: 'idle', serves: ['n75'], ago: '2 days ago' },
@@ -491,7 +495,16 @@ const AGENTS = {
   dw: { name: 'Docs writer', perm: 'read', color: '#16a34a', model: 'Claude Sonnet 5.5', graph: '—', sessions: 0,
     persona: 'You write user docs in splitkick-docs.\n• Read the roadmap to know what shipped.\n• Set serves on your own session; do not edit graphs.' },
 };
-const WHO = { you: 'You', vk: 'Vision keeper', rm: 'Release manager' };
+const WHO = { you: 'You', vk: 'Roadmap upkeep', rm: 'Release manager' };   // the session that made the change
+// A session started from an agent shows the agent: a badge when the session was renamed,
+// only a glyph in the agent colour when the name is still the agent name.
+function agentTag(agentId, sessionName) {
+  const a = AGENTS[agentId]; if (!a) return '';
+  return sessionName === a.name
+    ? `<span class="agl" style="--c:${a.color}" title="Started from agent ${a.name}">${I('bot')}</span>`
+    : `<span class="agb" style="--c:${a.color}" title="Started from agent ${a.name}">${I('bot')}${a.name}</span>`;
+}
+const whoTag = w => w === 'you' ? '' : agentTag(w, WHO[w]);
 
 const byId = id => NODES.find(n => n.id === id);
 const nodeTitle = t => t.startsWith('text:') ? t.slice(5) : (byId(t)?.title ?? XNODES[t]?.title ?? t);
@@ -559,7 +572,7 @@ const CAPS = {
   node: '<b>Node detail:</b> stored fields (description, state, properties, relations, attachments) and derived ones (serving sessions, reverse relations, blocked). Switch “view as” to see what a write or read session may change.',
   review: '<b>Review:</b> requests from the manager (accept “done”, send back with a note, answer a blocking decision) and the change log since you last looked, grouped by node, each with who, when and why. Mark seen or revert.',
   settings: '<b>Edit agent:</b> Settings → Agents, next to Magic Prompts. Four ways in: this pane, <i>Edit</i> on the Agents page, the agent chip in a session header, and the command palette. Edits apply to new sessions only.',
-  session: '<b>Session graph panel:</b> a session that serves a node (or a whole graph) gets a <b>Graph</b> button in its header and a side panel, like the review panel. Worker: its node, what comes before and after, its siblings. Manager: requests, its unseen changes, the outline. Switch Worker / Manager above.',
+  session: '<b>Session graph panel:</b> a session that serves a node (or a whole graph) gets a <b>Graph</b> button in its header and a side panel, like the review panel. Worker: its node, what comes before and after, its siblings. Manager: requests, its unseen changes, the outline. The manager session was renamed to “Roadmap upkeep”, so its agent shows as a badge; “Release manager” in Starred kept the agent name, so it shows only the glyph. Switch Worker / Manager above.',
   agents: '<b>Agents:</b> saved profiles, not a new session kind. Persona prompt + one coarse graph permission (read / write / manage) + default backend/model.',
   start: '<b>Start session:</b> a normal session started from a profile. The persona is added to the system prompt; the permission can be lowered, never raised; <i>serves</i> is set at start.',
   problem: '<b>Open problem:</b> the base checkout is often on another branch. Pick an option and switch Normal / Failure to see what the user would see. <b>Option 5</b> follows the direction “graphs are just files, the location is chosen at creation”. Not decided.',
@@ -587,7 +600,8 @@ function sidebar(q) {
   <div class="row pill hrow" style="margin:0;width:100%;border-radius:0">${I('house')}<span class="name">Home</span></div>
   <div class="sech">${I('star')}<span class="lbl">Starred</span><span class="chev">${I('chevd', 'i12')}</span></div>
   <div class="glist">
-    <div class="row srow ${q.s === 'session' && q.who === 'manager' ? 'sel' : ''}" data-go="sess-manager"><span class="spin"></span><span class="name">Vision keeper</span><span class="ctx">splitkick / base</span></div>
+    <div class="row srow ${q.s === 'session' && q.who === 'manager' ? 'sel' : ''}" data-go="sess-manager"><span class="spin"></span><span class="name">Roadmap upkeep</span>${agentTag('vk', 'Roadmap upkeep')}</div>
+    <div class="row srow"><span class="dot st-idle"></span><span class="name">Release manager</span>${agentTag('rm', 'Release manager')}<span class="ctx">splitkick / base</span></div>
     <div class="row srow ${q.s === 'session' && q.who !== 'manager' ? 'sel' : ''}" data-go="sess-worker"><span class="dot st-waiting"></span><span class="name">Network view</span><span class="ctx">splitkick / issue-77</span></div>
   </div>
   <div class="sech" style="padding-right:8px">${I('graph')}<span class="lbl">Graphs<span class="tag-new">new</span></span>
@@ -635,7 +649,7 @@ function graphHead(q) {
   return `<div class="ghead">
     <div class="t">${I('graph', 'i16')}<h2>Splitkick roadmap</h2><span class="chip">roadmap</span>
       <div class="acts">${commitBtn}<button class="btn" data-go="start">${I('play', 'i12')}Start session…</button></div></div>
-    <div class="meta">${locChips(q)}<span style="margin-left:6px">Manager:</span><span class="chip brand"><span class="spin" style="width:7px;height:7px"></span>Vision keeper · running</span><span>· you are <b style="color:var(--foreground)">executive</b> (manage)</span></div>
+    <div class="meta">${locChips(q)}<span style="margin-left:6px">Manager:</span><span class="chip" data-go="sess-manager" style="cursor:pointer"><span class="spin" style="width:7px;height:7px"></span>Roadmap upkeep ${agentTag('vk', 'Roadmap upkeep')} · running</span><span>· you are <b style="color:var(--foreground)">executive</b> (manage)</span></div>
     <div class="gtabs">
       <button class="${tab === 'outline' ? 'on' : ''}" data-go="outline">${I('list', 'i12')}Outline</button>
       <button class="${tab === 'deps' ? 'on' : ''}" data-go="deps">${I('gantt', 'i12')}Dependencies</button>
@@ -808,7 +822,7 @@ function detail(q) {
 }
 function sesRow(s) {
   const dot = s.status === 'running' ? '<span class="spin"></span>' : `<span class="dot st-${s.status}"></span>`;
-  return `<div class="ses">${dot}<span class="sn">${esc(s.name)} <span class="sw">${s.project} / ${s.wt}</span></span><span class="ago">${s.status} · ${s.ago}</span></div>`;
+  return `<div class="ses">${dot}<span class="sn">${esc(s.name)} ${s.agent ? agentTag(s.agent, s.name) : ''} <span class="sw">${s.project} / ${s.wt}</span></span><span class="ago">${s.status} · ${s.ago}</span></div>`;
 }
 
 /* ===================== render: review ===================== */
@@ -817,17 +831,17 @@ function review() {
   let h = '<div class="pad"><div class="cols"><div>';
   h += `<div class="colh2">${I('inbox')}Requests for you <span class="cnt" style="margin:0">${pendingRequests()}</span><span class="r note">Nothing waits on these except the nodes they name.</span></div>`;
   h += `<div class="card ${q1 ? 'doneq' : ''}"><h5><span class="db req">accept done</span>Mermaid diagrams in chat</h5>
-    <div class="from">${I('bot', 'i12')} Vision keeper · 40 min ago · node <a data-node="n74" style="cursor:pointer;text-decoration:underline">n74</a></div>
+    <div class="from">Roadmap upkeep ${agentTag('vk', 'Roadmap upkeep')} · 40 min ago · node <a data-node="n74" style="cursor:pointer;text-decoration:underline">n74</a></div>
     <div class="note">“The outcome matches the node: mermaid blocks render in assistant messages, light and dark.”</div>
     <ul><li>PR <b>#80</b> merged 3 h ago, released in <b>1.0.21</b></li><li>Serving session <b>Mermaid diagrams</b> is in review state; no open review findings</li><li>Attachment: screenshot <span class="mono">mermaid-dark.png</span></li></ul>
     ${q1 ? `<div class="note"><b>${q1}</b></div>` : `<div class="row2"><button class="btn pri" data-ans="q1" data-v="Accepted: state → done.">${I('check', 'i12')}Accept (→ done)</button><button class="btn" data-ans="q1" data-v="Sent back: “Also render in the plan view.” The manager gets your note.">${I('undo', 'i12')}Send back with note…</button></div>
     <textarea placeholder="Note for the manager (required to send back)">Also render in the plan view, not only in chat.</textarea>`}</div>`;
   h += `<div class="card ${q2 ? 'doneq' : ''}"><h5><span class="db blocked">${I('ban', 'i12')}decision</span>Windows support: ship in 1.x or later?</h5>
-    <div class="from">${I('bot', 'i12')} Vision keeper · 35 min ago · resolves <i>blocked-by</i> on <a data-node="n71" style="cursor:pointer;text-decoration:underline">Windows support</a></div>
+    <div class="from">Roadmap upkeep ${agentTag('vk', 'Roadmap upkeep')} · 35 min ago · resolves <i>blocked-by</i> on <a data-node="n71" style="cursor:pointer;text-decoration:underline">Windows support</a></div>
     <div class="note">The evaluation (session <b>Windows evaluation</b>) estimates 3–4 weeks: code signing, PTY layer, path handling. It would delay Graph support v1 by about one month.</div>
     ${q2 ? `<div class="note" style="margin-top:8px"><b>${q2}</b></div>` : `<div class="row2"><button class="btn" data-ans="q2" data-v="Answered “Later (after 1.1)”. The blocked-by is resolved; the node stays proposed.">Later (after 1.1)</button><button class="btn" data-ans="q2" data-v="Answered “In 1.1”. The blocked-by is resolved.">In 1.1</button><button class="btn ghost">Other answer…</button></div>`}</div>`;
   h += `<div class="card ${q3 ? 'doneq' : ''}"><h5><span class="db blocked">${I('ban', 'i12')}decision</span>Storage for project graphs: which copy is real?</h5>
-    <div class="from">${I('bot', 'i12')} Vision keeper · yesterday · resolves <i>blocked-by</i> on <a data-node="gv1" style="cursor:pointer;text-decoration:underline">Graph support v1</a></div>
+    <div class="from">Roadmap upkeep ${agentTag('vk', 'Roadmap upkeep')} · yesterday · resolves <i>blocked-by</i> on <a data-node="gv1" style="cursor:pointer;text-decoration:underline">Graph support v1</a></div>
     <div class="note">The base checkout is often on another branch. Four options in the design draft.</div>
     <div class="row2"><button class="btn" data-go="problem">${I('eye', 'i12')}Compare the options</button></div></div>`;
   h += '</div><div>';
@@ -845,7 +859,7 @@ function review() {
       h += `<div class="ce ${rv ? 'reverted' : ''}"><span class="what">${c.what}</span>
         <span class="ca">${rv ? '<span class="note">reverted by you</span>' : `<button class="btn ghost" style="height:22px" data-revert="${c.id}">${I('undo', 'i12')}Revert</button>`}</span>
         <span class="why">${esc(c.why)}</span>
-        <span class="by">${I('bot', 'i12')}${WHO[c.who]} <span class="perm ${AGENTS[c.who].perm}" style="height:16px;line-height:14px;font-size:10px">${AGENTS[c.who].perm}</span> · ${c.ago}</span></div>`;
+        <span class="by">${WHO[c.who]} ${whoTag(c.who)} <span class="perm ${AGENTS[c.who].perm}" style="height:16px;line-height:14px;font-size:10px">${AGENTS[c.who].perm}</span> · ${c.ago}</span></div>`;
     }
     h += '</div>';
   }
@@ -893,7 +907,7 @@ function problemBanner(q) {
     case 'branch': return f
       ? `<div class="banner bad">${I('warn', 'i16')}<div class="bt"><b>Push rejected: mb16 pushed 2 commits to <code>splitkick/graphs</code>.</b>
           <p>Splitkick pulled and merged node by node. One field conflicts; everything else merged.</p>
-          <div class="conf"><div class="ch">Graph support v1 · state</div><div class="cr"><div class="note">field</div><div><b>mb14 (you)</b></div><div><b>mb16 · Vision keeper</b></div></div>
+          <div class="conf"><div class="ch">Graph support v1 · state</div><div class="cr"><div class="note">field</div><div><b>mb14 (you)</b></div><div><b>mb16 · Roadmap upkeep</b></div></div>
             <div class="cr"><div class="note">state</div><div class="pick"><span class="sc committed">committed</span><button class="btn" style="height:22px">Keep mine</button></div><div class="pick"><span class="sc dropped">dropped</span><button class="btn" style="height:22px">Take theirs</button></div></div>
             <div class="cr"><div class="note">why</div><div class="note">—</div><div class="note">“Merged into Session network view.”</div></div></div>
           <div class="ba"><button class="btn pri">${I('up', 'i12')}Resolve and push (asks you)</button><button class="btn ghost">Open hidden worktree</button></div></div></div>`
@@ -980,7 +994,7 @@ function session(q) {
   const panelOn = q.panel !== '0';
   const n = byId('n77');
   const head = mgr
-    ? `<span class="spin"></span><span class="sn">Vision keeper</span><span class="note">splitkick / base</span>
+    ? `<span class="spin"></span><span class="sn">Roadmap upkeep</span><span class="note">splitkick / base</span>
        <span class="chip brand" style="cursor:pointer" data-editagent="vk" title="Edit profile">${I('bot', 'i12')}Vision keeper · manage ${I('pencil', 'i12')}</span>`
     : `<span class="dot st-waiting"></span><span class="sn">Network view</span><span class="note">splitkick / issue-77-session-network…</span>`;
   const msgs = mgr ? `
@@ -1010,7 +1024,7 @@ function session(q) {
         <div class="hint" style="color:var(--success)">${I('check', 'i12')} Nothing blocks this node.</div></div>
       <div class="sec"><h4>Part of: Graph layer <span class="r"><span class="prog" style="width:60px"><i style="width:25%"></i></span> 1/4</span></h4>
         ${sib.map(c => `<div class="mrow ${c.id === 'n77' ? 'me' : ''}" data-node-open="${c.id}">${stateGlyph(stateOf(c))}<span class="t">${esc(c.title)}</span>${c.id === 'n77' ? '<span class="you">this session</span>' : isActive(c.id) ? '<span class="spin" style="width:7px;height:7px"></span>' : ''}${openBlockers(c).length ? `<span style="color:var(--destructive)">${I('ban', 'i12')}</span>` : ''}</div>`).join('')}</div>
-      <div class="sec"><h4>Other sessions on this node</h4><div class="note">None. The manager is <b>Vision keeper</b> (running).</div></div>
+      <div class="sec"><h4>Other sessions on this node</h4><div class="note">None. The manager is <b>Roadmap upkeep</b> ${agentTag('vk', 'Roadmap upkeep')} (running).</div></div>
       <div class="sec"><h4>This session may</h4><div class="note">Permission <b>read</b>: read graphs, change its own <i>serves</i>. To change the node, tell the manager or ask you.</div>
         <div class="row2" style="display:flex;gap:6px;margin-top:8px"><button class="btn">${I('msg', 'i12')}Note to manager…</button></div></div></aside>`;
   } else if (panelOn) {
@@ -1032,7 +1046,7 @@ function session(q) {
       <button class="tbtn ${panelOn ? 'on' : ''}" data-act="${panelOn ? 'panel0' : 'panel1'}" title="Shown because this session serves a graph node">${I('graph', 'i12')}Graph</button>
       <button class="tbtn">${I('eye', 'i12')}Review</button><button class="tbtn">${I('term', 'i12')}Terminal</button></span></div>
     <div class="msgs">${msgs}</div>
-    <div class="cin"><div class="ph">Message ${mgr ? 'Vision keeper' : 'Network view'}…</div><div class="tb"><span class="chip">${mgr ? 'Claude Opus 5.5' : 'Claude Sonnet 5.5'}</span><span class="chip">${mgr ? 'build' : 'plan'}</span><span class="chip">${I('graph', 'i12')}serves: ${mgr ? 'Splitkick roadmap' : 'Session network view'}</span></div></div>
+    <div class="cin"><div class="ph">Message ${mgr ? 'Roadmap upkeep' : 'Network view'}…</div><div class="tb"><span class="chip">${mgr ? 'Claude Opus 5.5' : 'Claude Sonnet 5.5'}</span><span class="chip">${mgr ? 'build' : 'plan'}</span><span class="chip">${I('graph', 'i12')}serves: ${mgr ? 'Splitkick roadmap' : 'Session network view'}</span></div></div>
     </div>${panel}</div>`;
 }
 
@@ -1099,7 +1113,7 @@ function render() {
     const content = q.s === 'deps' ? deps(q) : q.s === 'review' ? review() : outline(q);
     main += `<div class="body"><div class="scroll">${content}${q.s === 'problem' ? `<div class="pad" style="padding-top:0">${problemTable(q)}</div>` : ''}</div>${q.node ? detail(q) : ''}</div>`;
   }
-  const crumbs = q.s === 'agents' || q.s === 'settings' ? `<b>Agents</b>` : q.s === 'session' ? (q.who === 'manager' ? `<span>splitkick</span>${I('chevr', 'i12')}<span>base</span>${I('chevr', 'i12')}<b>Vision keeper</b>` : `<span>splitkick</span>${I('chevr', 'i12')}<span>issue-77-session-network…</span>${I('chevr', 'i12')}<b>Network view</b>`) : `<span>Graphs</span>${I('chevr', 'i12')}<b>Splitkick roadmap</b>`;
+  const crumbs = q.s === 'agents' || q.s === 'settings' ? `<b>Agents</b>` : q.s === 'session' ? (q.who === 'manager' ? `<span>splitkick</span>${I('chevr', 'i12')}<span>base</span>${I('chevr', 'i12')}<b>Roadmap upkeep</b>` : `<span>splitkick</span>${I('chevr', 'i12')}<span>issue-77-session-network…</span>${I('chevr', 'i12')}<b>Network view</b>`) : `<span>Graphs</span>${I('chevr', 'i12')}<b>Splitkick roadmap</b>`;
   document.getElementById('win').innerHTML = `
     <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="crumbs">${crumbs}</div>
       <div class="right"><span class="row" data-go="agents" style="height:24px;padding:0 6px;border-radius:6px;gap:4px;font-size:12px">${I('bot')}Agents</span>
