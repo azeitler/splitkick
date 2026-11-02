@@ -191,3 +191,11 @@ A clickable mockup (static HTML in `docs/mockups/graph-layer/`) to make the
 model concrete before the storage decision: sidebar section, graph views,
 node detail, review of manager changes, requests to the executive, and the
 branch problem shown in the UI.
+
+## Mockup
+
+Clickable mockup: [`docs/mockups/graph-layer/`](../../mockups/graph-layer/) (open
+`index.html`; screens, screenshots and the design questions it raised are in its `README.md`). It
+shows the sidebar section, outline and dependency views, node detail, the executive's review
+(requests and change log), agents, and the open problem as four storage options, each in a normal and
+a failure state. It does not decide the storage.
