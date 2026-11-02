@@ -71,6 +71,7 @@ import {
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
   installAndRelaunch,
+  updateChecksEnabledForThisApp,
 } from './lib/app-update'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
@@ -392,6 +393,10 @@ function App() {
           version,
           installed ? undefined : 'The host could not install the update'
         )
+        return
+      }
+      if (!(await updateChecksEnabledForThisApp())) {
+        report('failed', undefined, 'This host is a development build')
         return
       }
       const { check } = await import('@tauri-apps/plugin-updater')
@@ -1426,6 +1431,7 @@ function App() {
     // (native shell only; web clients use useServerUpdateCheck → host check)
     const checkForUpdates = async () => {
       if (!isNativeApp()) return
+      if (!(await updateChecksEnabledForThisApp())) return
       const ui = useUIStore.getState()
       // Don't re-offer while deferred, downloading, or already installed (#507)
       if (
