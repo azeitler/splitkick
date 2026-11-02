@@ -44,3 +44,34 @@ describe('TextFilePreview', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('TextFilePreview HTML/SVG attachments', () => {
+  it('previews a pasted SVG and toggles to source', () => {
+    const svgFile: PendingTextFile = {
+      id: 'svg-1',
+      path: '/tmp/pasted-texts/logo.svg',
+      filename: 'logo.svg',
+      size: 40,
+      content: '<svg viewBox="0 0 1 1"></svg>',
+    }
+    render(<TextFilePreview textFiles={[svgFile]} onRemove={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('logo.svg'))
+
+    const img = screen.getByAltText('Preview of logo.svg')
+    expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Source' }))
+    expect(
+      screen.getByText('<svg viewBox="0 0 1 1"></svg>')
+    ).toBeInTheDocument()
+    expect(screen.queryByAltText('Preview of logo.svg')).toBeNull()
+  })
+
+  it('shows a plain text file as text, without a preview toggle', () => {
+    render(<TextFilePreview textFiles={[textFile]} onRemove={vi.fn()} />)
+    fireEvent.click(screen.getByText('paste-1.txt'))
+    expect(screen.getByText('Pasted content')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Source' })).toBeNull()
+  })
+})

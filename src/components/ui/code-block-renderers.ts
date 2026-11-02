@@ -31,6 +31,11 @@ export const codeBlockRenderers: CodeBlockRenderer[] = [
     mode: 'auto',
     load: () => import('@/components/ui/rich-blocks/VegaLiteBlock'),
   },
+  {
+    languages: ['html', 'svg'],
+    mode: 'preview',
+    load: () => import('@/components/ui/rich-blocks/HtmlPreviewBlock'),
+  },
 ]
 
 export function findCodeBlockRenderer(

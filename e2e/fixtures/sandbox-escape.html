@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Sandbox escape attempts</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 16px; color: #111; }
+      li.pass { color: #166534; }
+      li.fail { color: #b91c1c; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+    <h1>Sandbox escape attempts</h1>
+    <p>Each line is an attack. "blocked" is the expected result.</p>
+    <p id="control">Inline scripts do not run.</p>
+    <ul id="results"></ul>
+    <!-- Must not load: img-src allows data: only. -->
+    <img id="remote-img" src="http://localhost:1421/__escape/img.png" alt="" width="1" height="1">
+    <script>
+      const results = document.getElementById('results')
+      // blocked === true: the attack failed, which is what we want.
+      function report(name, blocked, detail) {
+        const li = document.createElement('li')
+        li.className = blocked ? 'pass' : 'fail'
+        li.dataset.attack = name
+        li.dataset.blocked = String(blocked)
+        li.textContent = `${name}: ${blocked ? 'blocked' : 'ESCAPED'}${detail ? ` (${detail})` : ''}`
+        results.appendChild(li)
+      }
+      function attempt(name, fn) {
+        try {
+          const escaped = fn()
+          report(name, !escaped, escaped ? String(escaped) : '')
+        } catch (e) {
+          report(name, true, e && e.name)
+        }
+      }
+
+      // Control: inline scripts must run, or the attacks below prove nothing.
+      document.getElementById('control').textContent = 'Inline scripts run.'
+
+      attempt('read parent DOM', () => window.parent.document.title)
+      attempt('read top DOM', () => window.top.document.body.innerHTML.length)
+      attempt('parent __TAURI_INTERNALS__', () => window.parent.__TAURI_INTERNALS__)
+      attempt('parent __TAURI__', () => window.parent.__TAURI__)
+      attempt('own __TAURI_INTERNALS__', () => window.__TAURI_INTERNALS__ || window.__TAURI__ || window.ipc)
+      attempt('localStorage', () => { window.localStorage.setItem('x', '1'); return 'readable' })
+      attempt('sessionStorage', () => { window.sessionStorage.setItem('x', '1'); return 'readable' })
+      attempt('indexedDB', () => { window.indexedDB.open('x'); return 'opened' })
+      attempt('document.cookie', () => { document.cookie = 'x=1'; return document.cookie })
+      attempt('window.open popup', () => window.open('http://localhost:1421/__escape/popup'))
+      attempt('navigate top', () => { window.top.location.href = 'http://localhost:1421/__escape/top'; return 'navigated' })
+      attempt('eval', () => eval('"evaluated"'))
+
+      // postMessage itself cannot be blocked; the parent must see an opaque
+      // origin and must not act on it.
+      window.parent.postMessage({ type: 'sandbox-escape', payload: 'invoke' }, '*')
+      report('postMessage arrives as origin "null"', true, 'checked by the parent')
+
+      const pending = []
+      pending.push(
+        fetch('http://localhost:1421/__escape/fetch')
+          .then(() => report('fetch', false, 'response'))
+          .catch(e => report('fetch', true, e && e.name))
+      )
+      pending.push(
+        new Promise(resolve => {
+          try {
+            const ws = new WebSocket('ws://localhost:1421/__escape/ws')
+            ws.onopen = () => { report('WebSocket', false, 'open'); resolve() }
+            ws.onerror = () => { report('WebSocket', true, 'error'); resolve() }
+          } catch (e) {
+            report('WebSocket', true, e && e.name)
+            resolve()
+          }
+        })
+      )
+      pending.push(
+        new Promise(resolve => {
+          const img = new Image()
+          img.onload = () => { report('image from network', false, 'loaded'); resolve() }
+          img.onerror = () => { report('image from network', true, 'error'); resolve() }
+          img.src = 'http://localhost:1421/__escape/new-img.png'
+        })
+      )
+      pending.push(
+        new Promise(resolve => {
+          const s = document.createElement('script')
+          s.onload = () => { report('external script', false, 'loaded'); resolve() }
+          s.onerror = () => { report('external script', true, 'error'); resolve() }
+          s.src = 'http://localhost:1421/__escape/script.js'
+          document.head.appendChild(s)
+        })
+      )
+      pending.push(
+        new Promise(resolve => {
+          try {
+            navigator.sendBeacon('http://localhost:1421/__escape/beacon', 'x')
+          } catch (e) {}
+          report('sendBeacon', true, 'request checked by the test')
+          resolve()
+        })
+      )
+      Promise.all(pending).then(() => {
+        const done = document.createElement('p')
+        done.id = 'done'
+        done.textContent = 'All attempts finished.'
+        document.body.appendChild(done)
+      })
+    </script>
+  </body>
+</html>

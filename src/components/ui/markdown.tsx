@@ -35,7 +35,15 @@ import {
   findCodeBlockRenderer,
   type CodeBlockRenderer,
 } from '@/components/ui/code-block-renderers'
-import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
+import {
+  Copy,
+  Check,
+  Table,
+  ListChecks,
+  ImageOff,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -105,7 +113,17 @@ function extractText(node: ReactNode): string {
 // drive path can arrive as `C:%5Csite%5Cpage.html`.
 const WINDOWS_DRIVE_RE = /^[a-z]:(?:[\\/]|%5c)/i
 
-function CodeBlock({ children }: { children: ReactNode }) {
+const codeBlockButtonClass =
+  'opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer'
+
+function CodeBlock({
+  children,
+  preview,
+}: {
+  children: ReactNode
+  /** Adds a Preview toggle (registry entries with mode `preview`). */
+  preview?: { open: boolean; onToggle: () => void }
+}) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -118,26 +136,55 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative my-5 min-w-0 max-w-full">
-      <pre className="max-w-full overflow-x-auto rounded-lg bg-muted p-4 pr-10 text-sm">
+      <pre
+        className={cn(
+          'max-w-full overflow-x-auto rounded-lg bg-muted p-4 text-sm',
+          preview ? 'pr-20' : 'pr-10'
+        )}
+      >
         {children}
       </pre>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleCopy}
-            aria-label="Copy code"
-            className="absolute right-2 top-2 opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            {copied ? (
-              <Check className="size-4" />
-            ) : (
-              <Copy className="size-4" />
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Copy code</TooltipContent>
-      </Tooltip>
+      <div className="absolute right-2 top-2 flex items-center gap-1">
+        {preview && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={preview.onToggle}
+                aria-label={preview.open ? 'Hide preview' : 'Preview'}
+                aria-pressed={preview.open}
+                className={codeBlockButtonClass}
+              >
+                {preview.open ? (
+                  <EyeOff className="size-4" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {preview.open ? 'Hide preview' : 'Preview'}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label="Copy code"
+              className={codeBlockButtonClass}
+            >
+              {copied ? (
+                <Check className="size-4" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Copy code</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   )
 }
@@ -172,6 +219,51 @@ const lazyRenderers = new Map<
 const CLOSING_FENCE_RE = /\n[ \t>]*(`{3,}|~{3,})[ \t]*$/
 
 /**
+ * A `preview` entry (HTML/SVG): untrusted active content renders only after
+ * the user clicks Preview, and only once the block is complete.
+ */
+function PreviewCodeBlock({
+  Renderer,
+  isComplete,
+  children,
+}: {
+  Renderer: LazyExoticComponent<RichBlockComponent>
+  isComplete: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <CodeBlock
+        preview={
+          isComplete
+            ? { open, onToggle: () => setOpen(value => !value) }
+            : undefined
+        }
+      >
+        {children}
+      </CodeBlock>
+      {open && isComplete && (
+        <div className="-mt-3 mb-5 min-w-0 max-w-full">
+          <Suspense
+            fallback={
+              <div className="py-4 text-sm text-muted-foreground">
+                Loading preview…
+              </div>
+            }
+          >
+            {createElement(Renderer, {
+              code: extractText(children).replace(/\n$/, ''),
+              isComplete: true,
+            })}
+          </Suspense>
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
  * A fenced block. A language with an `auto` entry in the code-block renderer
  * registry renders in place; the normal code block shows while it loads.
  */
@@ -190,12 +282,17 @@ function PreBlock({
     ? /language-(\S+)/.exec(code.props.className ?? '')?.[1]
     : undefined
   const renderer = findCodeBlockRenderer(language)
-  if (renderer?.mode !== 'auto') return <CodeBlock>{children}</CodeBlock>
-
-  const Renderer = lazyRenderers.get(renderer)
+  const Renderer = renderer && lazyRenderers.get(renderer)
   if (!Renderer) return <CodeBlock>{children}</CodeBlock>
   const isComplete =
     !streaming || CLOSING_FENCE_RE.test(source.slice(start, end))
+  if (renderer.mode === 'preview') {
+    return (
+      <PreviewCodeBlock Renderer={Renderer} isComplete={isComplete}>
+        {children}
+      </PreviewCodeBlock>
+    )
+  }
   // createElement: the component comes from the module-level map, not from
   // this render.
   return (
