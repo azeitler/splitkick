@@ -16,6 +16,19 @@ pub struct JeanMcpSocketHandle {
     pub token: String,
 }
 
+/// Socket name. Debug builds use their own name, so a dev build started with
+/// the release config never takes over the installed app's socket.
+const SOCKET_NAME: &str = if cfg!(debug_assertions) {
+    "splitkick-mcp-dev"
+} else {
+    "splitkick-mcp"
+};
+
+/// File name before the rename. Release builds link it to the new socket, so
+/// MCP entries installed in other tools (which hold the path) keep working.
+#[cfg(unix)]
+const LEGACY_SOCKET_FILE: &str = "jean-mcp.sock";
+
 pub fn socket_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -24,9 +37,36 @@ pub fn socket_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(platform_socket_path(&dir))
 }
 
+/// True when another running instance answers on `path`. Starting a server
+/// there would delete its socket and cut off every session that uses it.
+#[cfg(unix)]
+pub fn is_served_elsewhere(path: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(path).is_ok()
+}
+
+#[cfg(not(unix))]
+pub fn is_served_elsewhere(_path: &std::path::Path) -> bool {
+    false
+}
+
 #[cfg(unix)]
 fn platform_socket_path(app_data_dir: &std::path::Path) -> PathBuf {
-    app_data_dir.join("jean-mcp.sock")
+    app_data_dir.join(format!("{SOCKET_NAME}.sock"))
+}
+
+/// Point the pre-rename file name at the socket. Release builds only.
+#[cfg(unix)]
+fn link_legacy_socket_name(path: &std::path::Path) {
+    let file_name = format!("{SOCKET_NAME}.sock");
+    if cfg!(debug_assertions) || path.file_name() != Some(std::ffi::OsStr::new(&file_name)) {
+        return;
+    }
+    let Some(dir) = path.parent() else { return };
+    let legacy = dir.join(LEGACY_SOCKET_FILE);
+    let _ = std::fs::remove_file(&legacy);
+    if let Err(e) = std::os::unix::fs::symlink(&file_name, &legacy) {
+        log::warn!("Failed to link {}: {e}", legacy.display());
+    }
 }
 
 #[cfg(windows)]
@@ -36,7 +76,7 @@ fn platform_socket_path(app_data_dir: &std::path::Path) -> PathBuf {
 
 #[cfg(not(any(unix, windows)))]
 fn platform_socket_path(app_data_dir: &std::path::Path) -> PathBuf {
-    app_data_dir.join("jean-mcp.sock")
+    app_data_dir.join(format!("{SOCKET_NAME}.sock"))
 }
 
 #[cfg(any(windows, test))]
@@ -51,7 +91,7 @@ fn windows_pipe_path_for_app_data(app_data_dir: &std::path::Path) -> PathBuf {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
 
-    PathBuf::from(format!(r"\\.\pipe\jean-mcp-{suffix}"))
+    PathBuf::from(format!(r"\\.\pipe\{SOCKET_NAME}-{suffix}"))
 }
 
 pub async fn get_socket_status(app: AppHandle) -> (bool, Option<String>, Option<String>) {
@@ -101,6 +141,13 @@ pub async fn start_socket_server(
         std::fs::set_permissions(&path, perms)
             .map_err(|e| format!("Failed to lock down Splitkick MCP socket perms: {e}"))?;
     }
+    link_legacy_socket_name(&path);
+    // Remember which file is ours: after a restart in this process the new
+    // server binds the same path before the old task exits.
+    let own_inode = {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(&path).map(|m| m.ino()).ok()
+    };
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
     let path_for_task = path.clone();
     let token_for_task = token.clone();
@@ -148,7 +195,13 @@ pub async fn start_socket_server(
                 }
             }
         }
-        let _ = tokio::fs::remove_file(&path_for_task).await;
+        let still_ours = {
+            use std::os::unix::fs::MetadataExt;
+            std::fs::metadata(&path_for_task).map(|m| m.ino()).ok() == own_inode
+        };
+        if still_ours {
+            let _ = tokio::fs::remove_file(&path_for_task).await;
+        }
     });
 
     Ok(JeanMcpSocketHandle {
@@ -694,6 +747,61 @@ mod tests {
         });
     }
 
+    /// Tests build with debug assertions: the dev name, and no legacy link.
+    #[cfg(unix)]
+    #[test]
+    fn dev_builds_use_a_suffixed_socket_name() {
+        let dir = Path::new("/data");
+        assert_eq!(
+            super::platform_socket_path(dir),
+            dir.join("splitkick-mcp-dev.sock")
+        );
+
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("splitkick-mcp-dev.sock");
+        super::link_legacy_socket_name(&socket);
+        assert!(!temp.path().join("jean-mcp.sock").exists());
+    }
+
+    /// A restart in the same app binds the path again before the old server
+    /// task exits. The old task must leave the new socket alone, and a second
+    /// instance must see that the socket is taken.
+    #[cfg(unix)]
+    #[test]
+    fn a_restart_keeps_the_new_socket_and_others_see_it_taken() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let socket = temp.path().join("splitkick-mcp-dev.sock");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            assert!(!super::is_served_elsewhere(&socket));
+            let first = super::start_socket_server(app.clone(), socket.clone(), "a".into())
+                .await
+                .expect("first server");
+            assert!(super::is_served_elsewhere(&socket));
+
+            // Worst case of a restart: the new server binds before the old
+            // task has seen its shutdown signal.
+            let second = super::start_socket_server(app.clone(), socket.clone(), "b".into())
+                .await
+                .expect("second server");
+            let _ = first.shutdown_tx.send(());
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+            assert!(socket.exists(), "the old task deleted the new socket");
+            assert!(super::is_served_elsewhere(&socket));
+
+            let _ = second.shutdown_tx.send(());
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            assert!(!socket.exists());
+        });
+    }
+
     #[test]
     fn windows_pipe_path_is_stable_and_named_pipe_safe() {
         let one =
@@ -706,7 +814,10 @@ mod tests {
 
         assert_eq!(one, two);
         assert_ne!(one, other);
-        assert!(one.to_string_lossy().starts_with(r"\\.\pipe\jean-mcp-"));
+        // Tests build with debug assertions, so this is the dev name.
+        assert!(one
+            .to_string_lossy()
+            .starts_with(r"\\.\pipe\splitkick-mcp-dev-"));
         assert!(!one.to_string_lossy().contains(':'));
     }
 }

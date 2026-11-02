@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP socket is now `splitkick-mcp.sock`.** Dev builds use
+  `splitkick-mcp-dev.sock`, so a dev build never takes over the installed app's
+  socket. Release builds link the old name `jean-mcp.sock` to the new socket,
+  so MCP entries installed in other tools keep working.
+
+### Fixed
+
+- **Splitkick MCP no longer drops out with "connection refused".** A second
+  instance that used the same data folder deleted the running app's socket on
+  start; it now leaves a socket alone while another instance answers on it.
+  A socket restart inside the app no longer deletes the new socket either.
+
 ## [1.2.2] - 2026-10-29
 
 Built on Jean 0.1.73.
