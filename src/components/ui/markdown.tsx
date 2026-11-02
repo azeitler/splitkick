@@ -8,7 +8,12 @@ import {
   createContext,
   Children,
   cloneElement,
+  createElement,
   isValidElement,
+  lazy,
+  Suspense,
+  type ComponentType,
+  type LazyExoticComponent,
   type ReactNode,
   type ReactElement,
 } from 'react'
@@ -25,6 +30,11 @@ import { MarkdownLink } from '@/components/ui/markdown-link'
 import { ImagePreviewDialog } from '@/components/chat/ImageLightbox'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
+import {
+  codeBlockRenderers,
+  findCodeBlockRenderer,
+  type CodeBlockRenderer,
+} from '@/components/ui/code-block-renderers'
 import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -129,6 +139,72 @@ function CodeBlock({ children }: { children: ReactNode }) {
         <TooltipContent>Copy code</TooltipContent>
       </Tooltip>
     </div>
+  )
+}
+
+type RichBlockComponent = ComponentType<{ code: string; isComplete: boolean }>
+
+/** The Markdown source and streaming flag, so a code block can tell if its fence is closed. */
+const MarkdownSourceContext = createContext({ source: '', streaming: false })
+
+function PlainCodeBlock({ code }: { code: string }) {
+  return (
+    <CodeBlock>
+      <code>{code}</code>
+    </CodeBlock>
+  )
+}
+
+// One lazy component per renderer, created once: its chunk loads when a
+// matching block first renders. A chunk that fails to load shows the plain
+// code block.
+const lazyRenderers = new Map<
+  CodeBlockRenderer,
+  LazyExoticComponent<RichBlockComponent>
+>(
+  codeBlockRenderers.map(renderer => [
+    renderer,
+    lazy(() => renderer.load().catch(() => ({ default: PlainCodeBlock }))),
+  ])
+)
+
+// While streaming, a fenced block is complete once its closing fence arrived.
+const CLOSING_FENCE_RE = /\n[ \t>]*(`{3,}|~{3,})[ \t]*$/
+
+/**
+ * A fenced block. A language with an `auto` entry in the code-block renderer
+ * registry renders in place; the normal code block shows while it loads.
+ */
+function PreBlock({
+  children,
+  start,
+  end,
+}: {
+  children: ReactNode
+  start?: number
+  end?: number
+}) {
+  const { source, streaming } = useContext(MarkdownSourceContext)
+  const [code] = Children.toArray(children)
+  const language = isValidElement<{ className?: string }>(code)
+    ? /language-(\S+)/.exec(code.props.className ?? '')?.[1]
+    : undefined
+  const renderer = findCodeBlockRenderer(language)
+  if (renderer?.mode !== 'auto') return <CodeBlock>{children}</CodeBlock>
+
+  const Renderer = lazyRenderers.get(renderer)
+  if (!Renderer) return <CodeBlock>{children}</CodeBlock>
+  const isComplete =
+    !streaming || CLOSING_FENCE_RE.test(source.slice(start, end))
+  // createElement: the component comes from the module-level map, not from
+  // this render.
+  return (
+    <Suspense fallback={<CodeBlock>{children}</CodeBlock>}>
+      {createElement(Renderer, {
+        code: extractText(children).replace(/\n$/, ''),
+        isComplete,
+      })}
+    </Suspense>
   )
 }
 
@@ -532,7 +608,14 @@ const components: Components = {
   },
 
   // Code blocks
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  pre: ({ children, node }) => (
+    <PreBlock
+      start={node?.position?.start.offset}
+      end={node?.position?.end.offset}
+    >
+      {children}
+    </PreBlock>
+  ),
 
   // Images
   // Keyed by src so a changed source starts with a fresh fallback state.
@@ -739,6 +822,11 @@ const Markdown = memo(function Markdown({
     [messageId, sessionId]
   )
 
+  const sourceValue = useMemo(
+    () => ({ source: content, streaming }),
+    [content, streaming]
+  )
+
   const componentsToUse = streaming
     ? variant === 'tool-call'
       ? toolCallStreamingComponents
@@ -752,14 +840,16 @@ const Markdown = memo(function Markdown({
   return (
     <div className={cn('markdown leading-relaxed break-words', className)}>
       <MarkdownTableContext.Provider value={contextValue}>
-        <ReactMarkdown
-          components={componentsToUse}
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={streaming ? undefined : rehypePlugins}
-          urlTransform={markdownUrlTransform}
-        >
-          {content}
-        </ReactMarkdown>
+        <MarkdownSourceContext.Provider value={sourceValue}>
+          <ReactMarkdown
+            components={componentsToUse}
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={streaming ? undefined : rehypePlugins}
+            urlTransform={markdownUrlTransform}
+          >
+            {content}
+          </ReactMarkdown>
+        </MarkdownSourceContext.Provider>
       </MarkdownTableContext.Provider>
     </div>
   )
