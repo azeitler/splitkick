@@ -28,6 +28,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   development build had one; a test build such as `app.splitkick.desktop.rel76`
   opened the installed app's data folder, its sessions and its MCP socket. Now
   every `app.splitkick.desktop…` identifier uses the folder of the same name.
+### Fixed
+
+- **A chat no longer freezes on a text block while the window is hidden.**
+  When the Splitkick window was behind another window (for example Chrome
+  during Playwright runs), a text block was put after the tool calls that
+  followed it, so the compact view showed that text as the latest step. Text
+  now always stays before the tools that come after it. After the turn, the
+  chat also loads the turn from disk again when older prompts were loaded by
+  scrolling up; before, it kept its own copy, so missing tool calls and a
+  pending question did not come back until a restart. (#73)
 
 ## [1.2.2] - 2026-10-29
 
