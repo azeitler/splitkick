@@ -12,6 +12,31 @@
  * the UI re-offers "Update available" and can re-download in a loop (#507).
  */
 
+/** Bundle identifier of the released app (`src-tauri/tauri.fork.conf.json`). */
+export const RELEASE_IDENTIFIER = 'app.splitkick.desktop'
+
+/**
+ * Only the released app checks for updates. Dev builds, test builds with their
+ * own identifier (`app.splitkick.desktop.rel76`) and builds from upstream's
+ * base config would otherwise offer, download and install a release over
+ * themselves. `import.meta.env.DEV` is not enough: a debug build with a built
+ * frontend has it set to false.
+ */
+export function isUpdateCheckEnabled(identifier: string): boolean {
+  return identifier === RELEASE_IDENTIFIER
+}
+
+let updateCheckEnabled: Promise<boolean> | null = null
+
+/** `isUpdateCheckEnabled` for this app; false when the identifier is unknown. */
+export function updateChecksEnabledForThisApp(): Promise<boolean> {
+  updateCheckEnabled ??= import('@tauri-apps/api/app')
+    .then(({ getIdentifier }) => getIdentifier())
+    .then(isUpdateCheckEnabled)
+    .catch(() => false)
+  return updateCheckEnabled
+}
+
 export interface AppUpdateGuardState {
   pendingUpdateVersion: string | null
   updateReadyVersion: string | null
