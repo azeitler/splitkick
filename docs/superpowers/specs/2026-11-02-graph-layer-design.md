@@ -34,14 +34,20 @@ session says "I serve node X" (`serves`, in session metadata, like
 
 ## Graphs
 
-- A graph has a **title**, a **type** (a free word: `roadmap`, `release`,
-  `research`, …) and a **location**:
-  - the **instance graph** in Splitkick's data: cross-project nodes on this
-    machine;
-  - or **a project**: a committed file, so several Splitkick instances
-    (mb14, mb16, remotes) can share it through git.
-- Sidebar: a new section **Graphs** that looks and behaves like Starred.
-  "+ New" asks for title, type and project (or "this instance").
+- A graph has a **title** and a **type** (a free word: `roadmap`, `release`,
+  `research`, …).
+- **A graph is just a file** (direction from Andreas, 2026-11-03). Its
+  location is chosen when it is created:
+  - **inside a project's repo** (for example `.splitkick/graphs/<slug>.yml`):
+    versioned and shared with the project;
+  - **in another repo**, for example a repo only for graphs;
+  - **in a folder outside any repo** (for example `~/Graphs` or iCloud Drive):
+    no git. This replaces the "instance graph": cross-project nodes are a
+    graph file in a folder.
+  Splitkick keeps a list of the graph files it knows. "Open existing graph
+  file…" adds one (for example a file that came with a pull).
+- Sidebar: a new section **Graphs** that looks and behaves like Starred. Each
+  row shows where its file is. "+ New" asks for title, type and location.
 
 ## Nodes
 
@@ -87,6 +93,11 @@ Same for a `blocked-by` on a decision: the manager asks, the answer resolves it.
 - **Agent = a saved profile**, not a new session kind: name, persona prompt,
   graph permission, optional default backend/model. A session is started
   *from* an agent; it is a normal session with the persona prompt added.
+- **Editing profiles:** Settings → **Agents** (a pane next to Magic Prompts)
+  is the one editor. Other ways in open the same pane: *Edit* on the Agents
+  page, the agent chip in the header of a session started from an agent, and
+  the command palette ("Edit agent…"). Edits apply to sessions started after
+  the save; running sessions keep the persona they started with.
 - **What a manager may decide lives in its persona prompt.** The code enforces
   only one coarse level per session, in the MCP tools:
 
@@ -96,6 +107,11 @@ Same for a `blocked-by` on a decision: the manager asks, the answer resolves it.
   | `write` | create and edit nodes, relations, properties, attachments; propose | — |
   | `manage` | also commit, accept (`done`), drop | manager agents; the user always |
 
+- **Graph panel in the session:** a session that serves a node or a graph
+  gets a **Graph** button in its header and a side panel (like the review
+  panel). A worker sees its node, what comes before and after, its siblings
+  and what it may change. A manager sees its open requests, its changes the
+  executive has not seen, and the outline.
 - **The manager edits freely; the executive audits.** Every change is
   recorded: who (user or which session), what, when, and **why** (required
   for agents). The user sees "changes since I last looked" per graph, marks
@@ -103,9 +119,9 @@ Same for a `blocked-by` on a decision: the manager asks, the answer resolves it.
 
 ## Storage (as discussed; blocked by the open problem)
 
-- Format: one YAML file per graph (`serde_yaml` is already in jean-core).
-  - project graph: `.splitkick/graphs/<slug>.yml`
-  - instance graph: `<app data>/graphs/instance.yml`
+- Format: one YAML file per graph (`serde_yaml` is already in jean-core), at
+  the path chosen at creation (see Graphs). Default inside a project repo:
+  `.splitkick/graphs/<slug>.yml`.
 - Splitkick keeps node and field order when writing, so diffs stay small; the
   file is readable and editable by hand. Derived values are never written.
 - One **graph store** in jean-core is the only way in (UI and MCP tools), so
@@ -141,6 +157,11 @@ nodes:
 ```
 
 ## Open problem: which copy of a project graph is the real one
+
+**Update 2026-11-03:** with "graphs are just files, the location is chosen at
+creation", the problem applies only to a file **inside a project's repo**. A
+file in a repo of its own (which stays on its default branch) or in a folder
+outside any repo does not have it. The mockup shows this as option 5.
 
 A committed file exists once per worktree, and the UI must show one. The
 draft decision was: **the real copy is the file in the project's base checkout

@@ -21,13 +21,15 @@ Screenshots are in `screenshots/` (WebKit, 2×, light and dark). To capture them
 
 | # | Screen | Shows |
 | --- | --- | --- |
-| 1 | Sidebar + New graph | A **Graphs** section below Starred, with the same header row, guide line and `+ New` as Folders and Projects. A graph row shows the title and `type · project` (or `this instance`). An orange count = requests for you; a grey count = changes you have not seen. The dialog asks for title, type (a free word with suggestions) and location (a project or this instance), and shows the file path. |
+| 1 | Sidebar + New graph | A **Graphs** section below Starred, with the same header row, guide line and `+ New` as Folders and Projects. A graph row shows the title and `type · where the file is` (a project repo, another repo, or a folder with no git). An orange count = requests for you; a grey count = changes you have not seen. **A graph is a file.** The dialog asks for title, type (a free word with suggestions) and where the file goes: *inside a project's repo*, *in another repo* (for example a repo only for graphs) or *in a folder outside any repo*. It shows the path and what Splitkick finds there (git repo and branch, or no git). *Open existing graph file…* adds a file that already exists. |
 | 2a | Outline | Nodes grouped by `part-of`, with a progress bar for each group. A chip shows the stored state. Badges show the **derived** values: *active* (a serving session runs), *blocked* (open `blocked-by` or unfinished `depends-on`), *done? waiting for you* (open request). An orange dot = changed since you last looked. Dashed rows with ↗ are nodes in other graphs that link here. |
 | 2b | Dependencies | A Gantt-like view. Columns are dependency **steps**, not dates. Lanes are `part-of` groups. The first column holds open `blocked-by` decisions (red diamonds). Red arrows = `depends-on` on a node that is not done; grey = done; dashed blue = a relation to another graph. |
 | 3 | Node detail | Description, state (segmented control), the permission of the viewer (select **view as**: you, a manage session, a write session, a worker session), properties, relations stored on the node, reverse relations **computed** from other nodes (also across graphs), attachments, serving sessions (derived from `serves`), and history. A node from another graph opens read-only. |
 | 4 | Review (executive) | Left: **requests** from the manager. *Accept done* (with evidence) or *send back* with a note. Answer a *blocking decision*, which resolves the `blocked-by`. Right: **changes since you last looked**, grouped by node, each with what, why, who (and their permission) and when. *Seen* per node, *Mark all seen*, *Revert* per change. Below the line: changes you saw before. |
 | 5a | Agents | Profiles: name, model, persona prompt, permission (`read` / `write` / `manage`), running sessions. A table of what each level may do. |
+| 5c | Edit agent (Settings) | Settings → **Agents**, a pane next to Magic Prompts: the list of profiles and the editor (name, colour, persona prompt, permission, default backend/model, effort/mode, default *serves*, where the profile is stored). A box lists the four ways in: this pane, *Edit* on the Agents page, the agent chip in a session header, and the command palette. |
 | 5b | Start session | Agent, project and checkout, `serves` (a graph or a node), the permission for this session (only lower than the profile), the persona prompt, the first message. |
+| 7 | Session graph panel | A session that serves a node or a graph gets a **Graph** button in its header and a side panel, like the review panel. **Worker** (*Network view*, serves #77, permission read): its node, before and after (depends on, needed by), its siblings in the group with "this session" marked, other sessions on the node, what it may change. **Manager** (*Vision keeper*, serves the whole graph, manage): open requests, its changes the executive has not seen, the outline. The agent chip in the manager's header opens the profile editor. Switch *Worker session* / *Manager session* above the window. |
 | 6 | Open problem | The same graph under each storage option, with **Normal** and **Failure case**. The location chips, the sync status and a banner show what the user sees. A comparison table is below. |
 
 ### Screen 6: options shown
@@ -43,6 +45,10 @@ Screenshots are in `screenshots/` (WebKit, 2×, light and dark). To capture them
   so the ref update failed. Retry / show diff / discard.
 - **Option 3: Splitkick data only.** Normal: synced with mb16 through Splitkick. Failure: mb16 is offline
   and both edited. Merge on reconnect; *Export snapshot to repo*.
+- **Option 5: own repo or folder.** This follows the direction "graphs are just files; the location is
+  chosen at creation". Normal: the file is in `azeitler/roadmaps`, a repo only for graphs, which stays on
+  `main`. Failure: the local copy is behind origin and has 1 change not pushed: an ordinary pull and merge.
+  The branch problem stays only for a file inside a project repo.
 - Option 4 (pin to the default branch's worktree) is not shown. When no such worktree exists, it falls back
   to the draft decision.
 
@@ -56,8 +62,13 @@ Graphs and sidebar
    Or are they a tab next to Projects / Recent? Many graphs make the section long.
 3. Is the graph type only a free word, or does it change the UI (for example, `release` shows a
    milestone and a date)?
-4. Can a graph change its location later (instance ↔ project)? That is a move of the file and of the
-   change log.
+4. Can a graph file move later (to another repo or folder)? Splitkick must update its list of known
+   files, and cross-graph references (`graph-id#node-id`) must survive. That is why the graph id lives
+   in the file.
+4a. How does Splitkick find graph files? Only the ones created or opened in it (a list), or also by a scan
+    of `.splitkick/graphs/` in every project?
+4b. A graph file in a folder outside any repo, changed by another program or a sync tool: does Splitkick
+    reload it without asking? What if the file has an unsaved change in Splitkick too?
 
 Nodes, state and derived values
 
@@ -91,8 +102,20 @@ Agents and permissions
 17. Is the permission per session fixed at start, or can the user raise it later (for example, for a
     blocked manager)?
 18. Does an agent profile belong to the instance or to a project (persona in the repo)?
+18a. Are agent profiles files too (for example `.splitkick/agents/<name>.md` next to the graphs), so they
+    are versioned and shared like graphs? Or are they Splitkick settings on each machine?
+18b. Edits to a profile apply only to new sessions. Is a "restart with the new persona" action wanted for
+    a running manager?
 19. Does the manager serve the whole graph (`serves: graph:roadmap`), or only nodes? The mockup lets it
     serve a graph.
+
+Session graph panel
+
+25. Is the panel open by default in a session that serves a node, or only with the **Graph** button?
+26. A session that serves nodes in two graphs: one panel with a node picker, or one section per node?
+27. A worker with `read` permission cannot change its node. Is "Note to manager…" (a message into the
+    manager session) the right way, or should a read session be able to send a request?
+28. Does the manager's panel replace the graph view for daily work, or only point to it?
 
 Storage (open problem)
 
