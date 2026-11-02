@@ -93,6 +93,11 @@ Same for a `blocked-by` on a decision: the manager asks, the answer resolves it.
 - **Agent = a saved profile**, not a new session kind: name, persona prompt,
   graph permission, optional default backend/model. A session is started
   *from* an agent; it is a normal session with the persona prompt added.
+- **Session name vs agent:** a session started from an agent can be renamed.
+  It keeps a reference to its agent. Where the session is listed, the agent
+  shows as a badge in the agent colour when the name differs, and as a glyph
+  only when the name is still the agent name. The change log names the
+  session and shows the agent badge.
 - **Editing profiles:** Settings → **Agents** (a pane next to Magic Prompts)
   is the one editor. Other ways in open the same pane: *Edit* on the Agents
   page, the agent chip in the header of a session started from an agent, and
