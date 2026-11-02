@@ -46,6 +46,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   diagram can show its source, open full screen with zoom and pan, and copy
   its source, SVG or PNG. Invalid code shows the source with the error.
   Mermaid loads only when a diagram is shown. (#74)
+### Added
+
+- **Data charts in chat.** A ```` ```vega-lite ```` code block (a Vega-Lite
+  JSON spec with inline data) shows as a chart: bar, line, area, scatter and
+  the other Vega-Lite marks. The chart follows the light or dark theme. Its
+  toolbar shows the source, opens it full screen and copies the source, an
+  SVG or a PNG. An invalid spec shows the source and the error. Charts never
+  load data from the network, and the chart code loads only when a chart
+  appears. (#75)
 
 ## [1.2.2] - 2026-10-29
 

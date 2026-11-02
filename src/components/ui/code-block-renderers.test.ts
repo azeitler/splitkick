@@ -14,8 +14,17 @@ describe('findCodeBlockRenderer', () => {
     expect(findCodeBlockRenderer('Mermaid')).toBe(mermaid)
   })
 
+  it('maps vega-lite to the lazily loaded chart renderer', async () => {
+    const renderer = findCodeBlockRenderer('vega-lite')
+    expect(renderer?.mode).toBe('auto')
+    expect(findCodeBlockRenderer('Vega-Lite')).toBe(renderer)
+    const module = await renderer?.load()
+    expect(typeof module?.default).toBe('function')
+  })
+
   it('returns undefined for other or missing languages', () => {
     expect(findCodeBlockRenderer('ts')).toBeUndefined()
+    expect(findCodeBlockRenderer('chart')).toBeUndefined()
     expect(findCodeBlockRenderer('')).toBeUndefined()
     expect(findCodeBlockRenderer(undefined)).toBeUndefined()
   })
