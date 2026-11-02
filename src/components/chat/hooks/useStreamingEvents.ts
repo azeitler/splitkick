@@ -566,6 +566,7 @@ export default function useStreamingEvents({
       if (!replayFilteredContent) return
       // Ensure session is marked as sending (recovers state after refresh)
       addSendingSession(session_id)
+      if (session_id in thinkingBuffer) flushThinkingBuffer()
       // Accumulate into buffer
       chunkBuffer[session_id] =
         (chunkBuffer[session_id] ?? '') + replayFilteredContent
@@ -576,6 +577,7 @@ export default function useStreamingEvents({
     const unlistenToolUse = listen<ToolUseEvent>('chat:tool_use', event => {
       const { session_id, id, name, input, parent_tool_use_id } = event.payload
       const toolCall = { id, name, input, parent_tool_use_id }
+      flushPendingDeltas(session_id)
       addToolCall(session_id, toolCall)
 
       // Auto-switch Jean's mode when Claude enters plan mode
@@ -596,6 +598,7 @@ export default function useStreamingEvents({
       'chat:tool_block',
       event => {
         const { session_id, tool_call_id } = event.payload
+        flushPendingDeltas(session_id)
         if (
           useChatStore
             .getState()
@@ -669,6 +672,16 @@ export default function useStreamingEvents({
       thinkingRafId = requestAnimationFrame(flushThinkingBuffer)
     }
 
+    // Text and thinking deltas wait for an animation frame; every other
+    // timeline event must not overtake them. WKWebView runs no frames while
+    // the window is hidden (e.g. Chrome in front during Playwright runs), so
+    // without this the text lands after later tools (#73). The chunk and
+    // thinking listeners flush each other, so at most one buffer is pending.
+    function flushPendingDeltas(sessionId: string) {
+      if (sessionId in thinkingBuffer) flushThinkingBuffer()
+      if (sessionId in chunkBuffer) flushChunkBuffer()
+    }
+
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
       const { session_id, content } = event.payload
       const replayFilteredContent =
@@ -676,6 +689,7 @@ export default function useStreamingEvents({
           .getState()
           .consumeStreamingReplayThinking(session_id, content) ?? ''
       if (!replayFilteredContent) return
+      if (session_id in chunkBuffer) flushChunkBuffer()
       thinkingBuffer[session_id] =
         (thinkingBuffer[session_id] ?? '') + replayFilteredContent
       scheduleThinkingFlush()
@@ -689,6 +703,7 @@ export default function useStreamingEvents({
       text: string
     }>('chat:steered', event => {
       const { session_id, text } = event.payload
+      flushPendingDeltas(session_id)
       if (
         useChatStore
           .getState()
@@ -704,6 +719,7 @@ export default function useStreamingEvents({
       'chat:tool_result',
       event => {
         const { session_id, tool_use_id, output } = event.payload
+        flushPendingDeltas(session_id)
 
         // Check if this tool was in pending denials - if so, it ran anyway
         // (e.g., yolo mode, or tool was pre-approved via allowedTools)
