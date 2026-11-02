@@ -20,6 +20,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   instance that used the same data folder deleted the running app's socket on
   start; it now leaves a socket alone while another instance answers on it.
   A socket restart inside the app no longer deletes the new socket either.
+- **A build with its own identifier gets its own data folder.** Only the
+  development build had one; a test build such as `app.splitkick.desktop.rel76`
+  opened the installed app's data folder, its sessions and its MCP socket. Now
+  every `app.splitkick.desktop…` identifier uses the folder of the same name.
 
 ## [1.2.2] - 2026-10-29
 
