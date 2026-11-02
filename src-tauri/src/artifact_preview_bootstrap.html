@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<script>
+  // Splitkick artifact preview (#76). Receives one page from the parent
+  // window and writes it into this document, which keeps the CSP and sandbox
+  // of the `splitkick-artifact:` response. See docs/developer/artifact-preview.md.
+  addEventListener('message', function onArtifact(event) {
+    var data = event.data
+    if (event.source !== parent || !data || data.type !== 'splitkick-artifact') return
+    if (typeof data.html !== 'string') return
+    removeEventListener('message', onArtifact)
+    document.open()
+    document.write(data.html)
+    document.close()
+  })
+  parent.postMessage({ type: 'splitkick-artifact-ready' }, '*')
+</script>

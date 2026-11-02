@@ -1,3 +1,15 @@
+# HTML/SVG artifact preview (#76)
+
+- [x] Sandbox module (`src/components/artifact-preview/`): `allow-scripts` only, CSP meta first, SVG as `<img>` data URL, open in browser.
+- [x] Native app: `splitkick-artifact:` origin (stateless bootstrap page + postMessage), because release builds hash `script-src` and a srcdoc frame inherits that.
+- [x] File viewer (Preview/Source/Reload/Open in Browser), attached file pills, pasted `.svg`/`.html` attachments, chat ```` ```html ````/```` ```svg ```` Preview (registry contract shared with #74/#75).
+- [x] Threat model `docs/developer/artifact-preview.md`, CHANGELOG, tests, screenshots.
+
+## Review
+
+- Gates green: typecheck, eslint, branding, vitest (3608), cargo test, clippy 1.99.1; e2e `artifact-sandbox.spec.ts` 3/3 in Chromium.
+- Native: escape page all blocked and inline scripts run, in the dev build and in a `tauri build --debug` binary (embedded assets, CSP hashes). The srcdoc-only design would have shown pages static in release; caught by reading tauri-codegen, proven by the e2e "release-like CSP" test.
+
 # Local two-instance e2e (#65)
 
 - [x] Transfer in Web Access (gate removed, CORS hint in `remoteInvoke`, tests, user guide).

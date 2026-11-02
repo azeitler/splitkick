@@ -55,6 +55,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   SVG or a PNG. An invalid spec shows the source and the error. Charts never
   load data from the network, and the chart code loads only when a chart
   appears. (#75)
+### Added
+
+- **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
+  write open rendered in the file viewer (from tool calls, the file browser,
+  file links and attached file pills), with **Source**, **Reload** and
+  **Open in Browser**. Pasted `.svg`/`.html` attachments and ` ```html ` /
+  ` ```svg ` blocks in chat get a **Preview** button. HTML runs in a sandboxed
+  frame with no network, no app storage and no Tauri access; SVG shows as an
+  image, so its scripts never run. Works in the app, Web Access and on
+  mobile. (#76)
 
 ## [1.2.2] - 2026-10-29
 

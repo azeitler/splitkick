@@ -3735,6 +3735,7 @@ export function ChatWindow({
                             <FilePreview
                               files={currentPendingFiles}
                               onRemove={handleRemovePendingFile}
+                              rootPath={activeWorktreePath}
                             />
 
                             {/* Pending image preview */}
