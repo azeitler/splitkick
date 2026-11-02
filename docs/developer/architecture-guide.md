@@ -127,6 +127,7 @@ Each major system has focused documentation:
 - **[Releases](./releases.md)** - Automated release process
 - **[Auto-Updates](./auto-updates.md)** - Update system integration
 - **[Bundle Optimization](./bundle-optimization.md)** - Build size optimization
+- **[Code-block renderers](./code-block-renderers.md)** - Lazy rich renderers for fenced blocks (Mermaid)
 
 Additional systems (no dedicated docs yet):
 

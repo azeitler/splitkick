@@ -38,6 +38,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   chat also loads the turn from disk again when older prompts were loaded by
   scrolling up; before, it kept its own copy, so missing tool calls and a
   pending question did not come back until a restart. (#73)
+### Added
+
+- **Mermaid diagrams.** ` ```mermaid ` blocks in chat messages, plans and
+  Markdown file previews show as diagrams, in the light or dark theme. While
+  a message streams, the block shows its code until it is complete. Each
+  diagram can show its source, open full screen with zoom and pan, and copy
+  its source, SVG or PNG. Invalid code shows the source with the error.
+  Mermaid loads only when a diagram is shown. (#74)
 
 ## [1.2.2] - 2026-10-29
 
