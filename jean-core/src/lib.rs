@@ -4241,6 +4241,14 @@ async fn sync_jean_mcp_socket_from_preferences(
         if let Some(handle) = guard.take() {
             let _ = handle.shutdown_tx.send(());
             log::info!("Splitkick MCP proxy socket restarting due to preference changes");
+        } else if jean_mcp_socket::is_served_elsewhere(&path) {
+            // First start, and another instance (same data folder) answers on
+            // the socket. Taking it over would cut that instance's sessions
+            // off from Splitkick MCP.
+            return Err(format!(
+                "Another Splitkick instance already serves MCP at {}",
+                path.display()
+            ));
         }
     }
 
