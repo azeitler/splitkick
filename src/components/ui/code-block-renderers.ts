@@ -26,6 +26,11 @@ export const codeBlockRenderers: CodeBlockRenderer[] = [
     mode: 'auto',
     load: () => import('@/components/ui/rich-blocks/MermaidBlock'),
   },
+  {
+    languages: ['vega-lite'],
+    mode: 'auto',
+    load: () => import('@/components/ui/rich-blocks/VegaLiteBlock'),
+  },
 ]
 
 export function findCodeBlockRenderer(
