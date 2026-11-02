@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Graph layer (mockup) · azeitler/splitkick#78</title>
+<!--
+  Mockup only, not app code. One file, no build step, no network.
+  Colours follow src/App.css (light :root and .dark), row geometry follows
+  src/components/projects/sidebar-row-styles.ts and SidebarSectionRow.tsx.
+  State lives in the URL hash (#s=outline&node=gv1&theme=dark ...), so every
+  screen can be opened and captured directly. Design: docs/superpowers/specs/2026-11-02-graph-layer-design.md
+-->
+<style>
+  :root {
+    --background: #ffffff; --foreground: #252525; --card: #fbfbfb; --popover: #ffffff;
+    --primary: #343434; --primary-foreground: #fbfbfb;
+    --muted: #f5f5f5; --muted-foreground: #737373; --accent: #f5f5f5; --accent-foreground: #343434;
+    --destructive: #e40014; --warning: #fcd452; --success: #22c55e; --border: #dedee0;
+    --sidebar: #f5f5f7; --sidebar-accent: #e8e8ea; --sidebar-border: #dcdcde;
+    --brand: #ff5a1f; --blue: #2563eb; --wait: #ca8a04; --sky: #0284c7;
+    --shadow: 0 10px 30px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.06);
+    --page: #e9e9ec;
+  }
+  html.dark {
+    --background: #1e1e1e; --foreground: #fafafa; --card: #252525; --popover: #2a2a2a;
+    --primary: #fafafa; --primary-foreground: #1e1e1e;
+    --muted: #2c2c2c; --muted-foreground: #a1a1a1; --accent: #323232; --accent-foreground: #fafafa;
+    --destructive: #dc2626; --border: #3a3a3a;
+    --sidebar: #2b2b2d; --sidebar-accent: #3a3a3c; --sidebar-border: #3d3d3f;
+    --blue: #3b82f6; --wait: #eab308; --sky: #38bdf8;
+    --shadow: 0 10px 30px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+    --page: #111113;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--foreground);
+    font: 14px/20px 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  button { font: inherit; color: inherit; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; }
+  svg.i { width: 14px; height: 14px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  svg.i12 { width: 12px; height: 12px; } svg.i16 { width: 16px; height: 16px; }
+
+  /* ---------- mockup chrome (outside the app window) ---------- */
+  .mk { padding: 12px 20px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .mk h1 { margin: 0; font-size: 15px; }
+  .mk h1 span { color: var(--muted-foreground); font-weight: 400; }
+  .mk .mkbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; color: var(--muted-foreground); }
+  .mk .mkbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
+  .mk .mkbar button { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+  .mk .mkbar button.on { border-color: var(--brand); color: var(--brand); }
+  .mk .cap { font-size: 12px; color: var(--muted-foreground); max-width: 1380px; min-height: 18px; }
+  .mk .cap b { color: var(--foreground); font-weight: 600; }
+
+  /* ---------- app window ---------- */
+  .win { margin: 0 20px 20px; height: 800px; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
+    border: 1px solid var(--sidebar-border); display: grid; grid-template-columns: 290px 1fr; grid-template-rows: 44px 1fr; background: var(--background); position: relative; }
+  .titlebar { grid-column: 1 / 3; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--sidebar); border-bottom: 1px solid var(--sidebar-border); font-size: 13px; }
+  .lights { display: flex; gap: 8px; margin-right: 14px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .titlebar .crumbs { display: flex; gap: 6px; align-items: center; color: var(--muted-foreground); }
+  .titlebar .crumbs b { color: var(--foreground); font-weight: 500; }
+  .titlebar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; color: var(--muted-foreground); }
+  .bell { position: relative; display: flex; }
+  .bell .n { position: absolute; top: -6px; right: -8px; background: var(--brand); color: #fff; font-size: 9px; line-height: 14px; min-width: 14px; text-align: center; border-radius: 7px; padding: 0 3px; }
+
+  /* ---------- sidebar ---------- */
+  .sidebar { background: var(--sidebar); border-right: 1px solid var(--sidebar-border); overflow-y: auto; overflow-x: hidden; padding-bottom: 16px; }
+  .tabs { margin: 4px 8px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: 6px; background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+  .tabs span { height: 24px; line-height: 24px; text-align: center; font-size: 12px; border-radius: 4px; color: var(--muted-foreground); }
+  .tabs span.on { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  html.dark .tabs span.on { background: color-mix(in srgb, var(--foreground) 20%, transparent); }
+  .row { display: flex; align-items: center; gap: 6px; height: 32px; color: var(--muted-foreground); cursor: pointer; white-space: nowrap; overflow: hidden; }
+  .row:hover { background: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--foreground); }
+  html:not(.dark) .row:hover { background: var(--sidebar-accent); }
+  .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .row.sel { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
+  .hrow { padding-left: 16px; gap: 4px; }
+  .pill { margin: 0 8px; padding-left: 8px; padding-right: 4px; border-radius: 6px; width: calc(100% - 16px); }
+  .sech { height: 32px; display: flex; align-items: center; padding-left: 16px; padding-right: 8px; gap: 4px; color: var(--muted-foreground); cursor: pointer; }
+  .sech:hover { background: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--foreground); }
+  html:not(.dark) .sech:hover { background: var(--sidebar-accent); }
+  .sech .lbl { flex: 1; font-size: 14px; display: flex; align-items: center; gap: 2px; }
+  .sech .chev { opacity: 0; } .sech:hover .chev { opacity: .5; }
+  .newbtn { display: flex; align-items: center; gap: 2px; height: 20px; padding: 0 4px; border-radius: 4px; font-size: 12px; color: var(--muted-foreground); border: 0; background: transparent; cursor: pointer; }
+  .newbtn:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
+  .glist { margin-left: 22px; border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent); padding: 2px 0; }
+  .srow { margin: 0 8px 0 4px; padding: 0 4px 0 5px; border-radius: 6px; height: 28px; gap: 6px; }
+  .srow .name { font-size: 12px; }
+  .srow .ctx { font-size: 10px; color: color-mix(in srgb, var(--muted-foreground) 70%, transparent); flex-shrink: 0; }
+  .grow { height: auto; min-height: 28px; padding-top: 3px; padding-bottom: 3px; align-items: flex-start; }
+  .grow .gi { margin-top: 3px; }
+  .grow .two { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .grow .two .name { font-size: 12px; line-height: 16px; }
+  .grow .two .ctx { line-height: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .cnt { font-size: 10px; line-height: 15px; padding: 0 5px; border-radius: 8px; background: var(--brand); color: #fff; flex-shrink: 0; margin-top: 2px; }
+  .cnt.soft { background: color-mix(in srgb, var(--muted-foreground) 18%, transparent); color: var(--muted-foreground); }
+  .avatar { width: 16px; height: 16px; border-radius: 4px; background: color-mix(in srgb, var(--muted-foreground) 22%, transparent); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; text-transform: uppercase; color: var(--foreground); flex-shrink: 0; }
+  .wt { margin-left: 22px; border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent); padding: 2px 0; }
+  .wtrow { margin: 0 8px 0 4px; padding: 0 4px 0 5px; border-radius: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; display: inline-block; }
+  .dot8 { width: 8px; height: 8px; }
+  .st-idle { color: color-mix(in srgb, var(--muted-foreground) 55%, transparent); } .st-waiting { color: var(--wait); } .st-review { color: var(--success); } .st-plan { color: var(--sky); } .st-done { color: color-mix(in srgb, var(--muted-foreground) 40%, transparent); }
+  .spin { width: 8px; height: 8px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--brand) 25%, transparent); border-top-color: var(--brand); animation: spin 1s linear infinite; flex-shrink: 0; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tag-new { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--brand); border: 1px solid var(--brand); border-radius: 4px; padding: 0 3px; line-height: 12px; margin-left: 4px; }
+
+  /* ---------- main ---------- */
+  .main { overflow: hidden; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .ghead { padding: 14px 20px 0; border-bottom: 1px solid var(--border); }
+  .ghead .t { display: flex; align-items: center; gap: 10px; }
+  .ghead h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .ghead .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--muted-foreground); }
+  .chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 10px; font-size: 11px; border: 1px solid var(--border); color: var(--muted-foreground); background: var(--background); white-space: nowrap; }
+  .chip.warn { border-color: color-mix(in srgb, var(--wait) 60%, transparent); color: var(--wait); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+  .chip.bad { border-color: color-mix(in srgb, var(--destructive) 55%, transparent); color: var(--destructive); background: color-mix(in srgb, var(--destructive) 8%, transparent); }
+  .chip.ok { border-color: color-mix(in srgb, var(--success) 55%, transparent); color: var(--success); }
+  .chip.brand { border-color: color-mix(in srgb, var(--brand) 55%, transparent); color: var(--brand); }
+  .gtabs { display: flex; gap: 2px; margin-top: 12px; }
+  .gtabs button { border: 0; background: transparent; padding: 7px 10px; font-size: 13px; color: var(--muted-foreground); border-bottom: 2px solid transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .gtabs button.on { color: var(--foreground); border-bottom-color: var(--foreground); }
+  .gtabs button:hover { color: var(--foreground); }
+  .gtabs .cnt { margin-top: 0; }
+  .ghead .acts { margin-left: auto; display: flex; gap: 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--background); font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--accent); }
+  .btn.pri { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .btn.pri:hover { opacity: .9; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted-foreground); }
+  .btn.ghost:hover { color: var(--foreground); background: var(--accent); }
+  .btn.danger { color: var(--destructive); }
+  .btn[disabled] { opacity: .45; pointer-events: none; }
+  .body { flex: 1; min-height: 0; display: flex; }
+  .scroll { flex: 1; overflow: auto; min-width: 0; }
+  .pad { padding: 16px 20px 40px; }
+
+  /* banners (open problem) */
+  .banner { margin: 12px 20px 0; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start; font-size: 13px; background: var(--card); }
+  .banner.warn { border-color: color-mix(in srgb, var(--wait) 55%, transparent); background: color-mix(in srgb, var(--warning) 10%, var(--background)); }
+  .banner.bad { border-color: color-mix(in srgb, var(--destructive) 50%, transparent); background: color-mix(in srgb, var(--destructive) 6%, var(--background)); }
+  .banner .bt { flex: 1; }
+  .banner .bt b { font-weight: 600; }
+  .banner .bt p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; }
+  .banner .ba { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .banner > svg { margin-top: 3px; }
+
+  /* outline */
+  .group { margin-bottom: 18px; }
+  .grouph { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  .grouph:hover { background: var(--accent); }
+  .grouph .gt { font-weight: 600; font-size: 14px; }
+  .prog { width: 90px; height: 5px; background: color-mix(in srgb, var(--muted-foreground) 20%, transparent); border-radius: 3px; overflow: hidden; display: inline-block; }
+  .prog i { display: block; height: 100%; background: var(--success); }
+  .progt { font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .nrow { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 6px 8px 6px 28px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .nrow:hover { background: var(--accent); }
+  .nrow.sel { background: color-mix(in srgb, var(--foreground) 8%, transparent); border-color: var(--border); }
+  .nrow .nt { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .nrow .nt .ttl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nrow .nb { display: flex; gap: 4px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  .nrow.dim .ttl { color: var(--muted-foreground); }
+  .nrow.ghost { border: 1px dashed var(--border); margin: 4px 0 0 20px; padding-left: 8px; }
+  .ref { font-size: 11px; color: var(--muted-foreground); }
+  .chg { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); flex-shrink: 0; }
+
+  /* state glyphs and chips */
+  .sg { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sg.proposed { border: 1.5px dashed var(--muted-foreground); }
+  .sg.committed { border: 2px solid var(--blue); }
+  .sg.done { background: var(--success); color: #fff; }
+  .sg.dropped { border: 1.5px solid var(--muted-foreground); color: var(--muted-foreground); }
+  .sc { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 0 6px; height: 18px; line-height: 16px; border-radius: 9px; border: 1px solid var(--border); color: var(--muted-foreground); white-space: nowrap; }
+  .sc.committed { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+  .sc.done { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+  .sc.proposed { border-style: dashed; }
+  .sc.dropped { text-decoration: line-through; }
+  .db { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; height: 18px; padding: 0 6px; border-radius: 9px; white-space: nowrap; }
+  .db.active { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .db.blocked { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 9%, transparent); }
+  .db.idle { color: var(--muted-foreground); }
+  .db.req { color: var(--wait); background: color-mix(in srgb, var(--warning) 16%, transparent); }
+  .xg { font-size: 10px; color: var(--sky); border: 1px solid color-mix(in srgb, var(--sky) 45%, transparent); border-radius: 4px; padding: 0 4px; line-height: 14px; white-space: nowrap; }
+
+  /* dependencies view */
+  .deps { position: relative; }
+  .deps .colh { position: absolute; top: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .deps .lane { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); }
+  .deps .lane .ln { position: absolute; left: 0; top: 4px; font-size: 11px; font-weight: 600; color: var(--muted-foreground); width: 110px; }
+  .bar { position: absolute; height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); padding: 2px 8px 2px 10px; font-size: 12px; line-height: 15px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .bar::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--muted-foreground); opacity: .5; }
+  .bar.committed::before { background: var(--blue); opacity: 1; } .bar.done::before { background: var(--success); opacity: 1; }
+  .bar.proposed { border-style: dashed; }
+  .bar.done { opacity: .62; }
+  .bar.sel { outline: 2px solid var(--foreground); outline-offset: 1px; }
+  .bar.ghost { border-style: dashed; border-color: color-mix(in srgb, var(--sky) 60%, transparent); background: color-mix(in srgb, var(--sky) 6%, var(--background)); }
+  .bar .bt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .bar .bm { display: flex; gap: 4px; align-items: center; font-size: 10px; color: var(--muted-foreground); white-space: nowrap; }
+  .dia { position: absolute; width: 150px; font-size: 11px; color: var(--destructive); display: flex; align-items: center; gap: 6px; line-height: 13px; }
+  .dia i { width: 12px; height: 12px; transform: rotate(45deg); border: 1.5px solid var(--destructive); background: color-mix(in srgb, var(--destructive) 12%, var(--background)); flex-shrink: 0; }
+  path.e { fill: none; stroke-width: 1.5; stroke: var(--muted-foreground); opacity: .7; }
+  path.e.open { stroke: var(--destructive); opacity: .75; }
+  path.e.blk { stroke: var(--destructive); stroke-dasharray: 4 3; opacity: .8; }
+  path.e.rel { stroke: var(--sky); stroke-dasharray: 2 3; opacity: .9; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted-foreground); margin-bottom: 10px; align-items: center; }
+  .legend svg { overflow: visible; }
+
+  /* detail panel */
+  .detail { width: 400px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--background); overflow-y: auto; }
+  .detail .dh { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--background); z-index: 2; }
+  .detail .dh .x { float: right; }
+  .detail h3 { margin: 0 0 4px; font-size: 16px; }
+  .detail .sec { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .detail .sec h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .detail .sec h4 .r { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .detail p.desc { margin: 0; font-size: 13px; line-height: 19px; }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 2px; border-radius: 6px; background: color-mix(in srgb, var(--foreground) 8%, transparent); }
+  .seg button { border: 0; background: transparent; height: 26px; border-radius: 4px; font-size: 12px; color: var(--muted-foreground); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .seg button.on { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+  html.dark .seg button.on { background: color-mix(in srgb, var(--foreground) 18%, transparent); }
+  .seg button[disabled] { opacity: .4; cursor: not-allowed; }
+  .hint { font-size: 11px; color: var(--muted-foreground); margin-top: 6px; line-height: 15px; }
+  .hint b { color: var(--foreground); font-weight: 500; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 12px; }
+  .kv .k { color: var(--muted-foreground); }
+  .rl { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; }
+  .rl .kind { width: 82px; flex-shrink: 0; color: var(--muted-foreground); font-size: 11px; }
+  .rl .tgt { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .rl .tgt a { color: var(--foreground); text-decoration: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rl .tgt a:hover { text-decoration: underline; }
+  .rl.computed { color: var(--muted-foreground); }
+  .rl.computed .kind { font-style: italic; }
+  .sub { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); margin: 8px 0 2px; }
+  .att { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
+  .att .ak { width: 64px; color: var(--muted-foreground); font-size: 11px; flex-shrink: 0; }
+  .att a { color: var(--foreground); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ses { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 5px 6px; border-radius: 6px; margin: 0 -6px; cursor: pointer; }
+  .ses:hover { background: var(--accent); }
+  .ses .sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ses .sw { font-size: 10px; color: var(--muted-foreground); }
+  .ses .ago { font-size: 10px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .hist { font-size: 12px; padding: 4px 0; display: flex; gap: 8px; }
+  .hist .who { color: var(--muted-foreground); font-size: 11px; width: 96px; flex-shrink: 0; line-height: 15px; }
+  .add { font-size: 12px; color: var(--muted-foreground); background: transparent; border: 0; padding: 4px 0; cursor: pointer; display: flex; gap: 4px; align-items: center; }
+  .add:hover { color: var(--foreground); }
+
+  /* review */
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; background: var(--card); padding: 12px 14px; margin-bottom: 10px; }
+  .card.doneq { opacity: .6; }
+  .card h5 { margin: 0 0 2px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  .card .from { font-size: 11px; color: var(--muted-foreground); margin-bottom: 8px; }
+  .card ul { margin: 6px 0 8px; padding-left: 18px; font-size: 12px; }
+  .card .row2 { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .card textarea, .field input, .field select, .field textarea { width: 100%; font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .card textarea { margin-top: 8px; min-height: 52px; resize: vertical; }
+  .colh2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  .colh2 .r { margin-left: auto; font-weight: 400; }
+  .cg { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; background: var(--card); overflow: hidden; }
+  .cg .cgh { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; cursor: pointer; }
+  .cg .cgh .r { margin-left: auto; display: flex; gap: 4px; }
+  .ce { padding: 8px 12px; font-size: 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  .ce:last-child { border-bottom: 0; }
+  .ce .what { font-weight: 500; }
+  .ce .what del { color: var(--destructive); text-decoration: line-through; font-weight: 400; }
+  .ce .what ins { color: var(--success); text-decoration: none; }
+  .ce .why { color: var(--muted-foreground); grid-column: 1 / 2; }
+  .ce .why::before { content: "Why: "; color: var(--foreground); font-weight: 500; }
+  .ce .by { font-size: 11px; color: var(--muted-foreground); grid-column: 1 / 2; display: flex; gap: 6px; align-items: center; }
+  .ce .ca { grid-row: 1 / 4; grid-column: 2; align-self: start; }
+  .ce.reverted { opacity: .55; }
+  .ce.reverted .what { text-decoration: line-through; }
+  .seen-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted-foreground); margin: 14px 0 8px; }
+  .seen-line::before, .seen-line::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  /* agents */
+  .agents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .agent { border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .agent .ah { display: flex; align-items: center; gap: 10px; }
+  .agent .av { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; }
+  .agent .an { font-weight: 600; }
+  .agent .persona { font-size: 12px; color: var(--muted-foreground); background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 8px; line-height: 17px; white-space: pre-wrap; max-height: 140px; overflow: hidden; }
+  .perm { font-size: 11px; padding: 0 7px; height: 20px; line-height: 18px; border-radius: 10px; border: 1px solid var(--border); }
+  .perm.manage { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 50%, transparent); }
+  .perm.write { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+  .ptab { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 20px; }
+  .ptab th, .ptab td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .ptab th { font-size: 11px; color: var(--muted-foreground); font-weight: 600; }
+
+  /* dialogs */
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.28); display: flex; align-items: flex-start; justify-content: center; padding-top: 20px; z-index: 20; }
+  html.dark .scrim { background: rgba(0,0,0,.5); }
+  .dlg { max-height: calc(100% - 40px); overflow-y: auto; width: 520px; background: var(--popover); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; }
+  .dlg h3 { margin: 0 0 4px; font-size: 16px; }
+  .dlg .dsub { font-size: 12px; color: var(--muted-foreground); margin-bottom: 14px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .field .hint { margin-top: 4px; }
+  .opts { display: flex; flex-direction: column; gap: 4px; }
+  .opt { display: flex; align-items: flex-start; gap: 8px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .opt.on { border-color: var(--foreground); background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+  .opt.dis { opacity: .45; cursor: not-allowed; }
+  .opt .rad { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted-foreground); margin-top: 2px; flex-shrink: 0; }
+  .opt.on .rad { border: 4px solid var(--foreground); }
+  .opt .ot { flex: 1; } .opt .ot b { font-weight: 500; display: block; } .opt .ot span { color: var(--muted-foreground); font-size: 11px; }
+  .types { display: flex; gap: 4px; margin-top: 6px; }
+  .dlg .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .preview { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted-foreground); background: var(--muted); border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+
+  /* problem comparison */
+  .cmp { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .cmp th, .cmp td { border: 1px solid var(--border); padding: 7px 9px; text-align: left; vertical-align: top; }
+  .cmp th { background: var(--card); font-weight: 600; }
+  .cmp td.on, .cmp th.on { background: color-mix(in srgb, var(--brand) 7%, transparent); }
+  .cmp .y { color: var(--success); } .cmp .n { color: var(--destructive); } .cmp .m { color: var(--wait); }
+  .conf { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 10px; font-size: 12px; }
+  .conf .ch { padding: 6px 10px; background: var(--card); border-bottom: 1px solid var(--border); font-weight: 500; }
+  .conf .cr { display: grid; grid-template-columns: 110px 1fr 1fr; }
+  .conf .cr > div { padding: 6px 10px; border-right: 1px solid var(--border); }
+  .conf .cr > div:last-child { border-right: 0; }
+  .conf .cr .pick { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .note { font-size: 12px; color: var(--muted-foreground); line-height: 18px; }
+  .note b { color: var(--foreground); }
+  h3.sh { font-size: 13px; margin: 20px 0 8px; }
+</style>
+</head>
+<body>
+<div class="mk">
+  <h1>Graph layer — clickable mockup <span>· azeitler/splitkick#78 · design draft 2026-11-02 · not approved</span></h1>
+  <div class="mkbar" id="mkbar"></div>
+  <div class="cap" id="cap"></div>
+</div>
+<div class="win" id="win"></div>
+
+<script>
+/* ===================== icons (lucide paths) ===================== */
+const P = {
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  house: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  graph: '<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  chevd: '<path d="m6 9 6 6 6-6"/>', chevr: '<path d="m9 18 6-6-6-6"/>',
+  branch: '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  warn: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  issue: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>',
+  pr: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  note: '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  archive: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  drive: '<line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/>',
+  sync: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  list: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+  gantt: '<path d="M8 6h10"/><path d="M6 12h9"/><path d="M11 18h7"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  commit: '<circle cx="12" cy="12" r="3"/><line x1="3" x2="9" y1="12" y2="12"/><line x1="15" x2="21" y1="12" y2="12"/>',
+};
+const I = (n, c = '') => `<svg class="i ${c}" viewBox="0 0 24 24">${P[n]}</svg>`;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/* ===================== demo data ===================== */
+const GRAPHS = {
+  roadmap: { title: 'Splitkick roadmap', type: 'roadmap', loc: 'project', project: 'splitkick', file: '.splitkick/graphs/roadmap.yml' },
+  rel11:   { title: 'Release 1.1', type: 'release', loc: 'project', project: 'splitkick', file: '.splitkick/graphs/release-1-1.yml' },
+  web:     { title: 'Website relaunch', type: 'roadmap', loc: 'project', project: 'splitkick-website', file: '.splitkick/graphs/relaunch.yml' },
+  docs:    { title: 'Docs plan', type: 'docs', loc: 'project', project: 'splitkick-docs', file: '.splitkick/graphs/docs.yml' },
+  inst:    { title: 'Cross-project', type: 'portfolio', loc: 'instance' },
+};
+// Nodes of the roadmap graph. rel: [kind, target]; target = node id, 'graph#node', or 'text:...'.
+const NODES = [
+  { id: 'g-graph', title: 'Graph layer', state: 'committed', desc: 'Roadmap above the schedule: graphs, nodes, a manager agent, an audit trail for the executive.', props: { owner: 'Andreas', quarter: '2026-Q4' }, rel: [], att: [['milestone', 'azeitler/splitkick / Graph v1']] },
+  { id: 'd62', title: 'Parent/child sessions', state: 'done', desc: 'Sessions record which session started them (started_by_session_id).', props: { released: '1.0.17' }, rel: [['part-of', 'g-graph']], att: [['issue', 'azeitler/splitkick#62'], ['pr', 'azeitler/splitkick#63']] },
+  { id: 'gdesign', title: 'Graph layer design', state: 'committed', desc: 'Design draft and clickable mockup. Decide storage for project graphs before v1 starts.', props: { owner: 'Andreas' }, rel: [['part-of', 'g-graph'], ['depends-on', 'd62']], att: [['issue', 'azeitler/splitkick#78'], ['file', 'docs/superpowers/specs/2026-11-02-graph-layer-design.md'], ['link', 'arxiv.org/pdf/2608.21156'], ['session', 'Brainstorm: graph layer (decided roles and layers)']] },
+  { id: 'gv1', title: 'Graph support v1', state: 'committed', desc: 'Graph store in jean-core, YAML per graph, MCP tools (read/write/manage), sidebar section, outline view, change log and requests.', props: { quarter: '2027-Q1', size: 'L' }, rel: [['part-of', 'g-graph'], ['depends-on', 'gdesign'], ['blocked-by', 'text:decision: storage for multi-machine sync'], ['relates-to', 'n77']], att: [['issue', 'azeitler/splitkick#78'], ['milestone', 'azeitler/splitkick / Graph v1'], ['note', 'Runner (auto-start sessions) stays out of v1.']] },
+  { id: 'n77', title: 'Session network view', state: 'committed', desc: 'Show sessions and their parent/child links as a network: the schedule layer.', props: { quarter: '2026-Q4' }, rel: [['part-of', 'g-graph'], ['depends-on', 'd62']], att: [['issue', 'azeitler/splitkick#77']] },
+  { id: 'g-rich', title: 'Rich content in chat', state: 'committed', desc: 'Render diagrams, charts and previews inline in chat.', props: {}, rel: [], att: [] },
+  { id: 'n74', title: 'Mermaid diagrams in chat', state: 'committed', desc: 'Render ```mermaid blocks in assistant messages.', props: { released: '1.0.21' }, rel: [['part-of', 'g-rich']], att: [['issue', 'azeitler/splitkick#74'], ['pr', 'azeitler/splitkick#80 (merged)']] },
+  { id: 'n75', title: 'Vega charts in chat', state: 'committed', desc: 'Render Vega-Lite specs as charts.', props: {}, rel: [['part-of', 'g-rich'], ['depends-on', 'n74']], att: [['issue', 'azeitler/splitkick#75']] },
+  { id: 'n76', title: 'HTML and SVG preview', state: 'proposed', desc: 'Sandboxed preview of HTML and SVG output. Needs a security review of the iframe sandbox first.', props: {}, rel: [['part-of', 'g-rich'], ['depends-on', 'n74']], att: [['issue', 'azeitler/splitkick#76']] },
+  { id: 'g-plat', title: 'Platforms', state: 'committed', desc: 'Where Splitkick runs.', props: {}, rel: [], att: [] },
+  { id: 'n71', title: 'Windows support', state: 'proposed', desc: 'Re-add Windows builds. The evaluation estimates 3–4 weeks.', props: { estimate: '3–4 weeks' }, rel: [['part-of', 'g-plat'], ['blocked-by', 'text:decision: ship Windows in 1.x or later?']], att: [['issue', 'azeitler/splitkick#71'], ['session', 'Windows evaluation (result)']] },
+  { id: 'nwac', title: 'Web access offline cache', state: 'proposed', desc: 'Cache sessions in web access so a phone can read them offline.', props: {}, rel: [['part-of', 'g-plat']], att: [] },
+  { id: 'n72', title: 'iOS app with offline cache', state: 'committed', desc: 'A thin iOS shell around web access with a local cache.', props: {}, rel: [['part-of', 'g-plat'], ['depends-on', 'nwac']], att: [['issue', 'azeitler/splitkick#72']] },
+  { id: 'g-web', title: 'Website & docs', state: 'committed', desc: 'Public pages for new features.', props: {}, rel: [['relates-to', 'web#site']], att: [] },
+  { id: 'ndocs', title: 'Docs: graphs and agents guide', state: 'committed', desc: 'User guide for graphs, agents and the review flow.', props: {}, rel: [['part-of', 'g-web'], ['depends-on', 'gv1'], ['relates-to', 'docs#guide']], att: [] },
+  { id: 'nrel', title: 'Release notes 1.1', state: 'proposed', desc: 'One line per change; detail in CHANGELOG.md.', props: {}, rel: [['part-of', 'g-web'], ['depends-on', 'n77'], ['depends-on', 'n74']], att: [] },
+];
+// Nodes in other graphs that this graph links to, or that link here.
+const XNODES = {
+  'web#feat': { title: 'Feature page: Graphs', graph: 'web', state: 'committed', rel: [['depends-on', 'roadmap#gv1']] },
+  'web#site': { title: 'Website relaunch (root)', graph: 'web', state: 'committed', rel: [] },
+  'docs#guide': { title: 'Guide: graphs and agents', graph: 'docs', state: 'proposed', rel: [] },
+};
+// Sessions point UP to nodes with `serves`.
+const SESSIONS = [
+  { id: 's1', name: 'Graph layer mockup', project: 'splitkick', wt: 'issue-78-design-graph…', status: 'running', serves: ['gdesign'], ago: 'now' },
+  { id: 's0', name: 'Brainstorm: graph layer', project: 'splitkick', wt: 'issue-78-design-graph…', status: 'done', serves: ['gdesign'], ago: '5 h ago' },
+  { id: 's2', name: 'Vision keeper', project: 'splitkick', wt: 'base', status: 'running', serves: ['graph:roadmap'], agent: 'vk', ago: 'now' },
+  { id: 's3', name: 'Network view', project: 'splitkick', wt: 'issue-77-session-network…', status: 'waiting', serves: ['n77'], ago: '14 min ago' },
+  { id: 's4', name: 'Mermaid diagrams', project: 'splitkick', wt: 'issue-74-mermaid…', status: 'review', serves: ['n74'], ago: '3 h ago' },
+  { id: 's5', name: 'Vega charts spike', project: 'splitkick', wt: 'issue-75-vega…', status: 'idle', serves: ['n75'], ago: '2 days ago' },
+  { id: 's6', name: 'Windows evaluation', project: 'splitkick', wt: 'issue-71-windows…', status: 'done', serves: ['n71'], ago: '1 day ago' },
+  { id: 's7', name: 'Release manager', project: 'splitkick', wt: 'base', status: 'idle', serves: ['graph:rel11'], agent: 'rm', ago: '50 min ago' },
+  { id: 's8', name: 'Graphs feature page', project: 'splitkick-website', wt: 'feature-graphs', status: 'running', serves: ['web#feat'], ago: 'now' },
+  { id: 's9', name: 'Merge 62 follow-ups', project: 'splitkick', wt: 'issue-62-parent…', status: 'done', serves: ['d62'], ago: '9 days ago' },
+];
+const CHANGES = [
+  { id: 'c7', node: 'n76', who: 'vk', ago: '5 min ago', what: 'description edited', why: 'Added the security-review prerequisite from the #76 discussion.' },
+  { id: 'c6', node: 'gv1', who: 'vk', ago: '12 min ago', what: 'property <b>quarter</b>: <del>2026-Q4</del> → <ins>2027-Q1</ins>', why: 'Storage decision is open; v1 cannot start before it.' },
+  { id: 'c5', node: 'n71', who: 'vk', ago: '35 min ago', what: '+ blocked-by <i>“decision: ship Windows in 1.x or later?”</i>', why: 'Evaluation session finished: 3–4 weeks. Needs your call before anyone starts.' },
+  { id: 'c4', node: 'n72', who: 'rm', ago: '50 min ago', what: '+ depends-on <b>Web access offline cache</b>', why: 'The iOS app is a shell around web access; the cache must exist first.' },
+  { id: 'c3', node: 'nwac', who: 'rm', ago: '50 min ago', what: 'node created (proposed), part-of <b>Platforms</b>', why: 'Split out of #72 so it can ship in 1.1 on its own.' },
+  { id: 'c2', node: 'n75', who: 'vk', ago: '2 h ago', what: '+ depends-on <b>Mermaid diagrams in chat</b>', why: 'Charts reuse the render pipeline that #74 builds.' },
+  { id: 'c1', node: 'n77', who: 'vk', ago: '2 h ago', what: 'state <del>proposed</del> → <ins>committed</ins>', why: '1.1 focus is visibility; #62 is done, so nothing blocks it.' },
+];
+const SEEN_CHANGES = [
+  { node: 'd62', who: 'you', ago: '3 days ago', what: 'state committed → <ins>done</ins>', why: 'Accepted request from Vision keeper.' },
+];
+const AGENTS = {
+  vk: { name: 'Vision keeper', perm: 'manage', color: '#ff5a1f', model: 'Claude Opus 5.5', graph: 'Splitkick roadmap', sessions: 1,
+    persona: 'You keep the Splitkick roadmap true to Andreas\'s direction.\n• Turn committed nodes into issues and sessions; set serves.\n• You may commit, drop and accept "done" for nodes under 1 week of work. Bigger ones: send a request.\n• Every change needs a why.\n• Ask direction questions, not step questions.' },
+  rm: { name: 'Release manager', perm: 'write', color: '#2563eb', model: 'Claude Sonnet 5.5', graph: 'Release 1.1', sessions: 1,
+    persona: 'You plan and ship releases.\n• Keep the Release 1.1 graph in sync with merged PRs and milestones.\n• Propose nodes; you may not commit or accept.\n• Draft release notes (one line per change).' },
+  dw: { name: 'Docs writer', perm: 'read', color: '#16a34a', model: 'Claude Sonnet 5.5', graph: '—', sessions: 0,
+    persona: 'You write user docs in splitkick-docs.\n• Read the roadmap to know what shipped.\n• Set serves on your own session; do not edit graphs.' },
+};
+const WHO = { you: 'You', vk: 'Vision keeper', rm: 'Release manager' };
+
+const byId = id => NODES.find(n => n.id === id);
+const nodeTitle = t => t.startsWith('text:') ? t.slice(5) : (byId(t)?.title ?? XNODES[t]?.title ?? t);
+const isX = t => t.includes('#');
+
+/* ===================== mutable mockup state ===================== */
+const M = {
+  stateOverride: {},      // node id -> state set in the mockup
+  seen: new Set(),        // change ids marked seen
+  reverted: new Set(),
+  answered: {},           // request id -> text
+  viewAs: 'you',
+  newType: 'roadmap', newLoc: 'splitkick',
+  startAgent: 'vk', startPerm: 'manage', startWhere: 'base',
+};
+const stateOf = n => M.stateOverride[n.id] ?? n.state;
+
+/* ===================== derived values (never stored) ===================== */
+function servingSessions(id) { return SESSIONS.filter(s => s.serves.includes(id)); }
+function isActive(id) { return servingSessions(id).some(s => s.status === 'running' || s.status === 'waiting' || s.status === 'review'); }
+function openBlockers(n) {
+  const out = [];
+  for (const [k, t] of n.rel) {
+    if (k === 'blocked-by' && !(t.includes('Windows') && M.answered.q2)) out.push(['blocked-by', t]);
+    if (k === 'depends-on') { const d = byId(t); if (d && stateOf(d) !== 'done') out.push(['depends-on', t]); }
+  }
+  return out;
+}
+const children = id => NODES.filter(n => n.rel.some(([k, t]) => k === 'part-of' && t === id));
+function progress(id) {
+  const ch = children(id).filter(c => stateOf(c) !== 'dropped');
+  return [ch.filter(c => stateOf(c) === 'done').length, ch.length];
+}
+function incoming(id, graphKey = 'roadmap') {
+  const rev = { 'depends-on': 'needed by', 'blocked-by': 'blocks', 'part-of': 'has part', 'relates-to': 'related from' };
+  const out = [];
+  for (const n of NODES) for (const [k, t] of n.rel) if (t === id) out.push([rev[k], n.id]);
+  for (const [xid, x] of Object.entries(XNODES)) for (const [k, t] of x.rel) if (t === `${graphKey}#${id}`) out.push([rev[k], xid]);
+  return out;
+}
+const pendingRequests = () => ['q1', 'q2', 'q3'].filter(q => !M.answered[q]).length;
+const unseen = () => CHANGES.filter(c => !M.seen.has(c.id)).length;
+
+/* ===================== routing ===================== */
+const DEF = { s: 'outline', node: '', dlg: '', opt: 'branch', fail: '0', theme: 'light' };
+function getQ() { const q = { ...DEF }; new URLSearchParams(location.hash.slice(1)).forEach((v, k) => q[k] = v); return q; }
+function setQ(patch) { const q = { ...getQ(), ...patch }; const p = new URLSearchParams(); for (const k in q) if (q[k] !== DEF[k]) p.set(k, q[k]); location.hash = p.toString(); }
+
+const SCREENS = [
+  ['new', '1 · Sidebar + New graph', { s: 'outline', dlg: 'new', node: '' }],
+  ['outline', '2a · Outline', { s: 'outline', dlg: '', node: '' }],
+  ['deps', '2b · Dependencies', { s: 'deps', dlg: '', node: '' }],
+  ['node', '3 · Node detail', { s: 'outline', dlg: '', node: 'gv1' }],
+  ['review', '4 · Review (executive)', { s: 'review', dlg: '', node: '' }],
+  ['agents', '5a · Agents', { s: 'agents', dlg: '', node: '' }],
+  ['start', '5b · Start session from agent', { s: 'agents', dlg: 'start', node: '' }],
+  ['problem', '6 · Open problem: base branch', { s: 'problem', dlg: '', node: '' }],
+];
+const CAPS = {
+  new: '<b>Sidebar:</b> a new <b>Graphs</b> section under Starred, same row style and collapse behaviour. Orange count = requests waiting for you; grey = changes you have not seen. <b>+ New</b> asks for title, type and location (a project or this instance).',
+  outline: '<b>Outline:</b> nodes grouped by <i>part-of</i>. Stored state as a chip; <b>derived</b> badges (active, blocked, progress) are computed from sessions and relations and never written. Dashed rows come from other graphs. Orange dot = changed since you last looked.',
+  deps: '<b>Dependencies:</b> columns are dependency steps (no dates in the model), lanes are <i>part-of</i> groups. Solid arrows = depends-on (red while the target is not done), red diamonds = open blocked-by decisions, dashed blue = nodes in other graphs.',
+  node: '<b>Node detail:</b> stored fields (description, state, properties, relations, attachments) and derived ones (serving sessions, reverse relations, blocked). Switch “view as” to see what a write or read session may change.',
+  review: '<b>Review:</b> requests from the manager (accept “done”, send back with a note, answer a blocking decision) and the change log since you last looked, grouped by node, each with who, when and why. Mark seen or revert.',
+  agents: '<b>Agents:</b> saved profiles, not a new session kind. Persona prompt + one coarse graph permission (read / write / manage) + default backend/model.',
+  start: '<b>Start session:</b> a normal session started from a profile. The persona is added to the system prompt; the permission can be lowered, never raised; <i>serves</i> is set at start.',
+  problem: '<b>Open problem:</b> the base checkout is often on another branch. Pick an option and switch Normal / Failure to see what the user would see. Not decided.',
+};
+
+/* ===================== render: sidebar ===================== */
+function sidebar(q) {
+  const req = pendingRequests(), un = unseen();
+  const graphRows = [
+    ['roadmap', 'splitkick', req, un],
+    ['rel11', 'splitkick', 0, 2],
+    ['web', 'splitkick-website', 0, 0],
+    ['inst', 'this instance', 0, 0],
+  ].map(([id, ctx, r, u]) => {
+    const g = GRAPHS[id];
+    const sel = id === 'roadmap' && ['outline', 'deps', 'review', 'problem'].includes(q.s);
+    let warn = '';
+    if (id === 'roadmap' && q.s === 'problem' && q.fail === '1') warn = `<span style="color:var(--wait)" title="Sync problem">${I('warn', 'i12')}</span>`;
+    const badge = r ? `<span class="cnt" title="${r} requests for you">${r}</span>` : u ? `<span class="cnt soft" title="${u} unseen changes">${u}</span>` : '';
+    return `<div class="row srow grow ${sel ? 'sel' : ''}" data-go="${id === 'roadmap' ? 'outline' : ''}">
+      <span class="gi">${I('graph', 'i12')}</span>
+      <span class="two"><span class="name">${esc(g.title)}</span><span class="ctx">${g.type} · ${ctx}</span></span>${warn}${badge}</div>`;
+  }).join('');
+  return `
+  <div class="tabs"><span class="on">Projects</span><span>Recent</span></div>
+  <div class="row pill hrow" style="margin:0;width:100%;border-radius:0">${I('house')}<span class="name">Home</span></div>
+  <div class="sech">${I('star')}<span class="lbl">Starred</span><span class="chev">${I('chevd', 'i12')}</span></div>
+  <div class="glist">
+    <div class="row srow"><span class="spin"></span><span class="name">Vision keeper</span><span class="ctx">splitkick / base</span></div>
+    <div class="row srow"><span class="dot st-waiting"></span><span class="name">Network view</span><span class="ctx">splitkick / issue-77</span></div>
+  </div>
+  <div class="sech" style="padding-right:8px">${I('graph')}<span class="lbl">Graphs<span class="tag-new">new</span></span>
+    <button class="newbtn" data-act="new" title="New graph">${I('plus', 'i12')}New</button></div>
+  <div class="glist">${graphRows}</div>
+  <div class="sech">${I('folder')}<span class="lbl">Folders</span><button class="newbtn">${I('plus', 'i12')}New</button></div>
+  <div style="padding-left:16px"><div class="row pill" style="gap:6px">${I('chevr', 'i12')}${I('folder')}<span class="name">Clients</span></div></div>
+  <div class="sech">${I('folder')}<span class="lbl">Projects</span><button class="newbtn">${I('plus', 'i12')}New</button></div>
+  <div style="padding-left:16px">
+    <div class="row pill"><span class="avatar">s</span><span class="name">splitkick</span></div>
+    <div class="wt">
+      <div class="row wtrow"><span class="dot dot8 st-idle"></span><span class="name" style="font-size:13px">base <span style="font-size:11px;opacity:.7">· main</span></span></div>
+      <div class="row wtrow sel"><span class="spin"></span><span class="name" style="font-size:13px">issue-78-design-graph…</span></div>
+      <div class="row wtrow"><span class="dot dot8 st-waiting"></span><span class="name" style="font-size:13px">issue-77-session-network…</span></div>
+      <div class="row wtrow"><span class="dot dot8 st-review"></span><span class="name" style="font-size:13px">issue-74-mermaid…</span></div>
+    </div>
+    <div class="row pill"><span class="avatar">w</span><span class="name">splitkick-website</span></div>
+    <div class="row pill"><span class="avatar">d</span><span class="name">splitkick-docs</span></div>
+  </div>
+  <div class="row pill hrow" style="margin:6px 0 0;width:100%;border-radius:0">${I('archive')}<span class="name">Archived</span></div>`;
+}
+
+/* ===================== render: graph header ===================== */
+function locChips(q) {
+  const g = GRAPHS.roadmap;
+  if (q.s !== 'problem') return `<span class="chip">${I('folder', 'i12')}${g.project}</span><span class="chip mono">${g.file}</span><span class="chip">${I('branch', 'i12')}splitkick/graphs</span>`;
+  const f = q.fail === '1';
+  switch (q.opt) {
+    case 'base': return `<span class="chip">${I('folder', 'i12')}splitkick · base checkout</span><span class="chip mono">${g.file}</span>` +
+      (f ? `<span class="chip warn">${I('branch', 'i12')}issue-74-mermaid (not main)</span>` : `<span class="chip">${I('branch', 'i12')}main</span>`);
+    case 'branch': return `<span class="chip">${I('folder', 'i12')}splitkick</span><span class="chip">${I('branch', 'i12')}splitkick/graphs · hidden worktree</span>` +
+      (f ? `<span class="chip bad">${I('warn', 'i12')}push rejected · diverged</span>` : `<span class="chip ok">${I('check', 'i12')}synced · pulled 4 min ago</span><span class="chip">${I('up', 'i12')}1 commit to push</span>`);
+    case 'default': return `<span class="chip">${I('folder', 'i12')}splitkick</span><span class="chip mono">origin/main:${g.file}</span>` +
+      (f ? `<span class="chip bad">${I('warn', 'i12')}write failed · main moved</span>` : `<span class="chip ok">${I('check', 'i12')}read at 4e1c9a2 · 3 min ago</span>`);
+    case 'data': return `<span class="chip">${I('drive', 'i12')}Splitkick data · mb14</span><span class="chip">not in git</span>` +
+      (f ? `<span class="chip warn">${I('cloud', 'i12')}mb16 offline · 3 h</span>` : `<span class="chip ok">${I('cloud', 'i12')}synced with mb16 · 1 min ago</span>`);
+  }
+}
+function graphHead(q) {
+  const tab = q.s === 'problem' ? 'outline' : q.s;
+  const req = pendingRequests(), un = unseen();
+  const commitBtn = q.s === 'problem' && q.opt === 'data' ? '' : `<button class="btn" title="Stages only the graph file">${I('commit', 'i12')}Commit graph</button>`;
+  return `<div class="ghead">
+    <div class="t">${I('graph', 'i16')}<h2>Splitkick roadmap</h2><span class="chip">roadmap</span>
+      <div class="acts">${commitBtn}<button class="btn" data-go="start">${I('play', 'i12')}Start session…</button></div></div>
+    <div class="meta">${locChips(q)}<span style="margin-left:6px">Manager:</span><span class="chip brand"><span class="spin" style="width:7px;height:7px"></span>Vision keeper · running</span><span>· you are <b style="color:var(--foreground)">executive</b> (manage)</span></div>
+    <div class="gtabs">
+      <button class="${tab === 'outline' ? 'on' : ''}" data-go="outline">${I('list', 'i12')}Outline</button>
+      <button class="${tab === 'deps' ? 'on' : ''}" data-go="deps">${I('gantt', 'i12')}Dependencies</button>
+      <button class="${tab === 'review' ? 'on' : ''}" data-go="review">${I('inbox', 'i12')}Review ${req ? `<span class="cnt">${req}</span>` : ''}${un ? `<span class="cnt soft">${un}</span>` : ''}</button>
+    </div></div>`;
+}
+
+/* ===================== render: outline ===================== */
+function stateGlyph(s) { return `<span class="sg ${s}">${s === 'done' ? I('check', 'i12" style="width:9px;height:9px;stroke-width:3') : s === 'dropped' ? I('x', 'i12" style="width:9px;height:9px') : ''}</span>`; }
+function derivedBadges(n) {
+  const out = [];
+  if (isActive(n.id)) out.push(`<span class="db active"><span class="spin" style="width:7px;height:7px"></span>active</span>`);
+  const b = openBlockers(n);
+  if (b.length) out.push(`<span class="db blocked" title="${esc(b.map(([k, t]) => k + ': ' + nodeTitle(t)).join('\n'))}">${I('ban', 'i12')}blocked</span>`);
+  if (n.id === 'n74' && !M.answered.q1) out.push(`<span class="db req">${I('inbox', 'i12')}done? waiting for you</span>`);
+  return out.join('');
+}
+function refChip(n) { const a = n.att.find(([k]) => k === 'issue'); return a ? `<span class="ref">${a[1].replace('azeitler/splitkick', '')}</span>` : ''; }
+function outline(q) {
+  const groups = NODES.filter(n => !n.rel.some(([k]) => k === 'part-of'));
+  const changed = new Set(CHANGES.filter(c => !M.seen.has(c.id)).map(c => c.node));
+  let h = '<div class="pad">';
+  h += `<div class="legend"><span>Stored:</span>${['proposed', 'committed', 'done', 'dropped'].map(s => `<span style="display:inline-flex;gap:4px;align-items:center">${stateGlyph(s)}${s}</span>`).join('')}
+    <span style="margin-left:12px">Derived:</span><span class="db active"><span class="spin" style="width:7px;height:7px"></span>active</span><span class="db blocked">${I('ban', 'i12')}blocked</span><span class="progt">progress</span>
+    <span style="margin-left:12px"><span class="xg">↗ other graph</span></span><span style="display:inline-flex;gap:4px;align-items:center"><span class="chg"></span>changed since you looked</span></div>`;
+  for (const g of groups) {
+    const [d, t] = progress(g.id);
+    h += `<div class="group"><div class="grouph" data-node="${g.id}">${I('chevd', 'i12')}${stateGlyph(stateOf(g))}<span class="gt">${esc(g.title)}</span>
+      <span class="prog"><i style="width:${t ? d / t * 100 : 0}%"></i></span><span class="progt">${d}/${t} done</span>${derivedBadges(g)}</div>`;
+    for (const n of children(g.id)) {
+      const s = stateOf(n);
+      h += `<div class="nrow ${q.node === n.id ? 'sel' : ''} ${s === 'done' || s === 'dropped' ? 'dim' : ''}" data-node="${n.id}">
+        ${stateGlyph(s)}<span class="nt"><span class="ttl">${esc(n.title)}</span>${refChip(n)}${changed.has(n.id) ? '<span class="chg" title="changed since you last looked"></span>' : ''}</span>
+        <span class="nb">${derivedBadges(n)}<span class="sc ${s}">${s}</span></span></div>`;
+    }
+    if (g.id === 'g-graph') h += `<div class="nrow ghost" data-node="web#feat">${stateGlyph('committed')}<span class="nt"><span class="ttl">Feature page: Graphs</span><span class="xg">↗ Website relaunch · splitkick-website</span></span><span class="nb"><span class="db active"><span class="spin" style="width:7px;height:7px"></span>active</span><span class="ref">depends on Graph support v1</span></span></div>`;
+    if (g.id === 'g-web') h += `<div class="nrow ghost" data-node="docs#guide">${stateGlyph('proposed')}<span class="nt"><span class="ttl">Guide: graphs and agents</span><span class="xg">↗ Docs plan · splitkick-docs</span></span><span class="nb"><span class="ref">relates to Docs: graphs and agents guide</span></span></div>`;
+    h += '</div>';
+  }
+  h += `<button class="add">${I('plus', 'i12')}Add node</button></div>`;
+  return h;
+}
+
+/* ===================== render: dependencies (gantt-like) ===================== */
+function deps(q) {
+  const lanes = ['g-graph', 'g-rich', 'g-plat', 'g-web', 'x'];
+  const laneName = { 'g-graph': 'Graph layer', 'g-rich': 'Rich content', 'g-plat': 'Platforms', 'g-web': 'Website & docs', x: 'Other graphs ↗' };
+  const items = NODES.filter(n => n.rel.some(([k]) => k === 'part-of')).map(n => ({ id: n.id, n, lane: n.rel.find(([k]) => k === 'part-of')[1] }));
+  items.push({ id: 'web#feat', x: XNODES['web#feat'], lane: 'x' }, { id: 'docs#guide', x: XNODES['docs#guide'], lane: 'x' });
+  const lvl = {};
+  const level = id => {
+    if (lvl[id] != null) return lvl[id];
+    const it = items.find(i => i.id === id); if (!it) return 0;
+    const rels = it.n ? it.n.rel : it.x.rel;
+    let L = 0;
+    for (const [k, t] of rels) if (k === 'depends-on') { const tt = t.replace('roadmap#', ''); L = Math.max(L, level(tt) + 1); }
+    if (id === 'docs#guide') L = level('ndocs');
+    return lvl[id] = L;
+  };
+  items.forEach(i => level(i.id));
+  const COL0 = 120, DECW = 170, COLW = 200, BARW = 178, ROWH = 46, LANEPAD = 26;
+  const maxL = Math.max(...Object.values(lvl));
+  const pos = {}; const decisions = [];
+  let y = 26;
+  const laneTops = [];
+  for (const ln of lanes) {
+    const its = items.filter(i => i.lane === ln);
+    const slots = {};
+    let rows = 1;
+    for (const it of its) {
+      const L = lvl[it.id]; slots[L] = (slots[L] ?? 0);
+      pos[it.id] = { x: COL0 + DECW + L * COLW, y: y + LANEPAD + slots[L] * ROWH };
+      slots[L]++; rows = Math.max(rows, slots[L]);
+      if (it.n) for (const [k, t] of it.n.rel) if (k === 'blocked-by' && t.startsWith('text:')) {
+        const open = !(t.includes('Windows') && M.answered.q2);
+        if (open) decisions.push({ to: it.id, text: t.slice(5), x: COL0, y: pos[it.id].y + 4, lt: y });
+      }
+    }
+    laneTops.push([ln, y, rows * ROWH + LANEPAD + 8]);
+    y += rows * ROWH + LANEPAD + 8;
+  }
+  const W = COL0 + DECW + (maxL + 1) * COLW + 20, H = y + 10;
+  const edges = [];
+  for (const it of items) {
+    const rels = it.n ? it.n.rel : it.x.rel;
+    for (const [k, t0] of rels) {
+      const t = t0.replace('roadmap#', '');
+      if (!pos[t] || (k !== 'depends-on' && k !== 'relates-to')) continue;
+      if (k === 'relates-to' && !isX(t)) continue;
+      const a = pos[t], b = pos[it.id];
+      const tn = byId(t); const open = tn && stateOf(tn) !== 'done';
+      let x1 = a.x + BARW, y1 = a.y + 17, x2 = b.x, y2 = b.y + 17;
+      if (x2 <= x1) { x1 = a.x + BARW / 2; y1 = a.y + 34; x2 = b.x + BARW / 2; y2 = b.y; edges.push(`<path d="M${x1},${y1} C${x1},${y1 + 20} ${x2},${y2 - 20} ${x2},${y2}" class="e ${k === 'relates-to' ? 'rel' : open ? 'open' : 'ok'}" marker-end="url(#${k === 'relates-to' ? 'm-rel' : open ? 'm-open' : 'm-ok'})"/>`); continue; }
+      const mx = (x1 + x2) / 2;
+      edges.push(`<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2 - 2},${y2}" class="e ${k === 'relates-to' ? 'rel' : open ? 'open' : 'ok'}" marker-end="url(#${k === 'relates-to' ? 'm-rel' : open ? 'm-open' : 'm-ok'})"/>`);
+    }
+  }
+  for (const d of decisions) { const b = pos[d.to], ly = d.lt + 12; edges.push(`<path d="M${d.x + 6},${d.y} V${ly} H${b.x - 12} V${b.y + 17} H${b.x - 2}" class="e blk" marker-end="url(#m-open)"/>`); }
+  let h = `<div class="pad"><div class="legend">
+    <span><svg width="34" height="8"><path d="M0,4 H28" class="e open" marker-end="url(#m-open)"/></svg> depends-on, target not done</span>
+    <span><svg width="34" height="8"><path d="M0,4 H28" class="e ok" marker-end="url(#m-ok)"/></svg> depends-on, done</span>
+    <span><svg width="34" height="8"><path d="M0,4 H28" class="e blk"/></svg> blocked-by (open decision)</span>
+    <span><svg width="34" height="8"><path d="M0,4 H28" class="e rel"/></svg> relates-to (other graph)</span>
+    <span>Columns are dependency steps, not dates.</span></div>
+    <div class="deps" style="width:${W}px;height:${H}px">
+    <svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;pointer-events:none">
+      <defs>
+        <marker id="m-open" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--destructive)"/></marker>
+        <marker id="m-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--muted-foreground)"/></marker>
+        <marker id="m-rel" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--sky)"/></marker>
+      </defs>
+      ${edges.join('')}
+    </svg>`;
+  h += `<div class="colh" style="left:${COL0}px">Open decisions</div>`;
+  for (let L = 0; L <= maxL; L++) h += `<div class="colh" style="left:${COL0 + DECW + L * COLW}px">Step ${L + 1}</div>`;
+  for (const [ln, top, hh] of laneTops) h += `<div class="lane" style="top:${top}px;height:${hh}px"><div class="ln">${laneName[ln]}${ln !== 'x' ? `<div class="progt" style="font-weight:400">${progress(ln).join('/')} done</div>` : ''}</div></div>`;
+  for (const d of decisions) h += `<div class="dia" style="left:${d.x}px;top:${d.y}px"><i></i><span>${esc(d.text.replace('decision: ', ''))}</span></div>`;
+  for (const it of items) {
+    const p = pos[it.id];
+    if (it.x) {
+      h += `<div class="bar ghost ${it.x.state}" data-node="${it.id}" style="left:${p.x}px;top:${p.y}px;width:${BARW}px"><span class="bt">${esc(it.x.title)}</span><span class="bm"><span class="xg">↗ ${GRAPHS[it.x.graph].project}</span>${it.id === 'web#feat' ? '<span class="spin" style="width:6px;height:6px"></span>active' : ''}</span></div>`;
+      continue;
+    }
+    const n = it.n, s = stateOf(n), b = openBlockers(n).length;
+    h += `<div class="bar ${s} ${q.node === n.id ? 'sel' : ''}" data-node="${n.id}" style="left:${p.x}px;top:${p.y}px;width:${BARW}px">
+      <span class="bt">${esc(n.title)}</span><span class="bm">${s}${refChip(n)}${isActive(n.id) ? '<span class="spin" style="width:6px;height:6px"></span>active' : ''}${b ? `<span style="color:var(--destructive);display:inline-flex;gap:2px;align-items:center">${I('ban', 'i12" style="width:10px;height:10px')}blocked</span>` : ''}</span></div>`;
+  }
+  return h + '</div></div>';
+}
+
+/* ===================== render: node detail ===================== */
+function detail(q) {
+  const id = q.node;
+  if (XNODES[id]) {
+    const x = XNODES[id], g = GRAPHS[x.graph];
+    return `<aside class="detail"><div class="dh"><button class="btn ghost x" data-act="close">${I('x')}</button><div class="xg" style="display:inline-block;margin-bottom:6px">↗ node in another graph</div><h3>${esc(x.title)}</h3>
+      <div class="note">${esc(g.title)} · ${g.project} · <span class="mono">${g.file}</span></div></div>
+      <div class="sec"><h4>Read-only here</h4><p class="note">This node lives in <b>${esc(g.title)}</b>. Its relation to this graph is stored there (<span class="mono">${esc(x.rel.map(r => r.join(': ')).join(', ') || '—')}</span>). Open the other graph to edit it.</p>
+      <div style="margin-top:10px"><button class="btn">${I('ext', 'i12')}Open ${esc(g.title)}</button></div></div>
+      <div class="sec"><h4>Serving sessions <span class="r">derived</span></h4>${servingSessions(id).map(sesRow).join('') || '<div class="note">None.</div>'}</div></aside>`;
+  }
+  const n = byId(id); if (!n) return '';
+  const s = stateOf(n);
+  const perm = { you: 'manage', vk: 'manage', rm: 'write', worker: 'read' }[M.viewAs];
+  const canSet = st => perm === 'manage' || (perm === 'write' && st === 'proposed');
+  const out = n.rel.map(([k, t]) => `<div class="rl"><span class="kind">${k}</span><span class="tgt">${t.startsWith('text:') ? `<span style="color:var(--destructive)">${I('ban', 'i12')}</span><span>${esc(t.slice(5))}</span>` : `${stateGlyph(isX(t) ? XNODES[t]?.state ?? 'proposed' : stateOf(byId(t)))}<a data-node="${t}">${esc(nodeTitle(t))}</a>${isX(t) ? `<span class="xg">↗ ${GRAPHS[XNODES[t]?.graph]?.project ?? 'other graph'}</span>` : ''}`}</span>${perm !== 'read' ? `<button class="btn ghost" style="height:20px;padding:0 4px">${I('x', 'i12')}</button>` : ''}</div>`).join('');
+  const inc = incoming(n.id).map(([k, t]) => `<div class="rl computed"><span class="kind">${k}</span><span class="tgt">${stateGlyph(isX(t) ? XNODES[t].state : stateOf(byId(t)))}<a data-node="${t}">${esc(nodeTitle(t))}</a>${isX(t) ? `<span class="xg">↗ ${GRAPHS[XNODES[t].graph].project}</span>` : ''}</span></div>`).join('');
+  const ICONS = { issue: 'issue', pr: 'pr', milestone: 'flag', link: 'link', file: 'file', session: 'msg', note: 'note' };
+  const atts = n.att.map(([k, v]) => `<div class="att"><span class="ak">${k}</span>${I(ICONS[k] || 'note', 'i12')}<a>${esc(v)}</a></div>`).join('');
+  const blockers = openBlockers(n);
+  const hist = [...CHANGES.filter(c => c.node === n.id), ...SEEN_CHANGES.filter(c => c.node === n.id)];
+  return `<aside class="detail">
+    <div class="dh"><button class="btn ghost x" data-act="close">${I('x')}</button>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><span class="sc ${s}">${s}</span>${derivedBadges(n)}</div>
+      <h3>${esc(n.title)}</h3><div class="note mono" style="font-size:11px">id ${n.id} · Splitkick roadmap</div></div>
+    <div class="sec"><h4>Description</h4><p class="desc">${esc(n.desc)}</p></div>
+    <div class="sec"><h4>State <span class="r">view as <select data-act="viewas" style="font:inherit;font-size:11px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:4px">
+        ${[['you', 'You (executive)'], ['vk', 'Vision keeper session'], ['rm', 'Release manager session'], ['worker', 'Worker session']].map(([v, l]) => `<option value="${v}" ${M.viewAs === v ? 'selected' : ''}>${l}</option>`).join('')}</select></span></h4>
+      <div class="seg">${['proposed', 'committed', 'done', 'dropped'].map(st => `<button class="${s === st ? 'on' : ''}" ${canSet(st) || s === st ? '' : 'disabled'} data-setstate="${st}">${stateGlyph(st)}${st}</button>`).join('')}</div>
+      <div class="hint">Permission <b>${perm}</b>. ${perm === 'manage' ? 'May set any state. An agent must give a why; you may skip it.' : perm === 'write' ? 'May edit the node and propose. <b>committed / done / dropped</b> need manage: send a request instead.' : 'Read only. May only set <i>serves</i> on its own session.'}</div>
+      ${blockers.length ? `<div class="hint" style="color:var(--destructive)">${I('ban', 'i12')} Derived <b style="color:inherit">blocked</b>: ${blockers.map(([k, t]) => `${k} ${esc(nodeTitle(t))}`).join('; ')}</div>` : ''}</div>
+    <div class="sec"><h4>Properties <span class="r">key / value, strings</span></h4><div class="kv">${Object.entries(n.props).map(([k, v]) => `<span class="k">${esc(k)}</span><span>${esc(v)}</span>`).join('') || '<span class="k">none</span><span></span>'}</div>${perm !== 'read' ? `<button class="add">${I('plus', 'i12')}Add property</button>` : ''}</div>
+    <div class="sec"><h4>Relations</h4><div class="sub">Stored on this node</div>${out || '<div class="note">None.</div>'}${perm !== 'read' ? `<button class="add">${I('plus', 'i12')}Add relation (depends-on, blocked-by, part-of, relates-to)</button>` : ''}
+      <div class="sub">Computed from other nodes</div>${inc || '<div class="note">None.</div>'}</div>
+    <div class="sec"><h4>Attachments</h4>${atts || '<div class="note">None.</div>'}${perm !== 'read' ? `<button class="add">${I('plus', 'i12')}Attach issue, PR, milestone, link, file, session, note</button>` : ''}</div>
+    <div class="sec"><h4>Serving sessions <span class="r">derived from <code>serves</code></span></h4>${servingSessions(n.id).map(sesRow).join('') || '<div class="note">No session serves this node. It is <b>idle</b>.</div>'}
+      <div class="row2" style="margin-top:8px"><button class="btn" data-go="start">${I('play', 'i12')}Start session for this node…</button></div></div>
+    <div class="sec"><h4>History</h4>${hist.map(c => `<div class="hist"><span class="who">${WHO[c.who]} · ${c.ago}</span><span>${c.what}<br><span class="note">Why: ${esc(c.why)}</span></span></div>`).join('') || '<div class="note">Created 6 days ago by you.</div>'}</div>
+  </aside>`;
+}
+function sesRow(s) {
+  const dot = s.status === 'running' ? '<span class="spin"></span>' : `<span class="dot st-${s.status}"></span>`;
+  return `<div class="ses">${dot}<span class="sn">${esc(s.name)} <span class="sw">${s.project} / ${s.wt}</span></span><span class="ago">${s.status} · ${s.ago}</span></div>`;
+}
+
+/* ===================== render: review ===================== */
+function review() {
+  const q1 = M.answered.q1, q2 = M.answered.q2, q3 = M.answered.q3;
+  let h = '<div class="pad"><div class="cols"><div>';
+  h += `<div class="colh2">${I('inbox')}Requests for you <span class="cnt" style="margin:0">${pendingRequests()}</span><span class="r note">Nothing waits on these except the nodes they name.</span></div>`;
+  h += `<div class="card ${q1 ? 'doneq' : ''}"><h5><span class="db req">accept done</span>Mermaid diagrams in chat</h5>
+    <div class="from">${I('bot', 'i12')} Vision keeper · 40 min ago · node <a data-node="n74" style="cursor:pointer;text-decoration:underline">n74</a></div>
+    <div class="note">“The outcome matches the node: mermaid blocks render in assistant messages, light and dark.”</div>
+    <ul><li>PR <b>#80</b> merged 3 h ago, released in <b>1.0.21</b></li><li>Serving session <b>Mermaid diagrams</b> is in review state; no open review findings</li><li>Attachment: screenshot <span class="mono">mermaid-dark.png</span></li></ul>
+    ${q1 ? `<div class="note"><b>${q1}</b></div>` : `<div class="row2"><button class="btn pri" data-ans="q1" data-v="Accepted: state → done.">${I('check', 'i12')}Accept (→ done)</button><button class="btn" data-ans="q1" data-v="Sent back: “Also render in the plan view.” The manager gets your note.">${I('undo', 'i12')}Send back with note…</button></div>
+    <textarea placeholder="Note for the manager (required to send back)">Also render in the plan view, not only in chat.</textarea>`}</div>`;
+  h += `<div class="card ${q2 ? 'doneq' : ''}"><h5><span class="db blocked">${I('ban', 'i12')}decision</span>Windows support: ship in 1.x or later?</h5>
+    <div class="from">${I('bot', 'i12')} Vision keeper · 35 min ago · resolves <i>blocked-by</i> on <a data-node="n71" style="cursor:pointer;text-decoration:underline">Windows support</a></div>
+    <div class="note">The evaluation (session <b>Windows evaluation</b>) estimates 3–4 weeks: code signing, PTY layer, path handling. It would delay Graph support v1 by about one month.</div>
+    ${q2 ? `<div class="note" style="margin-top:8px"><b>${q2}</b></div>` : `<div class="row2"><button class="btn" data-ans="q2" data-v="Answered “Later (after 1.1)”. The blocked-by is resolved; the node stays proposed.">Later (after 1.1)</button><button class="btn" data-ans="q2" data-v="Answered “In 1.1”. The blocked-by is resolved.">In 1.1</button><button class="btn ghost">Other answer…</button></div>`}</div>`;
+  h += `<div class="card ${q3 ? 'doneq' : ''}"><h5><span class="db blocked">${I('ban', 'i12')}decision</span>Storage for project graphs: which copy is real?</h5>
+    <div class="from">${I('bot', 'i12')} Vision keeper · yesterday · resolves <i>blocked-by</i> on <a data-node="gv1" style="cursor:pointer;text-decoration:underline">Graph support v1</a></div>
+    <div class="note">The base checkout is often on another branch. Four options in the design draft.</div>
+    <div class="row2"><button class="btn" data-go="problem">${I('eye', 'i12')}Compare the options</button></div></div>`;
+  h += '</div><div>';
+  const un = CHANGES.filter(c => !M.seen.has(c.id));
+  h += `<div class="colh2">${I('eye')}Changes since you last looked <span class="cnt soft" style="margin:0">${un.length}</span><span class="r"><button class="btn" data-act="seenall">${I('check', 'i12')}Mark all seen</button></span></div>`;
+  h += `<div class="note" style="margin-bottom:10px">Last looked: 3 hours ago (2026-11-02 09:12). Nothing waited for approval; revert any change.</div>`;
+  const byNode = {};
+  for (const c of un) (byNode[c.node] ??= []).push(c);
+  for (const [nid, cs] of Object.entries(byNode)) {
+    const n = byId(nid);
+    h += `<div class="cg"><div class="cgh" data-node="${nid}">${stateGlyph(stateOf(n))}${esc(n.title)}<span class="note" style="font-weight:400">${cs.length} change${cs.length > 1 ? 's' : ''}</span>
+      <span class="r"><button class="btn ghost" style="height:22px" data-seen="${cs.map(c => c.id).join(',')}">${I('check', 'i12')}Seen</button></span></div>`;
+    for (const c of cs) {
+      const rv = M.reverted.has(c.id);
+      h += `<div class="ce ${rv ? 'reverted' : ''}"><span class="what">${c.what}</span>
+        <span class="ca">${rv ? '<span class="note">reverted by you</span>' : `<button class="btn ghost" style="height:22px" data-revert="${c.id}">${I('undo', 'i12')}Revert</button>`}</span>
+        <span class="why">${esc(c.why)}</span>
+        <span class="by">${I('bot', 'i12')}${WHO[c.who]} <span class="perm ${AGENTS[c.who].perm}" style="height:16px;line-height:14px;font-size:10px">${AGENTS[c.who].perm}</span> · ${c.ago}</span></div>`;
+    }
+    h += '</div>';
+  }
+  if (!un.length) h += `<div class="note">All seen.</div>`;
+  h += `<div class="seen-line">seen</div>`;
+  for (const c of SEEN_CHANGES) h += `<div class="ce" style="opacity:.6;border:1px solid var(--border);border-radius:8px"><span class="what">${esc(byId(c.node).title)}: ${c.what}</span><span class="ca"></span><span class="why">${esc(c.why)}</span><span class="by">${I('user', 'i12')}You · ${c.ago}</span></div>`;
+  h += `<div class="note" style="margin-top:10px">Changes from other machines (mb16) show in git history, not here: the log is per machine.</div>`;
+  return h + '</div></div></div>';
+}
+
+/* ===================== render: agents ===================== */
+function agents() {
+  let h = `<div class="ghead" style="padding-bottom:14px"><div class="t">${I('bot', 'i16')}<h2>Agents</h2><span class="note">Saved profiles. A session started from one is a normal session with the persona added.</span>
+    <div class="acts"><button class="btn">${I('plus', 'i12')}New agent</button></div></div></div><div class="scroll"><div class="pad"><div class="agents">`;
+  for (const [id, a] of Object.entries(AGENTS)) {
+    h += `<div class="agent"><div class="ah"><span class="av" style="background:${a.color}">${I('bot', 'i16')}</span><div style="flex:1"><div class="an">${a.name}</div><div class="note" style="font-size:11px">${a.model} · graph: ${a.graph}</div></div><span class="perm ${a.perm}">${a.perm}</span></div>
+      <div class="sub" style="margin:0">Persona prompt</div><div class="persona">${esc(a.persona)}</div>
+      <div class="note" style="font-size:11px">${a.sessions ? `${I('play', 'i12')} ${a.sessions} session running from this profile` : 'No session running'}</div>
+      <div class="row2" style="display:flex;gap:6px"><button class="btn pri" data-start="${id}">${I('play', 'i12')}Start session…</button><button class="btn ghost">Edit</button></div></div>`;
+  }
+  h += `</div><table class="ptab"><tr><th>Level</th><th>May (enforced in the MCP tools, per session)</th><th>Default for</th></tr>
+    <tr><td><span class="perm">read</span></td><td>read graphs; set <code>serves</code> on its own session</td><td>every session</td></tr>
+    <tr><td><span class="perm write">write</span></td><td>create and edit nodes, relations, properties, attachments; propose; send requests</td><td>—</td></tr>
+    <tr><td><span class="perm manage">manage</span></td><td>also commit, accept (done), drop</td><td>manager agents; the user always</td></tr></table>
+    <p class="note">Finer rules (“only nodes under 1 week”) live in the persona prompt, not in code.</p></div></div>`;
+  return h;
+}
+
+/* ===================== render: open problem ===================== */
+const OPTS = [
+  ['base', 'Draft decision: file in base checkout'],
+  ['branch', 'Option 1: dedicated branch'],
+  ['default', 'Option 2: read default branch'],
+  ['data', 'Option 3: Splitkick data only'],
+];
+function problemBanner(q) {
+  const f = q.fail === '1';
+  switch (q.opt) {
+    case 'base': return f
+      ? `<div class="banner warn">${I('warn', 'i16')}<div class="bt"><b>You see the roadmap from branch <code>issue-74-mermaid</code>, not main.</b>
+          <p>The base checkout of splitkick is on another branch. 2 nodes differ from main (Mermaid diagrams: committed here, done on main). Edits are written to <code>issue-74-mermaid</code> and reach main only with that branch. mb16 (on main) sees a different roadmap.</p>
+          <div class="ba"><button class="btn">Show main’s version (read only)</button><button class="btn">Edit anyway</button><button class="btn ghost">Switch base checkout to main…</button></div></div></div>`
+      : `<div class="banner">${I('check', 'i16')}<div class="bt"><b>Base checkout is on main.</b><p>The UI and MCP tools read and write <code>.splitkick/graphs/roadmap.yml</code> in the main folder. Worktree copies are ignored. “Commit graph” stages only this file.</p></div></div>`;
+    case 'branch': return f
+      ? `<div class="banner bad">${I('warn', 'i16')}<div class="bt"><b>Push rejected: mb16 pushed 2 commits to <code>splitkick/graphs</code>.</b>
+          <p>Splitkick pulled and merged node by node. One field conflicts; everything else merged.</p>
+          <div class="conf"><div class="ch">Graph support v1 · state</div><div class="cr"><div class="note">field</div><div><b>mb14 (you)</b></div><div><b>mb16 · Vision keeper</b></div></div>
+            <div class="cr"><div class="note">state</div><div class="pick"><span class="sc committed">committed</span><button class="btn" style="height:22px">Keep mine</button></div><div class="pick"><span class="sc dropped">dropped</span><button class="btn" style="height:22px">Take theirs</button></div></div>
+            <div class="cr"><div class="note">why</div><div class="note">—</div><div class="note">“Merged into Session network view.”</div></div></div>
+          <div class="ba"><button class="btn pri">${I('up', 'i12')}Resolve and push (asks you)</button><button class="btn ghost">Open hidden worktree</button></div></div></div>`
+      : `<div class="banner">${I('branch', 'i16')}<div class="bt"><b>Stored on branch <code>splitkick/graphs</code>, in a hidden worktree only Splitkick touches.</b>
+          <p>Independent of what the base checkout has checked out. Splitkick commits each change there; pushing follows your push rules.</p>
+          <div class="ba"><span class="chip">${I('commit', 'i12')}3 changes committed locally</span><span class="chip">${I('up', 'i12')}1 commit not pushed</span><button class="btn">${I('up', 'i12')}Push now</button><label class="note" style="display:flex;gap:4px;align-items:center"><input type="checkbox"> Let Splitkick push this branch without asking</label></div></div></div>`;
+    case 'default': return f
+      ? `<div class="banner bad">${I('warn', 'i16')}<div class="bt"><b>Could not write: <code>main</code> moved while Splitkick wrote the graph.</b>
+          <p>You committed “docs: changelog 1.0.21” on main in the base checkout 8 s ago. Splitkick’s ref update (<code>update-ref</code> with old value) failed, so nothing was lost. Your 1 change is kept in memory.</p>
+          <div class="ba"><button class="btn pri">${I('sync', 'i12')}Retry on new main</button><button class="btn">Show diff</button><button class="btn ghost">Discard my change</button></div>
+          <p style="margin-top:8px">Also: <code>origin/main</code> is 2 commits behind local main. Others see the old graph until you push main.</p></div></div>`
+      : `<div class="banner">${I('branch', 'i16')}<div class="bt"><b>Read from <code>origin/main</code> (git object, not the folder).</b>
+          <p>The base checkout is on <code>issue-74-mermaid</code>; its copy is ignored. Writes become a small commit on local <code>main</code> without a checkout (plumbing). Local main is 1 commit ahead of origin.</p>
+          <div class="ba"><span class="chip mono">4e1c9a2 graph: commit “Session network view”</span><button class="btn">${I('up', 'i12')}Push main…</button></div></div></div>`;
+    case 'data': return f
+      ? `<div class="banner warn">${I('cloud', 'i16')}<div class="bt"><b>mb16 is offline since 3 h. Both machines edited this graph.</b>
+          <p>Edits are kept on each machine and merged node by node on reconnect. 1 node changed on both sides (Graph support v1: quarter). You will choose then. Until then, mb16 works on its own copy.</p>
+          <div class="ba"><button class="btn">Show my unsynced changes (4)</button><button class="btn ghost">Export snapshot to repo (YAML)</button></div></div></div>`
+      : `<div class="banner">${I('drive', 'i16')}<div class="bt"><b>Stored in Splitkick’s data on mb14, like the instance graph.</b>
+          <p>Not in git: no branch problem, no push. Shared with mb16 and remotes through Splitkick sync. Lost: “versioned with the repo”; agents in other tools cannot read it as a file (only through MCP).</p>
+          <div class="ba"><span class="chip ok">${I('cloud', 'i12')}mb16 · synced 1 min ago</span><button class="btn ghost">Export snapshot to repo (YAML)</button></div></div></div>`;
+  }
+}
+function problemTable(q) {
+  const rows = [
+    ['Real copy', 'file in base checkout', 'branch splitkick/graphs (hidden worktree)', 'origin/main as a git object', 'Splitkick data per instance'],
+    ['Independent of base branch', '<span class="n">no</span>', '<span class="y">yes</span>', '<span class="y">yes</span>', '<span class="y">yes</span>'],
+    ['Versioned in the repo', '<span class="y">yes</span>, on whatever branch', '<span class="y">yes</span>, own branch', '<span class="y">yes</span>, on main', '<span class="n">no</span> (export only)'],
+    ['Readable by any agent as a file', '<span class="y">yes</span>', '<span class="m">only in the hidden worktree</span>', '<span class="m">git show</span>', '<span class="n">no</span>, MCP only'],
+    ['Needs a push', 'with the branch', '<span class="m">yes, by Splitkick</span>', '<span class="m">yes, main</span>', '<span class="y">no</span>'],
+    ['Failure the user sees', 'wrong roadmap, silently', 'diverged branch, merge', 'race with own commits on main', 'offline peer, merge later'],
+    ['Cost to build', 'small', 'medium: worktree, commit, push, merge', 'medium: plumbing, retries', 'small–medium: sync merge'],
+  ];
+  const cols = ['base', 'branch', 'default', 'data'];
+  return `<h3 class="sh">Compare (option 4, “pin to the default branch’s worktree”, is not shown: it falls back to the draft decision when no such worktree exists)</h3>
+    <table class="cmp"><tr><th></th>${OPTS.map(([k, l]) => `<th class="${q.opt === k ? 'on' : ''}" data-opt="${k}" style="cursor:pointer">${l}</th>`).join('')}</tr>
+    ${rows.map(r => `<tr><th>${r[0]}</th>${r.slice(1).map((c, i) => `<td class="${q.opt === cols[i] ? 'on' : ''}">${c}</td>`).join('')}</tr>`).join('')}</table>
+    <p class="note" style="margin-top:10px">Questions to answer first: how many machines edit the same graph at the same time? Is “versioned in the repo” a must for v1? May Splitkick push on its own to a dedicated branch?</p>`;
+}
+
+/* ===================== dialogs ===================== */
+function dlgNew() {
+  const locs = [['splitkick', 'splitkick', 'Committed file .splitkick/graphs/&lt;slug&gt;.yml — shared through git'], ['splitkick-website', 'splitkick-website', 'Committed file in that repo'], ['splitkick-docs', 'splitkick-docs', 'Committed file in that repo'], ['instance', 'This instance (mb14)', 'Splitkick data, cross-project, not in git']];
+  return `<div class="scrim"><div class="dlg"><h3>New graph</h3><div class="dsub">A roadmap, release plan or research map. Sessions can serve its nodes.</div>
+    <div class="field"><label>Title</label><input value="Release 1.2"></div>
+    <div class="field"><label>Type <span class="note" style="font-weight:400">free word</span></label><input value="${M.newType}" data-act="type">
+      <div class="types">${['roadmap', 'release', 'research', 'docs'].map(t => `<button class="chip" data-type="${t}" style="cursor:pointer;${M.newType === t ? 'border-color:var(--foreground);color:var(--foreground)' : ''}">${t}</button>`).join('')}</div></div>
+    <div class="field"><label>Location</label><div class="opts">${locs.map(([k, l, d]) => `<div class="opt ${M.newLoc === k ? 'on' : ''}" data-loc="${k}"><span class="rad"></span><span class="ot"><b>${l}</b><span>${d}</span></span></div>`).join('')}</div>
+      <div class="preview">${M.newLoc === 'instance' ? '&lt;app data&gt;/graphs/release-1-2.yml' : `${M.newLoc}/.splitkick/graphs/release-1-2.yml`}</div>
+      ${M.newLoc !== 'instance' ? '<div class="hint" style="color:var(--wait)">Where a project file is written depends on the open storage problem (see screen 6).</div>' : ''}</div>
+    <div class="foot"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="close">Create graph</button></div></div></div>`;
+}
+function dlgStart() {
+  const a = AGENTS[M.startAgent];
+  const order = ['read', 'write', 'manage'];
+  const max = order.indexOf(a.perm);
+  return `<div class="scrim"><div class="dlg" style="width:560px"><h3>Start session from agent</h3><div class="dsub">A normal session: it shows in the schedule (#77) and in the sidebar like any other.</div>
+    <div class="field"><label>Agent</label><div class="opts">${Object.entries(AGENTS).map(([id, x]) => `<div class="opt ${M.startAgent === id ? 'on' : ''}" data-agent="${id}"><span class="rad"></span><span class="ot"><b>${x.name} <span class="perm ${x.perm}" style="margin-left:4px">${x.perm}</span></b><span>${x.model}</span></span></div>`).join('')}</div></div>
+    <div class="field"><label>Where</label><div style="display:flex;gap:6px"><select><option>splitkick</option><option>splitkick-website</option><option>splitkick-docs</option></select>
+      <select><option ${M.startWhere === 'base' ? 'selected' : ''}>base checkout</option><option>new worktree</option></select></div></div>
+    <div class="field"><label>Serves</label><select><option>Splitkick roadmap (whole graph)</option><option>Graph support v1</option><option>Session network view</option></select>
+      <div class="hint">Written as <code>serves</code> in the session’s metadata. The graph never lists sessions.</div></div>
+    <div class="field"><label>Graph permission for this session</label><div style="display:flex;gap:4px">${order.map((p, i) => `<div class="opt ${M.startPerm === p ? 'on' : ''} ${i > max ? 'dis' : ''}" data-perm="${i > max ? '' : p}" style="flex:1"><span class="rad"></span><span class="ot"><b>${p}</b></span></div>`).join('')}</div>
+      <div class="hint">The profile allows up to <b>${a.perm}</b>. You can lower it for one session, not raise it.</div></div>
+    <div class="field"><label>Persona prompt <span class="note" style="font-weight:400">added to the system prompt</span></label><textarea rows="4" style="font-size:11px">${esc(a.persona)}</textarea></div>
+    <div class="field"><label>First message</label><textarea rows="2">Review the roadmap against the last week’s merged PRs. Send me requests for anything that looks done.</textarea></div>
+    <div class="foot"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="close">${I('play', 'i12')}Start session</button></div></div></div>`;
+}
+
+/* ===================== main render ===================== */
+function render() {
+  const q = getQ();
+  document.documentElement.classList.toggle('dark', q.theme === 'dark');
+  const cur = SCREENS.find(([, , p]) => Object.entries(p).every(([k, v]) => (q[k] ?? '') === v))?.[0] ?? '';
+  let bar = SCREENS.map(([k, l]) => `<button class="${cur === k ? 'on' : ''}" data-screen="${k}">${l}</button>`).join('');
+  bar += `<span class="sep"></span><button data-theme>${q.theme === 'dark' ? '☀ Light' : '☾ Dark'}</button>`;
+  if (q.s === 'problem') {
+    bar += `<span class="sep"></span>${OPTS.map(([k, l]) => `<button class="${q.opt === k ? 'on' : ''}" data-opt="${k}">${l}</button>`).join('')}
+      <span class="sep"></span><button class="${q.fail !== '1' ? 'on' : ''}" data-fail="0">Normal</button><button class="${q.fail === '1' ? 'on' : ''}" data-fail="1">Failure case</button>`;
+  }
+  document.getElementById('mkbar').innerHTML = bar;
+  document.getElementById('cap').innerHTML = CAPS[cur] ?? CAPS[q.s] ?? '';
+
+  let main = '';
+  if (q.s === 'agents') main = agents();
+  else {
+    main = graphHead(q);
+    if (q.s === 'problem') main += problemBanner(q);
+    const content = q.s === 'deps' ? deps(q) : q.s === 'review' ? review() : outline(q);
+    main += `<div class="body"><div class="scroll">${content}${q.s === 'problem' ? `<div class="pad" style="padding-top:0">${problemTable(q)}</div>` : ''}</div>${q.node ? detail(q) : ''}</div>`;
+  }
+  const crumbs = q.s === 'agents' ? `<b>Agents</b>` : `<span>Graphs</span>${I('chevr', 'i12')}<b>Splitkick roadmap</b>`;
+  document.getElementById('win').innerHTML = `
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="crumbs">${crumbs}</div>
+      <div class="right"><span class="row" data-go="agents" style="height:24px;padding:0 6px;border-radius:6px;gap:4px;font-size:12px">${I('bot')}Agents</span>
+      <span class="bell" data-go="review" style="cursor:pointer" title="Requests for you">${I('bell', 'i16')}${pendingRequests() ? `<span class="n">${pendingRequests()}</span>` : ''}</span></div></div>
+    <nav class="sidebar">${sidebar(q)}</nav>
+    <main class="main">${main}${q.dlg === 'new' ? dlgNew() : q.dlg === 'start' ? dlgStart() : ''}</main>`;
+}
+
+/* ===================== events ===================== */
+const GO = { outline: { s: 'outline', node: '', dlg: '' }, deps: { s: 'deps', dlg: '' }, review: { s: 'review', node: '', dlg: '' }, agents: { s: 'agents', node: '', dlg: '' }, problem: { s: 'problem', node: '', dlg: '' }, start: { dlg: 'start' } };
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-screen],[data-theme],[data-opt],[data-fail],[data-go],[data-node],[data-act],[data-setstate],[data-ans],[data-seen],[data-revert],[data-type],[data-loc],[data-agent],[data-perm],[data-start]');
+  if (!t) { if (e.target.classList?.contains('scrim')) setQ({ dlg: '' }); return; }
+  const d = t.dataset, q = getQ();
+  if (d.screen) return setQ(SCREENS.find(s => s[0] === d.screen)[2]);
+  if ('theme' in d) return setQ({ theme: q.theme === 'dark' ? 'light' : 'dark' });
+  if (d.opt) return setQ({ opt: d.opt });
+  if (d.fail) return setQ({ fail: d.fail });
+  if (d.go) return GO[d.go] && setQ(GO[d.go]);
+  if (d.setstate) { const n = byId(q.node); if (n) { M.stateOverride[n.id] = d.setstate; render(); } return; }
+  if (d.ans) { M.answered[d.ans] = d.v; render(); return; }
+  if (d.seen) { d.seen.split(',').forEach(id => M.seen.add(id)); render(); return; }
+  if (d.revert) { M.reverted.add(d.revert); render(); return; }
+  if (d.type) { M.newType = d.type; render(); return; }
+  if (d.loc) { M.newLoc = d.loc; render(); return; }
+  if (d.agent) { M.startAgent = d.agent; M.startPerm = AGENTS[d.agent].perm; render(); return; }
+  if (d.perm) { M.startPerm = d.perm; render(); return; }
+  if (d.start) { M.startAgent = d.start; M.startPerm = AGENTS[d.start].perm; return setQ({ dlg: 'start' }); }
+  if (d.act === 'new') return setQ({ dlg: 'new' });
+  if (d.act === 'close') return setQ({ dlg: '', ...(t.closest('.detail') ? { node: '' } : {}) });
+  if (d.act === 'seenall') { CHANGES.forEach(c => M.seen.add(c.id)); render(); return; }
+  if (d.node) return setQ({ node: d.node, s: q.s === 'review' || q.s === 'problem' ? 'outline' : q.s });
+});
+document.addEventListener('change', e => { if (e.target.dataset.act === 'viewas') { M.viewAs = e.target.value; render(); } });
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>
