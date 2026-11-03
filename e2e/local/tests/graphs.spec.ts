@@ -514,7 +514,11 @@ test('the agent session shows its graph panel', async ({ page }) => {
   if (!(await panel.isVisible())) await toggle.click()
   await expect(panel).toBeVisible()
   await expect(panel).toContainText('serves the whole graph in')
-  await expect(panel.getByRole('button', { name: 'E2E roadmap' })).toBeVisible()
+  // Exact: the "Stop serving E2E roadmap (whole graph)" chip button also
+  // matches once the graph list has loaded.
+  await expect(
+    panel.getByRole('button', { name: 'E2E roadmap', exact: true })
+  ).toBeVisible()
   await expect(panel).toContainText('Review UX')
   await expect(panel.getByLabel('Graph permission')).toHaveValue('manage')
   await expect(panel).toContainText('E2E roadmap (whole graph)')

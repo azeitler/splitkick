@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { AlertTriangle, Workflow } from 'lucide-react'
 import { NewGraphDialog } from '@/components/graphs/NewGraphDialog'
-import { graphWhere } from '@/components/graphs/graph-utils'
+import { graphSubtitle } from '@/components/graphs/graph-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { openGraphView } from '@/lib/graph-view'
 import { cn } from '@/lib/utils'
@@ -130,7 +130,7 @@ function SidebarGraphRow({
           {graph.title}
         </span>
         <span className="truncate text-[11px] text-muted-foreground">
-          {graph.graphType} · {graphWhere(graph)}
+          {graphSubtitle(graph)}
         </span>
       </span>
       <span className="mt-0.5 flex shrink-0 items-center gap-1">

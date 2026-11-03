@@ -328,10 +328,13 @@ export function MainWindowContent({
             </Suspense>
           </div>
         </div>
-      ) : isMobile && (realProjects.length > 0 || selectedProjectId) ? (
+      ) : isMobile &&
+        !(activeGraphId && !selectedProjectId) &&
+        (realProjects.length > 0 || selectedProjectId) ? (
         // The phone layout: tabs at the root, a project as a modal over them.
         // An empty app keeps the welcome screen below — there is nothing to
-        // navigate between yet.
+        // navigate between yet. An open graph replaces the tabs (it has its
+        // own Back button).
         <MobileTabShell projects={projects} />
       ) : (
         <div

@@ -7,6 +7,7 @@ import {
 } from 'react'
 import {
   AlertTriangle,
+  ChevronLeft,
   FileText,
   Folder,
   GitBranch,
@@ -25,6 +26,7 @@ import {
 } from '@/components/toolbar/toolbar-slots'
 import { ToolbarPaletteSearch } from '@/components/toolbar/ToolbarSearchField'
 import { Button } from '@/components/ui/button'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import {
   useCommitGraph,
@@ -72,6 +74,7 @@ export function GraphView({ graphId }: { graphId: string }) {
   const { data: detail, error, isLoading } = useGraph(graphId)
   const { data: changes } = useGraphChanges(graphId)
   const hasToolbar = useHasWindowToolbar()
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<GraphTab>('outline')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const unseen = useMemo(() => unseenNodeIds(changes), [changes])
@@ -93,17 +96,22 @@ export function GraphView({ graphId }: { graphId: string }) {
     />
   ) : null
 
-  if (!detail) {
+  // A failed refetch keeps the last good data: show the error instead, or a
+  // missing or broken file would still look editable.
+  if (!detail || error) {
     return (
       <div
         className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
         data-testid="graph-view"
       >
         {toolbar}
-        {isLoading
-          ? 'Loading graph…'
-          : `Could not load the graph. ${error ?? ''}`}
-        {!isLoading && <RemoveGraphButton graphId={graphId} />}
+        {isMobile && <MobileBackButton />}
+        <p data-testid="graph-load-error" className="max-w-xl text-center">
+          {!error && isLoading
+            ? 'Loading graph…'
+            : `Could not load the graph. ${error ?? ''}`}
+        </p>
+        {(error || !isLoading) && <RemoveGraphButton graphId={graphId} />}
       </div>
     )
   }
@@ -124,6 +132,7 @@ export function GraphView({ graphId }: { graphId: string }) {
       data-testid="graph-view"
     >
       {toolbar}
+      {isMobile && <MobileBackButton />}
       <GraphHeader summary={detail.summary} />
       <div
         role="tablist"
@@ -214,10 +223,11 @@ function GraphHeader({ summary }: { summary: GraphSummary }) {
 
   return (
     <header className="flex shrink-0 flex-col gap-2 px-6 pt-5 pb-3">
-      <div className="flex items-center gap-2">
+      {/* Wraps on a phone, so the buttons never squeeze the title away. */}
+      <div className="flex flex-wrap items-center gap-2">
         <Workflow className="size-5 shrink-0" aria-hidden="true" />
         <GraphTitleField graphId={summary.id} title={summary.title} />
-        <Chip>{summary.graphType}</Chip>
+        <GraphTypeField graphId={summary.id} graphType={summary.graphType} />
         <span className="flex-1" />
         {summary.locationKind !== 'folder' && (
           <Button
@@ -343,6 +353,71 @@ function GraphTitleField({
       }}
       className="min-w-0 rounded bg-transparent text-xl font-semibold outline-none ring-1 ring-ring"
     />
+  )
+}
+
+/** The graph type chip; click to edit, saved on blur or Enter. */
+function GraphTypeField({
+  graphId,
+  graphType,
+}: {
+  graphId: string
+  graphType: string
+}) {
+  const updateGraph = useUpdateGraph()
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = () => {
+    const trimmed = draft?.trim() ?? ''
+    setDraft(null)
+    if (trimmed !== graphType.trim()) {
+      updateGraph.mutate({ graphId, graphType: trimmed })
+    }
+  }
+
+  if (draft === null) {
+    return (
+      <button
+        type="button"
+        onClick={() => setDraft(graphType)}
+        title="Change type"
+        data-testid="graph-type"
+        className="inline-flex h-6 max-w-72 items-center rounded-full border px-2 text-xs text-muted-foreground hover:bg-accent/50"
+      >
+        {graphType || 'no type'}
+      </button>
+    )
+  }
+  return (
+    <input
+      autoFocus
+      aria-label="Graph type"
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(null)
+      }}
+      className="h-6 w-32 rounded-full bg-transparent px-2 text-xs outline-none ring-1 ring-ring"
+    />
+  )
+}
+
+/** Phone: no sidebar or toolbar to leave the graph by. */
+function MobileBackButton() {
+  return (
+    <div className="flex shrink-0 px-3 pt-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => useUIStore.getState().setActiveGraphId(null)}
+      >
+        <ChevronLeft className="size-4" aria-hidden="true" />
+        Back
+      </Button>
+    </div>
   )
 }
 

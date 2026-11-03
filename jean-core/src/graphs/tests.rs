@@ -738,6 +738,24 @@ async fn location_detection_and_commit() {
     assert!(out.contains("graph: update Plan"), "{out}");
     assert!(out.contains("docs/roadmap.yml"));
     assert!(!out.contains("other.txt"), "other staged files stay out");
+
+    // Through a symlinked folder (/tmp → /private/tmp), the root keeps the
+    // spelling of the path, so the UI can show the path relative to it.
+    #[cfg(unix)]
+    {
+        let link = temp.path().join("link");
+        std::os::unix::fs::symlink(&repo, &link).unwrap();
+        let linked = link.join("docs/roadmap.yml").to_string_lossy().to_string();
+        let info = get_graph_location_info(app.clone(), linked).await.unwrap();
+        assert_eq!(info.repo_root, Some(link.to_string_lossy().to_string()));
+        assert_eq!(info.location_kind, GraphLocationKind::ProjectRepo);
+    }
+
+    // A second commit with no change says so instead of a bare git failure.
+    let err = commit_graph(app.clone(), s.id.clone(), None)
+        .await
+        .unwrap_err();
+    assert_eq!(err, "Nothing to commit: docs/roadmap.yml has no changes");
 }
 
 // ============================================================================

@@ -35,12 +35,21 @@ fn canonical(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// The repo root, spelled like `path` (git resolves symlinks such as
+/// /tmp → /private/tmp; the UI strips the root off the path).
 pub fn repo_root(path: &Path) -> Option<PathBuf> {
     let dir = existing_dir(path)?;
-    git(&dir, &["rev-parse", "--show-toplevel"])
+    let root = git(&dir, &["rev-parse", "--show-toplevel"])
         .ok()
         .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
+        .map(PathBuf::from)?;
+    let root_canon = canonical(&root);
+    Some(
+        dir.ancestors()
+            .find(|a| canonical(a) == root_canon)
+            .map(Path::to_path_buf)
+            .unwrap_or(root),
+    )
 }
 
 fn origin_default_branch(root: &Path) -> Option<String> {
@@ -115,6 +124,10 @@ pub fn commit_file(path: &Path, message: &str) -> Result<String, String> {
         .unwrap_or(&canon)
         .to_string_lossy()
         .to_string();
+    // git prints "nothing to commit" on stdout only; say it plainly instead.
+    if git(&root, &["status", "--porcelain", "--", &file])?.is_empty() {
+        return Err(format!("Nothing to commit: {file} has no changes"));
+    }
     git(&root, &["add", "--", &file])?;
     git(&root, &["commit", "-m", message, "--only", "--", &file])?;
     git(&root, &["rev-parse", "HEAD"])
