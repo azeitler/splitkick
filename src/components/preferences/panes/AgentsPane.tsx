@@ -6,6 +6,16 @@ import {
   PERMISSION_DESCRIPTIONS,
 } from '@/components/graphs/agent-utils'
 import { ServesPicker } from '@/components/graphs/ServesPicker'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,8 +56,8 @@ function newProfile(): AgentProfile {
 
 /**
  * Settings → Agents (mockup screen 5c): saved agent profiles
- * (`AppPreferences.agent_profiles`). Edits apply to sessions started after
- * the save.
+ * (`AppPreferences.agent_profiles`). The persona is read when a message is
+ * sent, so an edit reaches every session of the agent from its next message.
  */
 export function AgentsPane() {
   const { data: preferences } = usePreferences()
@@ -153,6 +163,7 @@ function AgentEditor({
   onDelete: () => void
 }) {
   const [draft, setDraft] = useState(profile)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const update = (patch: Partial<AgentProfile>) =>
     setDraft(current => ({ ...current, ...patch }))
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile)
@@ -323,15 +334,35 @@ function AgentEditor({
           Start session…
         </Button>
         <span className="flex-1" />
-        <Button type="button" variant="ghost" onClick={onDelete}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setConfirmDelete(true)}
+        >
           <Trash2 className="size-4" aria-hidden="true" />
           Delete
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Edits apply to sessions started after saving. Running sessions keep the
-        persona they started with.
+        Edits reach every session of this agent from its next message: the
+        persona is read when a message is sent. A session keeps the permission
+        it was started with.
       </p>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete agent “{profile.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sessions started from it stay. They lose its persona and badge,
+              and keep the permission they were started with.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

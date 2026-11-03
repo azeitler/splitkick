@@ -1,9 +1,14 @@
 # Graph layer: exhaustive e2e (all branches and states)
 
-- [ ] A `graphs-files.spec.ts`: locations, open/remove/missing/invalid, outside edits, unknown fields, branches, commit, sidebar, navigation, phone.
-- [ ] B `graphs-nodes.spec.ts`: states, properties, relations (all kinds, cross-graph), attachments, derived values, delete, Dependencies, history.
-- [ ] C `graphs-agents.spec.ts`: agent profiles, start dialog, persona in prompt, MCP tool x permission matrix, create_session, requests (all answers), review/revert, session panel, badges.
-- [ ] Full local suite green, check:all, commit.
+- [x] A `graphs-files.spec.ts`: locations, open/remove/missing/invalid, outside edits, unknown fields, branches, commit, sidebar, navigation, phone.
+- [x] B `graphs-nodes.spec.ts`: states, properties, relations (all kinds, cross-graph), attachments, derived values, delete, Dependencies, history.
+- [x] C `graphs-agents.spec.ts`: agent profiles, start dialog, persona in prompt, MCP tool x permission matrix, create_session, requests (all answers), review/revert, session panel, badges.
+- [x] Full local suite green, check:all, commit.
+
+## Review
+
+- Specs: `graphs` 7, `graphs-files` 13, `graphs-nodes` 13, `graphs-agents` 10. Full local suite 50/50 (4.1 min), no traces in the real home. check:all green, clippy 1.99.1 green.
+- 15 product bugs found and fixed (see commits). Not coverable: native file pickers, non-Claude backends (stub CLI only), a real LLM agent.
 
 # Graph layer, all phases (#78, #79)
 

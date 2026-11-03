@@ -63,14 +63,21 @@ describe('AgentsPane', () => {
       ],
     })
     expect(
-      screen.getByText(/Edits apply to sessions started after saving/)
+      screen.getByText(/Edits reach every session of this agent/)
     ).toBeInTheDocument()
   })
 
-  it('deletes the selected agent', async () => {
+  it('deletes the selected agent only after the confirmation', async () => {
     mocks.profiles = [keeper]
     render(<AgentsPane />)
     await userEvent.click(screen.getByRole('button', { name: /Delete/ }))
+    const confirm = screen.getByRole('alertdialog')
+    expect(confirm).toHaveTextContent('Delete agent “Vision keeper”?')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(mocks.patch).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /Delete/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(mocks.patch).toHaveBeenCalledWith({ agent_profiles: [] })
   })
 })

@@ -288,5 +288,21 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   (A→B→A in file order: B is step 1 above A, A is step 2); both stay blocked.
   A graph without nodes shows "No nodes yet.". Opening another graph returns
   to the Outline tab.
-- **E2E:** `e2e/local/tests/graphs.spec.ts`, `graphs-files.spec.ts` and
-  `graphs-nodes.spec.ts` (see `e2e-local.md`).
+- **Agents (asserted in `graphs-agents.spec.ts`):**
+  - The persona and the agent name are read from the profile when a message
+    is sent, not copied into the session: an edit in Settings → Agents reaches
+    every session of that agent from its next message (the pane says so).
+  - The start dialog always writes `graph_permission` (the chosen level, ≤ the
+    profile's), so a session keeps its level when the profile changes later.
+    MCP `create_session` with `agentId` writes the profile's level.
+  - Deleting a profile (with confirmation) keeps its sessions and their
+    `agent_id`: badges and the header chip disappear, the graph panel stays
+    (serves or `agent_id` keep it), at the session's own `graph_permission`.
+  - The session graph panel's permission select is the user acting: it may
+    set any level, also above the profile's.
+  - A request whose session was deleted still shows its session name;
+    answering it skips the follow-up.
+  - `chat-store.graphPanelVisible` is one switch for all sessions: it stays
+    on across session switches and is ignored by sessions without a panel.
+- **E2E:** `e2e/local/tests/graphs.spec.ts`, `graphs-files.spec.ts`,
+  `graphs-nodes.spec.ts` and `graphs-agents.spec.ts` (see `e2e-local.md`).

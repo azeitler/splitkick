@@ -318,7 +318,7 @@ function WorkerView({
               aria-label="Change node"
               value=""
               onChange={e => changeNode(e.target.value)}
-              className="h-8 w-40"
+              className="h-8 w-40 py-0"
             >
               <NativeSelectOption value="">Change node…</NativeSelectOption>
               {detail.nodes
