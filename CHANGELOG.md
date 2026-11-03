@@ -7,6 +7,30 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Mermaid diagrams.** ` ```mermaid ` blocks in chat messages, plans and
+  Markdown file previews show as diagrams, in the light or dark theme. While
+  a message streams, the block shows its code until it is complete. Each
+  diagram can show its source, open full screen with zoom and pan, and copy
+  its source, SVG or PNG. Invalid code shows the source with the error.
+  Mermaid loads only when a diagram is shown. (#74)
+- **Data charts in chat.** A ` ```vega-lite ` code block (a Vega-Lite
+  JSON spec with inline data) shows as a chart: bar, line, area, scatter and
+  the other Vega-Lite marks. The chart follows the light or dark theme. Its
+  toolbar shows the source, opens it full screen and copies the source, an
+  SVG or a PNG. An invalid spec shows the source and the error. Charts never
+  load data from the network, and the chart code loads only when a chart
+  appears. (#75)
+- **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
+  write open rendered in the file viewer (from tool calls, the file browser,
+  file links and attached file pills), with **Source**, **Reload** and
+  **Open in Browser**. Pasted `.svg`/`.html` attachments and ` ```html ` /
+  ` ```svg ` blocks in chat get a **Preview** button. HTML runs in a sandboxed
+  frame with no network, no app storage and no Tauri access; SVG shows as an
+  image, so its scripts never run. Works in the app, Web Access and on
+  mobile. (#76)
+
 ### Changed
 
 - **The MCP socket is now `splitkick-mcp.sock`.** Dev builds use
@@ -28,8 +52,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   development build had one; a test build such as `app.splitkick.desktop.rel76`
   opened the installed app's data folder, its sessions and its MCP socket. Now
   every `app.splitkick.desktop…` identifier uses the folder of the same name.
-### Fixed
-
 - **A chat no longer freezes on a text block while the window is hidden.**
   When the Splitkick window was behind another window (for example Chrome
   during Playwright runs), a text block was put after the tool calls that
@@ -38,33 +60,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   chat also loads the turn from disk again when older prompts were loaded by
   scrolling up; before, it kept its own copy, so missing tool calls and a
   pending question did not come back until a restart. (#73)
-### Added
-
-- **Mermaid diagrams.** ` ```mermaid ` blocks in chat messages, plans and
-  Markdown file previews show as diagrams, in the light or dark theme. While
-  a message streams, the block shows its code until it is complete. Each
-  diagram can show its source, open full screen with zoom and pan, and copy
-  its source, SVG or PNG. Invalid code shows the source with the error.
-  Mermaid loads only when a diagram is shown. (#74)
-### Added
-
-- **Data charts in chat.** A ```` ```vega-lite ```` code block (a Vega-Lite
-  JSON spec with inline data) shows as a chart: bar, line, area, scatter and
-  the other Vega-Lite marks. The chart follows the light or dark theme. Its
-  toolbar shows the source, opens it full screen and copies the source, an
-  SVG or a PNG. An invalid spec shows the source and the error. Charts never
-  load data from the network, and the chart code loads only when a chart
-  appears. (#75)
-### Added
-
-- **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
-  write open rendered in the file viewer (from tool calls, the file browser,
-  file links and attached file pills), with **Source**, **Reload** and
-  **Open in Browser**. Pasted `.svg`/`.html` attachments and ` ```html ` /
-  ` ```svg ` blocks in chat get a **Preview** button. HTML runs in a sandboxed
-  frame with no network, no app storage and no Tauri access; SVG shows as an
-  image, so its scripts never run. Works in the app, Web Access and on
-  mobile. (#76)
 
 ## [1.2.2] - 2026-10-29
 
