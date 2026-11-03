@@ -5822,7 +5822,7 @@ fn home_relative_tail(path: &str) -> Option<&str> {
 /// backend the file is in the backend's home, not the client's. A path that
 /// does not start with `~` comes back unchanged. When there is no home
 /// directory, the path is returned as written and simply will not exist.
-fn expand_home(path: &str) -> PathBuf {
+pub(crate) fn expand_home(path: &str) -> PathBuf {
     match (home_relative_tail(path), dirs::home_dir()) {
         (Some(""), Some(home)) => home,
         (Some(tail), Some(home)) => home.join(tail),

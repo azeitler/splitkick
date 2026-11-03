@@ -128,7 +128,7 @@ type GraphActor =
   | { kind: 'session'; sessionId: string; sessionName: string; agentId: string | null }
 interface GraphChange {
   id: string; graphId: string; nodeId: string | null; at: number   // ms epoch
-  actor: GraphActor; action: string   // node.create | node.update | node.state | node.delete | graph.update | request.answer | revert
+  actor: GraphActor; action: string   // node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | revert
   summary: string; why: string | null
   before: GraphNode | null; after: GraphNode | null
   revertedBy: string | null; seen: boolean   // seen: user's own changes are always seen
@@ -215,6 +215,9 @@ system prompt of every backend through one helper
 | `set_node_state` | write / manage | `proposed` needs write; `committed`, `done`, `dropped` need manage; `why` |
 | `send_request` | write | `graphId, nodeId, kind, title, body?, evidence?, options?, blocker?` |
 | `set_serves` | read | `serves: string[]`, own session only |
+| `list_requests` | read | `graphId, status? (open \| answered \| all, default all; answered = accepted, sent-back, answered), mine?, nodeId?` — newest first, with `answer`/`answeredAt`; empty `body`/`options`/`blocker` left out |
+| `list_changes` | read | `graphId, nodeId?, limit? (30, max 200), since? (ms), withSnapshots?` — newest first; actor `you` or session name + `agentId`; `revertedBy`, `revertedByUser`; no `before`/`after` unless `withSnapshots`; never changes seen |
+| `create_graph` | manage | `title, graphType, why` and either `path` (absolute `.yml`/`.yaml`, `~/` expanded) or `projectId` + `relativePath?` (default `.splitkick/graphs/<slug>.yml`, slug as the UI's `slugify`); logs `graph.create` with the session as actor |
 | `create_session` (existing) | — | new optional `serves`, `agentId` (agentId needs manage) |
 
 Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).

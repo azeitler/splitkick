@@ -408,6 +408,10 @@ function ChangeRow({
 }) {
   const revert = useRevertGraphChange()
   const reverted = change.revertedBy !== null
+  // Only node changes carry snapshots; graph-level ones (create, rename,
+  // send-back) cannot be reverted, so they get no button.
+  const revertable =
+    change.nodeId !== null && (change.before !== null || change.after !== null)
   return (
     <li className="flex gap-2 px-3 py-2" data-testid="graph-change">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -430,17 +434,19 @@ function ChangeRow({
           </span>
         </span>
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="shrink-0"
-        disabled={reverted || revert.isPending}
-        onClick={() => revert.mutate({ graphId, changeId: change.id })}
-      >
-        <Undo2 className="size-4" aria-hidden="true" />
-        {reverted ? 'reverted' : 'Revert'}
-      </Button>
+      {(revertable || reverted) && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="shrink-0"
+          disabled={reverted || revert.isPending}
+          onClick={() => revert.mutate({ graphId, changeId: change.id })}
+        >
+          <Undo2 className="size-4" aria-hidden="true" />
+          {reverted ? 'reverted' : 'Revert'}
+        </Button>
+      )}
     </li>
   )
 }

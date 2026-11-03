@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
 } from 'node:fs'
 import { join } from 'node:path'
@@ -25,6 +26,7 @@ import {
   openSessionMenu,
   runCommand,
   send,
+  sessionTab,
 } from './ui'
 
 // Agents, permissions, MCP graph tools, requests, review, the session graph
@@ -1327,7 +1329,9 @@ test('MCP create_session: agent, permission and serves from a manage session; re
   expect(sessionsNamed(a, ghost)).toEqual([])
   expect(sessionsNamed(a, badServes)).toEqual([])
 
-  // A write session may not start agent sessions.
+  // A write session may not start agent sessions. The spawned session opens
+  // a moment after the call; wait for it, or it takes over after we switch.
+  await expect(sessionTab(page, child)).toBeVisible()
   await goToSession(page, writerName)
   await runCalls(page, a, writerId, [
     {
@@ -2160,4 +2164,184 @@ test('fork of an agent session keeps agent, serves and permission', async ({
   await expect(panel.getByTestId('session-graph-node-card')).toContainText(
     'Forked work'
   )
+})
+
+// ===========================================================================
+// 11. Follow-up tools: create_graph, list_requests, list_changes
+// ===========================================================================
+
+test('MCP follow-up tools: create_graph in a project, refused for read; list_requests and list_changes see the user', async ({
+  page,
+}) => {
+  const { a, alphaA } = readEnv()
+  const tag = uid()
+  const g = await createGraph(a, `Follow-up ${tag}`) // setup
+  const asked = await addNode(a, g.id, 'Asked node') // setup
+  const edited = await addNode(a, g.id, 'Edited node') // setup
+  const lead = await addAgent(a, { name: `Lead ${tag}`, permission: 'manage' }) // setup
+  const reader = await addAgent(a, {
+    name: `Reader ${tag}`,
+    permission: 'read',
+  }) // setup
+  const writer = await addAgent(a, {
+    name: `Asker ${tag}`,
+    permission: 'write',
+  }) // setup
+  const leadName = `Lead session ${tag}`
+  const leadId = await agentSession(a, leadName, { agentId: lead.id }) // setup
+  const readerName = `Reader session ${tag}`
+  const readerId = await agentSession(a, readerName, { agentId: reader.id }) // setup
+  const askerName = `Asker session ${tag}`
+  const askerId = await agentSession(a, askerName, { agentId: writer.id }) // setup
+
+  await openWithSidebar(page)
+
+  // A manage session creates a graph inside the alpha repo (default path).
+  const title = `Agent plan ${tag}`
+  await goToSession(page, leadName)
+  const [created] = await runCalls(page, a, leadId, [
+    {
+      tool: 'create_graph',
+      args: {
+        title,
+        graphType: 'plan',
+        projectId: alphaA.projectId,
+        why: 'E2E why: a plan',
+      },
+      expect: 'ok',
+    },
+  ])
+  const made = JSON.parse(created!.text) as {
+    id: string
+    path: string
+    locationKind: string
+  }
+  registered.push(made.id)
+  const alpha = join(a.repos, 'alpha')
+  expect(made.path).toBe(join(alpha, `.splitkick/graphs/agent-plan-${tag}.yml`))
+  expect(made.locationKind).toBe('project-repo')
+  expect(existsSync(made.path)).toBe(true)
+  await expect(graphRow(page, made.id)).toContainText(title)
+  await openGraph(page, { id: made.id, title, path: made.path })
+  const log = await changes(a, made.id)
+  expect(log).toHaveLength(1)
+  expect(log[0]).toMatchObject({
+    action: 'graph.create',
+    why: 'E2E why: a plan',
+    actor: { kind: 'session', sessionId: leadId },
+  })
+
+  // A read session is refused and writes nothing.
+  const refusedPath = join(a.root, `ga-${tag}-refused`, 'graph.yml')
+  await goToSession(page, readerName)
+  await runCalls(page, a, readerId, [
+    {
+      tool: 'create_graph',
+      args: {
+        title: `Refused ${tag}`,
+        graphType: 'plan',
+        path: refusedPath,
+        why: 'E2E why: refused',
+      },
+      expect:
+        "create_graph needs graph permission 'manage', but this session has 'read'",
+    },
+  ])
+  expect(existsSync(refusedPath)).toBe(false)
+
+  // A write session asks a decision and changes another node.
+  await goToSession(page, askerName)
+  await runCalls(page, a, askerId, [
+    {
+      tool: 'send_request',
+      args: {
+        graphId: g.id,
+        nodeId: asked,
+        kind: 'decision',
+        title: 'Which colour?',
+        options: ['Red', 'Blue'],
+      },
+      expect: 'ok',
+    },
+    {
+      tool: 'update_node',
+      args: {
+        graphId: g.id,
+        nodeId: edited,
+        title: 'Edited by agent',
+        why: 'E2E why: rename',
+      },
+      expect: 'ok',
+    },
+  ])
+
+  // The user answers the decision and reverts the rename in Review.
+  await openGraph(page, g)
+  await page.getByTestId('graph-tab-review').click()
+  const review = page.getByTestId('graph-review')
+  await review
+    .getByTestId('graph-request')
+    .filter({ hasText: 'Which colour?' })
+    .getByRole('button', { name: 'Blue' })
+    .click()
+  await expect(
+    review.getByTestId('graph-request').filter({ hasText: 'Which colour?' })
+  ).toHaveCount(0)
+  const rename = review
+    .getByTestId('graph-change')
+    .filter({ hasText: 'E2E why: rename' })
+  await rename.getByRole('button', { name: 'Revert' }).click()
+  await expect(rename.getByRole('button', { name: 'reverted' })).toBeDisabled()
+  await expectNode(g.path, edited, n => n?.title === 'Edited node')
+  const seenBefore = (await changes(a, g.id)).map(c => [c.id, c.seen])
+
+  // The asking session sees the answer and the revert.
+  await goToSession(page, askerName)
+  const [requests, log2] = await runCalls(page, a, askerId, [
+    {
+      tool: 'list_requests',
+      args: { graphId: g.id, mine: true, status: 'answered' },
+      expect: 'ok',
+    },
+    {
+      tool: 'list_changes',
+      args: { graphId: g.id, nodeId: edited },
+      expect: 'ok',
+    },
+  ])
+  const answered = JSON.parse(requests!.text).requests as Record<
+    string,
+    unknown
+  >[]
+  expect(answered).toHaveLength(1)
+  expect(answered[0]).toMatchObject({
+    nodeRef: `${g.id}#${asked}`,
+    nodeTitle: 'Asked node',
+    kind: 'decision',
+    title: 'Which colour?',
+    status: 'answered',
+    answer: 'Blue',
+    from: askerName,
+  })
+  const nodeLog = JSON.parse(log2!.text).changes as Record<string, unknown>[]
+  const agentRename = nodeLog.find(c => c.why === 'E2E why: rename')
+  expect(agentRename).toMatchObject({
+    nodeRef: `${g.id}#${edited}`,
+    actor: askerName,
+    agentId: writer.id,
+    action: 'node.update',
+    revertedByUser: true,
+  })
+  expect(agentRename).not.toHaveProperty('before')
+  expect(nodeLog[0]).toMatchObject({
+    id: agentRename!.revertedBy,
+    actor: 'you',
+    action: 'revert',
+  })
+  // Reading the log does not mark anything as seen.
+  expect((await changes(a, g.id)).map(c => [c.id, c.seen])).toEqual(
+    seenBefore
+  )
+  await shot(page, 'follow-up-tools')
+  rmSync(made.path, { force: true }) // cleanup: the fixture repo is shared
 })
