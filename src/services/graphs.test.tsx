@@ -130,6 +130,47 @@ describe('graph services', () => {
     })
   })
 
+  it('puts a node patch into the cache at once and runs writes in order', async () => {
+    const key = graphsQueryKeys.detail('g1')
+    client.setQueryData(key, {
+      nodes: [
+        { id: 'n1', title: 'A', relations: [{ kind: 'part-of', target: 'p' }] },
+        { id: 'n2', title: 'B', relations: [] },
+      ],
+    })
+    const pending: (() => void)[] = []
+    mocks.invoke.mockImplementation(
+      () => new Promise(done => pending.push(() => done(null)))
+    )
+    const update = renderHook(() => useUpdateGraphNode(), { wrapper })
+    act(() => {
+      update.result.current.mutate({
+        graphId: 'g1',
+        nodeId: 'n1',
+        patch: { relations: [], title: undefined },
+      })
+      update.result.current.mutate({
+        graphId: 'g1',
+        nodeId: 'n1',
+        patch: { title: 'A2' },
+      })
+    })
+    // Both patches are in the cache before the first write returns ...
+    await waitFor(() =>
+      expect(client.getQueryData(key)).toMatchObject({
+        nodes: [
+          { id: 'n1', title: 'A2', relations: [] },
+          { id: 'n2', title: 'B' },
+        ],
+      })
+    )
+    // ... but the second write waits for the first.
+    expect(mocks.invoke).toHaveBeenCalledTimes(1)
+    act(() => pending[0]?.())
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2))
+    act(() => pending[1]?.())
+  })
+
   it('refreshes the session caches after a session command', async () => {
     mocks.invoke.mockResolvedValue(null)
     const invalidate = vi.spyOn(client, 'invalidateQueries')

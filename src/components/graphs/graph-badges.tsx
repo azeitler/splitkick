@@ -151,3 +151,15 @@ export function UnseenDot() {
     />
   )
 }
+
+/** A cross-graph ref whose graph or node does not exist. */
+export function NotFound() {
+  return (
+    <span
+      data-testid="graph-ref-not-found"
+      className="shrink-0 text-xs text-red-500"
+    >
+      not found
+    </span>
+  )
+}

@@ -44,7 +44,12 @@ import {
 } from '@/types/graphs'
 import { useUIStore } from '@/store/ui-store'
 import { AgentBadge } from './AgentBadge'
-import { BlockedBadge, NodeStateChip, NodeStateGlyph } from './graph-badges'
+import {
+  BlockedBadge,
+  NodeStateChip,
+  NodeStateGlyph,
+  NotFound,
+} from './graph-badges'
 import { attachmentUrl, INCOMING_LABELS, resolveRef } from './graph-utils'
 
 export const ATTACHMENT_KINDS = [
@@ -350,6 +355,9 @@ function DescriptionField({
       onBlur={() => {
         if (draft !== value) onSave(draft)
       }}
+      onKeyDown={e => {
+        if (e.key === 'Escape') setDraft(value)
+      }}
       className="min-h-20 text-sm"
     />
   )
@@ -387,8 +395,13 @@ function PropertiesEditor({
   const add = () => {
     const key = newKey.trim()
     if (!key) return
-    const rest = properties.filter(([k]) => k !== key)
-    onChange([...rest, [key, newValue.trim()]])
+    const entry: [string, string] = [key, newValue.trim()]
+    // An existing key keeps its place.
+    onChange(
+      properties.some(([k]) => k === key)
+        ? properties.map(p => (p[0] === key ? entry : p))
+        : [...properties, entry]
+    )
     setNewKey('')
     setNewValue('')
   }
@@ -409,6 +422,9 @@ function PropertiesEditor({
             aria-label={`Property ${key}`}
             defaultValue={value}
             className="h-7 flex-1 text-sm"
+            onKeyDown={e => {
+              if (e.key === 'Escape') e.currentTarget.value = value
+            }}
             onBlur={e => {
               const next = e.target.value.trim()
               if (next === value) return
@@ -518,6 +534,7 @@ function RelationsEditor({
                 ↗ {resolved.graphTitle}
               </span>
             )}
+            {resolved.notFound && <NotFound />}
             <RemoveButton
               label={`Remove ${relation.kind} ${resolved.title}`}
               onClick={() =>

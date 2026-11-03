@@ -234,6 +234,21 @@ fn poll_once(app: &AppHandle) -> bool {
     changed
 }
 
+/// Sessions that ran at the last poll (`chat::registry`), sorted.
+static RUNNING_SESSIONS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// Whether the set of running sessions changed since the last call. A node's
+/// `active` badge is derived from it, and a run starting or ending does not
+/// touch any graph file.
+fn running_sessions_changed(current: Vec<String>) -> bool {
+    let mut known = RUNNING_SESSIONS.lock().unwrap();
+    if *known == current {
+        return false;
+    }
+    *known = current;
+    true
+}
+
 /// Start the 2 s mtime poller once per process.
 pub fn ensure_poller(app: &AppHandle) {
     // Tests use throwaway data dirs; a process-wide poller would outlive them.
@@ -247,7 +262,10 @@ pub fn ensure_poller(app: &AppHandle) {
             .name("graph-poller".into())
             .spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(2));
-                if poll_once(&app) {
+                let running = running_sessions_changed(
+                    crate::chat::registry::actively_managed_session_ids(),
+                );
+                if poll_once(&app) || running {
                     emit_graphs_changed(&app, false);
                 }
             });
@@ -260,4 +278,9 @@ pub fn ensure_poller(app: &AppHandle) {
 #[cfg(test)]
 pub(super) fn poll_once_for_test(app: &AppHandle) -> bool {
     poll_once(app)
+}
+
+#[cfg(test)]
+pub(super) fn running_sessions_changed_for_test(current: Vec<String>) -> bool {
+    running_sessions_changed(current)
 }

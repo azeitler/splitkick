@@ -268,5 +268,25 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   does not change the file's mtime, so the poller does not report it; the
   warning shows on the next load of the graph list. `commit_graph` with no
   change fails with "Nothing to commit: <file> has no changes".
-- **E2E:** `e2e/local/tests/graphs.spec.ts` and `graphs-files.spec.ts` (see
-  `e2e-local.md`).
+- **Progress** counts direct `part-of` children only: a grandchild counts for
+  its own parent, not for the group above it.
+- **Active** follows the run registry: the poller also compares the set of
+  running sessions (`chat::registry::actively_managed_session_ids`) and sends
+  `cache:invalidate` `["graphs"]` when it changes, so the badge comes and goes
+  within ~2 s without a graph write.
+- **Node edits in the UI** (`useUpdateGraphNode`) go into the cached graph at
+  once and run one after the other (mutation scope): each list in a patch
+  replaces the stored one, so a second click before the refetch must build on
+  the first.
+- **Properties:** a key is a label; adding an existing key replaces its value
+  in place (rename = remove + add). Escape restores the title, description
+  and a property value; the add-node row closes on Escape.
+- **Not found:** a cross-graph ref whose graph or node does not exist shows
+  "not found" (detail and outline). A same-graph id that does not exist reads
+  as free text (it blocks only as `blocked-by`).
+- **Dependencies:** a `depends-on` cycle is broken at the node seen again
+  (A→B→A in file order: B is step 1 above A, A is step 2); both stay blocked.
+  A graph without nodes shows "No nodes yet.". Opening another graph returns
+  to the Outline tab.
+- **E2E:** `e2e/local/tests/graphs.spec.ts`, `graphs-files.spec.ts` and
+  `graphs-nodes.spec.ts` (see `e2e-local.md`).

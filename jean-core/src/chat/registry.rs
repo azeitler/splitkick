@@ -543,6 +543,24 @@ pub fn is_session_actively_managed(session_id: &str) -> bool {
         || lock_recover(&CODEX_TURN_REGISTRY, "CODEX_TURN_REGISTRY").contains_key(session_id)
 }
 
+/// Every session `is_session_actively_managed` reports, sorted.
+pub fn actively_managed_session_ids() -> Vec<String> {
+    // One lock at a time.
+    let mut ids: Vec<String> = lock_recover(&PROCESS_REGISTRY, "PROCESS_REGISTRY")
+        .keys()
+        .cloned()
+        .collect();
+    ids.extend(lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS").keys().cloned());
+    ids.extend(
+        lock_recover(&CODEX_TURN_REGISTRY, "CODEX_TURN_REGISTRY")
+            .keys()
+            .cloned(),
+    );
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {

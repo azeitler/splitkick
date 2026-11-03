@@ -144,11 +144,48 @@ export const useCreateGraphNode = () =>
     GraphNode
   >('create_graph_node', 'Could not add the node')
 
-export const useUpdateGraphNode = () =>
-  useGraphCommand<
-    { graphId: string; nodeId: string; patch: GraphNodePatch; why?: string },
-    GraphNode
-  >('update_graph_node', 'Could not update the node')
+/**
+ * A patch's lists replace the node's lists, and the detail builds the next
+ * list from the cached node. So the patch goes into the cache at once and
+ * writes run one after the other: a second edit before the refetch must not
+ * bring back what the first one removed.
+ */
+export function useUpdateGraphNode() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: {
+      graphId: string
+      nodeId: string
+      patch: GraphNodePatch
+      why?: string
+    }) => invoke<GraphNode>('update_graph_node', args),
+    scope: { id: 'update_graph_node' },
+    onMutate: async ({ graphId, nodeId, patch }) => {
+      const key = graphsQueryKeys.detail(graphId)
+      // A refetch in flight would put the old node back.
+      await queryClient.cancelQueries({ queryKey: key })
+      const fields = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => value !== undefined)
+      ) as GraphNodePatch
+      queryClient.setQueryData<GraphDetail>(key, old =>
+        old
+          ? {
+              ...old,
+              nodes: old.nodes.map(node =>
+                node.id === nodeId ? { ...node, ...fields } : node
+              ),
+            }
+          : old
+      )
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: graphsQueryKeys.all })
+    },
+    onError: error => {
+      toast.error('Could not update the node', { description: String(error) })
+    },
+  })
+}
 
 export const useDeleteGraphNode = () =>
   useGraphCommand<{ graphId: string; nodeId: string; why?: string }, null>(
