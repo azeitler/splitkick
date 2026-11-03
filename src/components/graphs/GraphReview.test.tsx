@@ -192,7 +192,7 @@ describe('GraphReview', () => {
 
   it('reverts a change, and not one that is reverted already', async () => {
     renderReview([
-      change({ id: 'c1' }),
+      change({ id: 'c1', after: node('n76', 'HTML and SVG preview') }),
       change({ id: 'c2', nodeId: 'n74', revertedBy: 'c9' }),
     ])
     const rows = screen.getAllByTestId('graph-change')
@@ -203,5 +203,18 @@ describe('GraphReview', () => {
     expect(
       within(rows[1] as HTMLElement).getByRole('button', { name: /reverted/ })
     ).toBeDisabled()
+  })
+
+  it('offers no Revert for a change without a node snapshot', () => {
+    renderReview([
+      change({
+        id: 'c3',
+        nodeId: null,
+        action: 'graph.create',
+        summary: 'Created graph',
+      }),
+    ])
+    const row = screen.getByTestId('graph-change')
+    expect(within(row).queryByRole('button', { name: /Revert/ })).toBeNull()
   })
 })

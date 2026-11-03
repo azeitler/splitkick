@@ -13,8 +13,9 @@ use tauri::AppHandle;
 use crate::chat::overview::SessionOverviewOptions;
 use crate::chat::types::LabelData;
 use crate::graphs::{
-    GraphAttachment, GraphNode, GraphPermission, GraphRelation, GraphRequestKind, NewGraphNode,
-    NodeDerived, NodeState, RelationKind,
+    GraphActor, GraphAttachment, GraphChange, GraphNode, GraphPermission, GraphRelation,
+    GraphRequest, GraphRequestKind, GraphRequestStatus, NewGraphNode, NodeDerived, NodeState,
+    RelationKind,
 };
 use crate::http_server::dispatch::dispatch_command;
 use crate::http_server::EmitExt;
@@ -98,6 +99,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "set_node_state",
     "send_request",
     "set_serves",
+    "create_graph",
 ];
 const DEFAULT_MCP_DIFF_MAX_BYTES: usize = 60_000;
 const MAX_MCP_DIFF_BYTES: usize = 200_000;
@@ -417,7 +419,10 @@ fn tool_registry_graphs() -> Value {
         {"name":"update_node","description":"Change a node: title, description, properties, relations, attachments. Use set_node_state for the state. Needs write. Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"setProperties":properties,"removeProperties":{"type":"array","items":{"type":"string"}},"addRelations":relations,"removeRelations":relations,"addAttachments":attachments,"removeAttachments":attachments,"why":why},"required":["graphId","nodeId","why"],"additionalProperties":false}},
         {"name":"set_node_state","description":"Set a node's state. proposed needs write; committed, done and dropped need manage (without it, ask with send_request kind accept-done). Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"state":state,"why":why},"required":["graphId","nodeId","state","why"],"additionalProperties":false}},
         {"name":"send_request","description":"Ask the user about a node: accept-done (mark it done; list evidence) or decision (pick an option; blocker = the blocked-by text it resolves). Needs write.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"kind":{"type":"string","enum":["accept-done","decision"]},"title":{"type":"string"},"body":{"type":"string"},"evidence":{"type":"array","items":{"type":"string"}},"options":{"type":"array","items":{"type":"string"}},"blocker":{"type":"string"}},"required":["graphId","nodeId","kind","title"],"additionalProperties":false}},
-        {"name":"set_serves","description":"Set which graph nodes this session serves (replaces the list). Each entry is <graphId>#<nodeId> or <graphId> for the whole graph. Own session only.","inputSchema":{"type":"object","properties":{"serves":{"type":"array","items":{"type":"string"}}},"required":["serves"],"additionalProperties":false}}
+        {"name":"set_serves","description":"Set which graph nodes this session serves (replaces the list). Each entry is <graphId>#<nodeId> or <graphId> for the whole graph. Own session only.","inputSchema":{"type":"object","properties":{"serves":{"type":"array","items":{"type":"string"}}},"required":["serves"],"additionalProperties":false}},
+        {"name":"list_requests","description":"List the requests of a graph, newest first, with the user's answer once given. Use it to follow up on your send_request calls (mine: true). Node refs are <graphId>#<nodeId>. Needs read.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"status":{"type":"string","enum":["open","answered","all"],"default":"all","description":"answered = accepted, sent-back or answered."},"mine":{"type":"boolean","default":false,"description":"Only requests sent by this session."},"nodeId":{"type":"string"}},"required":["graphId"],"additionalProperties":false}},
+        {"name":"list_changes","description":"Read a graph's change log, newest first: who changed what and why, and which changes were reverted (revertedByUser = the user undid it). Does not mark anything as seen. Node refs are <graphId>#<nodeId>. Needs read.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":30},"since":{"type":"integer","minimum":0,"description":"Only changes at or after this time (ms since epoch)."},"withSnapshots":{"type":"boolean","default":false,"description":"Add the node before and after each change (large)."}},"required":["graphId"],"additionalProperties":false}},
+        {"name":"create_graph","description":"Create a new graph file and register it. Give either path (absolute .yml/.yaml, ~/ allowed) or projectId (file inside that project's repo, default .splitkick/graphs/<slug>.yml). Needs manage. Give a why. Returns the graph id; node refs are <graphId>#<nodeId>.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"graphType":{"type":"string","description":"One free word, for example roadmap, plan, release."},"path":{"type":"string","description":"Absolute path of the new .yml file. Not with projectId."},"projectId":{"type":"string","description":"Put the file inside this project's repo. Not with path."},"relativePath":{"type":"string","description":"With projectId: path inside the repo. Default .splitkick/graphs/<slug of title>.yml."},"why":why},"required":["title","graphType","why"],"additionalProperties":false}}
     ])
 }
 
@@ -1894,7 +1899,9 @@ async fn run_tool(
             }))
         }
         "list_graphs" | "read_graph" | "create_node" | "update_node" | "set_node_state"
-        | "send_request" | "set_serves" => run_graph_tool(app, name, &args, source).await,
+        | "send_request" | "set_serves" | "list_requests" | "list_changes" | "create_graph" => {
+            run_graph_tool(app, name, &args, source).await
+        }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
     }
 }
@@ -2642,7 +2649,273 @@ async fn run_graph_tool(
                 .map_err(ToolError::internal)?;
             Ok(json!({ "sessionId": source, "serves": serves }))
         }
+        "list_requests" => {
+            require_graph_permission(app, source, GraphPermission::Read, name)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            crate::graphs::store::graph_path(app, &graph_id).map_err(ToolError::invalid_params)?;
+            let status = optional_str(args, "status").unwrap_or_else(|| "all".to_string());
+            let keep_status: fn(GraphRequestStatus) -> bool = match status.as_str() {
+                "all" => |_| true,
+                "open" => |s| s == GraphRequestStatus::Open,
+                "answered" => |s| s != GraphRequestStatus::Open,
+                other => {
+                    return Err(ToolError::invalid_params(format!(
+                        "Unknown status '{other}': use open, answered or all"
+                    )))
+                }
+            };
+            let mine = args.get("mine").and_then(|v| v.as_bool()).unwrap_or(false);
+            let node_id = optional_str(args, "nodeId");
+            let titles = node_titles(app, &graph_id);
+            let requests: Vec<Value> =
+                crate::graphs::list_graph_requests(app.clone(), Some(graph_id.clone()))
+                    .await
+                    .map_err(ToolError::internal)?
+                    .into_iter()
+                    .filter(|r| keep_status(r.status))
+                    .filter(|r| !mine || r.from_session_id.as_deref() == Some(source))
+                    .filter(|r| node_id.as_ref().is_none_or(|n| *n == r.node_id))
+                    .map(|r| compact_request(&r, &titles))
+                    .collect();
+            Ok(json!({ "requests": requests }))
+        }
+        "list_changes" => {
+            require_graph_permission(app, source, GraphPermission::Read, name)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            crate::graphs::store::graph_path(app, &graph_id).map_err(ToolError::invalid_params)?;
+            let node_id = optional_str(args, "nodeId");
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30)
+                .clamp(1, 200) as usize;
+            let since = args.get("since").and_then(|v| v.as_u64()).unwrap_or(0);
+            let with_snapshots = args
+                .get("withSnapshots")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            // Read-only: list_changes computes `seen` but never writes it.
+            let all = crate::graphs::changes::list_changes(app, &graph_id)
+                .map_err(ToolError::internal)?;
+            let reverts_by_user: std::collections::HashSet<&str> = all
+                .iter()
+                .filter(|c| c.actor.is_user())
+                .map(|c| c.id.as_str())
+                .collect();
+            let mut matching = all
+                .iter()
+                .filter(|c| c.at >= since)
+                .filter(|c| node_id.is_none() || c.node_id == node_id);
+            let out: Vec<Value> = matching
+                .by_ref()
+                .take(limit)
+                .map(|c| compact_change(c, &reverts_by_user, with_snapshots))
+                .collect();
+            let truncated = matching.next().is_some();
+            Ok(json!({ "changes": out, "truncated": truncated }))
+        }
+        "create_graph" => {
+            require_graph_permission(app, source, GraphPermission::Manage, name)?;
+            let why = require_why(args)?;
+            let title = require_nonempty_str(args, "title")?;
+            let graph_type = require_nonempty_str(args, "graphType")?;
+            let path = new_graph_path(app, args, &title)?;
+            let summary = crate::graphs::create_graph(
+                app.clone(),
+                title.clone(),
+                graph_type.clone(),
+                path.to_string_lossy().to_string(),
+            )
+            .await
+            .map_err(ToolError::invalid_params)?;
+            crate::graphs::changes::append_change(
+                app,
+                &crate::graphs::changes::new_change(
+                    &summary.id,
+                    None,
+                    &actor(),
+                    "graph.create",
+                    format!(
+                        "Created graph \"{}\" ({})",
+                        summary.title, summary.graph_type
+                    ),
+                    Some(why),
+                    None,
+                    None,
+                ),
+            )
+            .map_err(ToolError::internal)?;
+            // create_graph emitted before the change existed: refresh unseen counts.
+            crate::graphs::emit_graphs_changed(app, false);
+            Ok(json!({
+                "id": summary.id,
+                "title": summary.title,
+                "type": summary.graph_type,
+                "path": summary.path,
+                "locationKind": summary.location_kind,
+                "projectName": summary.project_name,
+                "hint": format!(
+                    "Add nodes with create_node (graphId {}). Node refs are {}#<nodeId>.",
+                    summary.id, summary.id
+                ),
+            }))
+        }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
+    }
+}
+
+/// Node id → title of a graph; empty when the file cannot be read.
+fn node_titles(app: &AppHandle, graph_id: &str) -> HashMap<String, String> {
+    crate::graphs::store::load_graph(app, graph_id)
+        .map(|g| {
+            g.nodes
+                .iter()
+                .map(|n| (n.id.clone(), n.title.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A request for `list_requests`: empty body/options/blocker are left out.
+fn compact_request(r: &GraphRequest, titles: &HashMap<String, String>) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("id".into(), json!(r.id));
+    o.insert(
+        "nodeRef".into(),
+        json!(format!("{}#{}", r.graph_id, r.node_id)),
+    );
+    o.insert("nodeTitle".into(), json!(titles.get(&r.node_id)));
+    o.insert("kind".into(), json!(r.kind));
+    o.insert("title".into(), json!(r.title));
+    o.insert("status".into(), json!(r.status));
+    o.insert("answer".into(), json!(r.answer));
+    o.insert("answeredAt".into(), json!(r.answered_at));
+    o.insert("createdAt".into(), json!(r.created_at));
+    o.insert("from".into(), json!(r.from_session_name));
+    if !r.body.is_empty() {
+        o.insert("body".into(), json!(r.body));
+    }
+    if !r.options.is_empty() {
+        o.insert("options".into(), json!(r.options));
+    }
+    if let Some(blocker) = &r.blocker {
+        o.insert("blocker".into(), json!(blocker));
+    }
+    Value::Object(o)
+}
+
+/// A change for `list_changes`, without the node snapshots unless asked.
+fn compact_change(
+    c: &GraphChange,
+    reverts_by_user: &std::collections::HashSet<&str>,
+    with_snapshots: bool,
+) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("id".into(), json!(c.id));
+    if let Some(node_id) = &c.node_id {
+        o.insert("nodeRef".into(), json!(format!("{}#{node_id}", c.graph_id)));
+    }
+    o.insert("at".into(), json!(c.at));
+    match &c.actor {
+        GraphActor::User => {
+            o.insert("actor".into(), json!("you"));
+        }
+        GraphActor::Session {
+            session_name,
+            agent_id,
+            ..
+        } => {
+            o.insert("actor".into(), json!(session_name));
+            if let Some(agent_id) = agent_id {
+                o.insert("agentId".into(), json!(agent_id));
+            }
+        }
+    }
+    o.insert("action".into(), json!(c.action));
+    o.insert("summary".into(), json!(c.summary));
+    if let Some(why) = &c.why {
+        o.insert("why".into(), json!(why));
+    }
+    if let Some(reverted_by) = &c.reverted_by {
+        o.insert("revertedBy".into(), json!(reverted_by));
+        if reverts_by_user.contains(reverted_by.as_str()) {
+            o.insert("revertedByUser".into(), json!(true));
+        }
+    }
+    if with_snapshots {
+        o.insert("before".into(), json!(c.before));
+        o.insert("after".into(), json!(c.after));
+    }
+    Value::Object(o)
+}
+
+/// `Release 1.2` → `release-1-2`; same rule as the UI's `slugify` (graph-utils.ts).
+fn graph_slug(title: &str) -> String {
+    let mut slug = String::new();
+    for c in title.to_lowercase().chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            slug.push(c);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        "graph".to_string()
+    } else {
+        slug.to_string()
+    }
+}
+
+/// Where `create_graph` writes: `path` (absolute, `~/` expanded) or a path
+/// inside the project's repo. Exactly one of `path` and `projectId`.
+fn new_graph_path(
+    app: &AppHandle,
+    args: &Value,
+    title: &str,
+) -> Result<std::path::PathBuf, ToolError> {
+    let path = optional_str(args, "path");
+    let project_id = optional_str(args, "projectId");
+    let relative = optional_str(args, "relativePath");
+    match (path, project_id) {
+        (Some(_), Some(_)) | (None, None) => Err(ToolError::invalid_params(
+            "Give either 'path' (absolute .yml file) or 'projectId' (file inside that project's repo), not both and not neither",
+        )),
+        (Some(path), None) => {
+            if relative.is_some() {
+                return Err(ToolError::invalid_params(
+                    "'relativePath' only works with 'projectId'",
+                ));
+            }
+            Ok(crate::projects::expand_home(&path))
+        }
+        (None, Some(project_id)) => {
+            let data = crate::projects::storage::load_projects_data(app)
+                .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+            let project = data.find_project(&project_id).ok_or_else(|| {
+                ToolError::invalid_params(format!("Unknown projectId: {project_id}"))
+            })?;
+            if project.is_folder || project.path.trim().is_empty() {
+                return Err(ToolError::invalid_params(format!(
+                    "Project \"{}\" is a folder, not a repo: pass an absolute 'path' instead",
+                    project.name
+                )));
+            }
+            let relative =
+                relative.unwrap_or_else(|| format!(".splitkick/graphs/{}.yml", graph_slug(title)));
+            let rel = std::path::Path::new(&relative);
+            if rel.is_absolute()
+                || rel.has_root()
+                || rel
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(ToolError::invalid_params(format!(
+                    "'relativePath' must stay inside the repo (no leading /, no ..): {relative}"
+                )));
+            }
+            Ok(std::path::Path::new(&project.path).join(rel))
+        }
     }
 }
 
@@ -6000,6 +6273,485 @@ mod tests {
         assert!(text.contains("roadmap.yml"));
         assert!(text.contains("permission is write"));
         assert!(text.contains("read_graph") && text.contains("send_request"));
+    }
+
+    // ------------------------------------------------------------------
+    // Follow-up graph tools: list_requests, list_changes, create_graph
+    // ------------------------------------------------------------------
+
+    /// Distinct millisecond timestamps for ordering and `since`.
+    fn tick() {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+
+    #[test]
+    fn follow_up_graph_tool_schemas_are_registered() {
+        let tools = tool_registry();
+        for name in ["list_requests", "list_changes", "create_graph"] {
+            assert!(find_tool(&tools, name)["inputSchema"].is_object(), "{name}");
+        }
+        let create = find_tool(&tools, "create_graph");
+        let required = create["inputSchema"]["required"].as_array().unwrap();
+        for key in ["title", "graphType", "why"] {
+            assert!(
+                required.contains(&json!(key)),
+                "create_graph requires {key}"
+            );
+        }
+        assert!(RATE_LIMITED_TOOLS.contains(&"create_graph"));
+        assert!(!RATE_LIMITED_TOOLS.contains(&"list_requests"));
+        assert!(!RATE_LIMITED_TOOLS.contains(&"list_changes"));
+        let requests = find_tool(&tools, "list_requests");
+        assert_eq!(
+            requests["inputSchema"]["properties"]["status"]["enum"],
+            json!(["open", "answered", "all"])
+        );
+    }
+
+    #[test]
+    fn list_requests_filters_and_shows_the_answer() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+        let other = crate::graphs::create_node(
+            &app,
+            &graph_id,
+            NewGraphNode {
+                title: "Storage".into(),
+                ..Default::default()
+            },
+            &GraphActor::User,
+            None,
+        )
+        .unwrap()
+        .id;
+        call_as(
+            &app,
+            "send_request",
+            json!({ "graphId": graph_id, "nodeId": node_id, "kind": "accept-done", "title": "Done?" }),
+            "tool-s1",
+        )
+        .unwrap();
+        tick();
+        let decision = call_as(
+            &app,
+            "send_request",
+            json!({
+                "graphId": graph_id, "nodeId": other, "kind": "decision", "title": "Which db?",
+                "body": "Pick one.", "options": ["Postgres", "SQLite"], "blocker": "decision: db",
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        tick();
+        // Someone else's request.
+        crate::graphs::create_request(
+            &app,
+            &graph_id,
+            &node_id,
+            GraphRequestKind::AcceptDone,
+            "Other asks".into(),
+            None,
+            vec![],
+            vec![],
+            None,
+            &GraphActor::Session {
+                session_id: "tool-s2".into(),
+                session_name: "other".into(),
+                agent_id: None,
+            },
+        )
+        .unwrap();
+
+        let list = |args: Value| {
+            let mut args = args;
+            args["graphId"] = json!(graph_id);
+            call_as(&app, "list_requests", args, "tool-s1").unwrap()["requests"]
+                .as_array()
+                .unwrap()
+                .clone()
+        };
+        let titles = |items: &[Value]| -> Vec<String> {
+            items
+                .iter()
+                .map(|r| r["title"].as_str().unwrap().to_string())
+                .collect()
+        };
+
+        let all = list(json!({}));
+        assert_eq!(titles(&all), ["Other asks", "Which db?", "Done?"]);
+        let d = &all[1];
+        assert_eq!(d["nodeRef"], json!(format!("{graph_id}#{other}")));
+        assert_eq!(d["nodeTitle"], "Storage");
+        assert_eq!(d["kind"], "decision");
+        assert_eq!(d["status"], "open");
+        assert_eq!(d["from"], "redirect notes");
+        assert_eq!(d["body"], "Pick one.");
+        assert_eq!(d["options"], json!(["Postgres", "SQLite"]));
+        assert_eq!(d["blocker"], "decision: db");
+        assert!(d["answer"].is_null() && d["answeredAt"].is_null());
+        assert!(d["createdAt"].as_u64().unwrap() > 0);
+        // Empty body/options/blocker are left out.
+        assert!(all[2].get("body").is_none());
+        assert!(all[2].get("options").is_none());
+        assert!(all[2].get("blocker").is_none());
+
+        assert_eq!(
+            titles(&list(json!({ "mine": true }))),
+            ["Which db?", "Done?"]
+        );
+        assert_eq!(
+            titles(&list(json!({ "nodeId": node_id }))),
+            ["Other asks", "Done?"]
+        );
+        assert_eq!(titles(&list(json!({ "status": "answered" }))).len(), 0);
+
+        // The user answers the decision.
+        block_on(crate::graphs::answer_graph_request(
+            app.clone(),
+            graph_id.clone(),
+            decision["id"].as_str().unwrap().to_string(),
+            crate::graphs::GraphRequestAction::Answer,
+            Some("SQLite".into()),
+        ))
+        .unwrap();
+
+        let answered = list(json!({ "status": "answered", "mine": true }));
+        assert_eq!(titles(&answered), ["Which db?"]);
+        assert_eq!(answered[0]["status"], "answered");
+        assert_eq!(answered[0]["answer"], "SQLite");
+        assert!(answered[0]["answeredAt"].as_u64().unwrap() > 0);
+        assert_eq!(
+            titles(&list(json!({ "status": "open" }))),
+            ["Other asks", "Done?"]
+        );
+        assert_eq!(list(json!({ "status": "all" })).len(), 3);
+
+        let error = call_as(
+            &app,
+            "list_requests",
+            json!({ "graphId": graph_id, "status": "closed" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("Unknown status 'closed'"));
+        let error = call_as(
+            &app,
+            "list_requests",
+            json!({ "graphId": "nope" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("Unknown graph"), "{}", error.message);
+    }
+
+    #[test]
+    fn list_changes_limits_filters_and_shows_user_reverts_without_touching_seen() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+        let update = |why: &str, title: &str| {
+            tick();
+            call_as(
+                &app,
+                "update_node",
+                json!({ "graphId": graph_id, "nodeId": node_id, "title": title, "why": why }),
+                "tool-s1",
+            )
+            .unwrap();
+        };
+        update("first", "One");
+        update("second", "Two");
+        tick();
+        let made = call_as(
+            &app,
+            "create_node",
+            json!({ "graphId": graph_id, "title": "Agent node", "why": "split" }),
+            "tool-s1",
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        update("third", "Three");
+        let log = crate::graphs::changes::list_changes(&app, &graph_id).unwrap();
+        let third = log
+            .iter()
+            .find(|c| c.why.as_deref() == Some("third"))
+            .unwrap();
+        let second_at = log
+            .iter()
+            .find(|c| c.why.as_deref() == Some("second"))
+            .unwrap()
+            .at;
+        tick();
+        block_on(crate::graphs::revert_graph_change(
+            app.clone(),
+            graph_id.clone(),
+            third.id.clone(),
+        ))
+        .unwrap();
+
+        let seen_before: Vec<(String, bool)> =
+            crate::graphs::changes::list_changes(&app, &graph_id)
+                .unwrap()
+                .into_iter()
+                .map(|c| (c.id, c.seen))
+                .collect();
+        let unseen_before = crate::graphs::changes::unseen_count(&app, &graph_id);
+        assert!(unseen_before > 0);
+
+        let list = |args: Value| {
+            let mut args = args;
+            args["graphId"] = json!(graph_id);
+            call_as(&app, "list_changes", args, "tool-s1").unwrap()
+        };
+        let whys = |out: &Value| -> Vec<Value> {
+            out["changes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["why"].clone())
+                .collect()
+        };
+
+        // Newest first: the revert, third, the agent's node, second, first, the user's create.
+        let all = list(json!({}));
+        assert_eq!(
+            whys(&all),
+            [
+                Value::Null,
+                json!("third"),
+                json!("split"),
+                json!("second"),
+                json!("first"),
+                Value::Null
+            ]
+        );
+        assert_eq!(all["truncated"], json!(false));
+        let changes = all["changes"].as_array().unwrap();
+        let revert = &changes[0];
+        assert_eq!(revert["actor"], "you");
+        assert_eq!(revert["action"], "revert");
+        let reverted = &changes[1];
+        assert_eq!(reverted["actor"], "redirect notes");
+        assert_eq!(reverted["action"], "node.update");
+        assert_eq!(reverted["nodeRef"], json!(format!("{graph_id}#{node_id}")));
+        assert_eq!(reverted["revertedBy"], revert["id"]);
+        assert_eq!(reverted["revertedByUser"], json!(true));
+        assert!(changes[2].get("revertedBy").is_none());
+        assert!(changes[2].get("revertedByUser").is_none());
+        for c in changes {
+            assert!(c.get("before").is_none() && c.get("after").is_none());
+            assert!(c.get("seen").is_none());
+        }
+
+        let limited = list(json!({ "limit": 2 }));
+        assert_eq!(whys(&limited), [Value::Null, json!("third")]);
+        assert_eq!(limited["truncated"], json!(true));
+
+        let since = list(json!({ "since": second_at }));
+        assert_eq!(
+            whys(&since),
+            [Value::Null, json!("third"), json!("split"), json!("second")]
+        );
+
+        let other_node = list(json!({ "nodeId": made }));
+        assert_eq!(whys(&other_node), [json!("split")]);
+        let node_only = list(json!({ "nodeId": node_id, "limit": 200 }));
+        assert_eq!(node_only["changes"].as_array().unwrap().len(), 5);
+
+        let snapshots = list(json!({ "withSnapshots": true, "limit": 2 }));
+        assert_eq!(snapshots["changes"][1]["before"]["title"], "Two");
+        assert_eq!(snapshots["changes"][1]["after"]["title"], "Three");
+
+        // Seen belongs to the user: reading the log changes nothing.
+        let seen_after: Vec<(String, bool)> = crate::graphs::changes::list_changes(&app, &graph_id)
+            .unwrap()
+            .into_iter()
+            .map(|c| (c.id, c.seen))
+            .collect();
+        assert_eq!(seen_before, seen_after);
+        assert_eq!(
+            crate::graphs::changes::unseen_count(&app, &graph_id),
+            unseen_before
+        );
+    }
+
+    #[test]
+    fn create_graph_by_path_and_by_project() {
+        let (temp, app, _graph_id, _node_id) = graph_fixture(Some("manage"));
+
+        let path = temp.path().join("plans/q1.yml");
+        let out = call_as(
+            &app,
+            "create_graph",
+            json!({
+                "title": "Q1 plan", "graphType": "plan",
+                "path": path.to_string_lossy(), "why": "plan the quarter",
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        let id = out["id"].as_str().unwrap().to_string();
+        assert_eq!(out["title"], "Q1 plan");
+        assert_eq!(out["type"], "plan");
+        assert_eq!(out["path"], json!(path.to_string_lossy()));
+        assert_eq!(out["locationKind"], "folder");
+        assert!(out["hint"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("{id}#<nodeId>")));
+        assert!(path.is_file());
+        let graphs = call(&app, "list_graphs", json!({})).unwrap();
+        assert!(graphs["graphs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g["id"] == json!(id)));
+        let log = crate::graphs::changes::list_changes(&app, &id).unwrap();
+        assert_eq!(log.len(), 1, "one change for the creation");
+        assert_eq!(log[0].action, "graph.create");
+        assert_eq!(log[0].why.as_deref(), Some("plan the quarter"));
+        assert_eq!(log[0].actor.session_id(), Some("tool-s1"));
+        assert_eq!(log[0].actor.session_name(), Some("redirect notes"));
+        assert!(!log[0].seen, "an agent's creation waits for the user");
+
+        // projectId, default path from the title's slug.
+        let out = call_as(
+            &app,
+            "create_graph",
+            json!({ "title": "Release 1.2!", "graphType": "release", "projectId": "tool-p1", "why": "track it" }),
+            "tool-s1",
+        )
+        .unwrap();
+        let expected = temp.path().join("repo/.splitkick/graphs/release-1-2.yml");
+        assert_eq!(out["path"], json!(expected.to_string_lossy()));
+        assert!(expected.is_file());
+        let content = std::fs::read_to_string(&expected).unwrap();
+        assert!(content.contains("title: Release 1.2!"), "{content}");
+        assert!(content.contains("type: release"));
+
+        // projectId with relativePath.
+        let out = call_as(
+            &app,
+            "create_graph",
+            json!({
+                "title": "Docs", "graphType": "plan", "projectId": "tool-p1",
+                "relativePath": "docs/graph.yaml", "why": "docs",
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(
+            out["path"],
+            json!(temp.path().join("repo/docs/graph.yaml").to_string_lossy())
+        );
+
+        // The same file again is refused.
+        let error = call_as(
+            &app,
+            "create_graph",
+            json!({ "title": "Release 1.2!", "graphType": "release", "projectId": "tool-p1", "why": "again" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(
+            error.message.contains("already exists"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn create_graph_refusals() {
+        let (temp, app, _graph_id, _node_id) = graph_fixture(Some("manage"));
+        let file = |name: &str| temp.path().join(name).to_string_lossy().to_string();
+        let refused = |args: Value, text: &str| {
+            let error = call_as(&app, "create_graph", args, "tool-s1").unwrap_err();
+            assert!(error.message.contains(text), "{text}: {}", error.message);
+        };
+
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": file("a.yml") }),
+            "'why' is required",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": file("b.yml"), "projectId": "tool-p1", "why": "x" }),
+            "not both and not neither",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "why": "x" }),
+            "not both and not neither",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "projectId": "ghost", "why": "x" }),
+            "Unknown projectId: ghost",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": file("c.json"), "why": "x" }),
+            "must end in .yml",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": "relative.yml", "why": "x" }),
+            "must be absolute",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "projectId": "tool-p1", "relativePath": "../out.yml", "why": "x" }),
+            "must stay inside the repo",
+        );
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": file("d.yml"), "relativePath": "x.yml", "why": "x" }),
+            "only works with 'projectId'",
+        );
+        refused(
+            json!({ "title": "T", "path": file("e.yml"), "why": "x" }),
+            "graphType",
+        );
+        std::fs::write(file("exists.yml"), "id: x\n").unwrap();
+        refused(
+            json!({ "title": "T", "graphType": "plan", "path": file("exists.yml"), "why": "x" }),
+            "already exists",
+        );
+        for name in ["a.yml", "b.yml", "c.json", "d.yml", "e.yml"] {
+            assert!(!temp.path().join(name).exists(), "{name} was not written");
+        }
+
+        // `~/` is expanded to the home directory (resolved only, nothing written).
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(
+            new_graph_path(&app, &json!({ "path": "~/g.yml" }), "T").unwrap(),
+            home.join("g.yml")
+        );
+    }
+
+    #[test]
+    fn create_graph_needs_manage() {
+        let (temp, app, _graph_id, _node_id) = graph_fixture(Some("write"));
+        let path = temp.path().join("w.yml");
+        let error = call_as(
+            &app,
+            "create_graph",
+            json!({ "title": "T", "graphType": "plan", "path": path.to_string_lossy(), "why": "x" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'manage'"), "{}", error.message);
+        assert!(error.message.contains("'write'"));
+        assert!(!path.exists());
+        // anon is read.
+        let error = call(
+            &app,
+            "create_graph",
+            json!({ "title": "T", "graphType": "plan", "path": path.to_string_lossy(), "why": "x" }),
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'manage'"));
+    }
+
+    #[test]
+    fn graph_slug_matches_the_ui_slugify() {
+        assert_eq!(graph_slug("Release 1.2"), "release-1-2");
+        assert_eq!(graph_slug("  Q1 -- Plan!! "), "q1-plan");
+        assert_eq!(graph_slug("Ünïcode Plan"), "n-code-plan");
+        assert_eq!(graph_slug("!!!"), "graph");
+        assert_eq!(graph_slug(""), "graph");
     }
 
     #[test]

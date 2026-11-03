@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Graph MCP tools for agents to follow up: `list_requests`, `list_changes`,
+  `create_graph`.** `list_requests` (read) shows a graph's requests with the
+  user's answer, filtered by status, node or only the session's own.
+  `list_changes` (read) reads the change log, newest first, and shows which
+  changes the user reverted; it never marks anything as seen. `create_graph`
+  (manage) creates a graph file at an absolute path or inside a project's repo
+  (default `.splitkick/graphs/<slug>.yml`) and logs the creation with its why.
+
 ## [1.4.0] - 2026-11-03
 
 Built on Jean 0.1.73.

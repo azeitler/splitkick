@@ -471,7 +471,7 @@ pub struct GraphChange {
     pub node_id: Option<String>,
     pub at: u64,
     pub actor: GraphActor,
-    /// node.create | node.update | node.state | node.delete | graph.update | request.answer | revert
+    /// node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | revert
     pub action: String,
     pub summary: String,
     pub why: Option<String>,
