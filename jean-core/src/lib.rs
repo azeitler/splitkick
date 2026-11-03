@@ -50,6 +50,7 @@ mod codex_cli;
 mod commandcode_cli;
 mod cursor_cli;
 mod gh_cli;
+pub mod graphs;
 mod grok_cli;
 pub mod http_server;
 pub mod jean_import;
@@ -452,6 +453,32 @@ pub struct AppPreferences {
     pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
     #[serde(default = "default_sidebar_recent_limit")]
     pub sidebar_recent_limit: u32, // Sessions in the sidebar Recent tab (default 30)
+    #[serde(default)]
+    pub agent_profiles: Vec<AgentProfile>, // Saved agent profiles (graph layer)
+}
+
+/// A saved agent profile. A session started from it stores `agent_id`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentProfile {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub persona: String,
+    /// Graph permission: `read` | `write` | `manage`
+    #[serde(default = "default_agent_permission")]
+    pub permission: String,
+    #[serde(default)]
+    pub backend: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub default_serves: Option<String>,
+}
+
+fn default_agent_permission() -> String {
+    "read".to_string()
 }
 
 fn default_jean_mcp_enabled() -> bool {
@@ -2931,6 +2958,7 @@ impl Default for AppPreferences {
             jean_mcp_max_depth: default_jean_mcp_max_depth(),
             jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
             sidebar_recent_limit: default_sidebar_recent_limit(),
+            agent_profiles: Vec::new(),
         }
     }
 }
@@ -3136,6 +3164,10 @@ pub struct UIState {
     #[serde(default)]
     pub folders_section_collapsed: bool,
 
+    /// Whether the sidebar's Graphs section is collapsed. Defaults to open.
+    #[serde(default)]
+    pub graphs_section_collapsed: bool,
+
     /// Whether the sidebar's Projects section is collapsed. Defaults to open.
     #[serde(default)]
     pub projects_section_collapsed: bool,
@@ -3321,6 +3353,7 @@ impl Default for UIState {
             starred_sessions: Vec::new(),
             starred_sessions_collapsed: false,
             folders_section_collapsed: false,
+            graphs_section_collapsed: false,
             projects_section_collapsed: false,
             project_rail_hidden: false,
             mobile_active_tab: None,

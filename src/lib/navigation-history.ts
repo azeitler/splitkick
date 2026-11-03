@@ -1,4 +1,5 @@
 import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
+import { openGraphView } from '@/lib/graph-view'
 import { useChatStore } from '@/store/chat-store'
 import {
   useNavigationHistoryStore,
@@ -21,7 +22,7 @@ export function readCurrentLocation(): NavigationLocation | null {
   const { selectedProjectId } = useProjectsStore.getState()
   const { activeWorktreeId, activeWorktreePath, activeSessionIds } =
     useChatStore.getState()
-  const { sessionChatModalOpen, sessionChatModalWorktreeId } =
+  const { sessionChatModalOpen, sessionChatModalWorktreeId, activeGraphId } =
     useUIStore.getState()
 
   // Same precedence as MainWindowContent: the inline chat covers everything.
@@ -34,7 +35,11 @@ export function readCurrentLocation(): NavigationLocation | null {
       sessionId: activeSessionIds[activeWorktreeId] ?? null,
     }
   }
-  if (!selectedProjectId) return { kind: 'home' }
+  if (!selectedProjectId) {
+    return activeGraphId
+      ? { kind: 'graph', graphId: activeGraphId }
+      : { kind: 'home' }
+  }
   if (sessionChatModalOpen && sessionChatModalWorktreeId) {
     const sessionId = activeSessionIds[sessionChatModalWorktreeId]
     if (!sessionId) return null
@@ -53,6 +58,10 @@ export function navigateToLocation(location: NavigationLocation): void {
     case 'home':
       useProjectsStore.getState().selectProject(null)
       useChatStore.getState().clearActiveWorktree()
+      useUIStore.getState().setActiveGraphId(null)
+      return
+    case 'graph':
+      openGraphView(location.graphId)
       return
     case 'project':
       navigateToProject(location.projectId)
@@ -137,6 +146,7 @@ export function installNavigationHistoryRecorder(): () => void {
         })
         scheduleSettle()
       } else if (
+        state.activeGraphId !== prev.activeGraphId ||
         state.sessionChatModalOpen !== prev.sessionChatModalOpen ||
         state.sessionChatModalWorktreeId !== prev.sessionChatModalWorktreeId
       ) {

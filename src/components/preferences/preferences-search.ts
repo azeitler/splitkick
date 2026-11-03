@@ -167,6 +167,15 @@ const paneEntries: PreferenceSearchEntry[] = [
     anchorId: 'pref-pane-magic-prompts',
   },
   {
+    id: 'pane-agents',
+    pane: 'agents',
+    paneTitle: 'Agents',
+    type: 'pane',
+    title: 'Agents',
+    keywords: ['agent', 'persona', 'profile', 'graph', 'permission'],
+    anchorId: 'pref-pane-agents',
+  },
+  {
     id: 'pane-mcp-servers',
     pane: 'mcp-servers',
     paneTitle: 'MCP Servers',

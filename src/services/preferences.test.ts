@@ -357,6 +357,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -525,6 +526,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -703,6 +705,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -843,6 +846,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -984,6 +988,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -1167,6 +1172,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 
@@ -1306,6 +1312,7 @@ describe('preferences service', () => {
         custom_codex_providers: [],
         default_codex_provider: null,
         custom_pi_providers: [],
+        agent_profiles: [],
         favorite_models: [],
         fast_mode_models: [],
 

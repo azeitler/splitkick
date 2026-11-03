@@ -122,6 +122,8 @@ export interface UIState {
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
   starred_sessions_collapsed?: boolean
+  /** Whether the sidebar's Graphs section is collapsed */
+  graphs_section_collapsed?: boolean
   /** Whether the sidebar's Folders section is collapsed */
   folders_section_collapsed?: boolean
   /** Whether the sidebar's Projects section is collapsed */
@@ -238,6 +240,7 @@ export const defaultUIState: UIState = {
   expanded_pinned_project_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
+  graphs_section_collapsed: false,
   folders_section_collapsed: false,
   projects_section_collapsed: false,
   project_rail_hidden: false,

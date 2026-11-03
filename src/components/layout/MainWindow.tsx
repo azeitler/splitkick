@@ -114,6 +114,16 @@ const MoveSessionDialog = lazy(() =>
     default: mod.MoveSessionDialog,
   }))
 )
+const StartAgentSessionDialog = lazy(() =>
+  import('@/components/graphs/StartAgentSessionDialog').then(mod => ({
+    default: mod.StartAgentSessionDialog,
+  }))
+)
+const NewGraphDialog = lazy(() =>
+  import('@/components/graphs/NewGraphDialog').then(mod => ({
+    default: mod.NewGraphDialog,
+  }))
+)
 const RemotePickerModal = lazy(() =>
   import('@/components/magic/RemotePickerModal').then(mod => ({
     default: mod.RemotePickerModal,
@@ -279,6 +289,10 @@ export function MainWindow() {
     state => state.transferSessionTarget !== null
   )
   const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
+  const startAgentSessionOpen = useUIStore(
+    state => state.startAgentSessionTarget !== null
+  )
+  const newGraphDialogOpen = useUIStore(state => state.newGraphDialogOpen)
   const resolveConflictsDialogOpen = useUIStore(
     state => state.resolveConflictsDialogOpen
   )
@@ -533,6 +547,10 @@ export function MainWindow() {
   const shouldRenderTransferSessionDialog =
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
+  const shouldRenderStartAgentSessionDialog = useRetainedMount(
+    startAgentSessionOpen
+  )
+  const shouldRenderNewGraphDialog = useRetainedMount(newGraphDialogOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
   const shouldRenderReviewCommentsDialog = useRetainedMount(
     reviewCommentsModalOpen
@@ -821,6 +839,21 @@ export function MainWindow() {
       {shouldRenderMoveSessionDialog && (
         <Suspense fallback={null}>
           <MoveSessionDialog />
+        </Suspense>
+      )}
+      {shouldRenderStartAgentSessionDialog && (
+        <Suspense fallback={null}>
+          <StartAgentSessionDialog />
+        </Suspense>
+      )}
+      {shouldRenderNewGraphDialog && (
+        <Suspense fallback={null}>
+          <NewGraphDialog
+            open={newGraphDialogOpen}
+            onOpenChange={open =>
+              useUIStore.getState().setNewGraphDialogOpen(open)
+            }
+          />
         </Suspense>
       )}
       {shouldRenderRemotePickerModal && (

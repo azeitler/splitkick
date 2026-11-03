@@ -7,6 +7,26 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Graphs: a roadmap above your sessions** (#78, #79). A graph is a YAML file
+  that you put inside a project's repo, in another repo, or in a folder outside
+  any repo. The new **Graphs** section in the sidebar lists them. A graph has an
+  outline grouped by `part-of`, a dependencies view, a node detail panel, and a
+  review tab with the changes since you last looked (revert per change) and the
+  requests agents send you (accept "done", send back, answer a decision).
+  Sessions point up to the nodes they serve; active, blocked and progress are
+  computed, never stored. "Commit graph" commits only the graph file.
+- **Agents.** Settings → Agents holds profiles: persona prompt, graph permission
+  (read, write, manage) and a default model. Start a session from an agent; its
+  persona and the nodes it serves go into the system prompt of every backend.
+  A renamed session shows its agent as a badge.
+- **Graph MCP tools:** `list_graphs`, `read_graph`, `create_node`, `update_node`,
+  `set_node_state`, `send_request`, `set_serves`; `create_session` takes
+  `serves` and `agentId`. Every change needs a why and is logged per machine.
+- **Graph panel in a session** that serves a node or a graph: its node, what
+  comes before and after, siblings, permission and `serves`.
+
 ### Changed
 
 - **The MCP socket is now `splitkick-mcp.sock`.** Dev builds use

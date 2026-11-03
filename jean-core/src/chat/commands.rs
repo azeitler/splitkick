@@ -520,6 +520,7 @@ fn adopt_send_execution_mode(session: &mut Session, explicit_mode: Option<&str>)
 
 fn build_kimi_system_prompt(
     app: &AppHandle,
+    session_id: &str,
     worktree_id: &str,
     ai_language: Option<&str>,
     parallel_prompt: Option<&str>,
@@ -574,6 +575,7 @@ fn build_kimi_system_prompt(
             }
         }
     }
+    parts.extend(crate::graphs::session_prompt_parts(app, session_id));
     let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
     if gh_binary != std::path::PathBuf::from("gh") {
         parts.push(format!(
@@ -4082,6 +4084,12 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Graph layer: agent persona and the graph nodes this session serves
+                    system_prompt_parts.extend(crate::graphs::session_prompt_parts(
+                        &thread_app,
+                        &thread_session_id,
+                    ));
+
                     // Embedded binary path hints
                     let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
                     if gh_binary != std::path::PathBuf::from("gh") {
@@ -4496,6 +4504,12 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Graph layer: agent persona and the graph nodes this session serves
+                    system_prompt_parts.extend(crate::graphs::session_prompt_parts(
+                        &thread_app,
+                        &thread_session_id,
+                    ));
+
                     // Embedded binary path hints
                     let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
                     if gh_binary != std::path::PathBuf::from("gh") {
@@ -4848,6 +4862,12 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Graph layer: agent persona and the graph nodes this session serves
+                    parts.extend(crate::graphs::session_prompt_parts(
+                        &thread_app,
+                        &thread_session_id,
+                    ));
+
                     let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
                     if gh_binary != std::path::PathBuf::from("gh") {
                         parts.push(format!(
@@ -5035,6 +5055,12 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Graph layer: agent persona and the graph nodes this session serves
+                    parts.extend(crate::graphs::session_prompt_parts(
+                        &thread_app,
+                        &thread_session_id,
+                    ));
+
                     let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
                     if gh_binary != std::path::PathBuf::from("gh") {
                         parts.push(format!(
@@ -5179,6 +5205,12 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Graph layer: agent persona and the graph nodes this session serves
+                    parts.extend(crate::graphs::session_prompt_parts(
+                        &thread_app,
+                        &thread_session_id,
+                    ));
+
                     let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
                     if gh_binary != std::path::PathBuf::from("gh") {
                         parts.push(format!(
@@ -5272,6 +5304,7 @@ pub async fn send_chat_message(
             Backend::Kimi => {
                 let system_prompt = build_kimi_system_prompt(
                     &thread_app,
+                    &thread_session_id,
                     &thread_worktree_id,
                     thread_ai_language.as_deref(),
                     thread_parallel_prompt.as_deref(),
@@ -5315,6 +5348,7 @@ pub async fn send_chat_message(
             Backend::Antigravity => {
                 let system_prompt = build_kimi_system_prompt(
                     &thread_app,
+                    &thread_session_id,
                     &thread_worktree_id,
                     thread_ai_language.as_deref(),
                     thread_parallel_prompt.as_deref(),
