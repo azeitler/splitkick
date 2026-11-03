@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   logNativeError: vi.fn(),
   editorThrows: true,
+  openFileInBrowser: vi.fn(),
 }))
 
 vi.mock('@/lib/transport', () => ({ invoke: mocks.invoke }))
 vi.mock('@/lib/native-log', () => ({ logNativeError: mocks.logNativeError }))
+vi.mock('@/components/artifact-preview/open-in-browser', () => ({
+  openFileInBrowser: mocks.openFileInBrowser,
+}))
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: null }),
 }))
@@ -122,6 +126,84 @@ describe('FileContentModal editor errors', () => {
 
     expect(await screen.findByTestId('code-editor')).toHaveTextContent(
       'const a = 1'
+    )
+  })
+})
+
+// HTML and SVG artifacts open as a sandboxed preview, with source, reload and
+// open in browser (#76).
+describe('FileContentModal HTML/SVG preview', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset()
+    mocks.openFileInBrowser.mockReset()
+    mocks.openFileInBrowser.mockResolvedValue(undefined)
+  })
+
+  it('opens an HTML file as sandboxed preview and toggles to source', async () => {
+    const user = userEvent.setup()
+    mocks.invoke.mockResolvedValue('<h1>Report</h1>')
+    render(<FileContentModal filePath="/repo/report.html" onClose={vi.fn()} />)
+
+    const frame = await screen.findByTitle('Preview of report.html')
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame.getAttribute('srcdoc')).toContain('<h1>Report</h1>')
+    expect(screen.queryByTestId('highlighted')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Source' }))
+    // The mock highlighter injects the source as HTML.
+    expect((await screen.findByTestId('highlighted')).innerHTML).toContain(
+      '<h1>Report</h1>'
+    )
+    expect(document.querySelector('iframe')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    expect(await screen.findByTitle('Preview of report.html')).toBeTruthy()
+  })
+
+  it('reloads the file from disk', async () => {
+    const user = userEvent.setup()
+    mocks.invoke.mockResolvedValueOnce('<p>v1</p>')
+    render(<FileContentModal filePath="/repo/report.html" onClose={vi.fn()} />)
+    await screen.findByTitle('Preview of report.html')
+
+    mocks.invoke.mockResolvedValueOnce('<p>v2</p>')
+    await user.click(screen.getByRole('button', { name: 'Reload' }))
+
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTitle('Preview of report.html').getAttribute('srcdoc')
+      ).toContain('<p>v2</p>')
+    )
+    expect(mocks.invoke).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens the file in the browser', async () => {
+    const user = userEvent.setup()
+    mocks.invoke.mockResolvedValue('<p>x</p>')
+    render(<FileContentModal filePath="/repo/report.html" onClose={vi.fn()} />)
+    await screen.findByTitle('Preview of report.html')
+
+    await user.click(screen.getByRole('button', { name: 'Open in Browser' }))
+
+    expect(mocks.openFileInBrowser).toHaveBeenCalledWith('/repo/report.html')
+  })
+
+  it('loads an SVG as text and shows it as image', async () => {
+    const user = userEvent.setup()
+    mocks.invoke.mockResolvedValue('<svg viewBox="0 0 1 1"></svg>')
+    render(<FileContentModal filePath="/repo/chart.svg" onClose={vi.fn()} />)
+
+    const img = await screen.findByAltText('chart.svg')
+    expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/)
+    expect(mocks.invoke).toHaveBeenCalledWith('read_file_content', {
+      path: '/repo/chart.svg',
+    })
+    expect(document.querySelector('iframe')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Source' }))
+    // The mock highlighter injects the source as HTML.
+    expect((await screen.findByTestId('highlighted')).innerHTML).toContain(
+      '<svg viewBox="0 0 1 1"></svg>'
     )
   })
 })
