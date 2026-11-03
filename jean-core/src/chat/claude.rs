@@ -893,6 +893,9 @@ fn build_claude_args(
         }
     }
 
+    // Graph layer: agent persona and the graph nodes this session serves
+    system_prompt_parts.extend(crate::graphs::session_prompt_parts(app, session_id));
+
     // Embedded gh CLI path - tell Claude to use the app's bundled binary
     let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
     if gh_binary != std::path::PathBuf::from("gh") {

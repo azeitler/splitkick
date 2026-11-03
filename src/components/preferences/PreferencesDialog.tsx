@@ -4,6 +4,7 @@ import {
   Palette,
   Keyboard,
   Wand2,
+  Bot,
   Plug,
   Blocks,
   BarChart3,
@@ -80,6 +81,7 @@ import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
 import { TerminalPane } from './panes/TerminalPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
+import { AgentsPane } from './panes/AgentsPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
 import { UsagePane } from './panes/UsagePane'
@@ -118,6 +120,7 @@ const paneIconMap: Record<PreferencePane, LucideIcon> = {
   keybindings: Keyboard,
   terminal: Terminal,
   'magic-prompts': Wand2,
+  agents: Bot,
   'mcp-servers': Plug,
   integrations: Puzzle,
   experimental: FlaskConical,
@@ -152,6 +155,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Terminal'
     case 'magic-prompts':
       return 'Magic Prompts'
+    case 'agents':
+      return 'Agents'
     case 'mcp-servers':
       return 'MCP Servers'
     case 'providers':
@@ -774,6 +779,11 @@ export function PreferencesDialog() {
                   <MagicPromptsPane
                     searchTargetPromptKey={searchTargetPromptKey}
                   />
+                </div>
+              )}
+              {activePane === 'agents' && (
+                <div id="pref-pane-agents" className="min-w-0 max-w-full">
+                  <AgentsPane />
                 </div>
               )}
               {activePane === 'mcp-servers' && (

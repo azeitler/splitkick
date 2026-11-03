@@ -7,6 +7,7 @@ import { projectCommands } from './project-commands'
 import { githubCommands } from './github-commands'
 import { maintenanceCommands } from './maintenance-commands'
 import { windowCommands } from './window-commands'
+import { graphCommands } from './graph-commands'
 import { registerCommands } from './registry'
 
 /**
@@ -20,6 +21,7 @@ export function initializeCommandSystem(): void {
   registerCommands(githubCommands)
   registerCommands(maintenanceCommands)
   registerCommands(windowCommands)
+  registerCommands(graphCommands)
 }
 
 export {
@@ -29,4 +31,5 @@ export {
   githubCommands,
   maintenanceCommands,
   windowCommands,
+  graphCommands,
 }

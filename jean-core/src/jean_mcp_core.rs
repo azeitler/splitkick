@@ -12,6 +12,10 @@ use tauri::AppHandle;
 
 use crate::chat::overview::SessionOverviewOptions;
 use crate::chat::types::LabelData;
+use crate::graphs::{
+    GraphAttachment, GraphNode, GraphPermission, GraphRelation, GraphRequestKind, NewGraphNode,
+    NodeDerived, NodeState, RelationKind,
+};
 use crate::http_server::dispatch::dispatch_command;
 use crate::http_server::EmitExt;
 
@@ -88,6 +92,12 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "start_run_environment",
     "unarchive_session",
     "unarchive_worktree",
+    // Graph layer writes
+    "create_node",
+    "update_node",
+    "set_node_state",
+    "send_request",
+    "set_serves",
 ];
 const DEFAULT_MCP_DIFF_MAX_BYTES: usize = 60_000;
 const MAX_MCP_DIFF_BYTES: usize = 200_000;
@@ -386,7 +396,29 @@ pub fn tool_registry() -> Value {
     if let Some(ship) = tool_registry_ship_loop().as_array() {
         tools.extend(ship.iter().cloned());
     }
+    if let Some(graphs) = tool_registry_graphs().as_array() {
+        tools.extend(graphs.iter().cloned());
+    }
     Value::Array(tools)
+}
+
+/// Graph layer tools. Contract: `docs/developer/graph-layer.md` ("MCP tools").
+fn tool_registry_graphs() -> Value {
+    let relations = json!({"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","enum":["depends-on","blocked-by","part-of","relates-to"]},"target":{"type":"string","description":"Node id in this graph, <graphId>#<nodeId> for another graph, or free text (blocked-by only)."}},"required":["kind","target"],"additionalProperties":false}});
+    let attachments = json!({"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","description":"For example issue, pr, doc, note."},"value":{"type":"string"}},"required":["kind","value"],"additionalProperties":false}});
+    let properties = json!({"type":"object","additionalProperties":{"type":"string"},"description":"String key/value pairs, for example {\"quarter\":\"2027-Q1\"}."});
+    let why =
+        json!({"type":"string","description":"One sentence: why you make this change. Required."});
+    let state = json!({"type":"string","enum":["proposed","committed","done","dropped"]});
+    json!([
+        {"name":"list_graphs","description":"List the Splitkick graphs (roadmaps): id, title, type, file, node count, open requests. Needs graph permission read.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"read_graph","description":"Read one graph: its nodes with derived blocked/blockers/progress/active and serving sessions, plus open requests. Node refs are <graphId>#<nodeId>. Needs read.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"}},"required":["graphId"],"additionalProperties":false}},
+        {"name":"create_node","description":"Add a node to a graph. Needs write; a state other than proposed needs manage. Give a why. Returns the node and its ref <graphId>#<nodeId>.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"state":state,"partOf":{"type":"string","description":"Parent node id (adds a part-of relation)."},"relations":relations,"attachments":attachments,"properties":properties,"why":why},"required":["graphId","title","why"],"additionalProperties":false}},
+        {"name":"update_node","description":"Change a node: title, description, properties, relations, attachments. Use set_node_state for the state. Needs write. Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"setProperties":properties,"removeProperties":{"type":"array","items":{"type":"string"}},"addRelations":relations,"removeRelations":relations,"addAttachments":attachments,"removeAttachments":attachments,"why":why},"required":["graphId","nodeId","why"],"additionalProperties":false}},
+        {"name":"set_node_state","description":"Set a node's state. proposed needs write; committed, done and dropped need manage (without it, ask with send_request kind accept-done). Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"state":state,"why":why},"required":["graphId","nodeId","state","why"],"additionalProperties":false}},
+        {"name":"send_request","description":"Ask the user about a node: accept-done (mark it done; list evidence) or decision (pick an option; blocker = the blocked-by text it resolves). Needs write.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"kind":{"type":"string","enum":["accept-done","decision"]},"title":{"type":"string"},"body":{"type":"string"},"evidence":{"type":"array","items":{"type":"string"}},"options":{"type":"array","items":{"type":"string"}},"blocker":{"type":"string"}},"required":["graphId","nodeId","kind","title"],"additionalProperties":false}},
+        {"name":"set_serves","description":"Set which graph nodes this session serves (replaces the list). Each entry is <graphId>#<nodeId> or <graphId> for the whole graph. Own session only.","inputSchema":{"type":"object","properties":{"serves":{"type":"array","items":{"type":"string"}}},"required":["serves"],"additionalProperties":false}}
+    ])
 }
 
 fn tool_registry_core() -> Value {
@@ -421,7 +453,7 @@ fn tool_registry_session() -> Value {
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
         {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Each result has a link for a markdown link to the session. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
-        {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"agentId":{"type":"string","description":"Start the session as this saved agent profile (its graph permission applies). Needs graph permission manage."}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"unarchive_session","description":"Restore an archived chat session so it can run again. Also unarchives the parent worktree when it is archived. Call this before send_chat_message if a previous attempt failed because the session was archived.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
@@ -1062,6 +1094,28 @@ async fn run_tool(
         }
         "create_session" => {
             let worktree_id = require_str(&args, "worktreeId")?;
+            // Graph fields are validated before the session exists.
+            let serves = optional_string_list(&args, "serves")?;
+            if let Some(serves) = &serves {
+                validate_serves(app, serves)?;
+            }
+            let agent = match optional_str(&args, "agentId") {
+                Some(agent_id) => {
+                    require_graph_permission(
+                        app,
+                        source,
+                        GraphPermission::Manage,
+                        "create_session with agentId",
+                    )?;
+                    let agent = crate::graphs::permissions::find_agent(app, &agent_id).ok_or_else(
+                        || ToolError::invalid_params(format!("Unknown agentId: {agent_id}")),
+                    )?;
+                    let level = crate::graphs::permissions::parse_permission(&agent.permission)
+                        .map_err(ToolError::internal)?;
+                    Some((agent_id, level))
+                }
+                None => None,
+            };
             // Fail fast when the worktree is archived (also enforced in create_session).
             ensure_mcp_worktree_not_archived(app, &worktree_id)?;
             let worktree_path = resolve_worktree_path(app, &worktree_id)?;
@@ -1079,6 +1133,21 @@ async fn run_tool(
                 .map_err(ToolError::internal)?;
             if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
                 crate::chat::session_links::record_started_by(app, id, source, false);
+                if let Some(serves) = serves {
+                    crate::graphs::set_session_serves(app.clone(), id.to_string(), serves)
+                        .await
+                        .map_err(ToolError::internal)?;
+                }
+                if let Some((agent_id, level)) = agent {
+                    crate::graphs::set_session_agent(
+                        app.clone(),
+                        id.to_string(),
+                        Some(agent_id),
+                        Some(level),
+                    )
+                    .await
+                    .map_err(ToolError::internal)?;
+                }
             }
             Ok(session)
         }
@@ -1824,6 +1893,8 @@ async fn run_tool(
                 "projectLink": crate::links::splitkick_link("project", &project_id),
             }))
         }
+        "list_graphs" | "read_graph" | "create_node" | "update_node" | "set_node_state"
+        | "send_request" | "set_serves" => run_graph_tool(app, name, &args, source).await,
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
     }
 }
@@ -2169,6 +2240,410 @@ fn optional_str(args: &Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+// ============================================================================
+// Graph layer tools (contract: docs/developer/graph-layer.md, "MCP tools")
+// ============================================================================
+
+/// Refuse unless the calling session has at least `need`. The graph core
+/// functions do not check permissions; every graph tool calls this first.
+fn require_graph_permission(
+    app: &AppHandle,
+    source: &str,
+    need: GraphPermission,
+    action: &str,
+) -> Result<GraphPermission, ToolError> {
+    let have = crate::graphs::effective_permission(app, source);
+    if crate::graphs::permission_allows(have, need) {
+        return Ok(have);
+    }
+    Err(ToolError::invalid_params(format!(
+        "{action} needs graph permission '{}', but this session has '{}'. \
+         Ask the user to raise this session's graph permission (session graph panel), \
+         or use send_request to ask for the change.",
+        need.as_str(),
+        have.as_str()
+    )))
+}
+
+fn require_why(args: &Value) -> Result<String, ToolError> {
+    optional_str(args, "why").ok_or_else(|| {
+        ToolError::invalid_params(
+            "'why' is required: say in one sentence why you make this change. It goes into the graph change log.",
+        )
+    })
+}
+
+fn optional_string_list(args: &Value, key: &str) -> Result<Option<Vec<String>>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(|s| s.trim().to_string())
+                    .ok_or_else(|| ToolError::invalid_params(format!("'{key}' must be strings")))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|list| Some(list.into_iter().filter(|s| !s.is_empty()).collect())),
+        Some(_) => Err(ToolError::invalid_params(format!(
+            "'{key}' must be an array of strings"
+        ))),
+    }
+}
+
+fn parse_node_state(value: &str) -> Result<NodeState, ToolError> {
+    serde_json::from_value(json!(value)).map_err(|_| {
+        ToolError::invalid_params(format!(
+            "Unknown state '{value}': use proposed, committed, done or dropped"
+        ))
+    })
+}
+
+fn graph_relations(args: &Value, key: &str) -> Result<Vec<GraphRelation>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+            ToolError::invalid_params(format!(
+                "'{key}' must be [{{kind, target}}] with kind depends-on, blocked-by, part-of or relates-to: {e}"
+            ))
+        }),
+    }
+}
+
+fn graph_attachments(args: &Value, key: &str) -> Result<Vec<GraphAttachment>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+            ToolError::invalid_params(format!("'{key}' must be [{{kind, value}}]: {e}"))
+        }),
+    }
+}
+
+/// `{k: v}` in the order given; non-string scalars are written as text.
+fn graph_properties(args: &Value, key: &str) -> Result<Vec<(String, String)>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Object(map)) => Ok(map
+            .iter()
+            .map(|(k, v)| {
+                let v = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                (k.clone(), v)
+            })
+            .collect()),
+        Some(_) => Err(ToolError::invalid_params(format!(
+            "'{key}' must be an object of string values"
+        ))),
+    }
+}
+
+/// Every ref must name a registered graph and, with `#`, an existing node.
+fn validate_serves(app: &AppHandle, serves: &[String]) -> Result<(), ToolError> {
+    for r in serves {
+        let (graph_id, node_id) = match r.split_once('#') {
+            Some((g, n)) => (g, Some(n)),
+            None => (r.as_str(), None),
+        };
+        let graph = crate::graphs::store::load_graph(app, graph_id).map_err(|e| {
+            ToolError::invalid_params(format!(
+                "Invalid serves ref '{r}': {e}. Use <graphId>#<nodeId> or <graphId> from list_graphs."
+            ))
+        })?;
+        if let Some(node_id) = node_id {
+            if !graph.nodes.iter().any(|n| n.id == node_id) {
+                return Err(ToolError::invalid_params(format!(
+                    "Invalid serves ref '{r}': graph \"{}\" has no node {node_id}. Take node ids from read_graph.",
+                    graph.title
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn node_result(graph_id: &str, node: &GraphNode) -> Value {
+    let mut out = serde_json::to_value(node).unwrap_or(Value::Null);
+    if let Some(obj) = out.as_object_mut() {
+        obj.insert("ref".into(), json!(format!("{graph_id}#{}", node.id)));
+    }
+    out
+}
+
+/// A compact node for `read_graph`: empty fields and default derived values are left out.
+fn compact_node(graph_id: &str, node: &GraphNode, derived: Option<&NodeDerived>) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("id".into(), json!(node.id));
+    o.insert("ref".into(), json!(format!("{graph_id}#{}", node.id)));
+    o.insert("title".into(), json!(node.title));
+    o.insert("state".into(), json!(node.state.as_str()));
+    if !node.description.is_empty() {
+        o.insert("description".into(), json!(node.description));
+    }
+    if !node.properties.is_empty() {
+        let props: serde_json::Map<String, Value> = node
+            .properties
+            .iter()
+            .map(|(k, v)| (k.clone(), json!(v)))
+            .collect();
+        o.insert("properties".into(), Value::Object(props));
+    }
+    if !node.relations.is_empty() {
+        o.insert("relations".into(), json!(node.relations));
+    }
+    if !node.attachments.is_empty() {
+        o.insert("attachments".into(), json!(node.attachments));
+    }
+    if let Some(d) = derived {
+        if d.blocked {
+            o.insert("blocked".into(), json!(true));
+            o.insert("blockers".into(), json!(d.blockers));
+        }
+        if d.progress_total > 0 {
+            o.insert(
+                "progress".into(),
+                json!(format!("{}/{}", d.progress_done, d.progress_total)),
+            );
+        }
+        if d.active {
+            o.insert("active".into(), json!(true));
+        }
+        if !d.serving.is_empty() {
+            let names: Vec<&str> = d.serving.iter().map(|s| s.session_name.as_str()).collect();
+            o.insert("serving".into(), json!(names));
+        }
+    }
+    Value::Object(o)
+}
+
+async fn run_graph_tool(
+    app: &AppHandle,
+    name: &str,
+    args: &Value,
+    source: &str,
+) -> Result<Value, ToolError> {
+    let actor = || crate::graphs::session_actor(app, source);
+    match name {
+        "list_graphs" => {
+            require_graph_permission(app, source, GraphPermission::Read, name)?;
+            let graphs = crate::graphs::list_graphs(app.clone())
+                .await
+                .map_err(ToolError::internal)?;
+            let out: Vec<Value> = graphs
+                .iter()
+                .map(|g| {
+                    json!({
+                        "id": g.id,
+                        "title": g.title,
+                        "type": g.graph_type,
+                        "path": g.path,
+                        "projectName": g.project_name,
+                        "nodeCount": g.node_count,
+                        "openRequests": g.open_requests,
+                        "missing": g.missing,
+                        "error": g.error,
+                    })
+                })
+                .collect();
+            Ok(json!({ "graphs": out }))
+        }
+        "read_graph" => {
+            require_graph_permission(app, source, GraphPermission::Read, name)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            let detail = crate::graphs::get_graph(app.clone(), graph_id.clone())
+                .await
+                .map_err(ToolError::invalid_params)?;
+            let nodes: Vec<Value> = detail
+                .nodes
+                .iter()
+                .map(|n| compact_node(&graph_id, n, detail.derived.get(&n.id)))
+                .collect();
+            let requests: Vec<Value> =
+                crate::graphs::list_graph_requests(app.clone(), Some(graph_id.clone()))
+                    .await
+                    .map_err(ToolError::internal)?
+                    .into_iter()
+                    .filter(|r| r.status == crate::graphs::GraphRequestStatus::Open)
+                    .map(|r| {
+                        json!({
+                            "id": r.id,
+                            "nodeId": r.node_id,
+                            "kind": r.kind,
+                            "title": r.title,
+                            "from": r.from_session_name,
+                        })
+                    })
+                    .collect();
+            let serving: Vec<&str> = detail
+                .graph_serving
+                .iter()
+                .map(|s| s.session_name.as_str())
+                .collect();
+            Ok(json!({
+                "id": detail.summary.id,
+                "title": detail.summary.title,
+                "type": detail.summary.graph_type,
+                "path": detail.summary.path,
+                "graphServing": serving,
+                "nodes": nodes,
+                "openRequests": requests,
+            }))
+        }
+        "create_node" => {
+            let state = optional_str(args, "state")
+                .map(|s| parse_node_state(&s))
+                .transpose()?
+                .unwrap_or_default();
+            let need = if state == NodeState::Proposed {
+                GraphPermission::Write
+            } else {
+                GraphPermission::Manage
+            };
+            let action = format!("create_node with state {}", state.as_str());
+            require_graph_permission(app, source, need, &action)?;
+            let why = require_why(args)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            let title = require_nonempty_str(args, "title")?;
+            let mut relations = graph_relations(args, "relations")?;
+            if let Some(parent) = optional_str(args, "partOf") {
+                if !relations
+                    .iter()
+                    .any(|r| r.kind == RelationKind::PartOf && r.target == parent)
+                {
+                    relations.push(GraphRelation {
+                        kind: RelationKind::PartOf,
+                        target: parent,
+                    });
+                }
+            }
+            let input = NewGraphNode {
+                title,
+                description: optional_str(args, "description"),
+                state: Some(state),
+                properties: Some(graph_properties(args, "properties")?),
+                relations: Some(relations),
+                attachments: Some(graph_attachments(args, "attachments")?),
+            };
+            let node = crate::graphs::create_node(app, &graph_id, input, &actor(), Some(why))
+                .map_err(ToolError::invalid_params)?;
+            Ok(node_result(&graph_id, &node))
+        }
+        "update_node" => {
+            require_graph_permission(app, source, GraphPermission::Write, name)?;
+            let why = require_why(args)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            let node_id = require_nonempty_str(args, "nodeId")?;
+            let title = optional_str(args, "title");
+            let description = args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let set_props = graph_properties(args, "setProperties")?;
+            let remove_props = optional_string_list(args, "removeProperties")?.unwrap_or_default();
+            let add_rel = graph_relations(args, "addRelations")?;
+            let remove_rel = graph_relations(args, "removeRelations")?;
+            let add_att = graph_attachments(args, "addAttachments")?;
+            let remove_att = graph_attachments(args, "removeAttachments")?;
+            let node = crate::graphs::mutate_node(
+                app,
+                &graph_id,
+                &node_id,
+                &actor(),
+                Some(why),
+                None,
+                |n| {
+                    if let Some(title) = title {
+                        n.title = title;
+                    }
+                    if let Some(description) = description {
+                        n.description = description;
+                    }
+                    n.properties.retain(|(k, _)| !remove_props.contains(k));
+                    for (k, v) in set_props {
+                        match n.properties.iter_mut().find(|(key, _)| *key == k) {
+                            Some(entry) => entry.1 = v,
+                            None => n.properties.push((k, v)),
+                        }
+                    }
+                    n.relations.retain(|r| !remove_rel.contains(r));
+                    for r in add_rel {
+                        if !n.relations.contains(&r) {
+                            n.relations.push(r);
+                        }
+                    }
+                    n.attachments.retain(|a| !remove_att.contains(a));
+                    for a in add_att {
+                        if !n.attachments.contains(&a) {
+                            n.attachments.push(a);
+                        }
+                    }
+                },
+            )
+            .map_err(ToolError::invalid_params)?;
+            Ok(node_result(&graph_id, &node))
+        }
+        "set_node_state" => {
+            let state = parse_node_state(&require_nonempty_str(args, "state")?)?;
+            let need = if state == NodeState::Proposed {
+                GraphPermission::Write
+            } else {
+                GraphPermission::Manage
+            };
+            let action = format!("set_node_state to {}", state.as_str());
+            require_graph_permission(app, source, need, &action)?;
+            let why = require_why(args)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            let node_id = require_nonempty_str(args, "nodeId")?;
+            let node =
+                crate::graphs::set_node_state(app, &graph_id, &node_id, state, &actor(), Some(why))
+                    .map_err(ToolError::invalid_params)?;
+            Ok(node_result(&graph_id, &node))
+        }
+        "send_request" => {
+            require_graph_permission(app, source, GraphPermission::Write, name)?;
+            let graph_id = require_nonempty_str(args, "graphId")?;
+            let node_id = require_nonempty_str(args, "nodeId")?;
+            let kind_str = require_nonempty_str(args, "kind")?;
+            let kind: GraphRequestKind = serde_json::from_value(json!(kind_str)).map_err(|_| {
+                ToolError::invalid_params(format!(
+                    "Unknown kind '{kind_str}': use accept-done or decision"
+                ))
+            })?;
+            let title = require_nonempty_str(args, "title")?;
+            let request = crate::graphs::create_request(
+                app,
+                &graph_id,
+                &node_id,
+                kind,
+                title,
+                optional_str(args, "body"),
+                optional_string_list(args, "evidence")?.unwrap_or_default(),
+                optional_string_list(args, "options")?.unwrap_or_default(),
+                optional_str(args, "blocker"),
+                &actor(),
+            )
+            .map_err(ToolError::invalid_params)?;
+            serde_json::to_value(request).map_err(|e| ToolError::internal(e.to_string()))
+        }
+        "set_serves" => {
+            if source == crate::graphs::permissions::ANON_SOURCE {
+                return Err(ToolError::invalid_params(
+                    "set_serves only works from a Splitkick session (it sets the calling session's serves)",
+                ));
+            }
+            let serves = optional_string_list(args, "serves")?
+                .ok_or_else(|| ToolError::invalid_params("missing 'serves' (array of refs)"))?;
+            validate_serves(app, &serves)?;
+            crate::graphs::set_session_serves(app.clone(), source.to_string(), serves.clone())
+                .await
+                .map_err(ToolError::internal)?;
+            Ok(json!({ "sessionId": source, "serves": serves }))
+        }
+        other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
+    }
 }
 
 /// What `open_in_browser` shows: a web URL, or an existing local file. The
@@ -5100,6 +5575,431 @@ mod tests {
             let parsed: Value = serde_json::from_str(text).expect("valid JSON payload");
             assert!(parsed.is_object(), "{name} returned {text}");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Graph layer tools
+    // ------------------------------------------------------------------
+
+    fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    fn call_as(app: &AppHandle, name: &str, args: Value, source: &str) -> Result<Value, ToolError> {
+        block_on(run_tool(app, name, args, source))
+    }
+
+    fn save_agent_profiles(app: &AppHandle, profiles: Vec<crate::AgentProfile>) {
+        let prefs = crate::AppPreferences {
+            agent_profiles: profiles,
+            ..Default::default()
+        };
+        let path = crate::get_preferences_path(app).unwrap();
+        std::fs::write(path, serde_json::to_string(&prefs).unwrap()).unwrap();
+    }
+
+    fn agent_profile(id: &str, permission: &str, persona: &str) -> crate::AgentProfile {
+        crate::AgentProfile {
+            id: id.into(),
+            name: format!("Agent {id}"),
+            color: String::new(),
+            persona: persona.into(),
+            permission: permission.into(),
+            backend: None,
+            model: None,
+            default_serves: None,
+        }
+    }
+
+    /// `tool_fixture` plus metadata for `tool-s1` with `permission`, and a
+    /// graph with one node. Returns (temp, app, graph id, node id).
+    fn graph_fixture(permission: Option<&str>) -> (tempfile::TempDir, AppHandle, String, String) {
+        let (temp, app) = tool_fixture();
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            "tool-s1".to_string(),
+            "tool-wt".to_string(),
+            "redirect notes".to_string(),
+            0,
+        );
+        metadata.graph_permission = permission.map(str::to_string);
+        crate::chat::storage::save_metadata(&app, &metadata).unwrap();
+        let path = temp
+            .path()
+            .join("roadmap.yml")
+            .to_string_lossy()
+            .to_string();
+        let graph = block_on(crate::graphs::create_graph(
+            app.clone(),
+            "Roadmap".into(),
+            "roadmap".into(),
+            path,
+        ))
+        .unwrap();
+        let node = crate::graphs::create_node(
+            &app,
+            &graph.id,
+            NewGraphNode {
+                title: "Graph support".into(),
+                ..Default::default()
+            },
+            &crate::graphs::GraphActor::User,
+            None,
+        )
+        .unwrap();
+        (temp, app, graph.id, node.id)
+    }
+
+    #[test]
+    fn graph_tool_schemas_are_registered_and_writes_rate_limited() {
+        let tools = tool_registry();
+        for name in [
+            "list_graphs",
+            "read_graph",
+            "create_node",
+            "update_node",
+            "set_node_state",
+            "send_request",
+            "set_serves",
+        ] {
+            let tool = find_tool(&tools, name);
+            assert!(tool["inputSchema"].is_object(), "{name}");
+        }
+        for name in ["create_node", "update_node", "set_node_state"] {
+            let tool = find_tool(&tools, name);
+            let required = tool["inputSchema"]["required"].as_array().unwrap();
+            assert!(required.contains(&json!("why")), "{name} requires why");
+            assert!(RATE_LIMITED_TOOLS.contains(&name));
+        }
+        assert!(RATE_LIMITED_TOOLS.contains(&"send_request"));
+        assert!(RATE_LIMITED_TOOLS.contains(&"set_serves"));
+        assert!(!RATE_LIMITED_TOOLS.contains(&"read_graph"));
+        let create_session = find_tool(&tools, "create_session");
+        assert!(create_session["inputSchema"]["properties"]["serves"].is_object());
+        assert!(create_session["inputSchema"]["properties"]["agentId"].is_object());
+    }
+
+    #[test]
+    fn graph_reads_work_for_anon() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(None);
+
+        let list = call(&app, "list_graphs", json!({})).unwrap();
+        assert_eq!(list["graphs"][0]["id"], json!(graph_id));
+
+        let graph = call(&app, "read_graph", json!({ "graphId": graph_id })).unwrap();
+        assert_eq!(graph["nodes"][0]["id"], json!(node_id));
+        assert_eq!(
+            graph["nodes"][0]["ref"],
+            json!(format!("{graph_id}#{node_id}"))
+        );
+        assert_eq!(graph["nodes"][0]["state"], "proposed");
+        assert!(graph["openRequests"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn graph_writes_are_refused_for_read_sessions() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("read"));
+
+        let error = call_as(
+            &app,
+            "update_node",
+            json!({ "graphId": graph_id, "nodeId": node_id, "title": "X", "why": "test" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'write'"), "{}", error.message);
+        assert!(error
+            .message
+            .contains("raise this session's graph permission"));
+
+        // anon is read too.
+        let error = call(
+            &app,
+            "create_node",
+            json!({ "graphId": graph_id, "title": "New", "why": "test" }),
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'write'"));
+    }
+
+    #[test]
+    fn graph_writes_without_why_are_refused() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
+
+        for (name, args) in [
+            (
+                "create_node",
+                json!({ "graphId": graph_id, "title": "New" }),
+            ),
+            (
+                "update_node",
+                json!({ "graphId": graph_id, "nodeId": node_id, "title": "X", "why": "  " }),
+            ),
+            (
+                "set_node_state",
+                json!({ "graphId": graph_id, "nodeId": node_id, "state": "done" }),
+            ),
+        ] {
+            let error = call_as(&app, name, args, "tool-s1").unwrap_err();
+            assert!(error.message.contains("'why' is required"), "{name}");
+        }
+    }
+
+    #[test]
+    fn manage_only_states_are_refused_for_write_sessions() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+
+        let error = call_as(
+            &app,
+            "set_node_state",
+            json!({ "graphId": graph_id, "nodeId": node_id, "state": "done", "why": "shipped" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'manage'"), "{}", error.message);
+
+        let error = call_as(
+            &app,
+            "create_node",
+            json!({ "graphId": graph_id, "title": "New", "state": "committed", "why": "x" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'manage'"));
+
+        // proposed is fine with write, and update_node works.
+        call_as(
+            &app,
+            "set_node_state",
+            json!({ "graphId": graph_id, "nodeId": node_id, "state": "proposed", "why": "x" }),
+            "tool-s1",
+        )
+        .unwrap();
+        let node = call_as(
+            &app,
+            "update_node",
+            json!({
+                "graphId": graph_id, "nodeId": node_id, "why": "track the quarter",
+                "setProperties": { "quarter": "2027-Q1" },
+                "addAttachments": [{ "kind": "issue", "value": "azeitler/splitkick#78" }],
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(node["properties"], json!([["quarter", "2027-Q1"]]));
+        assert_eq!(node["attachments"][0]["kind"], "issue");
+    }
+
+    #[test]
+    fn manage_session_creates_and_sets_state_as_itself() {
+        let (_temp, app, graph_id, parent_id) = graph_fixture(Some("manage"));
+
+        let node = call_as(
+            &app,
+            "create_node",
+            json!({
+                "graphId": graph_id, "title": "Child", "partOf": parent_id,
+                "state": "committed", "why": "split the work",
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        let child_id = node["id"].as_str().unwrap().to_string();
+        assert_eq!(node["state"], "committed");
+        assert_eq!(node["relations"][0]["kind"], "part-of");
+        assert_eq!(node["ref"], json!(format!("{graph_id}#{child_id}")));
+
+        call_as(
+            &app,
+            "set_node_state",
+            json!({ "graphId": graph_id, "nodeId": child_id, "state": "done", "why": "merged" }),
+            "tool-s1",
+        )
+        .unwrap();
+
+        let changes = crate::graphs::changes::list_changes(&app, &graph_id).unwrap();
+        let latest = &changes[0];
+        assert_eq!(latest.action, "node.state");
+        assert_eq!(latest.why.as_deref(), Some("merged"));
+        assert_eq!(latest.actor.session_id(), Some("tool-s1"));
+        assert_eq!(latest.actor.session_name(), Some("redirect notes"));
+
+        let graph = call(&app, "read_graph", json!({ "graphId": graph_id })).unwrap();
+        let parent = graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == json!(parent_id))
+            .unwrap()
+            .clone();
+        assert_eq!(parent["progress"], "1/1");
+    }
+
+    #[test]
+    fn send_request_creates_an_open_request() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+
+        let request = call_as(
+            &app,
+            "send_request",
+            json!({
+                "graphId": graph_id, "nodeId": node_id, "kind": "accept-done",
+                "title": "Done?", "evidence": ["PR #12 merged"],
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(request["status"], "open");
+        assert_eq!(request["fromSessionId"], "tool-s1");
+        assert_eq!(request["evidence"], json!(["PR #12 merged"]));
+
+        let graph = call(&app, "read_graph", json!({ "graphId": graph_id })).unwrap();
+        assert_eq!(graph["openRequests"][0]["kind"], "accept-done");
+
+        let error = call_as(
+            &app,
+            "send_request",
+            json!({ "graphId": graph_id, "nodeId": node_id, "kind": "nag", "title": "x" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("accept-done or decision"));
+    }
+
+    #[test]
+    fn set_serves_validates_refs_and_writes_metadata() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(None);
+
+        let error = call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": [format!("{graph_id}#nope00")] }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("has no node nope00"));
+        let error = call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": ["unknown-graph"] }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("Invalid serves ref"));
+        assert!(call(&app, "set_serves", json!({ "serves": [] })).is_err());
+
+        let r = format!("{graph_id}#{node_id}");
+        call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": [r.clone(), graph_id.clone()] }),
+            "tool-s1",
+        )
+        .unwrap();
+        let m = crate::chat::storage::load_metadata(&app, "tool-s1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.serves, vec![r, graph_id]);
+    }
+
+    fn created_session_id(result: &Value) -> String {
+        result["id"].as_str().expect("session id").to_string()
+    }
+
+    #[test]
+    fn create_session_with_agent_sets_agent_and_permission() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
+        save_agent_profiles(&app, vec![agent_profile("planner", "write", "Plan well.")]);
+        let r = format!("{graph_id}#{node_id}");
+
+        // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+        let session = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    call_as(
+                        &app,
+                        "create_session",
+                        json!({ "worktreeId": "tool-wt", "agentId": "planner", "serves": [r.clone()] }),
+                        "tool-s1",
+                    )
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+        .unwrap();
+        let id = created_session_id(&session);
+        let m = crate::chat::storage::load_metadata(&app, &id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.agent_id.as_deref(), Some("planner"));
+        assert_eq!(m.graph_permission.as_deref(), Some("write"));
+        assert_eq!(m.serves, vec![r]);
+        assert_eq!(
+            crate::graphs::effective_permission(&app, &id),
+            GraphPermission::Write
+        );
+
+        let error = call_as(
+            &app,
+            "create_session",
+            json!({ "worktreeId": "tool-wt", "agentId": "ghost" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("Unknown agentId"));
+    }
+
+    #[test]
+    fn create_session_with_agent_is_refused_without_manage() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(Some("write"));
+        save_agent_profiles(&app, vec![agent_profile("planner", "write", "")]);
+
+        let before = crate::chat::storage::load_sessions(&app, "", "tool-wt")
+            .unwrap()
+            .sessions
+            .len();
+        let error = call_as(
+            &app,
+            "create_session",
+            json!({ "worktreeId": "tool-wt", "agentId": "planner" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'manage'"), "{}", error.message);
+        let after = crate::chat::storage::load_sessions(&app, "", "tool-wt")
+            .unwrap()
+            .sessions
+            .len();
+        assert_eq!(before, after, "no session is created when refused");
+    }
+
+    #[test]
+    fn session_prompt_parts_only_for_agent_or_serving_sessions() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(None);
+        assert!(crate::graphs::session_prompt_parts(&app, "tool-s1").is_empty());
+        assert!(crate::graphs::session_prompt_parts(&app, "anon").is_empty());
+
+        save_agent_profiles(&app, vec![agent_profile("planner", "write", "Plan well.")]);
+        crate::chat::storage::with_existing_metadata_mut(&app, "tool-s1", |m| {
+            m.agent_id = Some("planner".into());
+            m.serves = vec![format!("{graph_id}#{node_id}")];
+        })
+        .unwrap();
+
+        let parts = crate::graphs::session_prompt_parts(&app, "tool-s1");
+        let text = parts.join("\n\n");
+        assert!(text.contains("Agent planner"), "{text}");
+        assert!(text.contains("Plan well."));
+        assert!(text.contains(&format!("{graph_id}#{node_id}")));
+        assert!(text.contains("Graph support"));
+        assert!(text.contains("roadmap.yml"));
+        assert!(text.contains("permission is write"));
+        assert!(text.contains("read_graph") && text.contains("send_request"));
     }
 
     #[test]

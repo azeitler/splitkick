@@ -14,6 +14,7 @@ import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
 import { schedulesQueryKeys } from '@/services/schedules'
+import { graphsQueryKeys } from '@/services/graphs'
 import type {
   AllSessionsResponse,
   QueuedMessage,
@@ -192,6 +193,11 @@ export function applyCacheInvalidationKeys(
       case 'schedules':
         queryClient.invalidateQueries({
           queryKey: schedulesQueryKeys.all,
+        })
+        break
+      case 'graphs':
+        queryClient.invalidateQueries({
+          queryKey: graphsQueryKeys.all,
         })
         break
     }

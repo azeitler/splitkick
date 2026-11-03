@@ -4,6 +4,8 @@ import { create } from 'zustand'
 export type NavigationLocation =
   | { kind: 'home' }
   | { kind: 'project'; projectId: string }
+  /** A graph in the main area (graph layer). */
+  | { kind: 'graph'; graphId: string }
   /** A session in the project canvas's session modal. */
   | {
       kind: 'session'
@@ -35,6 +37,8 @@ export function isSameLocation(
       return b.kind === 'home'
     case 'project':
       return b.kind === 'project' && b.projectId === a.projectId
+    case 'graph':
+      return b.kind === 'graph' && b.graphId === a.graphId
     case 'session':
       return (
         b.kind === 'session' &&

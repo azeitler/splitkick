@@ -15,7 +15,7 @@ Splitkick's own roadmap (#62, #71, #72, #74–#78) with cross-project links to `
 `splitkick-docs`.
 
 Screenshots are in `screenshots/` (WebKit, 2×, light and dark). To capture them again, run
-`node tmp/graph-shots/capture.mjs` from the repo root. The script is not tracked.
+`node scratch/graph-shots/capture.mjs` from the repo root. The script is not tracked.
 
 ## Screens
 

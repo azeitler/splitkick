@@ -27,6 +27,7 @@ export type PreferencePane =
   | 'keybindings'
   | 'terminal'
   | 'magic-prompts'
+  | 'agents'
   | 'mcp-servers'
   | 'providers'
   | 'usage'
@@ -34,6 +35,13 @@ export type PreferencePane =
   | 'experimental'
   | 'web-access'
   | 'opinionated'
+
+/** Presets of the "Start session from agent" dialog. */
+export interface StartAgentSessionTarget {
+  agentId?: string
+  /** Graph ref: `<graph-id>` or `<graph-id>#<node-id>` */
+  serves?: string
+}
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
@@ -197,6 +205,18 @@ interface UIState {
   /** Whether the main area shows the Archived view. Only meaningful while no
    *  project and no worktree is selected; not persisted. */
   archivedViewOpen: boolean
+  /** Graph shown in the main area (graph layer, #79). Like the Archived view
+   *  it needs no project and no worktree selected; not persisted. */
+  activeGraphId: string | null
+  /** Node the graph view selects once (set by `openGraphView(id, nodeId)`,
+   *  cleared by the view). Not persisted. */
+  graphFocusNodeId: string | null
+  /** Agent the Settings → Agents pane opens on. Not persisted. */
+  editingAgentId: string | null
+  /** Open "Start session from agent" dialog with its presets, or null. */
+  startAgentSessionTarget: StartAgentSessionTarget | null
+  /** Global New graph dialog (command palette). Not persisted. */
+  newGraphDialogOpen: boolean
   /** Whether the follow-up list (#46) is open next to the send button.
    *  Not persisted. */
   followUpsOpen: boolean
@@ -341,6 +361,12 @@ interface UIState {
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
   setArchivedViewOpen: (open: boolean) => void
+  setActiveGraphId: (graphId: string | null) => void
+  setGraphFocusNodeId: (nodeId: string | null) => void
+  /** Open Settings → Agents on one agent (or the first when null). */
+  openAgentEditor: (agentId: string | null) => void
+  setStartAgentSessionTarget: (target: StartAgentSessionTarget | null) => void
+  setNewGraphDialogOpen: (open: boolean) => void
   setFollowUpsOpen: (open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
   requestProjectHome: (projectId: string) => void
@@ -464,6 +490,11 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
       archivedViewOpen: false,
+      activeGraphId: null,
+      graphFocusNodeId: null,
+      editingAgentId: null,
+      startAgentSessionTarget: null,
+      newGraphDialogOpen: false,
       followUpsOpen: false,
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
@@ -1110,6 +1141,57 @@ export const useUIStore = create<UIState>()(
               : { archivedViewOpen: open },
           undefined,
           'setArchivedViewOpen'
+        ),
+
+      setActiveGraphId: graphId =>
+        set(
+          state =>
+            state.activeGraphId === graphId
+              ? state
+              : { activeGraphId: graphId },
+          undefined,
+          'setActiveGraphId'
+        ),
+
+      setGraphFocusNodeId: nodeId =>
+        set(
+          state =>
+            state.graphFocusNodeId === nodeId
+              ? state
+              : { graphFocusNodeId: nodeId },
+          undefined,
+          'setGraphFocusNodeId'
+        ),
+
+      openAgentEditor: agentId =>
+        set(
+          {
+            editingAgentId: agentId,
+            preferencesOpen: true,
+            preferencesPane: 'agents',
+          },
+          undefined,
+          'openAgentEditor'
+        ),
+
+      setStartAgentSessionTarget: target =>
+        set(
+          state =>
+            state.startAgentSessionTarget === target
+              ? state
+              : { startAgentSessionTarget: target },
+          undefined,
+          'setStartAgentSessionTarget'
+        ),
+
+      setNewGraphDialogOpen: open =>
+        set(
+          state =>
+            state.newGraphDialogOpen === open
+              ? state
+              : { newGraphDialogOpen: open },
+          undefined,
+          'setNewGraphDialogOpen'
         ),
 
       setFollowUpsOpen: open =>

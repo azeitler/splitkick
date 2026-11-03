@@ -1238,6 +1238,124 @@ pub async fn dispatch_command(
                 crate::chat::session_links::get_session_link(app.clone(), session_id).await?;
             to_value(result)
         }
+        // Graph layer (docs/developer/graph-layer.md). The graph functions emit
+        // `cache:invalidate` themselves, so MCP writes refresh clients too.
+        "list_graphs" => to_value(crate::graphs::list_graphs(app.clone()).await?),
+        "get_graph" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            to_value(crate::graphs::get_graph(app.clone(), graph_id).await?)
+        }
+        "get_graph_location_info" => {
+            let path: String = from_field(&args, "path")?;
+            to_value(crate::graphs::get_graph_location_info(app.clone(), path).await?)
+        }
+        "create_graph" => {
+            let title: String = from_field(&args, "title")?;
+            let graph_type: String =
+                field_opt(&args, "graphType", "graph_type")?.unwrap_or_default();
+            let path: String = from_field(&args, "path")?;
+            to_value(crate::graphs::create_graph(app.clone(), title, graph_type, path).await?)
+        }
+        "open_graph_file" => {
+            let path: String = from_field(&args, "path")?;
+            to_value(crate::graphs::open_graph_file(app.clone(), path).await?)
+        }
+        "remove_graph" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            crate::graphs::remove_graph(app.clone(), graph_id).await?;
+            Ok(Value::Null)
+        }
+        "update_graph" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let title: Option<String> = from_field_opt(&args, "title")?;
+            let graph_type: Option<String> = field_opt(&args, "graphType", "graph_type")?;
+            to_value(crate::graphs::update_graph(app.clone(), graph_id, title, graph_type).await?)
+        }
+        "create_graph_node" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let node: crate::graphs::NewGraphNode = from_field(&args, "node")?;
+            let why: Option<String> = from_field_opt(&args, "why")?;
+            to_value(crate::graphs::create_graph_node(app.clone(), graph_id, node, why).await?)
+        }
+        "update_graph_node" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let node_id: String = field(&args, "nodeId", "node_id")?;
+            let patch: crate::graphs::GraphNodePatch = from_field(&args, "patch")?;
+            let why: Option<String> = from_field_opt(&args, "why")?;
+            to_value(
+                crate::graphs::update_graph_node(app.clone(), graph_id, node_id, patch, why)
+                    .await?,
+            )
+        }
+        "delete_graph_node" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let node_id: String = field(&args, "nodeId", "node_id")?;
+            let why: Option<String> = from_field_opt(&args, "why")?;
+            crate::graphs::delete_graph_node(app.clone(), graph_id, node_id, why).await?;
+            Ok(Value::Null)
+        }
+        "list_graph_changes" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            to_value(crate::graphs::list_graph_changes(app.clone(), graph_id).await?)
+        }
+        "mark_graph_changes_seen" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let change_ids: Option<Vec<String>> = field_opt(&args, "changeIds", "change_ids")?;
+            crate::graphs::mark_graph_changes_seen(app.clone(), graph_id, change_ids).await?;
+            Ok(Value::Null)
+        }
+        "revert_graph_change" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let change_id: String = field(&args, "changeId", "change_id")?;
+            crate::graphs::revert_graph_change(app.clone(), graph_id, change_id).await?;
+            Ok(Value::Null)
+        }
+        "list_graph_requests" => {
+            let graph_id: Option<String> = field_opt(&args, "graphId", "graph_id")?;
+            to_value(crate::graphs::list_graph_requests(app.clone(), graph_id).await?)
+        }
+        "answer_graph_request" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let request_id: String = field(&args, "requestId", "request_id")?;
+            let action: crate::graphs::GraphRequestAction = from_field(&args, "action")?;
+            let answer: Option<String> = from_field_opt(&args, "answer")?;
+            to_value(
+                crate::graphs::answer_graph_request(
+                    app.clone(),
+                    graph_id,
+                    request_id,
+                    action,
+                    answer,
+                )
+                .await?,
+            )
+        }
+        "commit_graph" => {
+            let graph_id: String = field(&args, "graphId", "graph_id")?;
+            let message: Option<String> = from_field_opt(&args, "message")?;
+            to_value(crate::graphs::commit_graph(app.clone(), graph_id, message).await?)
+        }
+        "set_session_serves" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let serves: Vec<String> = from_field(&args, "serves")?;
+            crate::graphs::set_session_serves(app.clone(), session_id, serves).await?;
+            Ok(Value::Null)
+        }
+        "set_session_agent" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let agent_id: Option<String> = field_opt(&args, "agentId", "agent_id")?;
+            let permission: Option<crate::graphs::GraphPermission> =
+                from_field_opt(&args, "permission")?;
+            crate::graphs::set_session_agent(app.clone(), session_id, agent_id, permission).await?;
+            Ok(Value::Null)
+        }
+        "set_session_graph_permission" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let permission: crate::graphs::GraphPermission = from_field(&args, "permission")?;
+            crate::graphs::set_session_graph_permission(app.clone(), session_id, permission)
+                .await?;
+            Ok(Value::Null)
+        }
         "list_all_sessions" => {
             let result = crate::chat::list_all_sessions(app.clone()).await?;
             to_value(result)

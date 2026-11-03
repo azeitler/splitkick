@@ -12,5 +12,6 @@ import { useUIStore } from '@/store/ui-store'
 export function openArchivedView(): void {
   useProjectsStore.getState().selectProject(null)
   useChatStore.getState().clearActiveWorktree()
+  useUIStore.getState().setActiveGraphId(null)
   useUIStore.getState().setArchivedViewOpen(true)
 }
