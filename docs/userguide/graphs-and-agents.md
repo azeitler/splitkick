@@ -53,6 +53,7 @@ model. Edit them in **Settings → Agents**.
 
 Start a session from an agent with **Start session…** (in a graph, on a node, in
 Settings → Agents, or in the command palette). The persona and the nodes the
-session serves are added to its system prompt. In the session, the **Graph**
-button opens a panel with its node, what comes before and after, and its
-permission.
+session serves are added to its system prompt. An edit to the persona reaches
+every session of that agent, also running ones, with its next message. In the
+session, the **Graph** button opens a panel with its node, what comes before
+and after, and its permission.

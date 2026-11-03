@@ -101,8 +101,9 @@ Same for a `blocked-by` on a decision: the manager asks, the answer resolves it.
 - **Editing profiles:** Settings → **Agents** (a pane next to Magic Prompts)
   is the one editor. Other ways in open the same pane: *Edit* on the Agents
   page, the agent chip in the header of a session started from an agent, and
-  the command palette ("Edit agent…"). Edits apply to sessions started after
-  the save; running sessions keep the persona they started with.
+  the command palette ("Edit agent…"). The persona is read on every message,
+  so an edit reaches every session of that agent, also running ones, on its
+  next message (decided 2026-11-03: keep it live).
 - **What a manager may decide lives in its persona prompt.** The code enforces
   only one coarse level per session, in the MCP tools:
 
