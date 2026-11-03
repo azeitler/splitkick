@@ -8,7 +8,12 @@ import {
   createContext,
   Children,
   cloneElement,
+  createElement,
   isValidElement,
+  lazy,
+  Suspense,
+  type ComponentType,
+  type LazyExoticComponent,
   type ReactNode,
   type ReactElement,
 } from 'react'
@@ -25,7 +30,20 @@ import { MarkdownLink } from '@/components/ui/markdown-link'
 import { ImagePreviewDialog } from '@/components/chat/ImageLightbox'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
-import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
+import {
+  codeBlockRenderers,
+  findCodeBlockRenderer,
+  type CodeBlockRenderer,
+} from '@/components/ui/code-block-renderers'
+import {
+  Copy,
+  Check,
+  Table,
+  ListChecks,
+  ImageOff,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -95,7 +113,17 @@ function extractText(node: ReactNode): string {
 // drive path can arrive as `C:%5Csite%5Cpage.html`.
 const WINDOWS_DRIVE_RE = /^[a-z]:(?:[\\/]|%5c)/i
 
-function CodeBlock({ children }: { children: ReactNode }) {
+const codeBlockButtonClass =
+  'opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer'
+
+function CodeBlock({
+  children,
+  preview,
+}: {
+  children: ReactNode
+  /** Adds a Preview toggle (registry entries with mode `preview`). */
+  preview?: { open: boolean; onToggle: () => void }
+}) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -108,27 +136,172 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative my-5 min-w-0 max-w-full">
-      <pre className="max-w-full overflow-x-auto rounded-lg bg-muted p-4 pr-10 text-sm">
+      <pre
+        className={cn(
+          'max-w-full overflow-x-auto rounded-lg bg-muted p-4 text-sm',
+          preview ? 'pr-20' : 'pr-10'
+        )}
+      >
         {children}
       </pre>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleCopy}
-            aria-label="Copy code"
-            className="absolute right-2 top-2 opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            {copied ? (
-              <Check className="size-4" />
-            ) : (
-              <Copy className="size-4" />
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Copy code</TooltipContent>
-      </Tooltip>
+      <div className="absolute right-2 top-2 flex items-center gap-1">
+        {preview && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={preview.onToggle}
+                aria-label={preview.open ? 'Hide preview' : 'Preview'}
+                aria-pressed={preview.open}
+                className={codeBlockButtonClass}
+              >
+                {preview.open ? (
+                  <EyeOff className="size-4" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {preview.open ? 'Hide preview' : 'Preview'}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label="Copy code"
+              className={codeBlockButtonClass}
+            >
+              {copied ? (
+                <Check className="size-4" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Copy code</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
+  )
+}
+
+type RichBlockComponent = ComponentType<{ code: string; isComplete: boolean }>
+
+/** The Markdown source and streaming flag, so a code block can tell if its fence is closed. */
+const MarkdownSourceContext = createContext({ source: '', streaming: false })
+
+function PlainCodeBlock({ code }: { code: string }) {
+  return (
+    <CodeBlock>
+      <code>{code}</code>
+    </CodeBlock>
+  )
+}
+
+// One lazy component per renderer, created once: its chunk loads when a
+// matching block first renders. A chunk that fails to load shows the plain
+// code block.
+const lazyRenderers = new Map<
+  CodeBlockRenderer,
+  LazyExoticComponent<RichBlockComponent>
+>(
+  codeBlockRenderers.map(renderer => [
+    renderer,
+    lazy(() => renderer.load().catch(() => ({ default: PlainCodeBlock }))),
+  ])
+)
+
+// While streaming, a fenced block is complete once its closing fence arrived.
+const CLOSING_FENCE_RE = /\n[ \t>]*(`{3,}|~{3,})[ \t]*$/
+
+/**
+ * A `preview` entry (HTML/SVG): untrusted active content renders only after
+ * the user clicks Preview, and only once the block is complete.
+ */
+function PreviewCodeBlock({
+  Renderer,
+  isComplete,
+  children,
+}: {
+  Renderer: LazyExoticComponent<RichBlockComponent>
+  isComplete: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <CodeBlock
+        preview={
+          isComplete
+            ? { open, onToggle: () => setOpen(value => !value) }
+            : undefined
+        }
+      >
+        {children}
+      </CodeBlock>
+      {open && isComplete && (
+        <div className="-mt-3 mb-5 min-w-0 max-w-full">
+          <Suspense
+            fallback={
+              <div className="py-4 text-sm text-muted-foreground">
+                Loading preview…
+              </div>
+            }
+          >
+            {createElement(Renderer, {
+              code: extractText(children).replace(/\n$/, ''),
+              isComplete: true,
+            })}
+          </Suspense>
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * A fenced block. A language with an `auto` entry in the code-block renderer
+ * registry renders in place; the normal code block shows while it loads.
+ */
+function PreBlock({
+  children,
+  start,
+  end,
+}: {
+  children: ReactNode
+  start?: number
+  end?: number
+}) {
+  const { source, streaming } = useContext(MarkdownSourceContext)
+  const [code] = Children.toArray(children)
+  const language = isValidElement<{ className?: string }>(code)
+    ? /language-(\S+)/.exec(code.props.className ?? '')?.[1]
+    : undefined
+  const renderer = findCodeBlockRenderer(language)
+  const Renderer = renderer && lazyRenderers.get(renderer)
+  if (!Renderer) return <CodeBlock>{children}</CodeBlock>
+  const isComplete =
+    !streaming || CLOSING_FENCE_RE.test(source.slice(start, end))
+  if (renderer.mode === 'preview') {
+    return (
+      <PreviewCodeBlock Renderer={Renderer} isComplete={isComplete}>
+        {children}
+      </PreviewCodeBlock>
+    )
+  }
+  // createElement: the component comes from the module-level map, not from
+  // this render.
+  return (
+    <Suspense fallback={<CodeBlock>{children}</CodeBlock>}>
+      {createElement(Renderer, {
+        code: extractText(children).replace(/\n$/, ''),
+        isComplete,
+      })}
+    </Suspense>
   )
 }
 
@@ -532,7 +705,14 @@ const components: Components = {
   },
 
   // Code blocks
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  pre: ({ children, node }) => (
+    <PreBlock
+      start={node?.position?.start.offset}
+      end={node?.position?.end.offset}
+    >
+      {children}
+    </PreBlock>
+  ),
 
   // Images
   // Keyed by src so a changed source starts with a fresh fallback state.
@@ -739,6 +919,11 @@ const Markdown = memo(function Markdown({
     [messageId, sessionId]
   )
 
+  const sourceValue = useMemo(
+    () => ({ source: content, streaming }),
+    [content, streaming]
+  )
+
   const componentsToUse = streaming
     ? variant === 'tool-call'
       ? toolCallStreamingComponents
@@ -752,14 +937,16 @@ const Markdown = memo(function Markdown({
   return (
     <div className={cn('markdown leading-relaxed break-words', className)}>
       <MarkdownTableContext.Provider value={contextValue}>
-        <ReactMarkdown
-          components={componentsToUse}
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={streaming ? undefined : rehypePlugins}
-          urlTransform={markdownUrlTransform}
-        >
-          {content}
-        </ReactMarkdown>
+        <MarkdownSourceContext.Provider value={sourceValue}>
+          <ReactMarkdown
+            components={componentsToUse}
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={streaming ? undefined : rehypePlugins}
+            urlTransform={markdownUrlTransform}
+          >
+            {content}
+          </ReactMarkdown>
+        </MarkdownSourceContext.Provider>
       </MarkdownTableContext.Provider>
     </div>
   )

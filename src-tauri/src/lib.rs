@@ -2,6 +2,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 mod app_menu;
+mod artifact_preview;
 mod browser;
 mod connection_window;
 mod desktop_commands;
@@ -376,6 +377,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        // Dedicated origin for HTML artifact previews (#76).
+        .register_uri_scheme_protocol(artifact_preview::SCHEME, |_ctx, _request| {
+            artifact_preview::response()
+        })
         // Not VISIBLE: windows hidden to keep running sessions alive would
         // otherwise come back hidden — present, but impossible to reach.
         .plugin(

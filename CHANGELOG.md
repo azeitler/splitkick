@@ -27,6 +27,34 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Graph panel in a session** that serves a node or a graph: its node, what
   comes before and after, siblings, permission and `serves`.
 
+## [1.3.0] - 2026-11-03
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Mermaid diagrams.** ` ```mermaid ` blocks in chat messages, plans and
+  Markdown file previews show as diagrams, in the light or dark theme. While
+  a message streams, the block shows its code until it is complete. Each
+  diagram can show its source, open full screen with zoom and pan, and copy
+  its source, SVG or PNG. Invalid code shows the source with the error.
+  Mermaid loads only when a diagram is shown. (#74)
+- **Data charts in chat.** A ` ```vega-lite ` code block (a Vega-Lite
+  JSON spec with inline data) shows as a chart: bar, line, area, scatter and
+  the other Vega-Lite marks. The chart follows the light or dark theme. Its
+  toolbar shows the source, opens it full screen and copies the source, an
+  SVG or a PNG. An invalid spec shows the source and the error. Charts never
+  load data from the network, and the chart code loads only when a chart
+  appears. (#75)
+- **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
+  write open rendered in the file viewer (from tool calls, the file browser,
+  file links and attached file pills), with **Source**, **Reload** and
+  **Open in Browser**. Pasted `.svg`/`.html` attachments and ` ```html ` /
+  ` ```svg ` blocks in chat get a **Preview** button. HTML runs in a sandboxed
+  frame with no network, no app storage and no Tauri access; SVG shows as an
+  image, so its scripts never run. Works in the app, Web Access and on
+  mobile. (#76)
+
 ### Changed
 
 - **The MCP socket is now `splitkick-mcp.sock`.** Dev builds use
@@ -48,6 +76,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   development build had one; a test build such as `app.splitkick.desktop.rel76`
   opened the installed app's data folder, its sessions and its MCP socket. Now
   every `app.splitkick.desktop…` identifier uses the folder of the same name.
+- **A chat no longer freezes on a text block while the window is hidden.**
+  When the Splitkick window was behind another window (for example Chrome
+  during Playwright runs), a text block was put after the tool calls that
+  followed it, so the compact view showed that text as the latest step. Text
+  now always stays before the tools that come after it. After the turn, the
+  chat also loads the turn from disk again when older prompts were loaded by
+  scrolling up; before, it kept its own copy, so missing tool calls and a
+  pending question did not come back until a restart. (#73)
 
 ## [1.2.2] - 2026-10-29
 
@@ -2170,7 +2206,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.3.0...HEAD
+[1.3.0]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...splitkick-v1.3.0
 [1.2.2]: https://github.com/azeitler/jean/compare/splitkick-v1.2.1...splitkick-v1.2.2
 [1.2.1]: https://github.com/azeitler/jean/compare/splitkick-v1.2.0...splitkick-v1.2.1
 [1.2.0]: https://github.com/azeitler/jean/compare/splitkick-v1.1.0...splitkick-v1.2.0

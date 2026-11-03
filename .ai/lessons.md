@@ -356,3 +356,15 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - When a session starts a real app build for testing, also set
   `SPLITKICK_DATA_DIR` to a folder in `tmp/`, until every installed copy
   has the fix.
+
+## Confirm the user's real pain before an evaluation recommends
+
+- An issue title names a solution ("cache the app code"); the trigger behind it can be different ("the PWA reloads often").
+- Before the recommendation, list the possible pains (load time, reloads, lost view, lost login) and check which one the user sees. Ask when the issue text does not say it.
+- Do not recommend the option the user already has as the fix for the pain that made them open the issue.
+
+## An answer to "which phase first" is not a start signal in an evaluation
+
+- When the task is an evaluation or a plan, a choice about phase order only changes the plan. It does not start implementation, spikes, tool installs or new issues.
+- Do not put "I start …" in the options of a question during an evaluation. Ask only about the plan.
+- Before any work outside the report, ask for an explicit "start the work".

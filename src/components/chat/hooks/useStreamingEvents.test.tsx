@@ -8,6 +8,7 @@ import { preferencesQueryKeys } from '@/services/preferences'
 import { chatQueryKeys } from '@/services/chat'
 import type { Session } from '@/types/chat'
 import type { AppPreferences } from '@/types/preferences'
+import issue73Events from './__fixtures__/issue-73-events.json'
 
 const {
   mockInvoke,
@@ -2109,5 +2110,103 @@ describe('useStreamingEvents execution mode from another sender', () => {
       queryClient.getQueryData<Session>(chatQueryKeys.session('session-1'))
         ?.selected_execution_mode
     ).toBe('yolo')
+  })
+})
+
+/**
+ * Issue #73: live events of the stuck turn, as the backend emits them for run
+ * log lines 418–675 (generated from `jean-core/src/chat/testdata/
+ * issue_73_run_log.jsonl` by the tailer; all text is placeholder). The turn
+ * starts with a text block, then runs five tools and ends on AskUserQuestion.
+ */
+
+describe('useStreamingEvents issue #73 replay', () => {
+  beforeEach(() => {
+    setupListenMock()
+    useChatStore.setState({
+      sendingSessionIds: { 'session-73': true },
+      sendStartedAt: { 'session-73': 1000 },
+      streamingContents: {},
+      streamingContentBlocks: {},
+      activeToolCalls: {},
+      sessionWorktreeMap: { 'session-73': 'worktree-73' },
+      worktreePaths: { 'worktree-73': '/tmp/worktree' },
+      waitingForInputSessionIds: {},
+      messageQueues: {},
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the text before later tools while no frame runs (hidden window)', async () => {
+    // WKWebView runs no animation frames while the window is hidden (e.g.
+    // Chrome in front during Playwright navigation). Text chunks wait for a
+    // frame; tool events must not overtake them.
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1)
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(['chat', 'session', 'session-73'], {
+      id: 'session-73',
+      name: 'Issue 73',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      backend: 'claude',
+      messages: [
+        {
+          id: 'user-73',
+          session_id: 'session-73',
+          role: 'user',
+          content: 'go',
+          timestamp: 1,
+          tool_calls: [],
+        },
+      ],
+    })
+
+    renderHook(() => useStreamingEvents({ queryClient }), {
+      wrapper: createWrapper(queryClient),
+    })
+    await waitFor(() => expect(registeredListeners.has('chat:done')).toBe(true))
+
+    const retarget = (payload: Record<string, unknown>) => ({
+      ...payload,
+      session_id: 'session-73',
+      worktree_id: 'worktree-73',
+    })
+    const firstTool = issue73Events.findIndex(e => e.event === 'chat:tool_use')
+    for (const [index, { event, payload }] of issue73Events.entries()) {
+      registeredListeners.get(event)?.({ payload: retarget(payload) })
+      if (index === firstTool) {
+        // Live view right after the first tool: the text must come first.
+        expect(
+          useChatStore.getState().streamingContentBlocks['session-73']?.[0]
+            ?.type
+        ).toBe('text')
+      }
+    }
+
+    const assistant = queryClient
+      .getQueryData<Session>(['chat', 'session', 'session-73'])
+      ?.messages.at(-1)
+    const blocks = assistant?.content_blocks ?? []
+    expect(blocks.map(b => b.type)).toEqual([
+      'text',
+      'tool_use',
+      'tool_use',
+      'tool_use',
+      'tool_use',
+      'tool_use',
+      'tool_use',
+    ])
+    const last = blocks.at(-1)
+    const question = assistant?.tool_calls.find(
+      tc => tc.name === 'AskUserQuestion'
+    )
+    expect(last?.type === 'tool_use' && last.tool_call_id).toBe(question?.id)
+    expect(
+      useChatStore.getState().waitingForInputSessionIds['session-73']
+    ).toBe(true)
   })
 })

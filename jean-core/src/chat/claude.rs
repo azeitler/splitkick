@@ -3373,4 +3373,70 @@ mod tests {
             "unparseable config must not enable the flag"
         );
     }
+
+    /// Issue #73: the run log of the affected turn, lines 418–675 (sanitized:
+    /// every string except types, ids and tool names is a placeholder). It
+    /// starts at the text block the UI stopped on and ends at the
+    /// `AskUserQuestion` the user never saw.
+    const ISSUE_73_RUN_LOG: &str = include_str!("testdata/issue_73_run_log.jsonl");
+
+    /// The backend side of #73 was fine: the tailer turns the recorded lines
+    /// into every live event, in order, and ends the turn on the question.
+    #[cfg(unix)]
+    #[test]
+    fn issue_73_run_log_emits_every_event_in_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+        let sink = events.clone();
+        app.set_event_sink(move |event, payload| {
+            sink.lock()
+                .unwrap()
+                .push((event.to_string(), payload.to_string()));
+            Ok(())
+        });
+        let output = temp.path().join("run.jsonl");
+        std::fs::write(&output, ISSUE_73_RUN_LOG).unwrap();
+        // Stands in for the CLI: the tailer SIGKILLs it at the question.
+        let mut cli = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+
+        let response =
+            tail_claude_output(&app, "session-73", "worktree-73", &output, cli.id(), None).unwrap();
+        let _ = cli.wait();
+
+        let names: Vec<String> = response.tool_calls.iter().map(|t| t.name.clone()).collect();
+        assert_eq!(
+            names,
+            [
+                "mcp__playwright__browser_navigate",
+                "mcp__playwright__browser_evaluate",
+                "mcp__playwright__browser_navigate",
+                "mcp__playwright__browser_evaluate",
+                "Bash",
+                "AskUserQuestion",
+            ]
+        );
+
+        let events = events.lock().unwrap();
+        let kinds: Vec<&str> = events
+            .iter()
+            .map(|(event, _)| event.as_str())
+            .filter(|event| *event != "chat:thinking")
+            .collect();
+        assert_eq!(kinds.first(), Some(&"chat:chunk"), "the text comes first");
+        assert_eq!(
+            &kinds[kinds.len() - 3..],
+            ["chat:tool_use", "chat:tool_block", "chat:done"],
+            "the question is emitted, then the turn ends"
+        );
+        assert_eq!(kinds.iter().filter(|k| **k == "chat:tool_use").count(), 6);
+        assert_eq!(
+            kinds.iter().filter(|k| **k == "chat:tool_result").count(),
+            5
+        );
+    }
 }
