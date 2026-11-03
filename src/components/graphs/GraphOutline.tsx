@@ -11,6 +11,7 @@ import {
   BlockedBadge,
   NodeStateChip,
   NodeStateGlyph,
+  NotFound,
   ProgressBar,
   UnseenDot,
 } from './graph-badges'
@@ -225,6 +226,7 @@ function ExternalRows({
         <span className="shrink-0 rounded border border-blue-500/50 px-1.5 text-xs text-blue-500">
           ↗ {target.graphTitle ?? 'other graph'}
         </span>
+        {target.notFound && <NotFound />}
         <span className="flex-1" />
         <span className="truncate text-xs text-muted-foreground">{text}</span>
       </div>

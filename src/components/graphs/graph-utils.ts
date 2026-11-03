@@ -160,6 +160,8 @@ export interface ResolvedTarget {
   graphTitle: string | null
   /** Neither a node here nor a cross-graph ref: free text. */
   freeText: boolean
+  /** A cross-graph ref whose graph or node does not exist. */
+  notFound: boolean
 }
 
 /** Title and kind of a relation target or source (contract: file format). */
@@ -171,6 +173,7 @@ export function resolveRef(detail: GraphDetail, ref: string): ResolvedTarget {
       nodeId: local.id,
       graphTitle: null,
       freeText: false,
+      notFound: false,
     }
   }
   if (ref.includes('#')) {
@@ -180,9 +183,16 @@ export function resolveRef(detail: GraphDetail, ref: string): ResolvedTarget {
       nodeId: null,
       graphTitle: external?.graphTitle ?? null,
       freeText: false,
+      notFound: external ? !external.found : false,
     }
   }
-  return { title: ref, nodeId: null, graphTitle: null, freeText: true }
+  return {
+    title: ref,
+    nodeId: null,
+    graphTitle: null,
+    freeText: true,
+    notFound: false,
+  }
 }
 
 /** Node ids with changes the user has not seen. */

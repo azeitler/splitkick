@@ -645,6 +645,17 @@ async fn poller_ignores_own_writes_and_sees_outside_edits() {
     assert!(!store::poll_once_for_test(&app));
 }
 
+#[test]
+fn poller_reports_runs_starting_and_ending() {
+    // `active` is derived from running sessions; their start and end touch
+    // no graph file, so the poller reports them on their own.
+    store::running_sessions_changed_for_test(Vec::new());
+    assert!(!store::running_sessions_changed_for_test(Vec::new()));
+    assert!(store::running_sessions_changed_for_test(vec!["s1".into()]));
+    assert!(!store::running_sessions_changed_for_test(vec!["s1".into()]));
+    assert!(store::running_sessions_changed_for_test(Vec::new()));
+}
+
 // ============================================================================
 // Location
 // ============================================================================

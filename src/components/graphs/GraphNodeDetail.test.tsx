@@ -163,6 +163,78 @@ describe('GraphNodeDetail', () => {
     })
   })
 
+  it('replaces the value of an existing key in place', async () => {
+    renderDetail()
+    await userEvent.type(screen.getByLabelText('New property key'), 'quarter')
+    await userEvent.type(
+      screen.getByLabelText('New property value'),
+      '2027-Q2{Enter}'
+    )
+    expect(mocks.updateNode).toHaveBeenCalledWith({
+      graphId: 'g1',
+      nodeId: 'gs1',
+      patch: { properties: [['quarter', '2027-Q2']] },
+    })
+  })
+
+  it('Escape restores the description and a property value', async () => {
+    renderDetail()
+    const description = screen.getByLabelText('Description')
+    await userEvent.clear(description)
+    await userEvent.type(description, 'Draft{Escape}')
+    expect(description).toHaveValue('Graph store in jean-core')
+    const property = screen.getByLabelText('Property quarter')
+    await userEvent.clear(property)
+    await userEvent.type(property, 'XL{Escape}')
+    expect(property).toHaveValue('2027-Q1')
+    await userEvent.click(document.body)
+    expect(mocks.updateNode).not.toHaveBeenCalled()
+  })
+
+  it('marks a cross-graph target that does not exist', () => {
+    render(
+      <GraphNodeDetail
+        graphId="g1"
+        detail={detail({
+          nodes: [
+            node('a1', 'A', {
+              relations: [
+                { kind: 'depends-on', target: 'g2#gone00' },
+                { kind: 'relates-to', target: 'g2#here00' },
+              ],
+            }),
+          ],
+          external: {
+            'g2#gone00': {
+              ref: 'g2#gone00',
+              graphId: 'g2',
+              graphTitle: 'Other',
+              nodeId: 'gone00',
+              title: null,
+              state: null,
+              found: false,
+            },
+            'g2#here00': {
+              ref: 'g2#here00',
+              graphId: 'g2',
+              graphTitle: 'Other',
+              nodeId: 'here00',
+              title: 'Here',
+              state: 'proposed',
+              found: true,
+            },
+          },
+        })}
+        nodeId="a1"
+        changes={[]}
+        onClose={vi.fn()}
+      />
+    )
+    const [gone, here] = screen.getAllByTestId('graph-relation')
+    expect(gone).toHaveTextContent('g2#gone00↗ Othernot found')
+    expect(here).not.toHaveTextContent('not found')
+  })
+
   it('opens a serving session', async () => {
     renderDetail()
     await userEvent.click(screen.getByText('Roadmap upkeep'))
