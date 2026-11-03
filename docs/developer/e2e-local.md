@@ -33,6 +33,7 @@ fast check for the UI alone.
 | Graph layer (#79)               | `graphs.spec.ts`            | New graph (folder + in-repo), outline/detail/dependencies write the YAML, outside edit shows, agent MCP writes → Review (revert, accept), read-only refused, session graph panel, Commit graph commits only the file |
 | Graph files (#79)               | `graphs-files.spec.ts`      | New graph in a project repo, another repo, a folder; dialog checks; open existing (no id, invalid, duplicate id, moved); remove; missing and broken file; outside edits; unknown fields kept; branch warning; Commit graph; header edits; sidebar; navigation; phone |
 | Graph nodes (#79)               | `graphs-nodes.spec.ts`      | Node add (3 levels), rename, description, delete + Revert; every state; properties; each relation kind incl. cross-graph and not found; every attachment kind, unknown kinds kept; each blocked/progress rule; active while a serving session runs; Dependencies steps, lanes, decisions, edge colours, cycle, empty; node history and seen; 60 nodes; keyboard |
+| Graph agents (#79)              | `graphs-agents.spec.ts`     | Settings → Agents (every field, persistence, duplicate, delete with confirm); Start session from agent from all four entry points (permission cap, serves, project/worktree, draft not sent); persona and graph block in the prompt file; MCP permission matrix for no agent/read/write/manage incl. raising the level in the panel; `create_session` with `agentId`/`serves`; requests (accept, send back, decisions); review changes (seen, revert, refused revert); session graph panel; agent badges and chip; fork |
 
 ## Sealing
 
@@ -77,6 +78,12 @@ Script lines in a user message:
   session and puts a real `tool_use`/`tool_result` pair into the run log.
 - `STUB:sleep <ms>` waits before going on, so the run stays running (a
   serving session's node shows *active*).
+
+The stub writes no Claude transcript, so from the second turn on Splitkick
+replays the session history in a hidden block in front of the message
+(`HandoffKind::LostContext`). The stub runs `STUB:` lines only from the text
+after that block: earlier turns' calls do not run again. Markers still come
+from everything it sees.
 
 The stub execs Node by absolute path: the server replaces `PATH` with the
 login shell's, and the temp `HOME` has no shell profile.

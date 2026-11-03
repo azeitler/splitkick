@@ -2120,6 +2120,10 @@ export function ProjectCanvasView({
         }
 
         useChatStore.getState().setActiveSession(worktreeId, sessionId)
+        // The restore effect below runs in the same pass and still sees no
+        // open modal. It must not reopen another session over this one: its
+        // session list can predate the session just created (agent dialog).
+        suppressNextRestoreAutoOpenRef.current = true
         openWorktreeModal(worktreeId, worktree.path)
         break
       }

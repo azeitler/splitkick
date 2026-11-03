@@ -262,9 +262,8 @@ pub fn ensure_poller(app: &AppHandle) {
             .name("graph-poller".into())
             .spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(2));
-                let running = running_sessions_changed(
-                    crate::chat::registry::actively_managed_session_ids(),
-                );
+                let running =
+                    running_sessions_changed(crate::chat::registry::actively_managed_session_ids());
                 if poll_once(&app) || running {
                     emit_graphs_changed(&app, false);
                 }

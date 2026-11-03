@@ -66,6 +66,20 @@ function userText(input) {
   return text
 }
 
+/**
+ * The user's own message, without the hidden history block Splitkick puts in
+ * front of it (fork, provider switch, or a lost transcript: the stub writes
+ * none, so every later turn replays the history). Replayed `STUB:` lines must
+ * not run again.
+ */
+function ownMessage(text) {
+  let end = 0
+  for (const m of text.matchAll(/<\/jean_(?:fork|provider_switch)_handoff>/g)) {
+    end = m.index + m[0].length
+  }
+  return text.slice(end)
+}
+
 /** Text plus the content of every readable file it names (one level deep). */
 function corpus(text) {
   let all = text
@@ -133,7 +147,7 @@ emit({
   tools: [],
 })
 
-for (const line of text.split('\n')) {
+for (const line of ownMessage(text).split('\n')) {
   const say = line.match(/^STUB:say (.*)$/)
   if (say) said.push(say[1])
   const sleep = line.match(/^STUB:sleep (\d+)$/)
