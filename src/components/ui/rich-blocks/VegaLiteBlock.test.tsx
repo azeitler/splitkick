@@ -65,8 +65,9 @@ describe('vega-lite code blocks', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/remote data/)
   })
 
-  it('shows plain code while the message streams', async () => {
-    render(<Markdown streaming>{block(bar)}</Markdown>)
+  it('shows plain code while the block is still streaming', async () => {
+    // No closing fence yet: the spec may still grow.
+    render(<Markdown streaming>{'```vega-lite\n' + bar}</Markdown>)
     await waitFor(() => expect(screen.getByText(bar)).toBeInTheDocument())
     expect(screen.queryByTestId('chart-frame')).toBeNull()
   })

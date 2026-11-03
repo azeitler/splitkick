@@ -2,11 +2,32 @@ import { describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import { Markdown } from './markdown'
-import { findCodeBlockRenderer } from './code-block-renderers'
+import {
+  codeBlockRenderers,
+  findCodeBlockRenderer,
+} from './code-block-renderers'
 
 const htmlBlock = '```html\n<p id="x">Hello</p>\n```'
 
 describe('code block renderer registry', () => {
+  it('finds the Mermaid renderer, in any case', () => {
+    const mermaid = codeBlockRenderers.find(r =>
+      r.languages.includes('mermaid')
+    )
+    expect(mermaid?.mode).toBe('auto')
+    expect(findCodeBlockRenderer('mermaid')).toBe(mermaid)
+    expect(findCodeBlockRenderer('Mermaid')).toBe(mermaid)
+  })
+
+  it('maps vega-lite to the lazily loaded chart renderer', async () => {
+    const renderer = findCodeBlockRenderer('vega-lite')
+    expect(renderer?.mode).toBe('auto')
+    expect(findCodeBlockRenderer('Vega-Lite')).toBe(renderer)
+    const module = await renderer?.load()
+    expect(typeof module?.default).toBe('function')
+    expect(findCodeBlockRenderer('chart')).toBeUndefined()
+  })
+
   it('finds the HTML/SVG preview renderer', () => {
     expect(findCodeBlockRenderer('html')?.mode).toBe('preview')
     expect(findCodeBlockRenderer('SVG')?.mode).toBe('preview')
@@ -45,9 +66,14 @@ describe('Markdown preview code blocks', () => {
     expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/)
   })
 
-  it('offers no preview while the message streams', () => {
-    render(<Markdown streaming>{htmlBlock}</Markdown>)
+  it('offers no preview while the block is still streaming', () => {
+    render(<Markdown streaming>{'```html\n<p id="x">Hel'}</Markdown>)
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull()
+  })
+
+  it('offers the preview once the fence is closed, even while streaming', () => {
+    render(<Markdown streaming>{htmlBlock}</Markdown>)
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument()
   })
 
   it('offers no preview for other languages', () => {
