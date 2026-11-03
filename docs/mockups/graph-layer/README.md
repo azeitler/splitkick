@@ -111,8 +111,8 @@ Agents and permissions
     to edit the profile. Open: is the badge wanted in every list (sidebar, Recent, serving sessions,
     change log), or only in the header and on hover? Does the change log name the session, the agent, or
     both? (The mockup: session name + agent badge.)
-18b. Edits to a profile apply only to new sessions. Is a "restart with the new persona" action wanted for
-    a running manager?
+18b. Decided 2026-11-03: persona edits are live. The persona is read on every message, so an edit
+    reaches running sessions of that agent on their next message.
 19. Does the manager serve the whole graph (`serves: graph:roadmap`), or only nodes? The mockup lets it
     serve a graph.
 

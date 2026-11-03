@@ -571,7 +571,7 @@ const CAPS = {
   deps: '<b>Dependencies:</b> columns are dependency steps (no dates in the model), lanes are <i>part-of</i> groups. Solid arrows = depends-on (red while the target is not done), red diamonds = open blocked-by decisions, dashed blue = nodes in other graphs.',
   node: '<b>Node detail:</b> stored fields (description, state, properties, relations, attachments) and derived ones (serving sessions, reverse relations, blocked). Switch “view as” to see what a write or read session may change.',
   review: '<b>Review:</b> requests from the manager (accept “done”, send back with a note, answer a blocking decision) and the change log since you last looked, grouped by node, each with who, when and why. Mark seen or revert.',
-  settings: '<b>Edit agent:</b> Settings → Agents, next to Magic Prompts. Four ways in: this pane, <i>Edit</i> on the Agents page, the agent chip in a session header, and the command palette. Edits apply to new sessions only.',
+  settings: '<b>Edit agent:</b> Settings → Agents, next to Magic Prompts. Four ways in: this pane, <i>Edit</i> on the Agents page, the agent chip in a session header, and the command palette. Persona edits reach running sessions on their next message.',
   session: '<b>Session graph panel:</b> a session that serves a node (or a whole graph) gets a <b>Graph</b> button in its header and a side panel, like the review panel. Worker: its node, what comes before and after, its siblings. Manager: requests, its unseen changes, the outline. The manager session was renamed to “Roadmap upkeep”, so its agent shows as a badge; “Release manager” in Starred kept the agent name, so it shows only the glyph. Switch Worker / Manager above.',
   agents: '<b>Agents:</b> saved profiles, not a new session kind. Persona prompt + one coarse graph permission (read / write / manage) + default backend/model.',
   start: '<b>Start session:</b> a normal session started from a profile. The persona is added to the system prompt; the permission can be lowered, never raised; <i>serves</i> is set at start.',
@@ -974,7 +974,7 @@ function settings() {
         <li><b>Agents page</b> (title bar → Agents): <i>Edit</i> on a card opens this pane on that agent.</li>
         <li><b>Session header</b> of a session started from an agent: the agent chip → <i>Edit profile</i>.</li>
         <li><b>Command palette</b>: “Edit agent…”, “New agent…”.</li></ol>
-        <div class="hint" style="margin-top:6px">Edits apply to sessions started <b>after</b> the save. Running sessions keep the persona they started with.</div></div>
+        <div class="hint" style="margin-top:6px">Edits are live: every session of this agent, also a running one, gets the new persona with its next message.</div></div>
       <div class="grid2"><div class="field"><label>Name</label><input value="${esc(a.name)}"></div>
         <div class="field"><label>Colour</label><div class="swatches">${['#ff5a1f', '#2563eb', '#16a34a', '#a855f7', '#eab308', '#64748b'].map(c => `<i style="background:${c}" class="${c === a.color ? 'on' : ''}"></i>`).join('')}</div></div></div>
       <div class="field"><label>Persona prompt <span class="note" style="font-weight:400">added to the system prompt of every session started from this agent</span></label><textarea rows="7" style="font-size:12px;line-height:18px">${esc(a.persona)}</textarea>
