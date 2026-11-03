@@ -257,6 +257,16 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   "use the graph tools, give a why"). It is added once per backend, right after
   the project custom prompt.
 - **UI:** `openGraphView(graphId, nodeId?)`; `chat-store.graphPanelVisible` is not
-  persisted; opening a node's detail marks its unseen changes as seen; the graph
-  view does not show on the phone layout yet.
-- **E2E:** `e2e/local/tests/graphs.spec.ts` (see `e2e-local.md`).
+  persisted; opening a node's detail marks its unseen changes as seen. On the
+  phone (no sidebar) Home → Projects lists the graphs; an open graph replaces
+  the tab shell and has a Back button. A failed refetch (file deleted or
+  broken) shows the error instead of the last good data. The header type chip
+  edits the type inline. `activeGraphId` is not persisted: a reload comes back
+  without the open graph.
+- **Locations:** `repoRoot` keeps the spelling of the graph path (git resolves
+  /tmp → /private/tmp; the UI strips the root off the path). A branch switch
+  does not change the file's mtime, so the poller does not report it; the
+  warning shows on the next load of the graph list. `commit_graph` with no
+  change fails with "Nothing to commit: <file> has no changes".
+- **E2E:** `e2e/local/tests/graphs.spec.ts` and `graphs-files.spec.ts` (see
+  `e2e-local.md`).

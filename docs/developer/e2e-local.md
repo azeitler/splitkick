@@ -31,6 +31,7 @@ fast check for the UI alone.
 | Auto-archive (#50)              | `auto-archive.spec.ts`      | API level: a merged PR archives a clean worktree                                                                                                                                                                     |
 | Copy image (#68)                | `images.spec.ts`            | Copy image puts a PNG on the clipboard; the viewer shows Open in browser + Copy image, no Reveal                                                                                                                     |
 | Graph layer (#79)               | `graphs.spec.ts`            | New graph (folder + in-repo), outline/detail/dependencies write the YAML, outside edit shows, agent MCP writes → Review (revert, accept), read-only refused, session graph panel, Commit graph commits only the file |
+| Graph files (#79)               | `graphs-files.spec.ts`      | New graph in a project repo, another repo, a folder; dialog checks; open existing (no id, invalid, duplicate id, moved); remove; missing and broken file; outside edits; unknown fields kept; branch warning; Commit graph; header edits; sidebar; navigation; phone |
 
 ## Sealing
 

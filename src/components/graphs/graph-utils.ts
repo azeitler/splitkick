@@ -42,6 +42,13 @@ export function graphWhere(summary: GraphSummary): string {
   }
 }
 
+/** The sidebar row's second line: `type · where` (no dot without a type). */
+export function graphSubtitle(summary: GraphSummary): string {
+  return [summary.graphType.trim(), graphWhere(summary)]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 /** `path` relative to the repo root, or the `~` path outside a repo. */
 export function graphRelativePath(summary: GraphSummary): string {
   const root = summary.repoRoot

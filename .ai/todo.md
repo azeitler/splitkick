@@ -1,3 +1,10 @@
+# Graph layer: exhaustive e2e (all branches and states)
+
+- [ ] A `graphs-files.spec.ts`: locations, open/remove/missing/invalid, outside edits, unknown fields, branches, commit, sidebar, navigation, phone.
+- [ ] B `graphs-nodes.spec.ts`: states, properties, relations (all kinds, cross-graph), attachments, derived values, delete, Dependencies, history.
+- [ ] C `graphs-agents.spec.ts`: agent profiles, start dialog, persona in prompt, MCP tool x permission matrix, create_session, requests (all answers), review/revert, session panel, badges.
+- [ ] Full local suite green, check:all, commit.
+
 # Graph layer, all phases (#78, #79)
 
 Contract: `docs/developer/graph-layer.md`.

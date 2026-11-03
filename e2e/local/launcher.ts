@@ -104,7 +104,8 @@ export function prepareInstance(name: string, port: number): Instance {
     port,
     token,
     url: `http://127.0.0.1:${port}`,
-    socket: join(data, 'jean-mcp.sock'),
+    // Debug binary: the dev socket name (jean_mcp_socket.rs).
+    socket: join(data, 'splitkick-mcp-dev.sock'),
     log: join(root, 'server.log'),
     pid: 0,
   }
