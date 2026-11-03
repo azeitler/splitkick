@@ -218,6 +218,23 @@ model concrete before the storage decision: sidebar section, graph views,
 node detail, review of manager changes, requests to the executive, and the
 branch problem shown in the UI.
 
+## Phased plan
+
+1. **Graph files and the outline** (first build issue: #79). Graph store in
+   jean-core (YAML files at the chosen path, a list of known files), nodes,
+   `serves` on sessions, derived active/blocked/progress, sidebar section,
+   New/Open dialog, outline view, node detail, MCP read/write tools with a
+   required why, change log recorded (not yet reviewed). Full rights for every
+   session; no permission levels yet.
+2. **Review.** Changes since you last looked, mark seen, revert; requests to
+   the executive (accept done, answer a decision).
+3. **Agents.** Profiles in Settings → Agents, start a session from an agent,
+   permission levels in the MCP tools, graph panel in the session, agent badge.
+4. **More views and links.** Dependencies view, cross-graph relations, the
+   storage decision for graph files inside a project repo.
+
+Not planned: the runner (automatic start of sessions).
+
 ## Mockup
 
 Clickable mockup: [`docs/mockups/graph-layer/`](../../mockups/graph-layer/) (open
