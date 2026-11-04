@@ -23,6 +23,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   WebView2 crash recovery did not compile. macOS-only helpers no longer fail
   `clippy -D warnings` on Windows, and `check:branding` accepts Windows path
   separators.
+- **npm-based CLIs install on Windows again** (#71). Command Code, Grok, PI,
+  Kimi and agent-browser called plain `npm`, which Windows never finds
+  (`npm.cmd`), so every install or update failed with "requires Node.js and
+  npm" although Node was installed. Ports the upstream fixes that the 1.0.1
+  revert removed: npm shims are resolved and launched safely (coollabsio/jean#678,
+  coollabsio/jean#720), and PI installs through WSL correctly
+  (coollabsio/jean#680). Command Code is no longer mistaken for the Windows
+  command interpreter: its binary is called `cmd`, and the PATH lookup found
+  `C:\Windows\System32\cmd.exe`, so Splitkick tried to update a Command Code
+  that was not installed and showed the `cmd.exe` banner as its version.
 
 ## [1.4.1] - 2026-11-03
 

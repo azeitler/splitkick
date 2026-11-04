@@ -1,7 +1,7 @@
 //! Configuration and path resolution for Command Code CLI.
 
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// Directory name for Jean-managed Command Code npm install.
@@ -125,12 +125,22 @@ pub fn find_system_commandcode_binary(app: &AppHandle) -> Option<PathBuf> {
         let detection =
             crate::platform::detect_cli_in_path(candidate, jean_managed_path.as_deref(), None);
         if detection.found {
-            if let Some(path) = detection.path {
-                return Some(PathBuf::from(path));
+            if let Some(path) = detection.path.map(PathBuf::from) {
+                if cfg!(windows) && is_windows_command_interpreter(&path) {
+                    continue;
+                }
+                return Some(path);
             }
         }
     }
     None
+}
+
+/// `where cmd` finds the Windows command interpreter before any Command Code
+/// shim (`cmd.cmd`). Command Code itself never installs a `cmd.exe`.
+fn is_windows_command_interpreter(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("cmd.exe"))
 }
 
 /// Resolve Command Code binary path based on the user's preference.
@@ -161,6 +171,16 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn path_lookup_skips_the_windows_command_interpreter() {
+        let system32 = Path::new("C:").join("Windows").join("System32");
+        assert!(is_windows_command_interpreter(&system32.join("cmd.exe")));
+        assert!(is_windows_command_interpreter(Path::new("CMD.EXE")));
+        let npm = Path::new("C:").join("Users").join("me").join("npm");
+        assert!(!is_windows_command_interpreter(&npm.join("cmd.cmd")));
+        assert!(!is_windows_command_interpreter(&npm.join("cmd")));
+    }
 
     #[test]
     fn managed_path_points_to_npm_bin_dir() {
