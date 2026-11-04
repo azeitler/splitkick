@@ -36,7 +36,8 @@ jobs:
       fail-fast: false
       matrix:
         # macOS is the platform this fork ships. Windows runs the same checks and
-        # a release compile, but publishes nothing yet (issue #71). Restore an
+        # builds an unsigned installer artifact, but publishes nothing yet
+        # (issue #71). Restore an
         # entry to bring a platform back; every step below is still
         # platform-aware.
         #   - platform: 'ubuntu-22.04'
@@ -135,11 +136,28 @@ jobs:
       - name: Rust tests
         run: bun run rust:test
 
-      # Every platform without a publishing bundle step below compiles here,
-      # so a CI Build on main still proves the Windows binary builds.
+      # Platforms without a bundle step below compile here and throw the
+      # binary away.
       - name: Build Tauri app without bundling
-        if: ${{ !inputs.publishFlavor || matrix.platform != 'macos-latest' }}
+        if: ${{ matrix.platform != 'windows-latest' && (!inputs.publishFlavor || matrix.platform != 'macos-latest') }}
         run: bun run tauri build ${{ matrix.preflightArgs }} --no-bundle --ci
+
+      # Windows: the same compile, bundled as an unsigned NSIS installer with the
+      # Splitkick overlay and kept as a build artifact for testing. It is not
+      # published and has no updater artifacts yet (issue #71).
+      - name: Build Windows installer
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: bun run tauri build --ci --bundles nsis -c src-tauri/tauri.fork.conf.json
+
+      - name: Upload Windows installer
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: splitkick-windows-x64-${{ github.sha }}
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
 
       # Fork flavor. This is the same compile as the step above, so the two are
       # mutually exclusive: the binary is bundled, signed and published instead
