@@ -14546,6 +14546,15 @@ mod tests {
         );
     }
 
+    /// A test path joined from `a/b` segments, with the platform's separators:
+    /// on Windows `resolve_file_reference` reports `\`, never a mixed path.
+    fn native(path: PathBuf) -> String {
+        path.components()
+            .collect::<PathBuf>()
+            .to_string_lossy()
+            .to_string()
+    }
+
     #[tokio::test]
     async fn resolve_file_reference_resolves_a_parent_relative_root_join() {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -14565,10 +14574,7 @@ mod tests {
                 .expect("resolve");
 
         // Reported without the `..`, so the path the user sees is clean.
-        assert_eq!(
-            resolved.path,
-            Some(base.join("sibling/notes.md").to_string_lossy().to_string())
-        );
+        assert_eq!(resolved.path, Some(native(base.join("sibling/notes.md"))));
     }
 
     #[tokio::test]
@@ -14590,11 +14596,7 @@ mod tests {
         assert!(resolved.searched);
         assert_eq!(
             resolved.path,
-            Some(
-                root.join("packages/shared/api.md")
-                    .to_string_lossy()
-                    .to_string()
-            )
+            Some(native(root.join("packages/shared/api.md")))
         );
     }
 
@@ -14678,6 +14680,7 @@ mod tests {
         .await
         .expect("resolve");
 
+        let real = native(PathBuf::from(real));
         assert_eq!(resolved.path.as_deref(), Some(real.as_str()));
         assert_eq!(resolved.candidates, vec![real]);
         assert!(!resolved.searched);
@@ -14700,6 +14703,7 @@ mod tests {
                 .await
                 .expect("resolve");
 
+        let (a, b) = (native(PathBuf::from(a)), native(PathBuf::from(b)));
         assert_eq!(resolved.candidates, vec![a.clone(), b]);
         assert_eq!(resolved.path.as_deref(), Some(a.as_str()));
     }
@@ -14722,11 +14726,7 @@ mod tests {
         assert!(resolved.searched);
         assert_eq!(
             resolved.path,
-            Some(
-                root.join("packages/web/src/app.tsx")
-                    .to_string_lossy()
-                    .to_string()
-            )
+            Some(native(root.join("packages/web/src/app.tsx")))
         );
     }
 
@@ -14747,10 +14747,7 @@ mod tests {
         .await
         .expect("resolve");
 
-        assert_eq!(
-            resolved.path,
-            Some(root.join("docs/guide.md").to_string_lossy().to_string())
-        );
+        assert_eq!(resolved.path, Some(native(root.join("docs/guide.md"))));
         assert_eq!(resolved.candidates.len(), 2);
     }
 

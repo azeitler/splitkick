@@ -2914,6 +2914,8 @@ fn new_graph_path(
                     "'relativePath' must stay inside the repo (no leading /, no ..): {relative}"
                 )));
             }
+            // Rebuilt from components: native separators, no `a\b/c` mix on Windows.
+            let rel: std::path::PathBuf = rel.components().collect();
             Ok(std::path::Path::new(&project.path).join(rel))
         }
     }
@@ -4864,7 +4866,9 @@ mod tests {
     #[test]
     fn open_in_browser_resolves_local_files() {
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().canonicalize().unwrap();
+        // Without the `\\?\` prefix Windows adds, as the resolver reports it.
+        let root =
+            crate::projects::git::strip_windows_verbatim_prefix(dir.path().canonicalize().unwrap());
         std::fs::create_dir_all(root.join("my site")).unwrap();
         let page = root.join("my site").join("index.html");
         std::fs::write(&page, "<p>hi</p>").unwrap();
@@ -6621,7 +6625,12 @@ mod tests {
             "tool-s1",
         )
         .unwrap();
-        let expected = temp.path().join("repo/.splitkick/graphs/release-1-2.yml");
+        // Native separators: `repo\.splitkick\graphs\…` on Windows.
+        let in_temp = |rel: &str| {
+            temp.path()
+                .join(rel.split('/').collect::<std::path::PathBuf>())
+        };
+        let expected = in_temp("repo/.splitkick/graphs/release-1-2.yml");
         assert_eq!(out["path"], json!(expected.to_string_lossy()));
         assert!(expected.is_file());
         let content = std::fs::read_to_string(&expected).unwrap();
@@ -6641,7 +6650,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             out["path"],
-            json!(temp.path().join("repo/docs/graph.yaml").to_string_lossy())
+            json!(in_temp("repo/docs/graph.yaml").to_string_lossy())
         );
 
         // The same file again is refused.
