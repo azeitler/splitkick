@@ -26,12 +26,14 @@ export function SidebarHomeRow() {
   const isMobile = useIsMobile()
   const isNarrow = sidebarWidth < 180
   const archivedOpen = useUIStore(state => state.archivedViewOpen)
-  const isActive = useIsHomeActive() && !archivedOpen
+  const graphOpen = useUIStore(state => state.activeGraphId !== null)
+  const isActive = useIsHomeActive() && !archivedOpen && !graphOpen
 
   const handleClick = useCallback(() => {
     useProjectsStore.getState().selectProject(null)
     useChatStore.getState().clearActiveWorktree()
     useUIStore.getState().setArchivedViewOpen(false)
+    useUIStore.getState().setActiveGraphId(null)
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }

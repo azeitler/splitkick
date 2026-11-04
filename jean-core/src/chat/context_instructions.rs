@@ -113,6 +113,9 @@ fn build_system_prompt_parts(
         }
     }
 
+    // Graph layer: agent persona and the graph nodes this session serves
+    parts.extend(crate::graphs::session_prompt_parts(app, session_id));
+
     let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
     if gh_binary != std::path::PathBuf::from("gh") {
         parts.push(format!(
@@ -409,5 +412,29 @@ mod tests {
     fn toml_basic_string_escapes_multiline_context() {
         let encoded = toml_basic_string("hello\n\"quoted\"");
         assert_eq!(encoded, "\"hello\\n\\\"quoted\\\"\"");
+    }
+    #[test]
+    fn system_prompt_parts_include_the_graph_context_of_a_serving_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            "s1".to_string(),
+            "wt1".to_string(),
+            "Worker".to_string(),
+            0,
+        );
+        crate::chat::storage::save_metadata(&app, &metadata).unwrap();
+        let without = build_system_prompt_parts(&app, "s1", "wt1", false);
+        assert!(!without.iter().any(|p| p.contains("## Splitkick graph")));
+
+        metadata.serves = vec!["g1#abc123".to_string()];
+        crate::chat::storage::save_metadata(&app, &metadata).unwrap();
+        let with = build_system_prompt_parts(&app, "s1", "wt1", false);
+        let graph_parts: Vec<_> = with
+            .iter()
+            .filter(|p| p.contains("## Splitkick graph"))
+            .collect();
+        assert_eq!(graph_parts.len(), 1, "added once");
+        assert!(graph_parts[0].contains("g1#abc123"));
     }
 }

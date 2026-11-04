@@ -29,6 +29,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
+import { AgentBadge } from '@/components/graphs/AgentBadge'
 import { BaseSessionBadge } from './BaseSessionBadge'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { sidebarRowId } from '@/lib/navigate-to-session'
@@ -1088,6 +1089,10 @@ export function WorktreeItem({
                           >
                             {card.session.name || 'Untitled'}
                           </span>
+                          <AgentBadge
+                            agentId={card.session.agent_id}
+                            sessionName={card.session.name}
+                          />
                           {card.limitHit && (
                             <LimitGlyph limit={card.limitHit} />
                           )}

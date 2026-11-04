@@ -1,9 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  RELEASE_IDENTIFIER,
   installAndRelaunch,
+  isUpdateCheckEnabled,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
 } from './app-update'
+
+describe('isUpdateCheckEnabled', () => {
+  it('checks for updates only in the released app', () => {
+    expect(isUpdateCheckEnabled(RELEASE_IDENTIFIER)).toBe(true)
+  })
+
+  it('skips dev builds, test builds and the upstream base config', () => {
+    for (const id of [
+      'app.splitkick.desktop.dev',
+      'app.splitkick.desktop.rel76',
+      'com.jean.desktop',
+      '',
+    ]) {
+      expect(isUpdateCheckEnabled(id)).toBe(false)
+    }
+  })
+})
 
 describe('shouldOfferUpdateCheck', () => {
   it('offers a check when idle', () => {

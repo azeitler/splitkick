@@ -7,6 +7,102 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-03
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Graph MCP tools for agents to follow up: `list_requests`, `list_changes`,
+  `create_graph`.** `list_requests` (read) shows a graph's requests with the
+  user's answer, filtered by status, node or only the session's own.
+  `list_changes` (read) reads the change log, newest first, and shows which
+  changes the user reverted; it never marks anything as seen. `create_graph`
+  (manage) creates a graph file at an absolute path or inside a project's repo
+  (default `.splitkick/graphs/<slug>.yml`) and logs the creation with its why.
+
+## [1.4.0] - 2026-11-03
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Graphs: a roadmap above your sessions** (#78, #79). A graph is a YAML file
+  that you put inside a project's repo, in another repo, or in a folder outside
+  any repo. The new **Graphs** section in the sidebar lists them. A graph has an
+  outline grouped by `part-of`, a dependencies view, a node detail panel, and a
+  review tab with the changes since you last looked (revert per change) and the
+  requests agents send you (accept "done", send back, answer a decision).
+  Sessions point up to the nodes they serve; active, blocked and progress are
+  computed, never stored. "Commit graph" commits only the graph file.
+- **Agents.** Settings → Agents holds profiles: persona prompt, graph permission
+  (read, write, manage) and a default model. Start a session from an agent; its
+  persona and the nodes it serves go into the system prompt of every backend.
+  A renamed session shows its agent as a badge.
+- **Graph MCP tools:** `list_graphs`, `read_graph`, `create_node`, `update_node`,
+  `set_node_state`, `send_request`, `set_serves`; `create_session` takes
+  `serves` and `agentId`. Every change needs a why and is logged per machine.
+- **Graph panel in a session** that serves a node or a graph: its node, what
+  comes before and after, siblings, permission and `serves`.
+
+## [1.3.0] - 2026-11-03
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Mermaid diagrams.** ` ```mermaid ` blocks in chat messages, plans and
+  Markdown file previews show as diagrams, in the light or dark theme. While
+  a message streams, the block shows its code until it is complete. Each
+  diagram can show its source, open full screen with zoom and pan, and copy
+  its source, SVG or PNG. Invalid code shows the source with the error.
+  Mermaid loads only when a diagram is shown. (#74)
+- **Data charts in chat.** A ` ```vega-lite ` code block (a Vega-Lite
+  JSON spec with inline data) shows as a chart: bar, line, area, scatter and
+  the other Vega-Lite marks. The chart follows the light or dark theme. Its
+  toolbar shows the source, opens it full screen and copies the source, an
+  SVG or a PNG. An invalid spec shows the source and the error. Charts never
+  load data from the network, and the chart code loads only when a chart
+  appears. (#75)
+- **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
+  write open rendered in the file viewer (from tool calls, the file browser,
+  file links and attached file pills), with **Source**, **Reload** and
+  **Open in Browser**. Pasted `.svg`/`.html` attachments and ` ```html ` /
+  ` ```svg ` blocks in chat get a **Preview** button. HTML runs in a sandboxed
+  frame with no network, no app storage and no Tauri access; SVG shows as an
+  image, so its scripts never run. Works in the app, Web Access and on
+  mobile. (#76)
+
+### Changed
+
+- **The MCP socket is now `splitkick-mcp.sock`.** Dev builds use
+  `splitkick-mcp-dev.sock`, so a dev build never takes over the installed app's
+  socket. Release builds link the old name `jean-mcp.sock` to the new socket,
+  so MCP entries installed in other tools keep working.
+
+### Fixed
+
+- **Splitkick MCP no longer drops out with "connection refused".** A second
+  instance that used the same data folder deleted the running app's socket on
+  start; it now leaves a socket alone while another instance answers on it.
+  A socket restart inside the app no longer deletes the new socket either.
+- **Dev and test builds no longer check for updates.** Only the released app
+  (`app.splitkick.desktop`) looks for, downloads and installs updates. Before,
+  a dev or test build offered the latest release and could install it over
+  itself; a build from upstream's base config even asked upstream's feed.
+- **A build with its own identifier gets its own data folder.** Only the
+  development build had one; a test build such as `app.splitkick.desktop.rel76`
+  opened the installed app's data folder, its sessions and its MCP socket. Now
+  every `app.splitkick.desktop…` identifier uses the folder of the same name.
+- **A chat no longer freezes on a text block while the window is hidden.**
+  When the Splitkick window was behind another window (for example Chrome
+  during Playwright runs), a text block was put after the tool calls that
+  followed it, so the compact view showed that text as the latest step. Text
+  now always stays before the tools that come after it. After the turn, the
+  chat also loads the turn from disk again when older prompts were loaded by
+  scrolling up; before, it kept its own copy, so missing tool calls and a
+  pending question did not come back until a restart. (#73)
+
 ## [1.2.2] - 2026-10-29
 
 Built on Jean 0.1.73.
@@ -2128,7 +2224,10 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.4.1...HEAD
+[1.4.1]: https://github.com/azeitler/jean/compare/splitkick-v1.4.0...splitkick-v1.4.1
+[1.4.0]: https://github.com/azeitler/jean/compare/splitkick-v1.3.0...splitkick-v1.4.0
+[1.3.0]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...splitkick-v1.3.0
 [1.2.2]: https://github.com/azeitler/jean/compare/splitkick-v1.2.1...splitkick-v1.2.2
 [1.2.1]: https://github.com/azeitler/jean/compare/splitkick-v1.2.0...splitkick-v1.2.1
 [1.2.0]: https://github.com/azeitler/jean/compare/splitkick-v1.1.0...splitkick-v1.2.0

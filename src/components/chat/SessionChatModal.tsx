@@ -20,6 +20,7 @@ import {
   Pause,
   Terminal,
   Globe,
+  Workflow,
   Play,
   Plus,
   X,
@@ -78,6 +79,8 @@ import { SIDEBAR_ROW_SELECTED } from '@/components/projects/sidebar-row-styles'
 import { LocalPathRootContext } from '@/lib/chat-links'
 import { notify } from '@/lib/notifications'
 import { ChatWindow } from './ChatWindow'
+import { SessionAgentChip } from '@/components/graphs/SessionAgentChip'
+import { sessionHasGraphPanel } from '@/components/graphs/SessionGraphPanel'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
@@ -326,6 +329,7 @@ export function SessionChatModal({
     sessions.map(session => session.id)
   )
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
+  const graphPanelVisible = useChatStore(state => state.graphPanelVisible)
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
   // Sessions holding an unsent message, so a tab can show the draft pencil.
@@ -971,6 +975,7 @@ export function SessionChatModal({
   // below); a phone, which has no toolbar, in the modal's own header.
   const sessionChips = (
     <>
+      {!zenMode && <SessionAgentChip session={currentSession} />}
       {!zenMode && stackedBaseBranch && (
         <span className="inline-flex shrink min-w-0 items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
           <GitBranchPlus className="h-2.5 w-2.5" />
@@ -1039,6 +1044,27 @@ export function SessionChatModal({
           worktreePath={worktreePath}
           session={currentSession}
         />
+      )}
+      {sessionHasGraphPanel(currentSession) && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2 text-xs',
+                graphPanelVisible && 'bg-accent'
+              )}
+              aria-label="Toggle graph panel"
+              aria-pressed={graphPanelVisible}
+              onClick={() => useChatStore.getState().toggleGraphPanel()}
+            >
+              <Workflow className="h-3 w-3" />
+              Graph
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Graph panel</TooltipContent>
+        </Tooltip>
       )}
       <Tooltip>
         <TooltipTrigger asChild>

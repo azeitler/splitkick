@@ -106,6 +106,7 @@
     "fuse.js": "^7.1.0",
     "ghostty-web": "^0.4.0",
     "lucide-react": "^0.552.0",
+    "mermaid": "^12.2.0",
     "react": "^19.2.0",
     "react-day-picker": "^9.8.1",
     "react-dom": "^19.2.0",
@@ -119,6 +120,9 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.11",
+    "vega": "^6.4.0",
+    "vega-interpreter": "^2.3.2",
+    "vega-lite": "^6.5.0",
     "zustand": "^5.0.6"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ import {
   Palette,
   Keyboard,
   Wand2,
+  Bot,
   Plug,
   Blocks,
   BarChart3,
@@ -156,6 +157,12 @@ export const navigationEntries: NavigationEntry[] = [
     id: 'magic-prompts',
     name: 'Magic Prompts',
     icon: Wand2,
+  },
+  {
+    type: 'item',
+    id: 'agents',
+    name: 'Agents',
+    icon: Bot,
   },
   {
     type: 'item',

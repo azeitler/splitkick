@@ -16,6 +16,7 @@ function showHome() {
   useUIStore.setState({
     sessionChatModalOpen: false,
     sessionChatModalWorktreeId: null,
+    activeGraphId: null,
   })
 }
 
@@ -42,6 +43,11 @@ describe('readCurrentLocation', () => {
 
   it('reads Home when no project is selected', () => {
     expect(readCurrentLocation()).toEqual({ kind: 'home' })
+  })
+
+  it('reads the graph view when a graph is open', () => {
+    useUIStore.setState({ activeGraphId: 'g1' })
+    expect(readCurrentLocation()).toEqual({ kind: 'graph', graphId: 'g1' })
   })
 
   it('reads the project canvas when no session is open', () => {
@@ -175,6 +181,22 @@ describe('navigation history recorder', () => {
     expect(useProjectsStore.getState().selectedProjectId).toBeNull()
     vi.advanceTimersByTime(300)
     expect(useNavigationHistoryStore.getState().index).toBe(0)
+  })
+
+  it('goes back to a graph and from it to Home', () => {
+    useUIStore.setState({ activeGraphId: 'g1' })
+    vi.advanceTimersByTime(300)
+    useProjectsStore.setState({ selectedProjectId: 'p1' })
+    useUIStore.setState({ activeGraphId: null })
+    vi.advanceTimersByTime(300)
+
+    goBack()
+    expect(useProjectsStore.getState().selectedProjectId).toBeNull()
+    expect(useUIStore.getState().activeGraphId).toBe('g1')
+    vi.advanceTimersByTime(300)
+
+    goBack()
+    expect(useUIStore.getState().activeGraphId).toBeNull()
   })
 
   it('does not lose a navigation made while Back waits for its target', () => {

@@ -741,6 +741,53 @@ export function useRemoteSessionSearch(query: string, enabled = true) {
 }
 
 /**
+ * Combine a fresh `get_session` result with the cached session.
+ *
+ * - While a turn is sending, keep the cached messages: they hold optimistic
+ *   messages from sendMessage.onMutate that the backend has not written yet.
+ * - When the user loaded older runs by scrolling up, the fresh fetch only has
+ *   the last INITIAL_RUN_LIMIT runs. Keep the cached messages *before* that
+ *   window and take the window itself from the backend. Keeping all cached
+ *   messages would pin a frontend-built assistant message forever — the run
+ *   log copy (with every tool call and a pending AskUserQuestion) would never
+ *   replace it (#73).
+ */
+export function mergeFetchedSession(
+  cached: Session | undefined,
+  fresh: Session,
+  isSending: boolean
+): Session {
+  if (!cached || cached.messages.length <= fresh.messages.length) return fresh
+  if (cached.messages.some(m => m.role === 'assistant' && m.cancelled)) {
+    return fresh
+  }
+  if (isSending) {
+    return {
+      ...fresh,
+      messages: cached.messages,
+      loaded_run_start_index: cached.loaded_run_start_index,
+    }
+  }
+  const cachedStart = cached.loaded_run_start_index
+  const freshStart = fresh.loaded_run_start_index ?? 0
+  if (typeof cachedStart !== 'number' || cachedStart >= freshStart) {
+    return fresh
+  }
+  const firstFresh = fresh.messages[0]
+  const splitAt = firstFresh
+    ? cached.messages.findIndex(m => m.id === firstFresh.id)
+    : -1
+  return {
+    ...fresh,
+    messages:
+      splitAt >= 0
+        ? [...cached.messages.slice(0, splitAt), ...fresh.messages]
+        : cached.messages,
+    loaded_run_start_index: cachedStart,
+  }
+}
+
+/**
  * Hook to get a single session with full message history
  */
 export function useSession(
@@ -778,49 +825,20 @@ export function useSession(
           backend: session.backend,
         })
 
-        // Preserve optimistic messages from sendMessage.onMutate that the
-        // backend hasn't persisted yet (race: refetchOnMount fires before
-        // the send_chat_message invoke writes the user message to disk).
-        // Also preserve messages the user loaded via scroll-up pagination:
-        // fresh fetch uses INITIAL_RUN_LIMIT so its loaded_run_start_index
-        // reflects only the last N runs — using it would wrongly re-show
-        // the "load older" button for runs the cache already contains.
-        const cached = queryClient.getQueryData<Session>(
-          chatQueryKeys.session(sessionId)
+        const merged = mergeFetchedSession(
+          queryClient.getQueryData<Session>(chatQueryKeys.session(sessionId)),
+          session,
+          !!useChatStore.getState().sendingSessionIds[sessionId]
         )
-        const cachedStart = cached?.loaded_run_start_index
-        const freshStart = session.loaded_run_start_index ?? 0
-        const cachedIncludesCancelledAssistant = cached?.messages.some(
-          message => message.role === 'assistant' && message.cancelled
-        )
-        const shouldPreserveCachedMessages =
-          cached &&
-          cached.messages.length > session.messages.length &&
-          !cachedIncludesCancelledAssistant &&
-          (useChatStore.getState().sendingSessionIds[sessionId] ||
-            (typeof cachedStart === 'number' && cachedStart < freshStart))
-
-        if (cached && shouldPreserveCachedMessages) {
-          logger.warn(
-            '[useSession] preserving cached messages over fresh fetch',
-            {
-              sessionId,
-              cachedCount: cached.messages.length,
-              diskCount: session.messages.length,
-              cachedStart: cached.loaded_run_start_index,
-              freshStart: session.loaded_run_start_index,
-            }
-          )
-          return {
-            ...session,
-            messages: cached.messages,
-            // Keep cached pagination cursor (reflects what's actually in
-            // messages); fresh total_runs is still authoritative.
-            loaded_run_start_index: cached.loaded_run_start_index,
-          }
+        if (merged !== session) {
+          logger.warn('[useSession] merged cached messages into fresh fetch', {
+            sessionId,
+            mergedCount: merged.messages.length,
+            diskCount: session.messages.length,
+            freshStart: session.loaded_run_start_index,
+          })
         }
-
-        return session
+        return merged
       } catch (error) {
         logger.warn('[useSession] FAILED to load session', { error, sessionId })
         return preserveQueryCacheOnError(error)

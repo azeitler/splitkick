@@ -16,6 +16,9 @@ import {
   Save,
   ExternalLink,
   Copy,
+  Code,
+  RotateCw,
+  Globe,
 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
@@ -39,6 +42,12 @@ import { toast } from 'sonner'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logNativeError } from '@/lib/native-log'
 import { copyImage, ZoomableImage } from '@/components/chat/ImageLightbox'
+import { SandboxedHtmlFrame } from '@/components/artifact-preview/ArtifactPreview'
+import {
+  getArtifactKind,
+  svgToDataUrl,
+} from '@/components/artifact-preview/sandbox'
+import { openFileInBrowser } from '@/components/artifact-preview/open-in-browser'
 
 // Lazy load CodeEditor (Pierre File + edit mode) so the main bundle stays lean
 const CodeEditor = lazy(() => import('@/components/ui/code-editor'))
@@ -48,9 +57,11 @@ function isMarkdownFile(filename: string | null | undefined): boolean {
   return /\.(md|markdown)$/i.test(filename)
 }
 
+// SVG is not in this list: it loads as text, so it can show as preview
+// (an <img>, see `svgToDataUrl`) or as source.
 function isImageFile(filename: string | null | undefined): boolean {
   if (!filename) return false
-  return /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(filename)
+  return /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i.test(filename)
 }
 
 interface FileContentModalProps {
@@ -159,6 +170,10 @@ export function FileContentModal({
   const [imageLoaded, setImageLoaded] = useState(false)
   /** data: URL for images loaded via backend (works for /tmp and remote) */
   const [imageSrc, setImageSrc] = useState<string | null>(null)
+  /** HTML/SVG artifacts open as rendered preview; Source shows the code. */
+  const [showSource, setShowSource] = useState(false)
+  /** Bumps to remount the preview frame (reload). */
+  const [previewEpoch, setPreviewEpoch] = useState(0)
 
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
@@ -184,60 +199,67 @@ export function FileContentModal({
   /** Bumps when content should remount the Pierre edit session (load / discard). */
   const [editorEpoch, setEditorEpoch] = useState(0)
 
-  const loadFileContent = useCallback(async (path: string, signal: { cancelled: boolean }) => {
-    setIsLoading(true)
-    setError(null)
-    setContent(null)
-    setEditedContent(null)
-    setIsEditing(false)
-    setEditorEpoch(e => e + 1)
-
-    try {
-      const fileContent = await invoke<string>('read_file_content', { path })
-      if (signal.cancelled) return
-      setContent(fileContent)
-      setEditedContent(fileContent)
-      // Open in view mode; Edit starts the Pierre editor. Edit mode threw as
-      // soon as you selected text (#42), and reading must not depend on it.
+  const loadFileContent = useCallback(
+    async (path: string, signal: { cancelled: boolean }) => {
+      setIsLoading(true)
+      setError(null)
+      setContent(null)
+      setEditedContent(null)
       setIsEditing(false)
-    } catch (err) {
-      if (signal.cancelled) return
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (!signal.cancelled) setIsLoading(false)
-    }
-  }, [])
+      setEditorEpoch(e => e + 1)
+
+      try {
+        const fileContent = await invoke<string>('read_file_content', { path })
+        if (signal.cancelled) return
+        setContent(fileContent)
+        setEditedContent(fileContent)
+        // Open in view mode; Edit starts the Pierre editor. Edit mode threw as
+        // soon as you selected text (#42), and reading must not depend on it.
+        setIsEditing(false)
+      } catch (err) {
+        if (signal.cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (!signal.cancelled) setIsLoading(false)
+      }
+    },
+    []
+  )
 
   // Load images through the backend so remote/web and paths outside project
   // roots (e.g. /tmp screenshots) work — convertProjectFileSrc only serves
   // known project/worktree directories.
-  const loadImageContent = useCallback(async (path: string, signal: { cancelled: boolean }) => {
-    setIsLoading(true)
-    setError(null)
-    setImageError(false)
-    setImageLoaded(false)
-    setImageSrc(null)
+  const loadImageContent = useCallback(
+    async (path: string, signal: { cancelled: boolean }) => {
+      setIsLoading(true)
+      setError(null)
+      setImageError(false)
+      setImageLoaded(false)
+      setImageSrc(null)
 
-    try {
-      const result = await invoke<FileBase64Content>('read_file_base64', {
-        path,
-      })
-      if (signal.cancelled) return
-      setImageSrc(`data:${result.mimeType};base64,${result.data}`)
-    } catch (err) {
-      if (signal.cancelled) return
-      setError(err instanceof Error ? err.message : String(err))
-      setImageError(true)
-    } finally {
-      if (!signal.cancelled) setIsLoading(false)
-    }
-  }, [])
+      try {
+        const result = await invoke<FileBase64Content>('read_file_base64', {
+          path,
+        })
+        if (signal.cancelled) return
+        setImageSrc(`data:${result.mimeType};base64,${result.data}`)
+      } catch (err) {
+        if (signal.cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+        setImageError(true)
+      } finally {
+        if (!signal.cancelled) setIsLoading(false)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
     const signal = { cancelled: false }
     setImageError(false)
     setImageLoaded(false)
     setImageSrc(null)
+    setShowSource(false)
     if (!filePath) {
       setContent(null)
       setEditedContent(null)
@@ -271,6 +293,14 @@ export function FileContentModal({
 
   const isImage = isImageFile(filename)
   const isMarkdown = isMarkdownFile(filename)
+  const artifactKind = getArtifactKind(filename)
+  const showArtifactPreview =
+    artifactKind !== null && !showSource && !isEditing && content !== null
+  const svgSrc = useMemo(
+    () =>
+      artifactKind === 'svg' && content !== null ? svgToDataUrl(content) : null,
+    [artifactKind, content]
+  )
   const language = filePath ? getLanguageFromPath(filePath) : 'text'
 
   // Check if content has been modified
@@ -310,6 +340,21 @@ export function FileContentModal({
       toast.error(`Failed to open: ${message}`)
     }
   }, [filePath, preferences?.editor])
+
+  // Re-read the file (agents rewrite it) and restart the page.
+  const handleReloadPreview = useCallback(() => {
+    if (!filePath) return
+    void loadFileContent(filePath, { cancelled: false })
+    setPreviewEpoch(e => e + 1)
+  }, [filePath, loadFileContent])
+
+  const handleOpenInBrowser = useCallback(() => {
+    if (!filePath) return
+    openFileInBrowser(filePath).catch(err => {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error(`Failed to open in browser: ${message}`)
+    })
+  }, [filePath])
 
   // Toggle edit mode
   const handleToggleEdit = useCallback(() => {
@@ -393,10 +438,55 @@ export function FileContentModal({
                     </Button>
                   </>
                 ) : (
-                  <Button variant="ghost" size="sm" onClick={handleToggleEdit}>
-                    <Pencil className="h-4 w-4 sm:mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
+                  <>
+                    {artifactKind && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowSource(source => !source)}
+                          aria-pressed={showSource}
+                        >
+                          {showSource ? (
+                            <Eye className="h-4 w-4 sm:mr-1" />
+                          ) : (
+                            <Code className="h-4 w-4 sm:mr-1" />
+                          )}
+                          <span className="hidden sm:inline">
+                            {showSource ? 'Preview' : 'Source'}
+                          </span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleReloadPreview}
+                          aria-label="Reload"
+                        >
+                          <RotateCw className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Reload</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleOpenInBrowser}
+                          aria-label="Open in Browser"
+                        >
+                          <Globe className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            Open in Browser
+                          </span>
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleToggleEdit}
+                    >
+                      <Pencil className="h-4 w-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </Button>
+                  </>
                 )}
                 {canOpenInEditor() && (
                   <Button
@@ -471,6 +561,26 @@ export function FileContentModal({
                 />
               </ErrorBoundary>
             </Suspense>
+          </div>
+        ) : !isLoading && !error && showArtifactPreview ? (
+          <div className="h-[calc(100dvh-7rem)] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0 min-w-0">
+            {artifactKind === 'svg' && svgSrc ? (
+              <div className="h-full w-full rounded-md bg-white touch-none">
+                <ZoomableImage
+                  key={previewEpoch}
+                  src={svgSrc}
+                  alt={filename ?? 'SVG'}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            ) : (
+              <SandboxedHtmlFrame
+                key={previewEpoch}
+                html={content}
+                title={`Preview of ${filename ?? 'HTML file'}`}
+                className="h-full rounded-md"
+              />
+            )}
           </div>
         ) : !isLoading && !error ? (
           <ScrollArea className="h-[calc(100dvh-7rem)] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0">

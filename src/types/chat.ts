@@ -332,6 +332,12 @@ export interface Session {
   started_by_session_id?: string | null
   /** Session this one was forked from */
   forked_from_session_id?: string | null
+  /** Graph refs this session serves: `<graph-id>#<node-id>` or `<graph-id>` */
+  serves?: string[]
+  /** Agent profile this session was started from */
+  agent_id?: string | null
+  /** Graph permission override: `read` | `write` | `manage` */
+  graph_permission?: string | null
   /** File path to the current plan (extracted from Write tool calls) */
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */

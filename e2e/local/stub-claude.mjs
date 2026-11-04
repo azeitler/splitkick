@@ -11,6 +11,7 @@
 // Script lines in the user message (one per line):
 //   STUB:mcp <tool> <json args>  call the Splitkick MCP socket as this session
 //   STUB:say <text>              put <text> verbatim into the reply
+//   STUB:sleep <ms>              wait before going on (keeps the run running)
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import net from 'node:net'
@@ -63,6 +64,20 @@ function userText(input) {
     }
   }
   return text
+}
+
+/**
+ * The user's own message, without the hidden history block Splitkick puts in
+ * front of it (fork, provider switch, or a lost transcript: the stub writes
+ * none, so every later turn replays the history). Replayed `STUB:` lines must
+ * not run again.
+ */
+function ownMessage(text) {
+  let end = 0
+  for (const m of text.matchAll(/<\/jean_(?:fork|provider_switch)_handoff>/g)) {
+    end = m.index + m[0].length
+  }
+  return text.slice(end)
 }
 
 /** Text plus the content of every readable file it names (one level deep). */
@@ -132,9 +147,11 @@ emit({
   tools: [],
 })
 
-for (const line of text.split('\n')) {
+for (const line of ownMessage(text).split('\n')) {
   const say = line.match(/^STUB:say (.*)$/)
   if (say) said.push(say[1])
+  const sleep = line.match(/^STUB:sleep (\d+)$/)
+  if (sleep) await new Promise(done => setTimeout(done, Number(sleep[1])))
   const call = line.match(/^STUB:mcp (\S+)\s*(.*)$/)
   if (!call) continue
   const server = mcpServer()

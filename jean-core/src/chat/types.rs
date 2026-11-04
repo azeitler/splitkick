@@ -917,6 +917,15 @@ pub struct Session {
     /// Session this one was forked from (read-only, from metadata)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<String>,
+    /// Graph refs this session serves (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serves: Vec<String>,
+    /// Agent profile this session was started from (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// Graph permission override (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_permission: Option<String>,
     /// File path to the current plan (extracted from Write tool calls)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_file_path: Option<String>,
@@ -1072,6 +1081,9 @@ impl Session {
             plan_handoffs: vec![],
             started_by_session_id: None,
             forked_from_session_id: None,
+            serves: vec![],
+            agent_id: None,
+            graph_permission: None,
             plan_file_path: None,
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
@@ -1303,6 +1315,9 @@ impl SessionMetadata {
             plan_handoffs: self.plan_handoffs.clone(),
             started_by_session_id: self.started_by_session_id.clone(),
             forked_from_session_id: self.forked_from_session_id.clone(),
+            serves: self.serves.clone(),
+            agent_id: self.agent_id.clone(),
+            graph_permission: self.graph_permission.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             enabled_mcp_servers: self.enabled_mcp_servers.clone(),
@@ -1898,6 +1913,16 @@ pub struct SessionMetadata {
     /// Only `chat::session_links` writes it; it is never synced back from `Session`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_by_session_id: Option<String>,
+    /// Graph refs this session serves: `<graph-id>#<node-id>` or `<graph-id>`.
+    /// Written only by the graph commands; never synced back from `Session`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serves: Vec<String>,
+    /// Agent profile this session was started from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// Graph permission override: `read` | `write` | `manage`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_permission: Option<String>,
     /// One-shot marker consumed by the fork's first send.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_fork: Option<PendingFork>,
@@ -2034,6 +2059,9 @@ impl SessionMetadata {
             scheduled_wakeup: None,
             forked_from_session_id: None,
             started_by_session_id: None,
+            serves: vec![],
+            agent_id: None,
+            graph_permission: None,
             pending_fork: None,
             pending_move: None,
             version: 1,
