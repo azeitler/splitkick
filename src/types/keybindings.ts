@@ -51,6 +51,7 @@ export type KeybindingAction =
   | 'toggle_zen_mode'
   | 'clear_session_context'
   | 'add_follow_up'
+  | 'toggle_session_graph'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl. "ctrl" is a
 // separate modifier only in the macOS native app (Ctrl+Cmd chords).
@@ -128,6 +129,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   },
   clear_session_context: 'mod+shift+k',
   add_follow_up: 'mod+j',
+  toggle_session_graph: 'mod+shift+g',
 }
 
 // UI definitions for the settings pane
@@ -473,6 +475,14 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description:
       'Open the follow-up list and type a note for a later turn (never sent automatically)',
     default_shortcut: 'mod+j',
+    category: 'chat',
+  },
+  {
+    action: 'toggle_session_graph',
+    label: 'Toggle graph panel',
+    description:
+      'Show or hide the graph panel of the session (desktop only; the session must serve a graph node or have an agent)',
+    default_shortcut: 'mod+shift+g',
     category: 'chat',
   },
 ]

@@ -219,6 +219,8 @@ import {
   SessionGraphPanel,
   sessionHasGraphPanel,
 } from '@/components/graphs/SessionGraphPanel'
+import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
+import { ToolbarContent } from '@/components/toolbar/toolbar-slots'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -3059,6 +3061,10 @@ export function ChatWindow({
         data-chat-session-id={activeSessionId}
         className="flex h-full w-full min-w-0 flex-col overflow-hidden"
       >
+        {/* Full chat view: the session window has its own header (#84). */}
+        {!isModal && (
+          <ToolbarContent actions={<SessionGraphToggle session={session} />} />
+        )}
         <ReviewMethodModal
           open={reviewMethodModalOpen}
           onOpenChange={setReviewMethodModalOpen}

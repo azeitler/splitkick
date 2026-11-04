@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Open the session graph panel from anywhere** (#84). The "Graph" button now
+  also shows in the full chat view, the command palette has "Toggle Graph
+  Panel", and `Mod+Shift+G` toggles it (configurable in Settings →
+  Keybindings). For a session that does not serve a graph node yet, the command
+  explains how to link it instead of opening an empty panel. The panel stays
+  desktop-only.
+
 ## [1.4.1] - 2026-11-03
 
 Built on Jean 0.1.73.
