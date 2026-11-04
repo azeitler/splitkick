@@ -233,7 +233,13 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   Node detail panel on the right. Navigation history kind `graph`.
 - New graph dialog (three locations) and "Open existing graph file…".
 - Session graph panel in `ChatWindow` (a second collapsible right panel,
-  `chat-store.graphPanelVisible`), toggle in the session actions.
+  `chat-store.graphPanelVisible`, desktop only). Entry points (#84): the
+  shared `SessionGraphToggle` button in the window toolbar (session window and
+  full chat view; hidden for a session without a panel), the ⌘K command
+  "Toggle Graph Panel" and the `toggle_session_graph` shortcut (`Mod+Shift+G`).
+  The command and the shortcut go through `toggleActiveSessionGraphPanel`
+  (`src/lib/session-graph-panel.ts`): an unlinked session gets a toast that
+  explains the link instead of an empty panel; a phone gets a desktop-only note.
 - Settings → Agents pane; "Start session from agent" dialog; agent badge next to
   session names (badge when the name differs from the agent name, glyph only when
   equal).
