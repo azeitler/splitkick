@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { AgentBadge } from '@/components/graphs/AgentBadge'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { getLabelTextColor } from '@/lib/label-colors'
@@ -186,6 +187,7 @@ export function SessionShortcutRows({
         )
         const markGlyphs = (
           <>
+            <AgentBadge agentId={session.agent_id} sessionName={session.name} />
             {card.limitHit && <LimitGlyph limit={card.limitHit} />}
             {showStarGlyph && starredIds.has(shortcut.sessionId) && (
               <StarGlyph />

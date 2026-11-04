@@ -156,6 +156,7 @@ describe('PreferencesDialog', () => {
       'CodeRabbit CLI',
       'Terminal',
       'Magic Prompts',
+      'Agents',
       'Opinionated',
       'Providers',
       'Web Access',

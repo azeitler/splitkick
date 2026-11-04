@@ -340,3 +340,31 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - A section header must not reuse the icon of its own rows.
 - Verify with a screenshot and a per-row pixel scan of the first glyph and
   label columns, not by eye.
+
+## Debug an outage from evidence before you propose a workaround
+
+- "MCP connection refused" was first answered with "restart the app". The
+  user had to ask for the cause. Find it first, then propose the fix.
+- Order that found it in minutes: compare the socket file's mtime with the
+  app's start time; `lsof` on the socket; list `~/Library/Logs` for app
+  folders created at that minute; read their logs for the socket path.
+- The app log is replaced on every start. Read it before a restart, or copy
+  it to `tmp/`, or the evidence is gone.
+- Cause here: a test build with its own identifier (`.rel76`) shared the
+  release data folder and replaced the MCP socket. Fixed in `runtime.rs`
+  (`resolve_data_dir_for`) and `jean_mcp_socket.rs`.
+- When a session starts a real app build for testing, also set
+  `SPLITKICK_DATA_DIR` to a folder in `tmp/`, until every installed copy
+  has the fix.
+
+## Confirm the user's real pain before an evaluation recommends
+
+- An issue title names a solution ("cache the app code"); the trigger behind it can be different ("the PWA reloads often").
+- Before the recommendation, list the possible pains (load time, reloads, lost view, lost login) and check which one the user sees. Ask when the issue text does not say it.
+- Do not recommend the option the user already has as the fix for the pain that made them open the issue.
+
+## An answer to "which phase first" is not a start signal in an evaluation
+
+- When the task is an evaluation or a plan, a choice about phase order only changes the plan. It does not start implementation, spikes, tool installs or new issues.
+- Do not put "I start …" in the options of a question during an evaluation. Ask only about the plan.
+- Before any work outside the report, ask for an explicit "start the work".

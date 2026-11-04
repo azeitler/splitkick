@@ -1,6 +1,7 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
+import type { AgentProfile } from './graphs'
 import { getServerPlatform, isServerWindows } from '../lib/platform'
 
 export type CodexGoalExecutionMode = Extract<ExecutionMode, 'build' | 'yolo'>
@@ -1279,6 +1280,8 @@ export interface AppPreferences {
   default_codex_provider: string | null
   /** PI custom providers mirrored into ~/.pi/agent/models.json */
   custom_pi_providers: PiProviderProfile[]
+  /** Saved agent profiles for graph sessions (docs/developer/graph-layer.md) */
+  agent_profiles: AgentProfile[]
   favorite_models: string[] // Favourited model keys ("backend:model") shown at top of picker
   favorite_package_scripts?: string[] // Favourited package script keys ("project_id:script")
   /** Starred base branches for new worktrees ("project_id:branch"), shown at top of picker */
@@ -2501,6 +2504,7 @@ export const defaultPreferences: AppPreferences = {
   custom_codex_providers: [],
   default_codex_provider: null,
   custom_pi_providers: [],
+  agent_profiles: [],
   favorite_models: [],
   favorite_package_scripts: [],
   favorite_base_branches: [],

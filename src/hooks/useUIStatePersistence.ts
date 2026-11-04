@@ -206,6 +206,9 @@ export function useUIStatePersistence() {
     if (uiState.starred_sessions_collapsed) {
       useProjectsStore.getState().setStarredSectionCollapsed(true)
     }
+    if (uiState.graphs_section_collapsed) {
+      useProjectsStore.getState().setGraphsSectionCollapsed(true)
+    }
     if (uiState.folders_section_collapsed) {
       useProjectsStore.getState().setFoldersSectionCollapsed(true)
     }
@@ -975,6 +978,8 @@ export function useUIStatePersistence() {
     let prevStarredSessions = useProjectsStore.getState().starredSessions
     let prevStarredSectionCollapsed =
       useProjectsStore.getState().starredSectionCollapsed
+    let prevGraphsSectionCollapsed =
+      useProjectsStore.getState().graphsSectionCollapsed
     let prevFoldersSectionCollapsed =
       useProjectsStore.getState().foldersSectionCollapsed
     let prevProjectsSectionCollapsed =
@@ -1049,6 +1054,7 @@ export function useUIStatePersistence() {
         state.starredSessions !== prevStarredSessions ||
         state.starredSectionCollapsed !== prevStarredSectionCollapsed
       const sectionsCollapsedChanged =
+        state.graphsSectionCollapsed !== prevGraphsSectionCollapsed ||
         state.foldersSectionCollapsed !== prevFoldersSectionCollapsed ||
         state.projectsSectionCollapsed !== prevProjectsSectionCollapsed
       const projectRailChanged =
@@ -1088,6 +1094,7 @@ export function useUIStatePersistence() {
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
+        prevGraphsSectionCollapsed = state.graphsSectionCollapsed
         prevFoldersSectionCollapsed = state.foldersSectionCollapsed
         prevProjectsSectionCollapsed = state.projectsSectionCollapsed
         prevProjectRailHidden = state.projectRailHidden

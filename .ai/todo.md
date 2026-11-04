@@ -1,3 +1,45 @@
+# Graph layer: exhaustive e2e (all branches and states)
+
+- [x] A `graphs-files.spec.ts`: locations, open/remove/missing/invalid, outside edits, unknown fields, branches, commit, sidebar, navigation, phone.
+- [x] B `graphs-nodes.spec.ts`: states, properties, relations (all kinds, cross-graph), attachments, derived values, delete, Dependencies, history.
+- [x] C `graphs-agents.spec.ts`: agent profiles, start dialog, persona in prompt, MCP tool x permission matrix, create_session, requests (all answers), review/revert, session panel, badges.
+- [x] Full local suite green, check:all, commit.
+
+## Review
+
+- Specs: `graphs` 7, `graphs-files` 13, `graphs-nodes` 13, `graphs-agents` 10. Full local suite 50/50 (4.1 min), no traces in the real home. check:all green, clippy 1.99.1 green.
+- 15 product bugs found and fixed (see commits). Not coverable: native file pickers, non-Claude backends (stub CLI only), a real LLM agent.
+
+# Graph layer, all phases (#78, #79)
+
+Contract: `docs/developer/graph-layer.md`.
+
+- [x] BE1: `jean-core/src/graphs/` store, registry, poller, derived, change log, requests, revert, commit, location; session fields; agent profiles + UI state in Rust; dispatch arms; Rust tests.
+- [x] FE1: types, services, cache key, routing (`activeGraphId`, history), sidebar section, New/Open dialog, GraphView (Outline), node detail panel; tests.
+- [x] BE2: MCP tools + permissions, `create_session` serves/agentId, persona + graph context in all backend prompts; tests.
+- [x] FE2: Review tab, Dependencies view, cross-graph display, session graph panel, Agents pane, start-from-agent dialog, agent badge, command palette; tests.
+- [x] Integration: check:all, clippy 1.99.1, live e2e in the running app (create graph, edit, MCP agent change, review, revert, agent session), screenshots.
+- [x] Docs: CHANGELOG, user guide note, README/mockup notes; commit (Refs #78, Closes #79).
+
+## Review
+
+- `check:all` green; clippy 1.99.1 green (jean-core, src-server, src-tauri).
+- Live: `e2e/local/tests/graphs.spec.ts` 7/7 against the real headless server (create in folder and in repo, outline/detail/YAML, outside edit, agent via UI + MCP create/state/request, review revert + accept, read-level refusal, session panel, commit only the graph file); full local suite 14/14.
+- Fixed from the e2e run: Go-to search in the graph view toolbar, panel row overflow, cramped state control, revert now marks the change seen, eslint ignores `tmp/`.
+- Not exercised live: decision requests, send back, cross-graph relations, Open existing file, in-repo graph off the default branch, phone layout (graph view not shown there).
+
+# HTML/SVG artifact preview (#76)
+
+- [x] Sandbox module (`src/components/artifact-preview/`): `allow-scripts` only, CSP meta first, SVG as `<img>` data URL, open in browser.
+- [x] Native app: `splitkick-artifact:` origin (stateless bootstrap page + postMessage), because release builds hash `script-src` and a srcdoc frame inherits that.
+- [x] File viewer (Preview/Source/Reload/Open in Browser), attached file pills, pasted `.svg`/`.html` attachments, chat ```` ```html ````/```` ```svg ```` Preview (registry contract shared with #74/#75).
+- [x] Threat model `docs/developer/artifact-preview.md`, CHANGELOG, tests, screenshots.
+
+## Review
+
+- Gates green: typecheck, eslint, branding, vitest (3608), cargo test, clippy 1.99.1; e2e `artifact-sandbox.spec.ts` 3/3 in Chromium.
+- Native: escape page all blocked and inline scripts run, in the dev build and in a `tauri build --debug` binary (embedded assets, CSP hashes). The srcdoc-only design would have shown pages static in release; caught by reading tauri-codegen, proven by the e2e "release-like CSP" test.
+
 # Local two-instance e2e (#65)
 
 - [x] Transfer in Web Access (gate removed, CORS hint in `remoteInvoke`, tests, user guide).

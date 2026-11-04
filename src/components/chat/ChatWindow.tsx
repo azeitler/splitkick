@@ -216,6 +216,10 @@ const LinkedProjectsModal = lazy(() =>
   }))
 )
 import {
+  SessionGraphPanel,
+  sessionHasGraphPanel,
+} from '@/components/graphs/SessionGraphPanel'
+import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
@@ -347,6 +351,8 @@ export function ChatWindow({
   )
   // Review sidebar state
   const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
+  // Session graph panel (graph layer): global toggle, not persisted
+  const graphPanelVisible = useChatStore(state => state.graphPanelVisible)
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
   const terminalPanelOpen = useTerminalStore(state =>
@@ -392,6 +398,10 @@ export function ChatWindow({
 
   const handleReviewSidebarExpand = useCallback(() => {
     useChatStore.getState().setReviewSidebarVisible(true)
+  }, [])
+
+  const handleGraphPanelCollapse = useCallback(() => {
+    useChatStore.getState().setGraphPanelVisible(false)
   }, [])
 
   // Actions - get via getState() for stable references (no subscriptions needed)
@@ -479,6 +489,8 @@ export function ChatWindow({
     hasReviewResults,
   })
   const hasReviewPanel = hasReviewResults || isCodeReviewLoadingPanel
+  const showGraphPanel =
+    graphPanelVisible && !isMobile && sessionHasGraphPanel(session)
   // Dedicated Code Review tabs have no transcript (background job). On mobile
   // web those used to render as empty chat + loading sidebar — full-width instead.
   // Normal sessions on mobile keep chat mounted; findings stay via inline blocks.
@@ -3107,6 +3119,8 @@ export function ChatWindow({
             className="min-h-0 flex-1"
           >
             <ResizablePanel
+              id="chat-main"
+              order={1}
               defaultSize={100}
               minSize={isMobile ? 0 : 40}
               className="min-h-0"
@@ -3735,6 +3749,7 @@ export function ChatWindow({
                             <FilePreview
                               files={currentPendingFiles}
                               onRemove={handleRemovePendingFile}
+                              rootPath={activeWorktreePath}
                             />
 
                             {/* Pending image preview */}
@@ -4163,6 +4178,8 @@ export function ChatWindow({
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
+                  id="chat-review"
+                  order={2}
                   ref={reviewPanelRef}
                   defaultSize={reviewSidebarVisible ? 50 : 0}
                   minSize={reviewSidebarVisible ? 20 : 0}
@@ -4178,6 +4195,25 @@ export function ChatWindow({
                       onSendFix={handleReviewFix}
                     />
                   )}
+                </ResizablePanel>
+              </>
+            )}
+
+            {/* Session graph panel — mounted only while visible, so closing
+                it (button, drag to collapse) unmounts it. */}
+            {showGraphPanel && session && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="chat-graph"
+                  order={3}
+                  defaultSize={30}
+                  minSize={20}
+                  collapsible
+                  collapsedSize={0}
+                  onCollapse={handleGraphPanelCollapse}
+                >
+                  <SessionGraphPanel session={session} />
                 </ResizablePanel>
               </>
             )}

@@ -20,16 +20,20 @@ fast check for the UI alone.
    each instance (`http://127.0.0.1:<port>/?token=<token>`).
 5. Stops both instances, checks for leaks, removes the temp folders.
 
-| Scenario                        | Spec                        | Checks                                                                                                                 |
-| ------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| A uses B as a remote connection | `remote-connection.spec.ts` | Command palette switches the window to B and back                                                                      |
-| Transfer A → B (#35)            | `transfer.spec.ts`          | Real menu + dialog; B has the history, the pasted text and image, the saved context; the follow-up on B gets all three |
-| Session link (#44)              | `sessions.spec.ts`          | Link shows the session name and path, unknown id shows "not found", click opens it                                     |
-| Follow-up list (#46)            | `sessions.spec.ts`          | MCP `add_follow_up` fills the badge and panel; add, mark done, reload                                                  |
-| MCP send keeps the mode (#61)   | `sessions.spec.ts`          | `send_chat_message` with `executionMode: "yolo"` runs in Yolo and keeps it after reload                                |
-| Parent/child inserts (#62)      | `sessions.spec.ts`          | "Sent to session …" and "Started session …" in the parent, "Started by …" in the child                                 |
-| Auto-archive (#50)              | `auto-archive.spec.ts`      | API level: a merged PR archives a clean worktree                                                                       |
-| Copy image (#68)                | `images.spec.ts`            | Copy image puts a PNG on the clipboard; the viewer shows Open in browser + Copy image, no Reveal                       |
+| Scenario                        | Spec                        | Checks                                                                                                                                                                                                               |
+| ------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A uses B as a remote connection | `remote-connection.spec.ts` | Command palette switches the window to B and back                                                                                                                                                                    |
+| Transfer A → B (#35)            | `transfer.spec.ts`          | Real menu + dialog; B has the history, the pasted text and image, the saved context; the follow-up on B gets all three                                                                                               |
+| Session link (#44)              | `sessions.spec.ts`          | Link shows the session name and path, unknown id shows "not found", click opens it                                                                                                                                   |
+| Follow-up list (#46)            | `sessions.spec.ts`          | MCP `add_follow_up` fills the badge and panel; add, mark done, reload                                                                                                                                                |
+| MCP send keeps the mode (#61)   | `sessions.spec.ts`          | `send_chat_message` with `executionMode: "yolo"` runs in Yolo and keeps it after reload                                                                                                                              |
+| Parent/child inserts (#62)      | `sessions.spec.ts`          | "Sent to session …" and "Started session …" in the parent, "Started by …" in the child                                                                                                                               |
+| Auto-archive (#50)              | `auto-archive.spec.ts`      | API level: a merged PR archives a clean worktree                                                                                                                                                                     |
+| Copy image (#68)                | `images.spec.ts`            | Copy image puts a PNG on the clipboard; the viewer shows Open in browser + Copy image, no Reveal                                                                                                                     |
+| Graph layer (#79)               | `graphs.spec.ts`            | New graph (folder + in-repo), outline/detail/dependencies write the YAML, outside edit shows, agent MCP writes → Review (revert, accept), read-only refused, session graph panel, Commit graph commits only the file |
+| Graph files (#79)               | `graphs-files.spec.ts`      | New graph in a project repo, another repo, a folder; dialog checks; open existing (no id, invalid, duplicate id, moved); remove; missing and broken file; outside edits; unknown fields kept; branch warning; Commit graph; header edits; sidebar; navigation; phone |
+| Graph nodes (#79)               | `graphs-nodes.spec.ts`      | Node add (3 levels), rename, description, delete + Revert; every state; properties; each relation kind incl. cross-graph and not found; every attachment kind, unknown kinds kept; each blocked/progress rule; active while a serving session runs; Dependencies steps, lanes, decisions, edge colours, cycle, empty; node history and seen; 60 nodes; keyboard |
+| Graph agents (#79)              | `graphs-agents.spec.ts`     | Settings → Agents (every field, persistence, duplicate, delete with confirm); Start session from agent from all four entry points (permission cap, serves, project/worktree, draft not sent); persona and graph block in the prompt file; MCP permission matrix for no agent/read/write/manage incl. raising the level in the panel; `create_session` with `agentId`/`serves`; requests (accept, send back, decisions); review changes (seen, revert, refused revert); session graph panel; agent badges and chip; fork; `create_graph` in a project repo (refused for read), `list_requests` sees the answer, `list_changes` sees the user's revert |
 
 ## Sealing
 
@@ -72,6 +76,14 @@ Script lines in a user message:
 - `STUB:say <text>` adds `<text>` to the reply (for markdown links).
 - `STUB:mcp <tool> <json>` calls the Splitkick MCP socket as the sending
   session and puts a real `tool_use`/`tool_result` pair into the run log.
+- `STUB:sleep <ms>` waits before going on, so the run stays running (a
+  serving session's node shows *active*).
+
+The stub writes no Claude transcript, so from the second turn on Splitkick
+replays the session history in a hidden block in front of the message
+(`HandoffKind::LostContext`). The stub runs `STUB:` lines only from the text
+after that block: earlier turns' calls do not run again. Markers still come
+from everything it sees.
 
 The stub execs Node by absolute path: the server replaces `PATH` with the
 login shell's, and the temp `HOME` has no shell profile.

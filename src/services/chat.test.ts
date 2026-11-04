@@ -23,6 +23,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import {
   canReconnectSession,
+  mergeFetchedSession,
   prefetchSessions,
   reconnectNativeCliSession,
   useAllSessions,
@@ -463,5 +464,90 @@ describe('formatAnswersForClaude', () => {
         { questionIndex: 9, selectedOptions: [0] },
       ])
     ).toEqual({})
+  })
+})
+
+describe('mergeFetchedSession', () => {
+  const msg = (
+    id: string,
+    role: 'user' | 'assistant',
+    toolCalls: Session['messages'][number]['tool_calls'] = []
+  ): Session['messages'][number] => ({
+    id,
+    session_id: 's',
+    role,
+    content: id,
+    timestamp: 1,
+    tool_calls: toolCalls,
+  })
+  const session = (
+    messages: Session['messages'],
+    loadedRunStartIndex: number
+  ): Session =>
+    ({
+      id: 's',
+      name: 'S',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages,
+      loaded_run_start_index: loadedRunStartIndex,
+    }) as Session
+
+  const question = {
+    id: 'toolu_ask',
+    name: 'AskUserQuestion',
+    input: { questions: [] },
+  }
+
+  // Issue #73: older runs were loaded by scrolling up, and chat:done left a
+  // frontend-built assistant message without the question. The refetch must
+  // replace the overlapping runs with the backend copy, not keep the cache.
+  it('takes the fresh runs and keeps only the older loaded ones', () => {
+    const cached = session(
+      [
+        msg('u-old', 'user'),
+        msg('a-old', 'assistant'),
+        msg('u-73', 'user'),
+        msg('optimistic', 'assistant'),
+      ],
+      0
+    )
+    const fresh = session(
+      [msg('u-73', 'user'), msg('a-73', 'assistant', [question])],
+      1
+    )
+
+    const merged = mergeFetchedSession(cached, fresh, false)
+
+    expect(merged.messages.map(m => m.id)).toEqual([
+      'u-old',
+      'a-old',
+      'u-73',
+      'a-73',
+    ])
+    expect(merged.messages.at(-1)?.tool_calls).toEqual([question])
+    expect(merged.loaded_run_start_index).toBe(0)
+  })
+
+  it('keeps the cached messages while the session is still sending', () => {
+    const cached = session(
+      [msg('u-1', 'user'), msg('a-1', 'assistant'), msg('u-2', 'user')],
+      0
+    )
+    const fresh = session([msg('u-1', 'user'), msg('a-1', 'assistant')], 0)
+
+    expect(mergeFetchedSession(cached, fresh, true).messages).toBe(
+      cached.messages
+    )
+  })
+
+  it('returns the fresh session when nothing older is cached', () => {
+    const fresh = session([msg('u-1', 'user'), msg('a-1', 'assistant')], 0)
+
+    expect(mergeFetchedSession(undefined, fresh, false)).toBe(fresh)
+    expect(
+      mergeFetchedSession(session([msg('u-1', 'user')], 0), fresh, false)
+    ).toBe(fresh)
   })
 })

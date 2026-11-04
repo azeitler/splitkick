@@ -53,6 +53,8 @@ interface ProjectsUIState {
   starredSessions: StarredSessionRef[]
   // Whether the sidebar's Starred section is collapsed
   starredSectionCollapsed: boolean
+  // Whether the sidebar's Graphs section is collapsed
+  graphsSectionCollapsed: boolean
   // Whether the sidebar's Folders and Projects sections are collapsed
   foldersSectionCollapsed: boolean
   projectsSectionCollapsed: boolean
@@ -119,6 +121,8 @@ interface ProjectsUIState {
   setStarredSessions: (stars: StarredSessionRef[]) => void
   toggleStarredSectionCollapsed: () => void
   setStarredSectionCollapsed: (collapsed: boolean) => void
+  toggleGraphsSectionCollapsed: () => void
+  setGraphsSectionCollapsed: (collapsed: boolean) => void
   toggleFoldersSectionCollapsed: () => void
   setFoldersSectionCollapsed: (collapsed: boolean) => void
   toggleProjectsSectionCollapsed: () => void
@@ -198,6 +202,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedPinnedProjectIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
+      graphsSectionCollapsed: false,
       foldersSectionCollapsed: false,
       projectsSectionCollapsed: false,
       projectRailHidden: false,
@@ -360,6 +365,25 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { starredSectionCollapsed: collapsed },
           undefined,
           'setStarredSectionCollapsed'
+        ),
+
+      toggleGraphsSectionCollapsed: () =>
+        set(
+          state => ({
+            graphsSectionCollapsed: !state.graphsSectionCollapsed,
+          }),
+          undefined,
+          'toggleGraphsSectionCollapsed'
+        ),
+
+      setGraphsSectionCollapsed: collapsed =>
+        set(
+          state =>
+            state.graphsSectionCollapsed === collapsed
+              ? state
+              : { graphsSectionCollapsed: collapsed },
+          undefined,
+          'setGraphsSectionCollapsed'
         ),
 
       toggleFoldersSectionCollapsed: () =>

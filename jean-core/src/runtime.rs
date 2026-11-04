@@ -30,15 +30,19 @@ pub fn resolve_data_dir() -> Option<PathBuf> {
 
 /// Resolve the data directory for a build with this bundle identifier.
 ///
-/// The development build gets its own directory, keyed by [`DEV_IDENTIFIER`],
-/// so `bun run tauri dev` never touches real data. An env override still wins.
+/// Every Splitkick identifier gets the directory of the same name: the
+/// release build [`DATA_DIR_NAME`], the development build [`DEV_IDENTIFIER`],
+/// and a test build such as `app.splitkick.desktop.rel76` its own, so none of
+/// them touches the installed app's data or MCP socket. Other identifiers
+/// (upstream's `com.jean.desktop` base config) fall back to the release
+/// directory and never open Jean's. An env override still wins.
 pub fn resolve_data_dir_for(identifier: &str) -> Option<PathBuf> {
     if let Some(dir) = data_dir_override() {
         return Some(dir);
     }
     let base = dirs::data_dir()?;
-    if identifier == DEV_IDENTIFIER {
-        return Some(base.join(DEV_IDENTIFIER));
+    if identifier.starts_with(DATA_DIR_NAME) {
+        return Some(base.join(identifier));
     }
     Some(base.join(DATA_DIR_NAME))
 }
@@ -352,6 +356,25 @@ mod tests {
 
         assert_eq!(resolve_data_dir_for(DEV_IDENTIFIER), expected);
         assert_ne!(resolve_data_dir_for(DEV_IDENTIFIER), resolve_data_dir());
+    }
+
+    // A test build with its own identifier (`app.splitkick.desktop.rel76`)
+    // shared the release data and took over the installed app's MCP socket.
+    #[test]
+    fn a_build_with_its_own_identifier_gets_its_own_data_directory() {
+        if data_dir_override().is_some() {
+            return;
+        }
+        let base = dirs::data_dir().unwrap();
+        let id = "app.splitkick.desktop.rel76";
+
+        assert_eq!(resolve_data_dir_for(id), Some(base.join(id)));
+        assert_ne!(resolve_data_dir_for(id), resolve_data_dir());
+        // Upstream's base config must never open Jean's data directory.
+        assert_eq!(
+            resolve_data_dir_for(crate::brand::JEAN_DATA_DIR_NAME),
+            resolve_data_dir()
+        );
     }
 
     #[test]

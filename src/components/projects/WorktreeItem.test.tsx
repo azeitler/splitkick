@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   // Workspaces of the project; two by default, so a selection shows.
   projectWorktreeCount: 2,
   sessions: [] as Session[],
+  // Saved agent profiles (`preferences.agent_profiles`); none by default.
+  agentProfiles: [] as unknown[],
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
@@ -52,7 +54,12 @@ vi.mock('@/services/git-status', () => ({
   performGitSync: vi.fn(),
 }))
 vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({ data: null }),
+  usePreferences: () => ({
+    data:
+      mocks.agentProfiles.length > 0
+        ? { agent_profiles: mocks.agentProfiles }
+        : null,
+  }),
 }))
 
 vi.mock('./useWorktreeMenuActions', () => ({
@@ -842,5 +849,59 @@ describe('WorktreeItem sticky block (#59)', () => {
     renderItem({})
 
     expect(stickyBlock()).not.toHaveClass('pb-0.5')
+  })
+})
+
+// A session started from an agent shows the agent next to its name (#79).
+describe('WorktreeItem agent badge', () => {
+  beforeEach(() => {
+    mocks.agentProfiles = [
+      {
+        id: 'agent-1',
+        name: 'Planner',
+        color: '#22c55e',
+        persona: '',
+        permission: 'write',
+        backend: null,
+        model: null,
+        default_serves: null,
+      },
+    ]
+    mocks.sessions = [
+      session('a', 'Planner', { agent_id: 'agent-1' }),
+      session('b', 'Renamed work', { agent_id: 'agent-1' }),
+      session('c', 'Plain'),
+      session('d', 'Gone agent', { agent_id: 'deleted' }),
+    ]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+      projectCanvasSettings: {},
+      starredSessions: [],
+    })
+  })
+
+  afterEach(() => {
+    mocks.agentProfiles = []
+  })
+
+  const rowOf = (name: string) =>
+    screen
+      .getByTitle(`Idle: ${name}`)
+      .closest('[data-sidebar-row-id]') as HTMLElement
+
+  it('shows the glyph for the agent name and the badge after a rename', () => {
+    renderItem({})
+
+    expect(
+      rowOf('Planner').querySelector('[data-testid="agent-glyph"]')
+    ).not.toBeNull()
+    const badge = rowOf('Renamed work').querySelector(
+      '[data-testid="agent-badge"]'
+    )
+    expect(badge).toHaveTextContent('Planner')
+    for (const name of ['Plain', 'Gone agent']) {
+      expect(rowOf(name).querySelector('[data-testid^="agent-"]')).toBeNull()
+    }
   })
 })

@@ -35,6 +35,12 @@ const ArchivedView = lazy(() =>
   }))
 )
 
+const GraphView = lazy(() =>
+  import('@/components/graphs/GraphView').then(mod => ({
+    default: mod.GraphView,
+  }))
+)
+
 const ProjectCanvasView = lazy(() =>
   import('@/components/dashboard/ProjectCanvasView').then(mod => ({
     default: mod.ProjectCanvasView,
@@ -101,13 +107,15 @@ export function MainWindowContent({
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const archivedViewOpen = useUIStore(state => state.archivedViewOpen)
+  const activeGraphId = useUIStore(state => state.activeGraphId)
 
-  // The Archived view replaces Home only while nothing is selected. Opening a
-  // project or a session (from anywhere, also a restore) closes it, so going
+  // The Archived and Graph views replace Home only while nothing is selected.
+  // Opening a project or a session (from anywhere, also a restore) closes it, so going
   // back later lands on Home.
   useEffect(() => {
     if (selectedProjectId || activeWorktreeId) {
       useUIStore.getState().setArchivedViewOpen(false)
+      useUIStore.getState().setActiveGraphId(null)
     }
   }, [selectedProjectId, activeWorktreeId])
   const setAddProjectDialogOpen = useProjectsStore(
@@ -183,6 +191,10 @@ export function MainWindowContent({
     </Suspense>
   ) : children ? (
     children
+  ) : activeGraphId ? (
+    <Suspense fallback={<JeanLoadingScreen />}>
+      <GraphView key={activeGraphId} graphId={activeGraphId} />
+    </Suspense>
   ) : archivedViewOpen ? (
     <Suspense fallback={<JeanLoadingScreen />}>
       <ArchivedView />
@@ -316,10 +328,13 @@ export function MainWindowContent({
             </Suspense>
           </div>
         </div>
-      ) : isMobile && (realProjects.length > 0 || selectedProjectId) ? (
+      ) : isMobile &&
+        !(activeGraphId && !selectedProjectId) &&
+        (realProjects.length > 0 || selectedProjectId) ? (
         // The phone layout: tabs at the root, a project as a modal over them.
         // An empty app keeps the welcome screen below — there is nothing to
-        // navigate between yet.
+        // navigate between yet. An open graph replaces the tabs (it has its
+        // own Back button).
         <MobileTabShell projects={projects} />
       ) : (
         <div

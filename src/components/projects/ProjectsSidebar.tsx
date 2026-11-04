@@ -7,6 +7,7 @@ import { ProjectTree } from './ProjectTree'
 import { SidebarArchivedRow } from './SidebarArchivedRow'
 import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
+import { SidebarGraphsSection } from './SidebarGraphsSection'
 import { SidebarRecentSessions } from './SidebarRecentSessions'
 import { SidebarTabs } from './SidebarTabs'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -73,10 +74,11 @@ export function ProjectsSidebar() {
             sidebarTab !== 'projects' && 'invisible'
           )}
         >
-          {/* Home stays put above the list that scrolls. Starred, Folders and
-              Projects scroll in one list with a sticky stack: each section
-              header stays stuck once you scroll past it, and the folder,
-              project and worktree rows stick below them (sidebar-sticky.ts). */}
+          {/* Home stays put above the list that scrolls. Starred, Graphs,
+              Folders and Projects scroll in one list with a sticky stack: each
+              section header stays stuck once you scroll past it, and the
+              folder, project and worktree rows stick below them
+              (sidebar-sticky.ts). */}
           <SidebarHomeRow />
           <div
             ref={scrollRef}
@@ -85,6 +87,7 @@ export function ProjectsSidebar() {
             className="sidebar-sticky-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(var(--safe-area-bottom)+1.25rem)] [scrollbar-gutter:stable]"
           >
             <SidebarStarredSection />
+            <SidebarGraphsSection />
             {isLoading ? (
               <div className="flex items-center justify-center p-4">
                 <span className="text-sm text-muted-foreground">

@@ -39,6 +39,9 @@ vi.mock('./ProjectTree', () => ({
 vi.mock('./SidebarStarredSection', () => ({
   SidebarStarredSection: () => <div data-testid="sidebar-starred-section" />,
 }))
+vi.mock('./SidebarGraphsSection', () => ({
+  SidebarGraphsSection: () => <div data-testid="sidebar-graphs-section" />,
+}))
 vi.mock('./SidebarRecentSessions', () => ({
   SidebarRecentSessions: () => <div data-testid="sidebar-recent-sessions" />,
 }))
@@ -66,13 +69,14 @@ describe('ProjectsSidebar layout', () => {
     useChatStore.getState().clearActiveWorktree()
   })
 
-  it('puts the tabs first, then Home, Starred, the tree and Archived', () => {
+  it('puts the tabs first, then Home, Starred, Graphs, the tree and Archived', () => {
     renderSidebar()
 
     const order = [
       'sidebar-tabs',
       'sidebar-home-row',
       'sidebar-starred-section',
+      'sidebar-graphs-section',
       'project-tree',
       'sidebar-archived-row',
     ].map(id => screen.getByTestId(id))

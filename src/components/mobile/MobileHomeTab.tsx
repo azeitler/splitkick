@@ -1,9 +1,19 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Archive, Folder, MessagesSquare, Plus, Settings } from 'lucide-react'
+import {
+  Archive,
+  Folder,
+  MessagesSquare,
+  Plus,
+  Settings,
+  Workflow,
+} from 'lucide-react'
 import type { Project } from '@/types/projects'
 import type { MobileHomeSegment } from '@/types/ui-state'
 import { cn } from '@/lib/utils'
 import { useAllSessions } from '@/services/chat'
+import { useGraphs } from '@/services/graphs'
+import { openGraphView } from '@/lib/graph-view'
+import { graphSubtitle } from '@/components/graphs/graph-utils'
 import { useAppDataDir } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -329,6 +339,8 @@ function HomeProjects({ projects }: { projects: Project[] }) {
         )}
       </div>
 
+      <HomeGraphs />
+
       {/* The drawer footer's actions. Folder management stays on the desktop. */}
       <div className="flex gap-2">
         <Button
@@ -349,5 +361,34 @@ function HomeProjects({ projects }: { projects: Project[] }) {
         </Button>
       </div>
     </>
+  )
+}
+
+/** The sidebar's Graphs section: the phone has no sidebar (graph layer, #79). */
+function HomeGraphs() {
+  const { data: graphs = [] } = useGraphs()
+  if (graphs.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2" data-testid="mobile-home-graphs">
+      <h3 className="flex min-w-0 items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Workflow className="size-3.5 shrink-0" />
+        <span className="truncate">Graphs</span>
+        <span className="font-normal tabular-nums">{graphs.length}</span>
+      </h3>
+      {graphs.map(graph => (
+        <button
+          key={graph.id}
+          type="button"
+          onClick={() => openGraphView(graph.id)}
+          data-testid={`mobile-graph-row-${graph.id}`}
+          className="flex min-h-11 flex-col items-start rounded-lg border px-3 py-2 text-left"
+        >
+          <span className="truncate text-sm">{graph.title}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {graphSubtitle(graph)}
+          </span>
+        </button>
+      ))}
+    </div>
   )
 }

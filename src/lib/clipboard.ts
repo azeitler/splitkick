@@ -135,6 +135,17 @@ export async function copyHtmlToClipboard(
  * text fallback, because pasting a URL where an image was expected is wrong.
  */
 export async function copyImageToClipboard(src: string): Promise<void> {
+  await copyPngToClipboard(fetchImageAsPng(src))
+}
+
+/**
+ * Copy a PNG to the clipboard. Pass the blob as a promise: WebKit drops the
+ * user gesture when the write only starts after async work. Throws when the
+ * copy fails.
+ */
+export async function copyPngToClipboard(png: Promise<Blob>): Promise<void> {
+  // Handle a rejection here; the checks below can throw first.
+  png.catch(() => undefined)
   if (isInsecureWebContext()) {
     throw new Error(
       `Copy failed: browsers block image copy on plain HTTP except localhost. Open ${PRODUCT_NAME} via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.`
@@ -143,11 +154,7 @@ export async function copyImageToClipboard(src: string): Promise<void> {
   if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
     throw new Error('Copy failed: this browser cannot copy images.')
   }
-  // Pass the blob as a promise: WebKit drops the user gesture when the write
-  // only starts after the fetch.
-  await navigator.clipboard.write([
-    new ClipboardItem({ 'image/png': fetchImageAsPng(src) }),
-  ])
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
 }
 
 async function fetchImageAsPng(src: string): Promise<Blob> {

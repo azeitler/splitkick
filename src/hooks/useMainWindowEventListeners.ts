@@ -14,6 +14,7 @@ import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
 import { schedulesQueryKeys } from '@/services/schedules'
+import { graphsQueryKeys } from '@/services/graphs'
 import type {
   AllSessionsResponse,
   QueuedMessage,
@@ -33,6 +34,7 @@ import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
 import { handleSessionMoved, type SessionMovedEvent } from '@/lib/session-move'
 import { logNativeError } from '@/lib/native-log'
+import { updateChecksEnabledForThisApp } from '@/lib/app-update'
 import {
   eventToShortcutString,
   isModKeyEvent,
@@ -191,6 +193,11 @@ export function applyCacheInvalidationKeys(
       case 'schedules':
         queryClient.invalidateQueries({
           queryKey: schedulesQueryKeys.all,
+        })
+        break
+      case 'graphs':
+        queryClient.invalidateQueries({
+          queryKey: graphsQueryKeys.all,
         })
         break
     }
@@ -1196,6 +1203,13 @@ export function useMainWindowEventListeners() {
         listenMenu('menu-check-updates', async () => {
           logger.debug('Check for updates menu event received')
           if (!isNativeApp()) return
+          if (!(await updateChecksEnabledForThisApp())) {
+            commandContext.showToast(
+              'Updates are off in development builds',
+              'info'
+            )
+            return
+          }
           const ui = useUIStore.getState()
           // Package already installed this session — prompt restart, don't re-offer download
           if (ui.updateReadyVersion) {

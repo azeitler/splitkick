@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { X, FileText, Copy, Pencil, Check } from 'lucide-react'
+import { X, FileText, Copy, Pencil, Check, Code, Eye } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -18,6 +18,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { useChatStore } from '@/store/chat-store'
+import { ArtifactPreview } from '@/components/artifact-preview/ArtifactPreview'
+import { getArtifactKind } from '@/components/artifact-preview/sandbox'
 
 function isMarkdownFile(filename: string | undefined): boolean {
   if (!filename) return false
@@ -56,6 +58,8 @@ export function TextFilePreview({
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  /** HTML/SVG attachments open as rendered preview; Source shows the text. */
+  const [showSource, setShowSource] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleRemove = useCallback(
@@ -131,9 +135,11 @@ export function TextFilePreview({
     setOpenFileId(null)
     setIsEditing(false)
     setEditContent('')
+    setShowSource(false)
   }, [])
 
   const openFile = textFiles.find(tf => tf.id === openFileId)
+  const artifactKind = getArtifactKind(openFile?.filename)
 
   if (textFiles.length === 0) return null
 
@@ -199,11 +205,16 @@ export function TextFilePreview({
                 value={editContent}
                 onChange={e => setEditContent(e.target.value)}
                 aria-label={
-                  openFile?.filename
-                    ? `Edit ${openFile.filename}`
-                    : 'Edit file'
+                  openFile?.filename ? `Edit ${openFile.filename}` : 'Edit file'
                 }
                 className="w-full h-full min-h-[calc(85vh-10rem)] text-base font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md border-none outline-none resize-none md:text-xs"
+              />
+            ) : artifactKind && !showSource && openFile ? (
+              <ArtifactPreview
+                kind={artifactKind}
+                content={openFile.content}
+                title={`Preview of ${openFile.filename}`}
+                className="h-[calc(85vh-9rem)]"
               />
             ) : isMarkdownFile(openFile?.filename) ? (
               <div className="p-3 select-text cursor-text">
@@ -242,6 +253,21 @@ export function TextFilePreview({
               </>
             ) : (
               <>
+                {artifactKind && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSource(source => !source)}
+                    aria-pressed={showSource}
+                    className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 text-xs"
+                  >
+                    {showSource ? (
+                      <Eye className="h-3.5 w-3.5" />
+                    ) : (
+                      <Code className="h-3.5 w-3.5" />
+                    )}
+                    {showSource ? 'Preview' : 'Source'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() =>
