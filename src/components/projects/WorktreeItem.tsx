@@ -18,6 +18,7 @@ import {
   SessionContextMenuItems,
   closeOpenSessionContextMenus,
 } from '@/components/chat/SessionContextMenuItems'
+import { SessionNetworkGlyph } from '@/components/chat/SessionNetworkIndicator'
 import { LabelModal } from '@/components/chat/LabelModal'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
@@ -1096,6 +1097,12 @@ export function WorktreeItem({
                           {card.limitHit && (
                             <LimitGlyph limit={card.limitHit} />
                           )}
+                          <SessionNetworkGlyph
+                            sessionId={card.session.id}
+                            startedBySessionId={
+                              card.session.started_by_session_id
+                            }
+                          />
                           {starredIds.has(card.session.id) && <StarGlyph />}
                           {pinnedIds.has(card.session.id) && <PinGlyph />}
                           {/* Issue the workspace was created from. Dropped on a

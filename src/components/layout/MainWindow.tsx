@@ -114,6 +114,11 @@ const MoveSessionDialog = lazy(() =>
     default: mod.MoveSessionDialog,
   }))
 )
+const SessionNetworkDialog = lazy(() =>
+  import('@/components/chat/SessionNetworkDialog').then(mod => ({
+    default: mod.SessionNetworkDialog,
+  }))
+)
 const StartAgentSessionDialog = lazy(() =>
   import('@/components/graphs/StartAgentSessionDialog').then(mod => ({
     default: mod.StartAgentSessionDialog,
@@ -289,6 +294,9 @@ export function MainWindow() {
     state => state.transferSessionTarget !== null
   )
   const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
+  const sessionNetworkOpen = useUIStore(
+    state => state.sessionNetworkSessionId !== null
+  )
   const startAgentSessionOpen = useUIStore(
     state => state.startAgentSessionTarget !== null
   )
@@ -547,6 +555,7 @@ export function MainWindow() {
   const shouldRenderTransferSessionDialog =
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
+  const shouldRenderSessionNetworkDialog = useRetainedMount(sessionNetworkOpen)
   const shouldRenderStartAgentSessionDialog = useRetainedMount(
     startAgentSessionOpen
   )
@@ -839,6 +848,11 @@ export function MainWindow() {
       {shouldRenderMoveSessionDialog && (
         <Suspense fallback={null}>
           <MoveSessionDialog />
+        </Suspense>
+      )}
+      {shouldRenderSessionNetworkDialog && (
+        <Suspense fallback={null}>
+          <SessionNetworkDialog />
         </Suspense>
       )}
       {shouldRenderStartAgentSessionDialog && (

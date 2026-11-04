@@ -1,9 +1,10 @@
 import { useContext } from 'react'
-import { CornerDownRight } from 'lucide-react'
+import { CornerDownRight, Network } from 'lucide-react'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useSessionLink } from '@/services/chat'
 import type { SessionLink } from '@/types/chat'
 import { CurrentSessionContext } from './CurrentSessionContext'
+import { openSessionNetwork } from './SessionNetworkIndicator'
 
 /** Splitkick MCP tools whose result names a session they started or sent to. */
 const SESSION_TOOLS = new Set([
@@ -69,11 +70,14 @@ export function SessionLinkRow({
   link,
   goneText,
   className = 'mt-1',
+  networkSessionId,
 }: {
   prefix: string
   link: SessionLink | null
   goneText: string
   className?: string
+  /** Session whose network the "Network" button opens; omit to hide it. */
+  networkSessionId?: string | null
 }) {
   return (
     <div
@@ -87,21 +91,33 @@ export function SessionLinkRow({
             <span className="font-medium text-foreground">{link.name}</span>’
             {link.archived && ' · archived'}
           </span>
-          {!link.archived && (
-            <button
-              type="button"
-              onClick={() =>
-                navigateToSession({
-                  projectId: link.projectId,
-                  worktreeId: link.worktreeId,
-                  sessionId: link.sessionId,
-                })
-              }
-              className="ml-auto font-medium text-foreground underline-offset-2 hover:underline"
-            >
-              View →
-            </button>
-          )}
+          <span className="ml-auto flex items-center gap-3">
+            {networkSessionId && (
+              <button
+                type="button"
+                onClick={() => openSessionNetwork(networkSessionId)}
+                className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                <Network className="h-3 w-3" />
+                Network
+              </button>
+            )}
+            {!link.archived && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigateToSession({
+                    projectId: link.projectId,
+                    worktreeId: link.worktreeId,
+                    sessionId: link.sessionId,
+                  })
+                }
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                View →
+              </button>
+            )}
+          </span>
         </>
       ) : (
         <span>{goneText}</span>
@@ -127,6 +143,9 @@ export function SessionLinkInsert({
       prefix={verb}
       link={link}
       goneText={`${verb} (no longer available)`}
+      networkSessionId={
+        verb === 'Started session' ? (currentSessionId ?? sessionId) : null
+      }
     />
   )
 }

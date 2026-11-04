@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Session network: see which session started which** (#77). A dialog shows
+  the tree around a session: its root and every session started from there,
+  across worktrees and projects. Each row shows the name, project › worktree,
+  backend and live status; archived sessions show greyed out. Click a row to
+  open the session. Open it from "Network" in the "Started by" banner and the
+  "Started session" inserts, or from "Show Session Network" in the session
+  context menu. A small network icon marks linked sessions in the sidebar, the
+  canvas tabs and the Starred/Pinned rows. Sessions on other devices are not
+  shown; a root whose parent is not here says so.
+
 ## [1.4.1] - 2026-11-03
 
 Built on Jean 0.1.73.

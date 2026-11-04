@@ -27,6 +27,7 @@ vi.mock('@/hooks/useWorktreeTerminalStatus', () => ({
 }))
 
 vi.mock('@/services/chat', () => ({
+  useIsSessionLinked: () => false,
   useSessions: () => ({
     data: {
       worktree_id: 'wt-1',
