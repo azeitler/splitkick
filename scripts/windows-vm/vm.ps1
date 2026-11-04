@@ -39,6 +39,10 @@ switch ($Step) {
     New-Item -ItemType Directory -Force dist | Out-Null
     Invoke-Step 'rust:clippy' { bun run rust:clippy }
     Invoke-Step 'test:run' { bun run test:run }
+    Invoke-Step 'test:splitkick-version' { bun run test:splitkick-version }
+    Invoke-Step 'test:changelog-notes' { bun run test:changelog-notes }
+    Invoke-Step 'test:release-cut' { bun run test:release-cut }
+    Invoke-Step 'test:web-branding' { bun run test:web-branding }
     Invoke-Step 'check:branding' { bun run check:branding }
     Invoke-Step 'rust:test' { bun run rust:test }
   }

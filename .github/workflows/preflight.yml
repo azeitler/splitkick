@@ -35,17 +35,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Scoped down to the only platform this fork ships. Restore an entry to
-        # bring a platform back; every step below is still platform-aware.
+        # macOS is the platform this fork ships. Windows runs the same checks and
+        # a release compile, but publishes nothing yet (issue #71). Restore an
+        # entry to bring a platform back; every step below is still
+        # platform-aware.
         #   - platform: 'ubuntu-22.04'
         #     preflightArgs: ''
         #   - platform: 'ubuntu-22.04-arm'
         #     preflightArgs: ''
-        #   - platform: 'windows-latest'
-        #     preflightArgs: ''
         include:
           - platform: 'macos-latest'
             preflightArgs: '--target aarch64-apple-darwin'
+          - platform: 'windows-latest'
+            preflightArgs: ''
 
     steps:
       - name: Checkout
@@ -133,8 +135,10 @@ jobs:
       - name: Rust tests
         run: bun run rust:test
 
+      # Every platform without a publishing bundle step below compiles here,
+      # so a CI Build on main still proves the Windows binary builds.
       - name: Build Tauri app without bundling
-        if: ${{ !inputs.publishFlavor }}
+        if: ${{ !inputs.publishFlavor || matrix.platform != 'macos-latest' }}
         run: bun run tauri build ${{ matrix.preflightArgs }} --no-bundle --ci
 
       # Fork flavor. This is the same compile as the step above, so the two are
