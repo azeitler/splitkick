@@ -5,6 +5,7 @@ import {
   GitBranchPlus,
   GitFork,
   Link,
+  Network,
   Pause,
   Pencil,
   Pin,
@@ -30,7 +31,11 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { copySplitkickLink } from '@/lib/splitkick-links'
 import { useTransferTargets } from '@/lib/session-transfer'
 import { useUIStore } from '@/store/ui-store'
-import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
+import {
+  canReconnectSession,
+  reconnectNativeCliSession,
+  useIsSessionLinked,
+} from '@/services/chat'
 import type { Session } from '@/types/chat'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
 import {
@@ -38,6 +43,7 @@ import {
   toggleStarredSession,
 } from './session-pin-actions'
 import { SessionStatusMenu } from './SessionStatusMenu'
+import { openSessionNetwork } from './SessionNetworkIndicator'
 import { useSessionFork } from './hooks/useSessionFork'
 import {
   getResumeCommand,
@@ -106,6 +112,7 @@ export function SessionContextMenuItems({
     state.starredSessions.some(star => star.sessionId === session.id)
   )
   const resumeCommand = getResumeCommand(session)
+  const isLinked = useIsSessionLinked(session.id, session.started_by_session_id)
   // Rename starts only once the menu has closed. Starting it from onSelect
   // races the menu: Radix still traps focus while the menu is open and returns
   // it to the row when it closes, and either one blurs the new input, which
@@ -215,6 +222,12 @@ export function SessionContextMenuItems({
           </>
         )}
       </ContextMenuItem>
+      {isLinked && (
+        <ContextMenuItem onSelect={() => openSessionNetwork(session.id)}>
+          <Network className="mr-2 h-4 w-4" />
+          Show Session Network
+        </ContextMenuItem>
+      )}
       <ContextMenuSeparator />
       <ContextMenuItem
         onSelect={() => {

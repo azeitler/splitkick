@@ -1238,6 +1238,12 @@ pub async fn dispatch_command(
                 crate::chat::session_links::get_session_link(app.clone(), session_id).await?;
             to_value(result)
         }
+        "get_session_network" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result =
+                crate::chat::session_links::get_session_network(app.clone(), session_id).await?;
+            to_value(result)
+        }
         // Graph layer (docs/developer/graph-layer.md). The graph functions emit
         // `cache:invalidate` themselves, so MCP writes refresh clients too.
         "list_graphs" => to_value(crate::graphs::list_graphs(app.clone()).await?),
