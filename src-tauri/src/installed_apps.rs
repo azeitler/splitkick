@@ -3,6 +3,9 @@
 //! The ids on the left are the preference values the frontend stores
 //! (`editor`, `terminal`, `git_client`).
 
+// Bundle ids exist on macOS only; other platforms report no tools.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 /// Tool id → bundle identifiers (any one counts as installed). The first
 /// bundle id is the one `open -b` launches.
 pub(crate) const KNOWN_APPS: &[(&str, &[&str])] = &[

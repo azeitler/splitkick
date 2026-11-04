@@ -7,6 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Windows test builds in the local Parallels VM** (#71).
+  `scripts/windows-vm/run.sh` shares the checkout into the "Windows 11" VM,
+  installs the build tools once (`setup`, winget), and runs the preflight
+  checks (`gate`), an x64 or ARM64 NSIS build (`build`), a start-up check
+  (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
+  installs per user and starts on Windows 11.
+
+### Fixed
+
+- **The Windows build compiles again** (#71). The Tauri 2.12 update moved
+  WebView2 to `webview2-com` 0.39 while the app still asked for 0.38, so the
+  WebView2 crash recovery did not compile. macOS-only helpers no longer fail
+  `clippy -D warnings` on Windows, and `check:branding` accepts Windows path
+  separators.
+
 ## [1.4.1] - 2026-11-03
 
 Built on Jean 0.1.73.

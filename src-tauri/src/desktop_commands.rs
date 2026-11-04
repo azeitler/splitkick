@@ -1,7 +1,9 @@
 use base64::Engine;
 use serde_json::{json, Value};
 use std::io::Cursor;
-use std::process::{Command, Stdio};
+use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::process::Stdio;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -293,6 +295,7 @@ pub async fn open_log_directory(app: AppHandle) -> Result<(), String> {
 
 /// The log file `tauri_plugin_log` writes now. Rotation leaves older files
 /// beside it with a time stamp in the name, so take the newest `.log`.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // Help menu is macOS-only
 pub(crate) fn newest_log_file(dir: &std::path::Path) -> Option<std::path::PathBuf> {
     std::fs::read_dir(dir)
         .ok()?
@@ -305,6 +308,7 @@ pub(crate) fn newest_log_file(dir: &std::path::Path) -> Option<std::path::PathBu
 
 /// Help → Show Log: open the current log file in the default app (Console on
 /// macOS), or the log folder when there is no file yet.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // Help menu is macOS-only
 pub(crate) async fn show_log_file(app: &AppHandle) -> Result<(), String> {
     let dir = app
         .path()
