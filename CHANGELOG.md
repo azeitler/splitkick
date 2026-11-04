@@ -7,6 +7,42 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Windows test builds in the local Parallels VM** (#71).
+  `scripts/windows-vm/run.sh` shares the checkout into the "Windows 11" VM,
+  installs the build tools once (`setup`, winget), and runs the preflight
+  checks (`gate`), an x64 or ARM64 NSIS build (`build`), a start-up check
+  (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
+  installs per user and starts on Windows 11.
+- **Windows in the CI checks** (#71). Every push now also runs the preflight
+  checks and a release compile on `windows-latest`. Windows builds are not
+  published yet.
+- **OpenCode on Windows ARM64** (#71). Splitkick installs the
+  `opencode-windows-arm64.zip` release on Windows on ARM instead of failing
+  with "Unsupported platform".
+
+### Fixed
+
+- **The Windows build compiles again** (#71). The Tauri 2.12 update moved
+  WebView2 to `webview2-com` 0.39 while the app still asked for 0.38, so the
+  WebView2 crash recovery did not compile. macOS-only helpers no longer fail
+  `clippy -D warnings` on Windows, and `check:branding` accepts Windows path
+  separators.
+- **npm-based CLIs install on Windows again** (#71). Command Code, Grok, PI,
+  Kimi and agent-browser called plain `npm`, which Windows never finds
+  (`npm.cmd`), so every install or update failed with "requires Node.js and
+  npm" although Node was installed. Ports the upstream fixes that the 1.0.1
+  revert removed: npm shims are resolved and launched safely (coollabsio/jean#678,
+  coollabsio/jean#720), and PI installs through WSL correctly
+  (coollabsio/jean#680). Command Code is no longer mistaken for the Windows
+  command interpreter: its binary is called `cmd`, and the PATH lookup found
+  `C:\Windows\System32\cmd.exe`, so Splitkick tried to update a Command Code
+  that was not installed and showed the `cmd.exe` banner as its version.
+- **Windows paths in graphs** (#71). A graph created inside a project gets a
+  path with Windows separators instead of a `\` and `/` mix, and "Nothing to
+  commit" shows the repo path with `/`, as git does.
+
 ## [1.4.1] - 2026-11-03
 
 Built on Jean 0.1.73.

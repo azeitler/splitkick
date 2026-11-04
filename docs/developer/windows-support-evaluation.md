@@ -1,7 +1,8 @@
 # Windows support: evaluation (issue #71)
 
-Status: evaluation only, 2026-10-30; verification section updated 2026-10-31
-(Parallels licence renewed). No app code was changed.
+Status: evaluation 2026-10-30; verification updated 2026-10-31; first Windows
+build verified in the Parallels VM 2026-11-04; Phase 0a and Phase 0 done
+2026-11-04 (full gate green in the VM, `windows-latest` in `preflight.yml`).
 Issue: [azeitler/splitkick#71](https://github.com/azeitler/splitkick/issues/71).
 
 ## Summary
@@ -135,19 +136,32 @@ No action.
 
 ### Upstream Windows fixes after the baseline
 
-Matched by commit subject against fork history. "Missing" commits come with the
-next upstream sync, not with this work:
+**Corrected 2026-11-04.** The first version of this list matched commit
+subjects against `git log` and said the fork has ten of these fixes. That was
+wrong: they are reachable only through the upstream 1.0.1 merge `1cf20d58`,
+which `54d762af` reverted. `git merge-base --is-ancestor <commit> 41390c61`
+puts every commit below after the baseline, so **none of them is in the tree**.
+The VM run proved one of them: without `d499d506` the npm check fails on
+Windows (see [VM results](#vm-results-2026-11-04)).
 
-- Fork has: `d499d506` npm shims (#678), `24ba7f23` PI via WSL (#680),
-  `3e493909` session persistence on Windows (#703), `89d8a23a`, `f6ce648f`,
-  `9d1293a4` (Cursor / Command Code), `66554f47` WebView keyboard focus (#736),
-  `f42fa517` cross-platform clippy, `1c296a16`.
-- Fork does not have: `1232e650` external terminal choices on Windows (#842),
-  `a027751e` fnm default Node.js, `8e204e61` / `c087a014` WSL terminal CLI args,
-  `2c0f091d` managed binaries in user terminals, `b5aeddd8` Windows helper
-  warning, `d5bb097c` Full-access approve off Ctrl+Y (#822).
-  Take `a027751e`, `1232e650`, `8e204e61`, `c087a014` and `d5bb097c` before a
-  public Windows release (run `/upstream-review` first).
+- **Ported 2026-11-04:** `24ba7f23` PI through WSL (#680), `d499d506` npm
+  shims (#678), `f6ce648f` Command Code npm detection (#720) — `f6ce648f` is
+  already contained in `d499d506`, which is newer — and the `pi_cli` import of
+  `f42fa517`. Verified in the VM: Command Code installs through npm.
+- Windows runtime fixes still missing: `9d1293a4` Cursor Agent install (#719), `89d8a23a`
+  Cursor allowlist mode (#721), `3e493909` Claude/Codex session persistence
+  (#703), `66554f47` WebView keyboard focus (#736), `a027751e` fnm default
+  Node.js, `1232e650` external terminal choices (#842), `8e204e61` /
+  `c087a014` WSL terminal CLI args, `2c0f091d` managed binaries in user
+  terminals, `66b8b6af` Unix CLI lookup through the login shell.
+- Build and tests: `f42fa517` cross-platform clippy (the `codex_server` part;
+  the fork's clippy already passes on Windows), `b5aeddd8` Windows helper
+  warning, `1c296a16` glob paths in tests.
+- Other: `d5bb097c` Full-access approve off Ctrl+Y (#822), `be442825` macOS
+  folder picker crash (#738).
+
+Take them through `/upstream-review` before a public Windows release. Some
+touch files the fork has renamed, so expect manual ports.
 
 ## 3. Outside the Rust crates
 
@@ -236,86 +250,141 @@ Upstream ships **unsigned** Windows installers (no Windows signing secrets in
 
 ## Verification options
 
-### The Parallels VM (available again)
+### The Parallels VM
 
-Checked from the host on 2026-10-31, read-only. Nothing was installed.
-
-| Item           | Value                                                                                                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Licence        | Parallels Desktop 20.4.2, `state='valid'`; renewed by Andreas, active until **2026-11-27** (renew again if Windows work runs past that).                                                                         |
-| VM             | "Windows 11", **ARM64**, Windows 11 build 10.0.26100.4349, 4 vCPU, 8 GB RAM, 213 GB free on `C:`, internet access to github.com.                                                                                 |
-| Present        | WebView2 Runtime 156, PowerShell 5.1 (execution policy `Restricted`, so scripts need `-ExecutionPolicy Bypass`), App Installer / `winget` 1.29 (arm64).                                                          |
-| Missing        | Visual Studio Build Tools (MSVC), git, Node.js, Bun, rustup/cargo, LLVM/clang.                                                                                                                                   |
-| `prlctl exec`  | Default runs as `NT AUTHORITY\SYSTEM`; `winget` is **not** on its PATH. `--current-user` runs as the logged-in user `azeitler`, where `winget` is on PATH. The guest exit code is passed through (`exit 3` → 3). |
-| Shared folders | Off (`Host Shared Folders: (-)`). The source has to get into the VM another way (see below).                                                                                                                     |
-| Screenshots    | `prlctl capture "Windows 11" --file <abs path>.png` works from the host.                                                                                                                                         |
+Licence: Parallels Desktop 20.4.2, renewed by Andreas, active until
+**2026-11-27** (renew again if Windows work runs past that).
+VM "Windows 11": **ARM64**, Windows 11 build 10.0.26100, 4 vCPU, 8 GB RAM,
+WebView2 Runtime 156, about 213 GB free before setup.
 
 **What it gives us**
 
-- **Native ARM64 Windows.** A real MSVC build and link, `cargo test`,
-  `vitest`, the NSIS installer, the in-app updater, and the UI (title bar,
-  shortcuts, terminal, WebView2), all driven from an agent session on the Mac
-  with `prlctl exec` and checked with `prlctl capture`.
-- **x64 under emulation.** Windows 11 on ARM runs x64 programs through its
-  built-in emulation. With the MSVC x64 tools and
-  `rustup target add x86_64-pc-windows-msvc`, the VM builds the **x64** app
-  (the one we plan to ship) and runs it emulated. This tests the x64 code and
-  installer, but not native x64 hardware or performance; the `windows-latest`
-  runner stays the native-x64 gate. To check in Phase 0: that the emulated x64
-  app finds the WebView2 runtime.
-- **Limits:** 4 vCPU / 8 GB make a full `release` build (LTO, one codegen
-  unit) slow. Use the debug build or `--profile release-fast` for iteration.
-  Only one session at a time can use the VM. The licence ends 2026-11-27.
+- **Native ARM64 Windows**: a real MSVC build and link, `cargo test`,
+  `vitest`, and the native ARM64 app.
+- **x64 under emulation**: the VM builds the **x64** app (the one we plan to
+  ship) with the MSVC x64 cross tools and runs it emulated. Verified
+  2026-11-04: it finds WebView2, installs and starts. It does not test native
+  x64 hardware or speed; the `windows-latest` runner stays the native-x64 gate.
+- **UI and installer checks from an agent session**: `prlctl exec
+--current-user` starts GUI apps on the visible desktop (verified), and
+  `prlctl capture` takes screenshots.
+- **Limits:** 4 vCPU / 8 GB. The first `rust:clippy` + `rust:test` run takes
+  longer than 10 minutes; an x64 `release-fast` build takes about 11 minutes of
+  cargo time. Only one session at a time can use the VM.
 
-**Setup script (proposed, not run yet)**
+**Scripts** (`scripts/windows-vm/`, added 2026-11-04)
 
-`scripts/windows-vm/setup.ps1`, run once with `prlctl exec --current-user`.
-All tools come from `winget` (built in; Chocolatey is not needed). IDs checked
-with `winget show` on 2026-10-31:
+| Command                       | What it does                                                                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.sh share`                | Shares the checkout read-only as `\\Mac\splitkick` (`--shf-host on` plus `--shf-host-add`). Parallels reinstalls its guest tools after the first change; wait for it. |
+| `run.sh setup`                | `setup.ps1 -Part machine` as SYSTEM, then `-Part user` as the logged-in user. Safe to re-run.                                                                         |
+| `run.sh sync`                 | `robocopy /MIR` to `C:\src\splitkick`, without `node_modules`, `target`, `tmp`, `dist`, `.git` (the VM keeps its own).                                                |
+| `run.sh gate`                 | sync + the preflight checks (`vm.ps1 -Step gate`).                                                                                                                    |
+| `run.sh build [x64\|arm64]`   | sync + `tauri build --bundles nsis -c tauri.fork.conf.json -- --profile release-fast`.                                                                                |
+| `run.sh smoke [x64\|arm64]`   | Starts the built exe, checks it is still up after 25 s and that it wrote a log, prints the log tail and `[ERROR]` lines.                                              |
+| `run.sh shot [name]` / `stop` | Screenshot to `tmp/<name>-<stamp>.png` / quit Splitkick.                                                                                                              |
 
-| Tool                      | winget ID                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| VS 2022 Build Tools 17.14 | `Microsoft.VisualStudio.2022.BuildTools` | MSVC linker and Windows SDK ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/): "Desktop development with C++"). Components: `Microsoft.VisualStudio.Workload.VCTools`, `Microsoft.VisualStudio.Component.VC.Tools.ARM64`, `Microsoft.VisualStudio.Component.VC.Tools.x86.x64`, `Microsoft.VisualStudio.Component.VC.Llvm.Clang`, `--includeRecommended`. The clang component is required: `ring` needs clang on PATH for ARM64 Windows ([ring BUILDING.md](https://github.com/briansmith/ring/blob/main/BUILDING.md)). VS 2026 Build Tools (`Microsoft.VisualStudio.BuildTools`, 18.x) also exists; 2022 is what the Tauri and ring docs describe. |
-| rustup                    | `Rustlang.Rustup`                        | Native `aarch64-pc-windows-msvc` host toolchain, then `rustup target add x86_64-pc-windows-msvc`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Bun 1.4                   | `Oven-sh.Bun`                            | Native Windows ARM64 build exists ([Bun install docs](https://bun.com/docs/installation)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Node.js LTS               | `OpenJS.NodeJS.LTS`                      | CI scripts call `node` directly (`node scripts/...`, `node --test`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Git                       | `Git.Git`                                | Repo operations and the Git Bash that `shell: bash` CI steps use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+Tools installed by `setup.ps1` (winget IDs checked 2026-10-31; Chocolatey is
+not needed): `Microsoft.VisualStudio.2022.BuildTools` 17.14 with the VCTools
+workload plus the ARM64, x64 and Clang components (`ring` needs clang on ARM64
+Windows, [ring BUILDING.md](https://github.com/briansmith/ring/blob/main/BUILDING.md)),
+`Git.Git`, `OpenJS.NodeJS.LTS`, a Defender exclusion for `C:\src` and the
+cargo/rustup folders (machine part, as SYSTEM); `Rustlang.Rustup` with the
+`x86_64-pc-windows-msvc` target and `Oven-sh.Bun` (user part). See the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and
+[Bun install docs](https://bun.com/docs/installation).
 
-Each install: `winget install --id <ID> --exact --silent --accept-package-agreements --accept-source-agreements`
-(Build Tools with `--override "--quiet --wait --norestart --add …"`).
-Machine-wide installers (Build Tools, Git, Node) raise a UAC prompt when run
-as the user; someone clicks it once in the VM window, or the script is started
-once from an elevated PowerShell inside the VM. Optional: a Defender exclusion
-for `C:\src` speeds up cargo builds noticeably. Disk use is about 15–20 GB.
+**Pitfalls found during setup**
 
-**How a session runs a build and smoke test (proposed)**
+- `prlctl exec` without `--current-user` runs as SYSTEM, where `winget` is not
+  on PATH. Calling the App Installer's `winget.exe` directly fails with
+  `0xC0000135` (DLL not found) until its VCLibs / UI.Xaml framework folders
+  are on PATH; `setup.ps1` adds them. Installing as SYSTEM avoids the UAC
+  prompt that machine-wide installers raise for the user.
+- `prlctl exec` drops one backslash of a leading `\\` and strips double quotes
+  inside arguments. `run.sh` passes UNC paths in single quotes and runs longer
+  logic from `.ps1` files.
+- A `prlctl exec` that the host kills (for example by a tool timeout) keeps
+  running in the VM without an output pipe. Run long steps with `nohup` and a
+  log file on the host.
 
-A host-side wrapper, `scripts/windows-vm/run.sh <step>`, so an agent session
-never types long `prlctl` lines:
+### VM results (2026-11-04)
 
-1. **Source in.** Recommended: turn on one Parallels shared folder for the
-   repo (`prlctl set "Windows 11" --shf-host-add splitkick --path <repo>`) and
-   mirror it to a local disk, because building on the share is slow and cargo
-   locks fail there:
-   `robocopy \\Mac\splitkick C:\src\splitkick /MIR /XD node_modules target tmp dist .git`.
-   This carries uncommitted changes. Alternative without a share: `git bundle`
-   to a file and `git clone` it in the VM (committed state only).
-2. **Gate** (same steps as `preflight.yml`):
-   ```sh
-   prlctl exec "Windows 11" --current-user powershell -NoProfile -ExecutionPolicy Bypass -Command \
-     "cd C:\src\splitkick; bun install --frozen-lockfile; bun run typecheck; bun run lint; \
-      bun run test:run; bun run check:branding; bun run rust:clippy; bun run rust:test"
-   ```
-   The exit code tells the session pass or fail; the output streams back.
-3. **Build:** `bun run tauri build --ci --no-bundle --target x86_64-pc-windows-msvc`
-   (x64, emulated) or without `--target` (native ARM64). Add `--bundles nsis`
-   to test the installer.
-4. **Smoke start:** start the exe detached in the user's session
-   (`Start-Process`), wait about 20 s, check that the process is still alive
-   and that the log under `%LOCALAPPDATA%\app.splitkick.desktop\logs` has the
-   startup lines, then `prlctl capture` a screenshot and stop the process.
-   Whether `--current-user` starts GUI apps on the visible desktop must be
-   checked in Phase 0.
+Build from branch `71-evaluate-windows-support` with `origin/main` merged
+(Splitkick 1.4.1), with the Phase 0 build fixes applied.
+
+| Check                          | Result                                                                                                                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun install`, typecheck, lint | pass                                                                                                                                                                       |
+| `rust:clippy -D warnings`      | pass (native ARM64; all three crates)                                                                                                                                      |
+| `test:run` (vitest)            | pass, 457 of 457 files                                                                                                                                                     |
+| `check:branding`               | pass (after the path-separator fix)                                                                                                                                        |
+| `rust:test` (jean-core)        | **1441 pass, 11 fail, 2 ignored**; `src-server` and `src-tauri` tests did not run because the script stops at the first failure                                            |
+| x64 NSIS build                 | pass: `Splitkick_1.4.1_x64-setup.exe`, 24.6 MiB                                                                                                                            |
+| Smoke start (x64, emulated)    | pass: window "Splitkick" with native Windows title bar, onboarding renders, WebView2 ProcessFailed recovery installed, MCP named pipe `\\.\pipe\splitkick-mcp-…` listening |
+| Silent install (`/S`)          | pass: per user to `%LOCALAPPDATA%\Splitkick`, no admin, uninstall entry with publisher "Planetfall Software", desktop shortcut; the installed copy starts                  |
+
+**Update 2026-11-04 (later): all fixed.** The full gate, now with every
+preflight step, passes in the VM: jean-core 1471 pass / 0 fail, src-tauri 35
+pass, the four `node --test` suites pass. Fixes: tests build expected paths
+with native separators (`resolve_file_reference`, `create_graph`), strip the
+verbatim prefix (`open_in_browser`) and search the JSON-escaped path
+(`transfer`). Two were code changes: `create_graph` rebuilds a project-relative
+path from its components (no `\`/`/` mix), and `commit_file` passes git and
+the message a `/` path on Windows. OpenCode publishes
+`opencode-windows-arm64.zip` (checked in the v1.19.5 release: it holds
+`opencode.exe`, like x64), so the ARM64 mapping was added instead of skipping
+the test.
+
+The 11 test failures as first seen:
+
+- 6 × `projects::commands::tests::resolve_file_reference_*`: the code returns
+  native `\` paths; the tests build the expected value with `format!("{}/…")`.
+- `jean_mcp_core::tests::create_graph_by_path_and_by_project`: `repo\.splitkick/graphs/…`
+  vs `repo/.splitkick/graphs/…` — both valid; compare `Path`s, not strings.
+- `graphs::tests::location_detection_and_commit`: the message shows
+  `docs\roadmap.yml`; the test expects `/`. Decide whether repo-relative
+  paths in messages use `/` on every OS (git does).
+- `jean_mcp_core::tests::open_in_browser_resolves_local_files`: the test
+  canonicalizes the expected path, which adds the `\\?\` prefix on Windows.
+- `chat::transfer::tests::import_recreates_the_session_as_a_handoff_fork`: the
+  test looks for the raw path in a JSON log, where `\` is escaped as `\\`.
+- `opencode_cli::…::get_platform_asset_returns_valid_name`: no Windows ARM64
+  asset (`jean-core/src/opencode_cli/commands.rs:464`). Expected on the ARM64
+  host; passes on x64.
+
+Defects found in the running app:
+
+- **npm-based CLIs cannot install or update on Windows. Fixed 2026-11-04.** A
+  "Failed to update Command Code CLI — requires Node.js and npm" toast appears
+  at start-up although Node and npm are installed. `version("npm")` in
+  `jean-core/src/prerequisites.rs:20` runs `silent_command("npm")`, and Rust's
+  `Command` only appends `.exe`, so `npm.cmd` is never found. The installs
+  themselves also run `silent_command("npm")`:
+  `commandcode_cli/commands.rs:709`, `grok_cli/commands.rs:678`,
+  `pi_cli/commands.rs:645`, `kimi_cli/commands.rs:413`,
+  `agent_browser/mod.rs:306`. Upstream fixed both in `d499d506` (#678) and
+  `f6ce648f` (#720): `prerequisites::version` uses
+  `platform::detect_cli_in_path`, and npm shims launch through a resolver.
+  Lost in the 1.0.1 revert. Ported (see
+  [Upstream Windows fixes](#upstream-windows-fixes-after-the-baseline)); after
+  the port Command Code's npm install ran in the VM.
+- **Command Code was mistaken for `cmd.exe`. Fixed 2026-11-04.** Command
+  Code's binary is called `cmd`, and on Windows `where cmd` finds
+  `C:\Windows\System32\cmd.exe` first. Splitkick took that for an installed
+  Command Code, tried to update it at every start, and showed the `cmd.exe`
+  banner as its version. `find_system_commandcode_binary`
+  (`jean-core/src/commandcode_cli/config.rs`) now skips `cmd.exe`. Upstream
+  has the same code, so the bug is in upstream too.
+- **Updater keys.** The update check fails as expected (no Windows entry in
+  `latest.json`). The installed NSIS build asks for `windows-x86_64-nsis`
+  first, then `windows-x86_64`; the raw exe asks only for `windows-x86_64`.
+  Write the Windows entry as `windows-x86_64` (or both).
+- The floating dock shows the `⌘` symbol (known, Phase 1 label fix).
+
+Screenshots: `tmp/splitkick-windows-x64-20261104-144505.png` (raw build),
+`tmp/splitkick-windows-installed-20261104-144617.png` (installed copy); `tmp/`
+is not committed.
 
 ### Other options
 
@@ -347,42 +416,40 @@ as a fallback after 2026-11-27.
 
 ## Phased plan
 
-**Phase 0a — VM setup (S, about ½ day, mostly install time).**
+**Phase 0a — VM setup. Done 2026-11-04.**
 
-- Add `scripts/windows-vm/setup.ps1` (winget installs above) and
-  `scripts/windows-vm/run.sh` (source mirror, gate, build, smoke, capture).
-- Turn on the shared folder for the repo; run the setup once (one UAC click).
-- Check the two open points: the emulated x64 app finds WebView2, and
-  `--current-user` starts the GUI on the visible desktop.
-- Result: an agent session can build, test and screenshot Windows without a
-  push.
+- `scripts/windows-vm/setup.ps1`, `vm.ps1`, `run.sh`; shared folder on; tools
+  installed. Both open points confirmed: the emulated x64 app finds WebView2,
+  and `--current-user` starts the GUI on the visible desktop.
 
-**Phase 0 — smallest useful step (S, about ½–1 day): a green Windows gate.**
+**Phase 0 — a green Windows gate. Done 2026-11-04.**
 
-- `webview2-com = "0.39"`; gate `Stdio`; fix the 13 dead-code / `needless_return`
-  errors in `src-tauri`.
-- Fix `scripts/check-branding.mjs` path separators.
-- Add `windows-latest` (`preflightArgs: ''`) to the `preflight.yml` matrix. The
-  publish steps are already gated on `macos-latest`, so this only builds and
-  tests. If the job takes too long, start with a `workflow_dispatch`
-  `windows-check.yml` that runs the same steps.
-- Run the same steps in the VM first (`run.sh gate`), so the fixes are known
-  to pass before the push.
-- Result: Windows breakage is caught on every push; we learn what `cargo test`
-  and `vitest` really do on Windows.
+- `webview2-com = "0.39"`, `Stdio` behind the macOS gate, the 13 dead-code /
+  `needless_return` lints, `check-branding.mjs` separators, the 11 Windows
+  test failures (see [VM results](#vm-results-2026-11-04)).
+- `run.sh gate` runs every preflight check and passes in the VM (native ARM64).
+- `windows-latest` (`preflightArgs: ''`) is in the `preflight.yml` matrix. The
+  no-bundle release compile now runs on every platform except macOS, because
+  CI Build always sets `publishFlavor` and the bundle step is macOS-only;
+  without this the Windows row would never compile the app binary. Not yet
+  run on GitHub: the first push shows whether the native x64 runner agrees with
+  the ARM64 VM.
+- Result: Windows breakage is caught on every push.
 
-**Phase 1 — functional fixes (S–M, about 1–2 days).**
+**Phase 1 — functional fixes (M, about 2–3 days).**
 
-- Fix whatever the Phase 0 tests show (expected: `jean_import` path rewrite and
-  its tests).
-- `jean_import`: running-Jean check over the named pipe, symlink copy.
+- Done 2026-11-04: npm shims (`24ba7f23`, `d499d506`, `f6ce648f`) and the
+  `cmd.exe` mix-up for Command Code.
+- Port the other upstream Windows fixes listed under
+  [Upstream Windows fixes](#upstream-windows-fixes-after-the-baseline),
+  through `/upstream-review`.
+- `jean_import`: path rewrite, running-Jean check over the named pipe, symlink
+  copy.
 - `session_backup`: free space via `GetDiskFreeSpaceExW`, retrying rename.
 - `shell_open` paths via `explorer`; `⌘` and "Finder" labels.
 - `tauri.windows.conf.json` title; `bundle.windows.nsis` in the fork overlay.
-- Take the missing upstream Windows fixes (`a027751e`, `1232e650`, `8e204e61`,
-  `c087a014`, `d5bb097c`) through `/upstream-review`.
-- Smoke start step in CI; a UI pass in the Parallels VM (x64 build, emulated)
-  with screenshots via `prlctl capture`.
+- Smoke start step in CI; a UI pass in the VM (onboarding, a project, a
+  session with Claude and Codex, terminal, file browser) with screenshots.
 
 **Phase 2 — unsigned pre-release (M, about 1–2 days).**
 
@@ -400,5 +467,6 @@ as a fallback after 2026-11-27.
 - Website: one download card per platform (`sync-release.mjs`, `src/site.ts`
   in `Digitalheld/splitkick-website`); docs for Windows install.
 
-**Phase 4 — optional.** ARM64 build (the VM already tests it natively), taskbar badge, Windows git-client
-launcher, survivable PI runs over a named pipe.
+**Phase 4 — optional.** ARM64 build (the VM already tests it natively),
+taskbar badge, Windows git-client launcher, survivable PI runs over a named
+pipe.

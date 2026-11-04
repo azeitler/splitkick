@@ -428,7 +428,7 @@ pub async fn check_opencode_cli_auth(app: AppHandle) -> Result<OpenCodeAuthStatu
 /// Asset naming from anomalyco/opencode releases:
 /// - macOS:   `opencode-darwin-arm64.zip`, `opencode-darwin-x64.zip`
 /// - Linux:   `opencode-linux-arm64.tar.gz`, `opencode-linux-x64.tar.gz`
-/// - Windows: `opencode-windows-x64.zip`
+/// - Windows: `opencode-windows-arm64.zip`, `opencode-windows-x64.zip`
 fn get_platform_asset() -> Result<PlatformAsset, String> {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
@@ -462,6 +462,13 @@ fn get_platform_asset() -> Result<PlatformAsset, String> {
     {
         return Ok(PlatformAsset {
             asset_name: "opencode-windows-x64.zip".to_string(),
+            format: ArchiveFormat::Zip,
+        });
+    }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    {
+        return Ok(PlatformAsset {
+            asset_name: "opencode-windows-arm64.zip".to_string(),
             format: ArchiveFormat::Zip,
         });
     }

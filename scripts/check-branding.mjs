@@ -15,7 +15,7 @@
  * Usage: node scripts/check-branding.mjs   (exit 1 when anything is found)
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -69,7 +69,8 @@ function isComment(line) {
 const hits = []
 for (const [dir, pattern] of ROOTS) {
   for (const path of files(join(root, dir), pattern)) {
-    const rel = relative(root, path)
+    // Forward slashes on every OS: the skip pattern and allow list use them.
+    const rel = relative(root, path).split(sep).join('/')
     if (SKIP_FILE.test(rel) || ALLOW_FILES.has(rel)) continue
     const lines = readFileSync(path, 'utf8').split('\n')
     // A top-level `#[cfg(test)] mod … {` runs until its closing `}` at column 0.
