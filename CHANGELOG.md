@@ -9,6 +9,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Splitkick for Windows** (#71). Every release now carries a Windows
+  installer, `Splitkick-x64-setup.exe` (x64, Windows 10 or 11; also runs on
+  Windows on ARM). It installs for the current user without admin rights and
+  updates itself through the in-app update check, like the macOS app. The
+  installer is not code-signed yet, so SmartScreen warns on the first start:
+  choose "More info", then "Run anyway". One publish job now creates the
+  release for both platforms and writes one update feed (`latest.json`) for
+  both; a failed Windows build no longer holds back the macOS release.
+
 - **Windows test builds in the local Parallels VM** (#71).
   `scripts/windows-vm/run.sh` shares the checkout into the "Windows 11" VM,
   installs the build tools once (`setup`, winget), and runs the preflight
@@ -16,8 +25,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
   installs per user and starts on Windows 11.
 - **Windows in the CI checks** (#71). Every push now also runs the preflight
-  checks and a release compile on `windows-latest`. Windows builds are not
-  published yet.
+  checks and builds the Windows installer on `windows-latest`.
 - **OpenCode on Windows ARM64** (#71). Splitkick installs the
   `opencode-windows-arm64.zip` release on Windows on ARM instead of failing
   with "Unsupported platform".

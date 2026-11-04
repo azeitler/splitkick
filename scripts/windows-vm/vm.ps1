@@ -42,6 +42,7 @@ switch ($Step) {
     Invoke-Step 'test:splitkick-version' { bun run test:splitkick-version }
     Invoke-Step 'test:changelog-notes' { bun run test:changelog-notes }
     Invoke-Step 'test:release-cut' { bun run test:release-cut }
+    Invoke-Step 'test:updater-manifest' { bun run test:updater-manifest }
     Invoke-Step 'test:web-branding' { bun run test:web-branding }
     Invoke-Step 'check:branding' { bun run check:branding }
     Invoke-Step 'rust:test' { bun run rust:test }
