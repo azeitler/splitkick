@@ -65,6 +65,8 @@ fn fix_macos_path() {
     }
 }
 
+// The early return is only needless when the macOS step below is compiled out.
+#[cfg_attr(not(target_os = "macos"), allow(clippy::needless_return))]
 fn apply_pending_import(identifier: &str) {
     let Some(data_dir) = jean_core::resolve_data_dir_for(identifier) else {
         return;
