@@ -1,8 +1,8 @@
 # Windows support: evaluation (issue #71)
 
 Status: evaluation 2026-10-30; verification updated 2026-10-31; first Windows
-build verified in the Parallels VM 2026-11-04 (Phase 0a done, Phase 0 build
-fixes done).
+build verified in the Parallels VM 2026-11-04; Phase 0a and Phase 0 done
+2026-11-04 (full gate green in the VM, `windows-latest` in `preflight.yml`).
 Issue: [azeitler/splitkick#71](https://github.com/azeitler/splitkick/issues/71).
 
 ## Summary
@@ -324,7 +324,19 @@ Build from branch `71-evaluate-windows-support` with `origin/main` merged
 | Smoke start (x64, emulated)    | pass: window "Splitkick" with native Windows title bar, onboarding renders, WebView2 ProcessFailed recovery installed, MCP named pipe `\\.\pipe\splitkick-mcp-…` listening |
 | Silent install (`/S`)          | pass: per user to `%LOCALAPPDATA%\Splitkick`, no admin, uninstall entry with publisher "Planetfall Software", desktop shortcut; the installed copy starts                  |
 
-The 11 test failures are test portability problems, not code defects:
+**Update 2026-11-04 (later): all fixed.** The full gate, now with every
+preflight step, passes in the VM: jean-core 1471 pass / 0 fail, src-tauri 35
+pass, the four `node --test` suites pass. Fixes: tests build expected paths
+with native separators (`resolve_file_reference`, `create_graph`), strip the
+verbatim prefix (`open_in_browser`) and search the JSON-escaped path
+(`transfer`). Two were code changes: `create_graph` rebuilds a project-relative
+path from its components (no `\`/`/` mix), and `commit_file` passes git and
+the message a `/` path on Windows. OpenCode publishes
+`opencode-windows-arm64.zip` (checked in the v1.19.5 release: it holds
+`opencode.exe`, like x64), so the ARM64 mapping was added instead of skipping
+the test.
+
+The 11 test failures as first seen:
 
 - 6 × `projects::commands::tests::resolve_file_reference_*`: the code returns
   native `\` paths; the tests build the expected value with `format!("{}/…")`.
@@ -410,14 +422,18 @@ as a fallback after 2026-11-27.
   installed. Both open points confirmed: the emulated x64 app finds WebView2,
   and `--current-user` starts the GUI on the visible desktop.
 
-**Phase 0 — a green Windows gate. Build fixes done 2026-11-04; CI row open.**
+**Phase 0 — a green Windows gate. Done 2026-11-04.**
 
-- Done: `webview2-com = "0.39"`, `Stdio` behind the macOS gate, the 13
-  dead-code / `needless_return` lints, `check-branding.mjs` separators.
-- Open: fix the 10 portable test failures (S), then run `run.sh gate` until it
-  passes, then add `windows-latest` (`preflightArgs: ''`) to the
-  `preflight.yml` matrix. Adding the row before the tests pass would turn every
-  push red.
+- `webview2-com = "0.39"`, `Stdio` behind the macOS gate, the 13 dead-code /
+  `needless_return` lints, `check-branding.mjs` separators, the 11 Windows
+  test failures (see [VM results](#vm-results-2026-11-04)).
+- `run.sh gate` runs every preflight check and passes in the VM (native ARM64).
+- `windows-latest` (`preflightArgs: ''`) is in the `preflight.yml` matrix. The
+  no-bundle release compile now runs on every platform except macOS, because
+  CI Build always sets `publishFlavor` and the bundle step is macOS-only;
+  without this the Windows row would never compile the app binary. Not yet
+  run on GitHub: the first push shows whether the native x64 runner agrees with
+  the ARM64 VM.
 - Result: Windows breakage is caught on every push.
 
 **Phase 1 — functional fixes (M, about 2–3 days).**
