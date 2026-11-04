@@ -124,6 +124,13 @@ pub fn commit_file(path: &Path, message: &str) -> Result<String, String> {
         .unwrap_or(&canon)
         .to_string_lossy()
         .to_string();
+    // git's own form, `/` on every OS, so the message reads the same everywhere.
+    // `\` cannot be part of a Windows file name, so the swap is lossless there.
+    let file = if cfg!(windows) {
+        file.replace('\\', "/")
+    } else {
+        file
+    };
     // git prints "nothing to commit" on stdout only; say it plainly instead.
     if git(&root, &["status", "--porcelain", "--", &file])?.is_empty() {
         return Err(format!("Nothing to commit: {file} has no changes"));

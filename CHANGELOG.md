@@ -15,6 +15,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   checks (`gate`), an x64 or ARM64 NSIS build (`build`), a start-up check
   (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
   installs per user and starts on Windows 11.
+- **Windows in the CI checks** (#71). Every push now also runs the preflight
+  checks and a release compile on `windows-latest`. Windows builds are not
+  published yet.
+- **OpenCode on Windows ARM64** (#71). Splitkick installs the
+  `opencode-windows-arm64.zip` release on Windows on ARM instead of failing
+  with "Unsupported platform".
 
 ### Fixed
 
@@ -33,6 +39,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   command interpreter: its binary is called `cmd`, and the PATH lookup found
   `C:\Windows\System32\cmd.exe`, so Splitkick tried to update a Command Code
   that was not installed and showed the `cmd.exe` banner as its version.
+- **Windows paths in graphs** (#71). A graph created inside a project gets a
+  path with Windows separators instead of a `\` and `/` mix, and "Nothing to
+  commit" shows the repo path with `/`, as git does.
 
 ## [1.4.1] - 2026-11-03
 
