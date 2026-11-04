@@ -1124,18 +1124,37 @@ async fn run_tool(
             // Fail fast when the worktree is archived (also enforced in create_session).
             ensure_mcp_worktree_not_archived(app, &worktree_id)?;
             let worktree_path = resolve_worktree_path(app, &worktree_id)?;
-            let mut payload = serde_json::Map::new();
-            payload.insert("worktreeId".to_string(), Value::String(worktree_id));
-            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
-            if let Some(n) = args.get("name").and_then(|v| v.as_str()) {
-                payload.insert("name".to_string(), Value::String(n.to_string()));
-            }
-            if let Some(b) = args.get("backend").and_then(|v| v.as_str()) {
-                payload.insert("backend".to_string(), Value::String(b.to_string()));
-            }
-            let session = dispatch_command(app, "create_session", Value::Object(payload))
-                .await
-                .map_err(ToolError::internal)?;
+            let name = args.get("name").and_then(|v| v.as_str());
+            let backend = args.get("backend").and_then(|v| v.as_str());
+            let reused = reuse_untouched_default_session(
+                app,
+                &worktree_id,
+                &worktree_path,
+                name,
+                backend,
+                source,
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            let session = match reused {
+                Some(session) => {
+                    serde_json::to_value(session).map_err(|e| ToolError::internal(e.to_string()))?
+                }
+                None => {
+                    let mut payload = serde_json::Map::new();
+                    payload.insert("worktreeId".to_string(), Value::String(worktree_id));
+                    payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+                    if let Some(n) = name {
+                        payload.insert("name".to_string(), Value::String(n.to_string()));
+                    }
+                    if let Some(b) = backend {
+                        payload.insert("backend".to_string(), Value::String(b.to_string()));
+                    }
+                    dispatch_command(app, "create_session", Value::Object(payload))
+                        .await
+                        .map_err(ToolError::internal)?
+                }
+            };
             if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
                 crate::chat::session_links::record_started_by(app, id, source, false);
                 if let Some(serves) = serves {
@@ -3996,6 +4015,90 @@ fn resolve_session_worktree(
     Ok((metadata.worktree_id, worktree_path))
 }
 
+/// The worktree's default "Session 1" when it can stand in for a new MCP
+/// session (#83): it is the only non-archived session, was never sent or
+/// started, and has nothing pending. Never the calling session itself, and
+/// never one an earlier create_session already claimed (started_by, agent,
+/// serves) but has not sent to yet.
+fn untouched_default_session<'a>(
+    sessions: &'a [crate::chat::types::Session],
+    source: &str,
+) -> Option<&'a crate::chat::types::Session> {
+    let mut live = sessions.iter().filter(|s| s.archived_at.is_none());
+    let s = live.next()?;
+    if live.next().is_some() {
+        return None;
+    }
+    let untouched = s.id != source
+        && s.started_by_session_id.is_none()
+        && s.agent_id.is_none()
+        && s.serves.is_empty()
+        && s.primary_surface.is_none()
+        && s.total_runs == 0
+        && s.message_count.unwrap_or(0) == 0
+        && s.last_run_status.is_none()
+        && s.queued_messages.is_empty()
+        && !s.waiting_for_input
+        && s.waiting_for_input_type.is_none()
+        && s.pending_plan_message_id.is_none()
+        && s.pending_permission_denials.is_empty()
+        && s.pending_codex_permission_requests.is_empty()
+        && s.pending_opencode_permission_requests.is_empty()
+        && s.pending_codex_command_approval_requests.is_empty()
+        && s.pending_codex_user_input_requests.is_empty()
+        && s.pending_codex_mcp_elicitation_requests.is_empty()
+        && s.pending_codex_dynamic_tool_call_requests.is_empty();
+    untouched.then_some(s)
+}
+
+/// MCP `create_session` takes over an untouched default session instead of
+/// adding a second one next to it. The session gets what `create_session`
+/// gives a new one (name, backend, default model, active tab, issue/PR refs);
+/// it keeps its id and tab position, and an unnamed one keeps its name.
+/// Returns `None` when a new session must be created.
+async fn reuse_untouched_default_session(
+    app: &AppHandle,
+    worktree_id: &str,
+    worktree_path: &str,
+    name: Option<&str>,
+    backend: Option<&str>,
+    source: &str,
+) -> Result<Option<crate::chat::types::Session>, String> {
+    // Read-only check first: with_sessions_mut rewrites every session's metadata.
+    let current = crate::chat::storage::load_sessions(app, worktree_path, worktree_id)?;
+    if untouched_default_session(&current.sessions, source).is_none() {
+        return Ok(None);
+    }
+    let preferences = crate::load_preferences(app.clone()).await.ok();
+    let backend = crate::chat::resolve_session_backend(app, worktree_id, backend);
+    let model = preferences
+        .as_ref()
+        .and_then(|prefs| crate::chat::default_model_for_backend(&backend, prefs));
+
+    let reused = crate::chat::with_sessions_mut(app, worktree_path, worktree_id, |sessions| {
+        // Check again under the index lock.
+        let Some(old) = untouched_default_session(&sessions.sessions, source) else {
+            return Ok(None);
+        };
+        let (id, order) = (old.id.clone(), old.order);
+        let name = name.map_or_else(|| old.name.clone(), str::to_string);
+        let mut session = crate::chat::types::Session::new(name, order, backend);
+        session.id = id.clone();
+        session.selected_model = model;
+        if let Some(slot) = sessions.find_session_mut(&id) {
+            *slot = session.clone();
+        }
+        sessions.active_session_id = Some(id);
+        Ok(Some(session))
+    })?;
+
+    if let Some(session) = &reused {
+        crate::chat::copy_worktree_context_refs(app, worktree_id, &session.id);
+        crate::chat::emit_sessions_cache_invalidation(app);
+    }
+    Ok(reused)
+}
+
 /// Reject MCP mutations/runs when the worktree is archived.
 fn ensure_mcp_worktree_not_archived(app: &AppHandle, worktree_id: &str) -> Result<(), ToolError> {
     crate::chat::ensure_worktree_not_archived(
@@ -6225,6 +6328,207 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message.contains("Unknown agentId"));
+    }
+
+    // ------------------------------------------------------------------
+    // create_session reuses the untouched default session (#83)
+    // ------------------------------------------------------------------
+
+    /// `graph_fixture` (caller `tool-s1` may manage) plus a second worktree
+    /// `fresh-wt` whose lazily created default session exists. Returns
+    /// (temp, app, default session id, serves ref).
+    fn fresh_worktree_fixture() -> (tempfile::TempDir, AppHandle, String, String) {
+        let (temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
+        let worktree_path = temp.path().join("fresh-wt");
+        std::fs::create_dir_all(&worktree_path).unwrap();
+        let mut data = crate::projects::storage::load_projects_data(&app).unwrap();
+        let mut worktree = data.worktrees[0].clone();
+        worktree.id = "fresh-wt".to_string();
+        worktree.name = "calm-otter".to_string();
+        worktree.path = worktree_path.to_string_lossy().to_string();
+        data.worktrees.push(worktree);
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+
+        let sessions = crate::chat::storage::load_sessions(&app, "", "fresh-wt").unwrap();
+        assert_eq!(sessions.sessions.len(), 1, "lazy default session");
+        let default_id = sessions.sessions[0].id.clone();
+        (temp, app, default_id, format!("{graph_id}#{node_id}"))
+    }
+
+    /// Change the default session's metadata as JSON (created if missing).
+    fn edit_metadata(app: &AppHandle, session_id: &str, edit: impl FnOnce(&mut Value)) {
+        let metadata = crate::chat::storage::load_metadata(app, session_id)
+            .unwrap()
+            .unwrap_or_else(|| {
+                crate::chat::types::SessionMetadata::new(
+                    session_id.to_string(),
+                    "fresh-wt".to_string(),
+                    "Session 1".to_string(),
+                    0,
+                )
+            });
+        let mut value = serde_json::to_value(metadata).unwrap();
+        edit(&mut value);
+        let metadata = serde_json::from_value(value).unwrap();
+        crate::chat::storage::save_metadata(app, &metadata).unwrap();
+    }
+
+    fn create_in_fresh_worktree(app: &AppHandle, mut args: Value) -> Value {
+        args["worktreeId"] = json!("fresh-wt");
+        // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || call_as(app, "create_session", args, "tool-s1"))
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+        .unwrap()
+    }
+
+    fn fresh_session_ids(app: &AppHandle) -> Vec<String> {
+        crate::chat::storage::load_sessions(app, "", "fresh-wt")
+            .unwrap()
+            .sessions
+            .into_iter()
+            .map(|s| s.id)
+            .collect()
+    }
+
+    #[test]
+    fn create_session_reuses_the_untouched_default_session() {
+        let (_temp, app, default_id, serves) = fresh_worktree_fixture();
+        save_agent_profiles(&app, vec![agent_profile("planner", "write", "")]);
+
+        let session = create_in_fresh_worktree(
+            &app,
+            json!({ "name": "Worker", "backend": "codex", "agentId": "planner", "serves": [serves.clone()] }),
+        );
+
+        assert_eq!(created_session_id(&session), default_id);
+        assert_eq!(session["name"], "Worker");
+        assert_eq!(session["backend"], "codex");
+        assert_eq!(fresh_session_ids(&app), vec![default_id.clone()]);
+        let sessions = crate::chat::storage::load_sessions(&app, "", "fresh-wt").unwrap();
+        assert_eq!(
+            sessions.active_session_id.as_deref(),
+            Some(default_id.as_str())
+        );
+        assert_eq!(sessions.sessions[0].name, "Worker");
+        let m = crate::chat::storage::load_metadata(&app, &default_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.backend, crate::chat::types::Backend::Codex);
+        assert_eq!(m.started_by_session_id.as_deref(), Some("tool-s1"));
+        assert_eq!(m.serves, vec![serves]);
+        assert_eq!(m.agent_id.as_deref(), Some("planner"));
+        assert_eq!(m.graph_permission.as_deref(), Some("write"));
+    }
+
+    #[test]
+    fn create_session_reuse_keeps_the_default_name_when_unnamed() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+
+        let session = create_in_fresh_worktree(&app, json!({}));
+
+        assert_eq!(created_session_id(&session), default_id);
+        assert_eq!(session["name"], "Session 1");
+        assert_eq!(fresh_session_ids(&app).len(), 1);
+    }
+
+    #[test]
+    fn create_session_adds_a_session_when_the_default_was_used() {
+        let run = json!({
+            "run_id": "r1", "user_message_id": "m1", "user_message": "hi",
+            "started_at": 1, "ended_at": 2, "status": "completed",
+        });
+        let denial = json!({ "tool_name": "Bash", "tool_use_id": "t1", "tool_input": {} });
+        let cases: Vec<(&str, Box<dyn FnOnce(&mut Value)>)> = vec![
+            (
+                "a message and run",
+                Box::new(move |m| m["runs"] = json!([run])),
+            ),
+            (
+                "a queued message",
+                Box::new(|m| m["queued_messages"] = json!([{ "id": "q1" }])),
+            ),
+            (
+                "a pending permission request",
+                Box::new(move |m| m["pending_permission_denials"] = json!([denial])),
+            ),
+            (
+                "a pending question",
+                Box::new(|m| {
+                    m["waiting_for_input"] = json!(true);
+                    m["waiting_for_input_type"] = json!("question");
+                }),
+            ),
+            (
+                "a pending plan",
+                Box::new(|m| m["pending_plan_message_id"] = json!("plan-1")),
+            ),
+            (
+                "an archived default",
+                Box::new(|m| m["archived_at"] = json!(1)),
+            ),
+        ];
+        for (case, edit) in cases {
+            let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+            edit_metadata(&app, &default_id, edit);
+            if case == "an archived default" {
+                crate::chat::storage::with_index_mut(&app, "fresh-wt", |index| {
+                    index.sessions[0].archived_at = Some(1);
+                    Ok(())
+                })
+                .unwrap();
+            }
+
+            let session = create_in_fresh_worktree(&app, json!({ "name": "Worker" }));
+
+            assert_ne!(created_session_id(&session), default_id, "{case}");
+            assert_eq!(fresh_session_ids(&app).len(), 2, "{case}");
+            let m = crate::chat::storage::load_metadata(&app, &default_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(m.name, "Session 1", "{case}: default untouched");
+        }
+    }
+
+    #[test]
+    fn create_session_adds_a_session_when_the_worktree_has_two() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        crate::chat::storage::with_sessions_mut(&app, "", "fresh-wt", |stored| {
+            stored.sessions.push(crate::chat::types::Session::new(
+                "Other".to_string(),
+                1,
+                crate::chat::types::Backend::Claude,
+            ));
+            Ok(())
+        })
+        .unwrap();
+
+        let session = create_in_fresh_worktree(&app, json!({ "name": "Worker" }));
+
+        assert_ne!(created_session_id(&session), default_id);
+        assert_eq!(fresh_session_ids(&app).len(), 3);
+    }
+
+    #[test]
+    fn create_session_does_not_take_over_a_session_it_already_reused() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        let first = create_in_fresh_worktree(&app, json!({ "name": "First" }));
+        assert_eq!(created_session_id(&first), default_id);
+
+        // Not sent to yet, but claimed by tool-s1: a second call adds a session.
+        let second = create_in_fresh_worktree(&app, json!({ "name": "Second" }));
+
+        assert_ne!(created_session_id(&second), default_id);
+        assert_eq!(fresh_session_ids(&app).len(), 2);
+        let m = crate::chat::storage::load_metadata(&app, &default_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.name, "First");
     }
 
     #[test]

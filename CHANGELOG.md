@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP `create_session` reuses the worktree's empty "Session 1"** (#83). A
+  worktree created over MCP no longer ends up with an unused "Session 1" next
+  to the agent's session. When the default session is the only non-archived
+  session, was never sent or started, has nothing pending and was not claimed
+  by an earlier `create_session`, the call takes it over (name, backend, model,
+  agent, `serves`, started-by) and returns its id. Otherwise it adds a new
+  session as before. Worktrees created in the UI keep their "Session 1".
+
 ## [1.4.1] - 2026-11-03
 
 Built on Jean 0.1.73.
