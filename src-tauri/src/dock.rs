@@ -22,6 +22,7 @@ pub struct SessionTarget {
 /// A dock menu entry.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(windows, allow(dead_code))] // no dock menu on Windows
 pub struct DockSession {
     pub title: String,
     #[serde(flatten)]
@@ -30,6 +31,7 @@ pub struct DockSession {
 
 /// Brings the main window to the front and asks it to open a session.
 /// Used by the dock menu and by a click on a notification.
+#[cfg_attr(windows, allow(dead_code))] // no notification action on Windows
 pub(crate) fn open_session(app: &AppHandle, target: &SessionTarget) {
     if let Err(error) = crate::connection_window::recreate_main_window(app) {
         log::warn!("Failed to open the main window for a session: {error}");

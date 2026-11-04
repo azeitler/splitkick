@@ -7,6 +7,9 @@
 //! through `set_menu_accelerators`, so the menu always shows the user's own
 //! keybindings instead of a copy of the defaults.
 
+// Only the accelerator command is used off macOS.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 use std::collections::HashMap;
 
 #[cfg(target_os = "macos")]

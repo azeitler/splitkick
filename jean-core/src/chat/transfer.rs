@@ -681,11 +681,13 @@ mod tests {
                 .join("r1.jsonl"),
         )
         .unwrap();
-        assert!(log.contains(&target_image.display().to_string()), "{log}");
-        assert!(
-            !log.contains(&source_temp.path().display().to_string()),
-            "{log}"
-        );
+        // The log is JSON: a Windows `\` is written as `\\` there.
+        let in_json = |path: &Path| {
+            let quoted = serde_json::to_string(&path.display().to_string()).unwrap();
+            quoted[1..quoted.len() - 1].to_string()
+        };
+        assert!(log.contains(&in_json(&target_image)), "{log}");
+        assert!(!log.contains(&in_json(source_temp.path())), "{log}");
 
         let context = temp_context_dir(&target).join(format!("{}-context-notes.md", imported.id));
         assert_eq!(fs::read_to_string(context).unwrap(), "saved context");
