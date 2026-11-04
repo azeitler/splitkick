@@ -368,3 +368,9 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - When the task is an evaluation or a plan, a choice about phase order only changes the plan. It does not start implementation, spikes, tool installs or new issues.
 - Do not put "I start …" in the options of a question during an evaluation. Ask only about the plan.
 - Before any work outside the report, ask for an explicit "start the work".
+
+## "The fork has upstream commit X" needs the baseline, not a subject match
+
+- The reverted 1.0.1 merge (`1cf20d58`, reverted in `54d762af`) keeps 173 upstream commits reachable in `git log`, but none of their code is in the tree.
+- A commit-subject match against `git log HEAD` therefore says "fork has it" for reverted work. It did so for ten upstream Windows fixes in the #71 evaluation, and one of them (npm shims, `d499d506`) was a real Windows defect found later in the VM.
+- Check with `git merge-base --is-ancestor <commit> <sha from docs/upstream/last-sync.json>`. A commit after the baseline is missing unless it was cherry-picked after the revert; confirm by reading the code in the tree.
