@@ -59,15 +59,21 @@ hashed `href` reaches every client on its next load.
 
 ## Which workflows run
 
-| Workflow             | State                                                            |
-| -------------------- | ---------------------------------------------------------------- |
-| CI Build / Preflight | Active, macOS arm64 only. Builds, signs, publishes a new version |
-| Release Jean         | Upstream's. Runs only in `coollabsio/jean` (repository guard)    |
-| Server Release       | Manual only                                                      |
+| Workflow             | State                                                                |
+| -------------------- | -------------------------------------------------------------------- |
+| CI Build / Preflight | Active: macOS arm64 and Windows x64. Builds, publishes a new version |
+| Release Jean         | Upstream's. Runs only in `coollabsio/jean` (repository guard)        |
+| Server Release       | Manual only                                                          |
 
 Preflight runs the usual gate (typecheck, lint, branding check, clippy,
-frontend, script and Rust tests). With `publishFlavor`, its last step builds
-the Splitkick bundle instead of a throwaway `--no-bundle` compile.
+frontend, script and Rust tests) on `macos-latest` and `windows-latest`. With
+`publishFlavor`, the macOS job builds, signs and notarizes the bundle instead
+of a throwaway `--no-bundle` compile; the Windows job always builds the NSIS
+installer (not code-signed yet, see issue #71). Both jobs upload their release
+files as `release-macos` / `release-windows`. The `publish` job then writes one
+`latest.json` for both platforms (`scripts/updater-manifest.mjs`), creates the
+release and syncs the website and docs. The macOS build is required; without a
+Windows installer the release goes out for macOS only, with a warning.
 
 ## Cutting a release
 
@@ -226,12 +232,14 @@ overlay points the check at Splitkick's feed and key. **Endpoint and key move
 together**: upstream's key would accept upstream builds, and the JeanZ key
 would accept JeanZ builds.
 
-| Asset                             | Role                                                |
-| --------------------------------- | --------------------------------------------------- |
-| `Splitkick-aarch64.dmg`           | Stable download URL (`releases/latest/download/…`)  |
-| `Splitkick-<version>-aarch64.dmg` | The same DMG under its versioned name               |
-| `Splitkick-aarch64.app.tar.gz`    | What the updater downloads and unpacks over the app |
-| `latest.json`                     | Version, date, download URL and signature           |
+| Asset                               | Role                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------- |
+| `Splitkick-aarch64.dmg`             | Stable download URL (`releases/latest/download/…`)                                 |
+| `Splitkick-<version>-aarch64.dmg`   | The same DMG under its versioned name                                              |
+| `Splitkick-aarch64.app.tar.gz`      | What the updater downloads and unpacks over the app                                |
+| `Splitkick-x64-setup.exe`           | Windows installer; also what the Windows updater runs                              |
+| `Splitkick-<version>-x64-setup.exe` | The same installer under its versioned name                                        |
+| `latest.json`                       | Version, date, URL and signature per platform (`darwin-aarch64`, `windows-x86_64`) |
 
 `createUpdaterArtifacts` stays off in the overlay; CI turns it on with a `-c`
 layer when the key is present, so local builds work without the key.

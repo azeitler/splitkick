@@ -7,7 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-04
+
+Built on Jean 0.1.73.
+
 ### Added
+
+- **Splitkick for Windows** (#71). Every release now carries a Windows
+  installer, `Splitkick-x64-setup.exe` (x64, Windows 10 or 11; also runs on
+  Windows on ARM). It installs for the current user without admin rights and
+  updates itself through the in-app update check, like the macOS app. The
+  installer is not code-signed yet, so SmartScreen warns on the first start:
+  choose "More info", then "Run anyway". One publish job now creates the
+  release for both platforms and writes one update feed (`latest.json`) for
+  both; a failed Windows build no longer holds back the macOS release.
 
 - **Windows test builds in the local Parallels VM** (#71).
   `scripts/windows-vm/run.sh` shares the checkout into the "Windows 11" VM,
@@ -16,8 +29,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
   installs per user and starts on Windows 11.
 - **Windows in the CI checks** (#71). Every push now also runs the preflight
-  checks and a release compile on `windows-latest`. Windows builds are not
-  published yet.
+  checks and builds the Windows installer on `windows-latest`.
 - **OpenCode on Windows ARM64** (#71). Splitkick installs the
   `opencode-windows-arm64.zip` release on Windows on ARM instead of failing
   with "Unsupported platform".
@@ -2260,7 +2272,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.4.1...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.0...HEAD
+[1.5.0]: https://github.com/azeitler/jean/compare/splitkick-v1.4.1...splitkick-v1.5.0
 [1.4.1]: https://github.com/azeitler/jean/compare/splitkick-v1.4.0...splitkick-v1.4.1
 [1.4.0]: https://github.com/azeitler/jean/compare/splitkick-v1.3.0...splitkick-v1.4.0
 [1.3.0]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...splitkick-v1.3.0

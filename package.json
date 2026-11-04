@@ -62,6 +62,7 @@
     "test:changelog-notes": "node --test scripts/changelog-notes.test.mjs",
     "release:cut": "node scripts/release-cut.mjs",
     "test:release-cut": "node --test scripts/release-cut.test.mjs",
+    "test:updater-manifest": "node --test scripts/updater-manifest.test.mjs",
     "test:web-branding": "node --test scripts/web-branding.test.mjs"
   },
   "dependencies": {
