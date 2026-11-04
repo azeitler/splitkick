@@ -1,8 +1,10 @@
 # Runs inside the Windows VM, in the synced copy C:\src\splitkick (issue #71).
 # Started by scripts/windows-vm/run.sh; see docs/developer/windows-support-evaluation.md.
 param(
-  [Parameter(Mandatory)][ValidateSet('gate', 'build', 'smoke')][string]$Step,
-  [ValidateSet('x64', 'arm64')][string]$Arch = 'x64'
+  [Parameter(Mandatory)][ValidateSet('gate', 'test', 'build', 'smoke')][string]$Step,
+  [ValidateSet('x64', 'arm64')][string]$Arch = 'x64',
+  # For -Step test: space-separated cargo test name filters for jean-core.
+  [string]$Filter = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +41,9 @@ switch ($Step) {
     Invoke-Step 'test:run' { bun run test:run }
     Invoke-Step 'check:branding' { bun run check:branding }
     Invoke-Step 'rust:test' { bun run rust:test }
+  }
+  'test' {
+    Invoke-Step "jean-core tests $Filter" { cargo test --manifest-path jean-core/Cargo.toml -- @($Filter -split ' ' | Where-Object { $_ }) }
   }
   'build' {
     Invoke-Step 'bun install' { bun install --frozen-lockfile }

@@ -4,6 +4,7 @@
 #   run.sh setup               install the dev tools (once; see setup.ps1)
 #   run.sh sync                mirror the checkout to C:\src\splitkick (keeps the VM's node_modules/target)
 #   run.sh gate                sync + the preflight checks
+#   run.sh test [filter]       sync + jean-core cargo tests matching the filter
 #   run.sh build [x64|arm64]   sync + NSIS build with the Splitkick overlay (default x64)
 #   run.sh smoke [x64|arm64]   start the built app, check it stays up and logs
 #   run.sh shot [name]         screenshot of the VM screen to tmp/<name>-<stamp>.png
@@ -37,6 +38,7 @@ case "${1:-}" in
     as_user -File 'C:\src\setup.ps1' -Part user ;;
   sync) sync ;;
   gate) sync && vm -Step gate ;;
+  test) sync && vm -Step test -Filter "${2:-}" ;;
   build) sync && vm -Step build -Arch "${2:-x64}" ;;
   smoke) vm -Step smoke -Arch "${2:-x64}" ;;
   shot)
@@ -45,5 +47,5 @@ case "${1:-}" in
     prlctl capture "$VM" --file "$file" > /dev/null
     echo "$file" ;;
   stop) as_user -Command 'Get-Process Splitkick -ErrorAction SilentlyContinue | Stop-Process -Force' ;;
-  *) sed -n '2,10p' "$0"; exit 2 ;;
+  *) sed -n '2,11p' "$0"; exit 2 ;;
 esac
