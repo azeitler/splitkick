@@ -21,6 +21,7 @@ env:
   # though every release has its own tag. The versioned DMG is uploaded too.
   DMG_NAME: Splitkick-aarch64.dmg
   UPDATER_NAME: Splitkick-aarch64.app.tar.gz
+  WIN_SETUP_NAME: Splitkick-x64-setup.exe
 
 jobs:
   build:
@@ -125,7 +126,7 @@ jobs:
         run: bun run test:splitkick-version
 
       - name: Release notes tests
-        run: bun run test:changelog-notes && bun run test:release-cut
+        run: bun run test:changelog-notes && bun run test:release-cut && bun run test:updater-manifest
 
       - name: Web branding tests
         run: bun run test:web-branding
@@ -142,22 +143,69 @@ jobs:
         if: ${{ matrix.platform != 'windows-latest' && (!inputs.publishFlavor || matrix.platform != 'macos-latest') }}
         run: bun run tauri build ${{ matrix.preflightArgs }} --no-bundle --ci
 
-      # Windows: the same compile, bundled as an unsigned NSIS installer with the
-      # Splitkick overlay and kept as a build artifact for testing. It is not
-      # published and has no updater artifacts yet (issue #71).
+      # Windows: the same compile, bundled as an NSIS installer with the
+      # Splitkick overlay. It is not code-signed yet (issue #71): SmartScreen
+      # warns on the first start. The update signature works like on macOS.
       - name: Build Windows installer
         if: matrix.platform == 'windows-latest'
         shell: bash
-        run: bun run tauri build --ci --bundles nsis -c src-tauri/tauri.fork.conf.json
+        env:
+          UPDATER_KEY: ${{ secrets.SPLITKICK_UPDATER_PRIVATE_KEY }}
+          UPDATER_KEY_PASSWORD: ${{ secrets.SPLITKICK_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Same rules as the macOS bundle step below: only a complete key
+          # pair turns the updater artifacts on.
+          complete() { [ "${#1}" -ge 4 ]; }
+          UPDATER_CONFIG='{}'
+          if complete "$UPDATER_KEY" && complete "$UPDATER_KEY_PASSWORD"; then
+            export TAURI_SIGNING_PRIVATE_KEY="$UPDATER_KEY"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$UPDATER_KEY_PASSWORD"
+            UPDATER_CONFIG='{"bundle": {"createUpdaterArtifacts": true}}'
+            echo "Building updater artifacts"
+          else
+            echo "No updater key - this build ships no in-app update"
+          fi
+          bun run tauri build --ci --bundles nsis \
+            -c src-tauri/tauri.fork.conf.json \
+            -c "$UPDATER_CONFIG"
+
+      # The installer under its stable and its versioned name, plus the update
+      # signature when there is one, for the publish job.
+      - name: Collect the Windows installer
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          SETUP=$(find src-tauri/target/release/bundle/nsis -name '*-setup.exe' -print -quit)
+          if [ -z "$SETUP" ]; then
+            echo "No installer was produced"
+            exit 1
+          fi
+          VERSION=$(node -p "require('./src-tauri/tauri.fork.conf.json').version")
+          mkdir -p release
+          cp "$SETUP" "release/$WIN_SETUP_NAME"
+          cp "$SETUP" "release/Splitkick-$VERSION-x64-setup.exe"
+          if [ -f "$SETUP.sig" ]; then
+            cp "$SETUP.sig" "release/$WIN_SETUP_NAME.sig"
+          fi
+          ls -l release
 
       - name: Upload Windows installer
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: splitkick-windows-x64-${{ github.sha }}
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          path: release/${{ env.WIN_SETUP_NAME }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload the Windows release files
+        if: ${{ inputs.publishFlavor && matrix.platform == 'windows-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
 
       # Fork flavor. This is the same compile as the step above, so the two are
       # mutually exclusive: the binary is bundled, signed and published instead
@@ -270,52 +318,25 @@ jobs:
           fi
           echo "Signature status: $STATUS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "$STATUS" > status-macos.txt
 
       # The in-app update check reads latest.json from the newest release,
-      # downloads the .app.tar.gz named in it, verifies it against the pubkey
-      # in the overlay and replaces the running bundle. Both files are written
-      # here; the build step only produces them when the signing key exists, so
-      # a keyless build simply publishes no update and says so.
-      - name: Write latest.json
+      # downloads the package named in it, verifies it against the pubkey in
+      # the overlay and replaces the app. The build step only produces the
+      # package when the signing key exists, so a keyless build simply ships
+      # no update. The publish job writes latest.json for all platforms.
+      - name: Stage the updater package
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
           TARBALL="$BUNDLE_DIR/macos/Splitkick.app.tar.gz"
 
           if [ ! -f "$TARBALL" ]; then
-            echo "No updater artifacts in this build - skipping latest.json"
+            echo "No updater artifacts in this build"
             exit 0
           fi
-
           mv "$TARBALL" "$UPDATER_NAME"
-          # node writes the JSON so that the minisign signature, which is two
-          # lines of text, is escaped correctly.
-          SIGNATURE_PATH="$TARBALL.sig" node -e '
-            const { readFileSync, writeFileSync } = require("node:fs")
-            writeFileSync(
-              "latest.json",
-              JSON.stringify(
-                {
-                  version: process.env.VERSION,
-                  notes: `Splitkick ${process.env.VERSION}`,
-                  pub_date: new Date().toISOString(),
-                  platforms: {
-                    "darwin-aarch64": {
-                      signature: readFileSync(process.env.SIGNATURE_PATH, "utf8"),
-                      url: `https://github.com/${process.env.REPOSITORY}/releases/download/${process.env.TAG}/${process.env.UPDATER_NAME}`,
-                    },
-                  },
-                },
-                null,
-                2
-              ) + "\n"
-            )
-          '
-          cat latest.json
+          mv "$TARBALL.sig" "$UPDATER_NAME.sig"
 
       - name: Upload build artifact
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
@@ -326,36 +347,97 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload the macOS release files
+        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            ${{ env.DMG_NAME }}
+            Splitkick-*-aarch64.dmg
+            ${{ env.UPDATER_NAME }}
+            ${{ env.UPDATER_NAME }}.sig
+            status-macos.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  # One release for all platforms, once every build has finished. The macOS
+  # build is required. A failed Windows build is reported and the release goes
+  # out with macOS only, so a Windows problem never holds back the macOS update.
+  publish:
+    name: Publish
+    needs: build
+    if: ${{ !cancelled() && inputs.publishFlavor }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve the Splitkick version
+        id: version
+        shell: bash
+        run: node scripts/splitkick-version.mjs | tee -a "$GITHUB_OUTPUT"
+
+      - name: Download the release files
+        if: steps.version.outputs.publish == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
       # Its own tag per release. A plain version is published --latest, which
-      # keeps the /releases/latest/download/ URLs (DMG and updater feed)
+      # keeps the /releases/latest/download/ URLs (installers and updater feed)
       # pointing at it. An -rc.N version is a GitHub pre-release: never
       # "latest", so the updater does not offer it.
       - name: Publish the release
-        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' && steps.version.outputs.publish == 'true' }}
+        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           UPSTREAM: ${{ steps.version.outputs.upstream }}
           PREVIOUS: ${{ steps.version.outputs.previous }}
-          STATUS: ${{ steps.dmg.outputs.status }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          # latest.json has to sit in the newest release, because that is the
-          # URL the installed app polls. It is absent when the build had no
-          # updater key, and then the release simply carries the DMG.
+          cd release
+          ls -l
+          if [ ! -f "$DMG_NAME" ]; then
+            echo "::error::The macOS build is missing - nothing is published"
+            exit 1
+          fi
+
           ASSETS=("$DMG_NAME" "Splitkick-$VERSION-aarch64.dmg")
+          MAC_STATUS=$(cat status-macos.txt 2>/dev/null || echo "unknown signature")
+          WINDOWS="yes"
+          if [ -f "$WIN_SETUP_NAME" ]; then
+            ASSETS+=("$WIN_SETUP_NAME" "Splitkick-$VERSION-x64-setup.exe")
+          else
+            WINDOWS="no"
+            echo "::warning::No Windows installer - this release ships macOS only"
+          fi
+
+          # latest.json has to sit in the newest release, because that is the
+          # URL the installed app polls. It lists every platform whose update
+          # package is signed; with none it is absent and the release only
+          # carries the installers.
+          node ../scripts/updater-manifest.mjs .
           UPDATE="no (this build has no updater artifacts)"
           if [ -f latest.json ]; then
-            ASSETS+=("$UPDATER_NAME" latest.json)
-            UPDATE="yes"
+            cat latest.json
+            [ -f "$UPDATER_NAME" ] && ASSETS+=("$UPDATER_NAME")
+            ASSETS+=(latest.json)
+            UPDATE=$(node -p "Object.keys(require('./latest.json').platforms).join(', ')")
           fi
 
           # CHANGELOG.md is written per commit and says what changed and why,
           # so the release quotes its section for this version. A version with
           # no section falls back to the commit subjects since the last tag,
           # which is thin but still tells the reader what landed.
-          CHANGES=$(node scripts/changelog-notes.mjs "$VERSION")
+          CHANGES=$(node ../scripts/changelog-notes.mjs "$VERSION")
           if [ -z "$CHANGES" ] && [ -n "$PREVIOUS" ]; then
             echo "No CHANGELOG.md section for $VERSION - falling back to commit subjects"
             # Asked of the API, not of the clone: the checkout is shallow and
@@ -377,6 +459,12 @@ jobs:
             LINKS="$LINKS · [Compare with $PREVIOUS](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${TAG})"
           fi
 
+          INSTALL="- **macOS** (Apple Silicon, $MAC_STATUS): open \`$DMG_NAME\` and drag Splitkick to Applications."
+          if [ "$WINDOWS" = "yes" ]; then
+            INSTALL="$INSTALL
+          - **Windows** (x64, Windows 10 or 11): run \`$WIN_SETUP_NAME\`. The installer is not code-signed yet, so SmartScreen warns: choose **More info**, then **Run anyway**. Splitkick installs for the current user and needs no admin rights."
+          fi
+
           # A heredoc keeps the markdown intact; --notes with an inline string
           # would have to escape every backtick and newline.
           cat > release-notes.md <<NOTES
@@ -386,9 +474,11 @@ jobs:
 
           ---
 
-          Built on Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · $STATUS · in-app update: $UPDATE
+          Built on Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · in-app update: $UPDATE
 
-          Apple Silicon only. Open the DMG and drag Splitkick to Applications; later versions arrive through the in-app update check. Splitkick installs next to Jean and has its own data folder.
+          $INSTALL
+
+          Later versions arrive through the in-app update check. Splitkick installs next to Jean and has its own data folder.
           NOTES
 
           if [ "$PRERELEASE" = "true" ]; then
@@ -408,9 +498,13 @@ jobs:
             echo "### Splitkick $VERSION"
             echo ""
             echo "- built on: Jean $UPSTREAM"
-            echo "- signature: $STATUS"
+            echo "- macOS: $MAC_STATUS"
+            echo "- Windows: $WINDOWS"
             echo "- in-app update: $UPDATE"
-            echo "- download: https://github.com/${{ github.repository }}/releases/latest/download/$DMG_NAME"
+            echo "- download: https://github.com/${REPOSITORY}/releases/latest/download/$DMG_NAME"
+            if [ "$WINDOWS" = "yes" ]; then
+              echo "- download: https://github.com/${REPOSITORY}/releases/latest/download/$WIN_SETUP_NAME"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       # After a final release the website shows the new download facts and the
@@ -418,7 +512,7 @@ jobs:
       # sync script and pushes the result to its main, so Vercel deploys both.
       # Deploy keys with write access, one per repo, are the two secrets below.
       - name: Update the website and the docs
-        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' && steps.version.outputs.publish == 'true' && steps.version.outputs.prerelease != 'true' }}
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.prerelease != 'true' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -40,9 +40,15 @@ _Demo projects and sessions._
 
 ## Installation
 
-Download the latest signed and notarized build for Apple Silicon:
+Download the latest build:
 
-<https://github.com/azeitler/splitkick/releases/latest/download/Splitkick-aarch64.dmg>
+- **macOS** (Apple Silicon, signed and notarized):
+  <https://github.com/azeitler/splitkick/releases/latest/download/Splitkick-aarch64.dmg>
+- **Windows** (x64, Windows 10 or 11):
+  <https://github.com/azeitler/splitkick/releases/latest/download/Splitkick-x64-setup.exe>.
+  The installer is not code-signed yet, so SmartScreen warns: choose "More
+  info", then "Run anyway". Splitkick installs for the current user and needs
+  no admin rights.
 
 Splitkick installs next to Jean. It has its own bundle identifier (`app.splitkick.desktop`), its own data folder (`~/Library/Application Support/app.splitkick.desktop`), its own MCP server name (`splitkick`) and its own Web Access port (3460), so both apps can run at the same time.
 

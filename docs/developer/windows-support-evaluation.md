@@ -451,15 +451,28 @@ as a fallback after 2026-11-27.
 - Smoke start step in CI; a UI pass in the VM (onboarding, a project, a
   session with Claude and Codex, terminal, file browser) with screenshots.
 
-**Phase 2 — unsigned pre-release (M, about 1–2 days).**
+**Phase 2 — unsigned Windows releases. Built 2026-11-04.**
 
-- NSIS bundle with updater artifacts on `windows-latest`.
-- Split publishing into a `publish` job that merges `darwin-aarch64` and
-  `windows-x86_64` into one `latest.json`, creates the release and runs
-  `sync-sites.sh` once.
-- Platform-neutral release notes; first Windows build as an `-rc`.
-- Verify an in-app update rc → rc on Windows in the VM (install the older rc
-  with the NSIS installer, let the app update itself).
+Decided 2026-11-04: ship unsigned for now, straight into the next stable
+release (no `-rc` first), website card drafted in its own repo.
+
+- Done: the Windows job builds the NSIS installer with updater artifacts; a
+  `publish` job writes one `latest.json` (`scripts/updater-manifest.mjs`,
+  tested) for `darwin-aarch64` and `windows-x86_64`, creates the release and
+  runs `sync-sites.sh` once. macOS is required; without a Windows installer
+  the release goes out for macOS only, with a warning. Release notes name both
+  platforms and the SmartScreen step. The publish script was dry-run locally
+  with a stub `gh` (both platforms, macOS only, macOS missing).
+- Done: in-app update verified in the VM with a local feed and a throwaway
+  key: 1.4.90 offered 1.4.91, downloaded it, "Restart" (Alt+Enter on the
+  toast) ended the app, the NSIS installer replaced it and Splitkick started
+  again as 1.4.91. The NSIS build writes `Splitkick_<v>_x64-setup.exe.sig`
+  beside the installer, as the CI collect step expects.
+- Drafted, not pushed: `Digitalheld/splitkick-website` branch
+  `windows-download` (per-platform download card, `/download/windows/latest/`
+  redirect, `sync-release.mjs` reads the Windows asset, `check-deploy`).
+- Open: the first real release with Windows (the publish job has only run
+  in dry runs), merging the website branch before or with it.
 
 **Phase 3 — signed stable release (M, depends on the certificate lead time).**
 
