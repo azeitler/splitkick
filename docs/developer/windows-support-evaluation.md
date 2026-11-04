@@ -144,14 +144,18 @@ puts every commit below after the baseline, so **none of them is in the tree**.
 The VM run proved one of them: without `d499d506` the npm check fails on
 Windows (see [VM results](#vm-results-2026-11-04)).
 
-- Windows runtime fixes: `d499d506` npm shims (#678), `f6ce648f` Command Code
-  npm detection (#720), `9d1293a4` Cursor Agent install (#719), `89d8a23a`
+- **Ported 2026-11-04:** `24ba7f23` PI through WSL (#680), `d499d506` npm
+  shims (#678), `f6ce648f` Command Code npm detection (#720) — `f6ce648f` is
+  already contained in `d499d506`, which is newer — and the `pi_cli` import of
+  `f42fa517`. Verified in the VM: Command Code installs through npm.
+- Windows runtime fixes still missing: `9d1293a4` Cursor Agent install (#719), `89d8a23a`
   Cursor allowlist mode (#721), `3e493909` Claude/Codex session persistence
   (#703), `66554f47` WebView keyboard focus (#736), `a027751e` fnm default
-  Node.js, `1232e650` external terminal choices (#842), `24ba7f23` PI through
-  WSL (#680), `8e204e61` / `c087a014` WSL terminal CLI args, `2c0f091d`
-  managed binaries in user terminals.
-- Build and tests: `f42fa517` cross-platform clippy, `b5aeddd8` Windows helper
+  Node.js, `1232e650` external terminal choices (#842), `8e204e61` /
+  `c087a014` WSL terminal CLI args, `2c0f091d` managed binaries in user
+  terminals, `66b8b6af` Unix CLI lookup through the login shell.
+- Build and tests: `f42fa517` cross-platform clippy (the `codex_server` part;
+  the fork's clippy already passes on Windows), `b5aeddd8` Windows helper
   warning, `1c296a16` glob paths in tests.
 - Other: `d5bb097c` Full-access approve off Ctrl+Y (#822), `be442825` macOS
   folder picker crash (#738).
@@ -339,7 +343,7 @@ The 11 test failures are test portability problems, not code defects:
 
 Defects found in the running app:
 
-- **npm-based CLIs cannot install or update on Windows.** A
+- **npm-based CLIs cannot install or update on Windows. Fixed 2026-11-04.** A
   "Failed to update Command Code CLI — requires Node.js and npm" toast appears
   at start-up although Node and npm are installed. `version("npm")` in
   `jean-core/src/prerequisites.rs:20` runs `silent_command("npm")`, and Rust's
@@ -350,7 +354,16 @@ Defects found in the running app:
   `agent_browser/mod.rs:306`. Upstream fixed both in `d499d506` (#678) and
   `f6ce648f` (#720): `prerequisites::version` uses
   `platform::detect_cli_in_path`, and npm shims launch through a resolver.
-  Lost in the 1.0.1 revert. M.
+  Lost in the 1.0.1 revert. Ported (see
+  [Upstream Windows fixes](#upstream-windows-fixes-after-the-baseline)); after
+  the port Command Code's npm install ran in the VM.
+- **Command Code was mistaken for `cmd.exe`. Fixed 2026-11-04.** Command
+  Code's binary is called `cmd`, and on Windows `where cmd` finds
+  `C:\Windows\System32\cmd.exe` first. Splitkick took that for an installed
+  Command Code, tried to update it at every start, and showed the `cmd.exe`
+  banner as its version. `find_system_commandcode_binary`
+  (`jean-core/src/commandcode_cli/config.rs`) now skips `cmd.exe`. Upstream
+  has the same code, so the bug is in upstream too.
 - **Updater keys.** The update check fails as expected (no Windows entry in
   `latest.json`). The installed NSIS build asks for `windows-x86_64-nsis`
   first, then `windows-x86_64`; the raw exe asks only for `windows-x86_64`.
@@ -409,10 +422,10 @@ as a fallback after 2026-11-27.
 
 **Phase 1 — functional fixes (M, about 2–3 days).**
 
-- Port the upstream Windows fixes lost in the 1.0.1 revert, starting with npm
-  shims (`d499d506`, `f6ce648f`): the npm-based CLIs (Command Code, Grok, PI,
-  Kimi, agent-browser) cannot install on Windows today. Then the others listed
-  under [Upstream Windows fixes](#upstream-windows-fixes-after-the-baseline),
+- Done 2026-11-04: npm shims (`24ba7f23`, `d499d506`, `f6ce648f`) and the
+  `cmd.exe` mix-up for Command Code.
+- Port the other upstream Windows fixes listed under
+  [Upstream Windows fixes](#upstream-windows-fixes-after-the-baseline),
   through `/upstream-review`.
 - `jean_import`: path rewrite, running-Jean check over the named pipe, symlink
   copy.
