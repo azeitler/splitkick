@@ -39,6 +39,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Issue search after changes reports only what it found.** The default
+  global prompt no longer asks the agent to report empty searches or
+  disabled issues, and no longer points to a `## Recap` when automatic
+  recaps are off.
 - **Closing the in-app browser pauses its video and audio.** The page stays
   loaded in the background, so before this a video kept playing unseen.
 - **The open session is highlighted in Starred and Pinned too** (#92). Its

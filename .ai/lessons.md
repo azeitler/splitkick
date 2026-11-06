@@ -388,6 +388,14 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
   `git add -A`, isolate real app builds (`SPLITKICK_DATA_DIR=tmp/...`, a
   free port), and name the other sessions working in parallel.
 
+## Recap only when the recap instruction is in the prompt (2026-11-06)
+
+- Write a `## Recap` block only when the system prompt has the
+  "End-of-turn recap" instruction. When Automatic recaps is off, that
+  instruction is absent: do not add a recap, even after reading
+  `RECAP_INSTRUCTION` in the code or seeing other prompt lines that mention
+  `## Recap` (the default global prompt's issue-discovery rule does).
+
 ## Shared checkout: never truncate a file before you read it (2026-11-06)
 
 - `open(p, 'w').write(transform(open(p).read()))` opens for writing first,
