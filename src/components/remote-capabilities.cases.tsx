@@ -37,7 +37,7 @@ export interface Expected {
   editor: boolean
 }
 
-export function setClientMode(mode: ClientMode): void {
+export async function setClientMode(mode: ClientMode): Promise<void> {
   if (mode === 'local desktop' || mode.startsWith('native')) {
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
@@ -45,7 +45,7 @@ export function setClientMode(mode: ClientMode): void {
     })
   }
   if (mode.startsWith('native')) {
-    const remote = addRemoteConnection({
+    const remote = await addRemoteConnection({
       name: 'Studio Mac',
       url: 'https://studio.example.com',
       token: 'test-token',
@@ -134,8 +134,8 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
   describe(`machine-bound menu actions — ${mode}`, () => {
     afterEach(resetClientMode)
 
-    it('worktree context menu', () => {
-      setClientMode(mode)
+    it('worktree context menu', async () => {
+      await setClientMode(mode)
       render(
         <WorktreeContextMenu actions={worktreeActions()}>
           <button type="button">feature</button>
@@ -149,8 +149,8 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
       expectItem(/copy link/i, true)
     })
 
-    it('project context menu (sidebar)', () => {
-      setClientMode(mode)
+    it('project context menu (sidebar)', async () => {
+      await setClientMode(mode)
       render(
         <ProjectContextMenu project={project}>
           <button type="button">demo</button>
@@ -165,8 +165,8 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
       expectItem(/open on github/i, true)
     })
 
-    it('file tree context menu: file and folder', () => {
-      setClientMode(mode)
+    it('file tree context menu: file and folder', async () => {
+      await setClientMode(mode)
       const actions = fileActions()
       render(
         <>
@@ -194,8 +194,8 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
       expectItem(/copy relative path/i, true)
     })
 
-    it('file tree context menu: folder terminal', () => {
-      setClientMode(mode)
+    it('file tree context menu: folder terminal', async () => {
+      await setClientMode(mode)
       render(
         <FileTreeContextMenu
           node={{
@@ -218,7 +218,7 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
     })
 
     it('message context menu: Reveal on a file link', async () => {
-      setClientMode(mode)
+      await setClientMode(mode)
       useChatStore.setState({ activeWorktreePath: '/repo/wt' })
       render(
         <MessageThreadContextMenu messageText="See the notes">
@@ -235,7 +235,7 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
     })
 
     it('file viewer: Open in Editor button', async () => {
-      setClientMode(mode)
+      await setClientMode(mode)
       render(
         <FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />
       )
@@ -254,7 +254,7 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
     })
 
     it('⌘K: no command opens Finder, a terminal app or an editor', async () => {
-      setClientMode(mode)
+      await setClientMode(mode)
       // Every registered command, available or not: the palette reaches
       // these only through the Open In modal, which applies the predicates.
       const commands = await import('@/lib/commands')
