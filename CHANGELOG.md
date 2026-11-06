@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Check for Updates… in the sidebar's more menu** (#100). Windows and Linux
+  have no menu bar, so the sidebar footer's more menu (…) now has the same
+  update check as the macOS menu bar item, in the desktop app on every OS.
+  It is hidden in Web Access and on a phone.
 - **Each project shows its graphs in the sidebar** (#99). Under the project,
   beside Pinned and Starred, a collapsible **Graphs** row lists the graphs
   stored in the project, then the graphs from another project or the

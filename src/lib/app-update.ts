@@ -12,6 +12,11 @@
  * the UI re-offers "Update available" and can re-download in a loop (#507).
  */
 
+import { isNativeApp } from '@/lib/environment'
+import { logNativeError } from '@/lib/native-log'
+import { notify } from '@/lib/notifications'
+import { useUIStore } from '@/store/ui-store'
+
 /** Bundle identifier of the released app (`src-tauri/tauri.fork.conf.json`). */
 export const RELEASE_IDENTIFIER = 'app.splitkick.desktop'
 
@@ -79,4 +84,52 @@ export async function installAndRelaunch(
 ): Promise<void> {
   if (downloaded) await downloaded.install()
   await relaunch()
+}
+
+/**
+ * The manual "Check for Updates…" action. Shared by the macOS menu bar
+ * (`menu-check-updates`) and the sidebar's more menu, which is the only entry
+ * on Windows and Linux (#100). Native desktop app only.
+ */
+export async function checkForUpdatesManually(): Promise<void> {
+  if (!isNativeApp()) return
+  if (!(await updateChecksEnabledForThisApp())) {
+    notify('Updates are off in development builds', undefined, { type: 'info' })
+    return
+  }
+  const ui = useUIStore.getState()
+  // Package already downloaded this session — prompt restart, don't re-offer download
+  if (ui.updateReadyVersion) {
+    notify(
+      `Update ${ui.updateReadyVersion} is ready — restart to apply`,
+      undefined,
+      { type: 'success' }
+    )
+    return
+  }
+  if (ui.isUpdateInstalling) {
+    notify('Update download already in progress', undefined, { type: 'info' })
+    return
+  }
+  try {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    const update = await check()
+    if (update) {
+      // Pass update object to App.tsx for installation handling
+      window.dispatchEvent(
+        new CustomEvent('update-available', { detail: update })
+      )
+      // Show the update modal (same as auto-check on startup)
+      useUIStore.getState().setUpdateModalVersion(update.version)
+    } else {
+      notify('You are running the latest version', undefined, {
+        type: 'success',
+      })
+    }
+  } catch (error) {
+    logNativeError(`Update check failed: ${String(error)}`)
+    notify(`Failed to check for updates: ${String(error)}`, undefined, {
+      type: 'error',
+    })
+  }
 }

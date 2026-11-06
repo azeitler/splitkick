@@ -38,8 +38,7 @@ import {
 import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
 import { handleSessionMoved, type SessionMovedEvent } from '@/lib/session-move'
-import { logNativeError } from '@/lib/native-log'
-import { updateChecksEnabledForThisApp } from '@/lib/app-update'
+import { checkForUpdatesManually } from '@/lib/app-update'
 import {
   eventToShortcutString,
   isModKeyEvent,
@@ -1218,55 +1217,9 @@ export function useMainWindowEventListeners() {
           )
         }),
 
-        listenMenu('menu-check-updates', async () => {
+        listenMenu('menu-check-updates', () => {
           logger.debug('Check for updates menu event received')
-          if (!isNativeApp()) return
-          if (!(await updateChecksEnabledForThisApp())) {
-            commandContext.showToast(
-              'Updates are off in development builds',
-              'info'
-            )
-            return
-          }
-          const ui = useUIStore.getState()
-          // Package already installed this session — prompt restart, don't re-offer download
-          if (ui.updateReadyVersion) {
-            commandContext.showToast(
-              `Update ${ui.updateReadyVersion} is ready — restart to apply`,
-              'success'
-            )
-            return
-          }
-          if (ui.isUpdateInstalling) {
-            commandContext.showToast(
-              'Update download already in progress',
-              'info'
-            )
-            return
-          }
-          try {
-            const { check } = await import('@tauri-apps/plugin-updater')
-            const update = await check()
-            if (update) {
-              // Pass update object to App.tsx for installation handling
-              window.dispatchEvent(
-                new CustomEvent('update-available', { detail: update })
-              )
-              // Show the update modal (same as auto-check on startup)
-              useUIStore.getState().setUpdateModalVersion(update.version)
-            } else {
-              commandContext.showToast(
-                'You are running the latest version',
-                'success'
-              )
-            }
-          } catch (error) {
-            logNativeError(`Update check failed: ${String(error)}`)
-            commandContext.showToast(
-              `Failed to check for updates: ${String(error)}`,
-              'error'
-            )
-          }
+          void checkForUpdatesManually()
         }),
 
         listenMenu<KeybindingAction>('menu-keybinding', action => {
