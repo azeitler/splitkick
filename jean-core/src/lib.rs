@@ -3190,6 +3190,11 @@ pub struct UIState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_tab: Option<String>,
 
+    /// The Archived page's sort (`archived`, `name`, `project`). Absent means
+    /// last archived. Kept as a string so the frontend owns the set of sorts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_sort: Option<String>,
+
     /// Favorited projects shown first in the GitHub Dashboard
     #[serde(default)]
     pub github_dashboard_favorite_project_ids: Vec<String>,
@@ -3359,6 +3364,7 @@ impl Default for UIState {
             project_rail_hidden: false,
             mobile_active_tab: None,
             sidebar_tab: None,
+            archived_sort: None,
             github_dashboard_favorite_project_ids: Vec::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             seen_failed_workflow_run_ids: Vec::new(),
@@ -4963,6 +4969,23 @@ mod starred_sessions_tests {
         assert!(old.sidebar_tab.is_none());
         let rewritten = serde_json::to_string(&old).unwrap();
         assert!(!rewritten.contains("sidebar_tab"));
+    }
+
+    #[test]
+    fn the_archived_sort_round_trips_and_writes_no_key_by_default() {
+        let by_name = UIState {
+            archived_sort: Some("name".to_string()),
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&by_name).unwrap();
+        assert!(json.contains(r#""archived_sort":"name""#));
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.archived_sort.as_deref(), Some("name"));
+
+        let old: UIState = serde_json::from_str("{}").unwrap();
+        assert!(old.archived_sort.is_none());
+        let rewritten = serde_json::to_string(&old).unwrap();
+        assert!(!rewritten.contains("archived_sort"));
     }
 
     #[test]
