@@ -871,3 +871,70 @@ async fn change_session_serves_returns_the_resulting_list() {
             .is_err()
     );
 }
+
+/// Issue #101: the UI marks a session opened (set_active_session,
+/// set_session_last_opened, the bulk variant) all the time. Each did
+/// load_metadata + save_metadata without the lock across both, so a
+/// permission change between the two calls was lost.
+#[test]
+fn permission_change_survives_concurrent_open_marks() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    let (_temp, app) = app();
+    add_session(&app, "s1");
+    let stop = AtomicBool::new(false);
+    let mut lost = 0;
+    std::thread::scope(|scope| {
+        let markers: [fn(AppHandle) -> Result<(), String>; 3] = [
+            |app| block_on(crate::chat::set_session_last_opened(app, "s1".into())),
+            |app| {
+                block_on(crate::chat::set_active_session(
+                    app,
+                    "wt1".into(),
+                    String::new(),
+                    "s1".into(),
+                ))
+            },
+            |app| {
+                block_on(crate::chat::set_sessions_last_opened_bulk(
+                    app,
+                    vec!["s1".into()],
+                ))
+            },
+        ];
+        for mark in markers {
+            let (app, stop) = (app.clone(), &stop);
+            scope.spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    mark(app.clone()).unwrap();
+                }
+            });
+        }
+        for i in 0..300 {
+            let permission = if i % 2 == 0 {
+                GraphPermission::Write
+            } else {
+                GraphPermission::Manage
+            };
+            block_on(set_session_graph_permission(
+                app.clone(),
+                "s1".into(),
+                permission,
+            ))
+            .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            if effective_permission(&app, "s1") != permission {
+                lost += 1;
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+    });
+    assert_eq!(lost, 0, "lost {lost} of 300 permission changes");
+}

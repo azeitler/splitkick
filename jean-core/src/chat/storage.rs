@@ -368,7 +368,12 @@ pub fn load_metadata(app: &AppHandle, session_id: &str) -> Result<Option<Session
     load_metadata_internal(app, session_id)
 }
 
-/// Save session metadata (with locking for thread safety)
+/// Save session metadata (with locking for thread safety).
+///
+/// Only for metadata that does not exist yet (a new or copied session). To
+/// change an existing session, use `with_existing_metadata_mut` or
+/// `update_metadata_if_exists`: a `load_metadata` + `save_metadata` pair loses
+/// every write that lands between the two calls (issue #101).
 pub fn save_metadata(app: &AppHandle, metadata: &SessionMetadata) -> Result<(), String> {
     let lock = get_metadata_lock(&metadata.id);
     let _guard = lock.lock().unwrap();
@@ -396,6 +401,27 @@ where
     save_metadata_internal(app, &metadata)?;
 
     Ok(result)
+}
+
+/// Like `with_existing_metadata_mut`, but a missing session is `Ok(false)`,
+/// and the file is written only when `f` returns `true` (it changed something).
+/// Returns whether it wrote. Use this, not `load_metadata` + `save_metadata`:
+/// a write between those two calls is lost (issue #101).
+pub fn update_metadata_if_exists<F>(app: &AppHandle, session_id: &str, f: F) -> Result<bool, String>
+where
+    F: FnOnce(&mut SessionMetadata) -> bool,
+{
+    let lock = get_metadata_lock(session_id);
+    let _guard = lock.lock().unwrap();
+
+    let Some(mut metadata) = load_metadata_internal(app, session_id)? else {
+        return Ok(false);
+    };
+    if !f(&mut metadata) {
+        return Ok(false);
+    }
+    save_metadata_internal(app, &metadata)?;
+    Ok(true)
 }
 
 /// Atomically load, modify, and save session metadata.

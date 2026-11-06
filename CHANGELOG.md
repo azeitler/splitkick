@@ -56,6 +56,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A session's graph permission change now sticks** (#101). Marking a session
+  opened (which the UI does often), a cancel, run recovery on page load and a
+  session resume each wrote back a copy of the session metadata read a moment
+  before, so a permission change in that moment was lost. These writes now
+  change the file under its lock and keep all other fields.
 - **A page load no longer marks a starting run as crashed** (#97). A reload or
   another Web Access client opened in the first moments of a run, before its
   CLI was registered, turned the run "crashed" although it went on running.
