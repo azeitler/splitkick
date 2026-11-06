@@ -1913,4 +1913,39 @@ attributes:
         assert!(result.is_err());
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
+
+    /// Real usage of one extra account, read the way the app reads it. Prints no
+    /// token and no email:
+    /// ```text
+    /// JEAN_TEST_CLAUDE_CONFIG_DIR=/abs/folder cargo test --lib \
+    ///   reports_real_usage_of_an_extra_account -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "reads a real login and calls the usage API"]
+    fn reports_real_usage_of_an_extra_account() {
+        let dir = std::env::var("JEAN_TEST_CLAUDE_CONFIG_DIR")
+            .expect("set JEAN_TEST_CLAUDE_CONFIG_DIR to a logged-in config folder");
+        let cache = tempfile::tempdir().unwrap();
+        let cache_path = cache.path().join("usage.json");
+        let snapshot = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fetch_claude_usage(
+                "test",
+                Some(&dir),
+                CLAUDE_USAGE_URL,
+                Some(&cache_path),
+            ))
+            .expect("usage of the extra account");
+        println!(
+            "keychain service {}, plan {:?}, email present {}, session {:?}, weekly {:?}",
+            accounts::keychain_service(Some(&dir)),
+            snapshot.plan_type,
+            snapshot.account_email.is_some(),
+            snapshot.session.map(|w| w.used_percent),
+            snapshot.weekly.map(|w| w.used_percent),
+        );
+        assert!(snapshot.account_email.is_some());
+    }
 }

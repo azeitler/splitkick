@@ -37,6 +37,13 @@ auth status` in a new, empty folder reports `loggedIn: false`,
 <id of a root-install session>` fails with `No conversation found with
 session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
 
+- **End to end with a real second login** (2026-11-06, a different account
+  from the root install): `claude auth login` with `CLAUDE_CONFIG_DIR` set
+  created the Keychain item with exactly the computed suffix; Splitkick's usage
+  code read that item and got the account's own limits and email
+  (`reports_real_usage_of_an_extra_account`, ignored test); a `-p` run wrote its
+  transcript only into `<dir>/projects`, and `--resume` worked there.
+
 ## Design
 
 - **Preferences** (snake_case, `#[serde(default)]`): `claude_root_label`,
