@@ -265,6 +265,8 @@ import {
 } from '@/components/toolbar/toolbar-slots'
 import { ToolbarFilterSearch } from '@/components/toolbar/ToolbarSearchField'
 import { HostOnlyHint } from '@/components/ui/host-only-hint'
+import { ProjectGraphsSection } from '@/components/projects/ProjectGraphsSection'
+import { collectServedGraphIds } from '@/components/projects/project-graphs'
 import { getFileManagerName } from '@/lib/platform'
 
 interface ProjectCanvasViewProps {
@@ -1274,6 +1276,17 @@ export function ProjectCanvasView({
     state => state.projectCanvasSettings[projectId]?.pinnedSessions
   )
   const starredSessions = useProjectsStore(state => state.starredSessions)
+
+  // Graphs this project's sessions serve, for the Graphs block (#99).
+  const servedGraphIds = useMemo(
+    () =>
+      collectServedGraphIds(
+        Array.from(sessionsByWorktreeId.values()).flatMap(
+          entry => entry.sessions
+        )
+      ),
+    [sessionsByWorktreeId]
+  )
 
   const pinnedRows = useMemo(() => {
     const { rows } = resolveProjectShortcutRows(
@@ -3914,6 +3927,13 @@ export function ProjectCanvasView({
                       variant="canvas"
                       projectId={projectId}
                       onOpen={handleOpenPinnedSession}
+                    />
+                  )}
+                  {!searchQuery.trim() && (
+                    <ProjectGraphsSection
+                      projectId={projectId}
+                      servedGraphIds={servedGraphIds}
+                      variant="canvas"
                     />
                   )}
                   {worktreeSections.length === 0 ? (

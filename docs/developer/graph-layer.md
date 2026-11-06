@@ -235,6 +235,15 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 - Sidebar section **Graphs** between Starred and Folders (sticky slot
   `--sb-graphs-top`, `data-sidebar-graphs`, collapse persisted as
   `graphs_section_collapsed` in UI state). Rows: title, `type · where`, counts.
+- Per-project **Graphs** row in the sidebar tree, beside Pinned (#99,
+  `ProjectGraphsSection`): graphs stored in the project, then graphs from
+  elsewhere that a live session of the project serves (`selectProjectGraphs`,
+  `collectServedGraphIds` in `src/components/projects/project-graphs.ts`).
+  Derived from `list_graphs` and the sessions the sidebar already loads; no
+  extra command. Expansion persisted per project as
+  `expanded_graphs_project_ids`. Hidden when no graph is relevant. The
+  project canvas (also the phone's project view) shows the same list under
+  Pinned (`variant="canvas"`, always open, hidden during a search).
 - Main view `GraphView` when `ui-store.activeGraphId` is set (cleared by every
   other selection, like the Archived view). Tabs: Outline, Dependencies, Review.
   Node detail panel on the right. Navigation history kind `graph`.

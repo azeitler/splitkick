@@ -96,14 +96,6 @@ function SidebarGraphRow({
   selected: boolean
   onOpen: (graphId: string) => void
 }) {
-  const warning = graph.missing
-    ? 'File missing'
-    : graph.error
-      ? graph.error
-      : graph.offDefaultBranch
-        ? `Checkout is on ${graph.branch ?? 'another branch'}, not ${graph.defaultBranch ?? 'the default branch'}`
-        : null
-
   return (
     <button
       type="button"
@@ -133,38 +125,63 @@ function SidebarGraphRow({
           {graphSubtitle(graph)}
         </span>
       </span>
-      <span className="mt-0.5 flex shrink-0 items-center gap-1">
-        {warning && (
-          <span
-            title={warning}
-            aria-label={warning}
-            data-testid="sidebar-graph-warning"
-          >
-            <AlertTriangle
-              className="size-3.5 text-amber-500"
-              aria-hidden="true"
-            />
-          </span>
-        )}
-        {graph.openRequests > 0 && (
-          <span
-            title={`${graph.openRequests} waiting for you`}
-            data-testid="sidebar-graph-requests"
-            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-medium text-white"
-          >
-            {graph.openRequests}
-          </span>
-        )}
-        {graph.unseenChanges > 0 && (
-          <span
-            title={`${graph.unseenChanges} changes you have not seen`}
-            data-testid="sidebar-graph-unseen"
-            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground"
-          >
-            {graph.unseenChanges}
-          </span>
-        )}
-      </span>
+      <SidebarGraphBadges graph={graph} className="mt-0.5" />
     </button>
+  )
+}
+
+/**
+ * A graph row's trailing badges: file warning, requests waiting for the user
+ * (orange) and changes the user has not seen (grey). Shared with the project
+ * Graphs section (#99).
+ */
+export function SidebarGraphBadges({
+  graph,
+  className,
+}: {
+  graph: GraphSummary
+  className?: string
+}) {
+  const warning = graph.missing
+    ? 'File missing'
+    : graph.error
+      ? graph.error
+      : graph.offDefaultBranch
+        ? `Checkout is on ${graph.branch ?? 'another branch'}, not ${graph.defaultBranch ?? 'the default branch'}`
+        : null
+
+  return (
+    <span className={cn('flex shrink-0 items-center gap-1', className)}>
+      {warning && (
+        <span
+          title={warning}
+          aria-label={warning}
+          data-testid="sidebar-graph-warning"
+        >
+          <AlertTriangle
+            className="size-3.5 text-amber-500"
+            aria-hidden="true"
+          />
+        </span>
+      )}
+      {graph.openRequests > 0 && (
+        <span
+          title={`${graph.openRequests} waiting for you`}
+          data-testid="sidebar-graph-requests"
+          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-medium text-white"
+        >
+          {graph.openRequests}
+        </span>
+      )}
+      {graph.unseenChanges > 0 && (
+        <span
+          title={`${graph.unseenChanges} changes you have not seen`}
+          data-testid="sidebar-graph-unseen"
+          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground"
+        >
+          {graph.unseenChanges}
+        </span>
+      )}
+    </span>
   )
 }
