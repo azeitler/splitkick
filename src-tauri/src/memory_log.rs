@@ -23,6 +23,8 @@ use tauri::{AppHandle, Manager};
 
 pub(crate) const INTERVAL: Duration = Duration::from_secs(5 * 60);
 
+// Only macOS finds content processes; elsewhere the report says n/a.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 struct ContentProcess {
     pid: u32,
     labels: Vec<String>,

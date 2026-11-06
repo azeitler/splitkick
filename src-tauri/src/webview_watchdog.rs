@@ -181,6 +181,8 @@ impl Liveness {
         });
     }
 
+    // Only the macOS termination path uses it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     fn ending_content_process(&mut self, label: &str, reason: &str) {
         let window = self.windows.entry(label.to_string()).or_default();
         window.ended_for = Some(reason.to_string());
@@ -188,6 +190,8 @@ impl Liveness {
 
     /// The reason for a content process termination: the watchdog's own when
     /// it ended the process, WebKit's otherwise.
+    // Only the macOS termination path uses it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     fn termination_reason(&mut self, label: &str) -> String {
         self.windows
             .get_mut(label)
