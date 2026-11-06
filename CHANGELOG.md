@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote windows and Web Access no longer offer actions that open on the
+  host** (#89). A phone or a remote window saw "Reveal in Finder", "Open in
+  Terminal" and similar items whenever the host allowed it, and the click
+  opened a window on the host Mac, where nobody looked. These items now show
+  only when the user sits at the host (local app, or Web Access on
+  `localhost`). Native remote windows keep "Open in editor" through the local
+  Zed. The sidebar project menu now hides editor, Finder, terminal and
+  Worktrees Folder where they cannot work; file paths in the embedded terminal
+  are no longer links in Web Access; Settings → Show Logs in a remote window
+  opens this app's logs. The full table is in
+  `docs/developer/remote-capabilities.md`.
+
 ## [1.5.0] - 2026-11-04
 
 Built on Jean 0.1.73.

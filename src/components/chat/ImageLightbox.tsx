@@ -3,7 +3,7 @@ import { Copy, ExternalLink, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { convertFileSrc } from '@/lib/transport'
 import { copyImageToClipboard } from '@/lib/clipboard'
-import { isLocalBackend } from '@/lib/environment'
+import { canOpenNativeApps, isLocalBackend } from '@/lib/environment'
 import { getFileManagerName, openExternal } from '@/lib/platform'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { Button } from '@/components/ui/button'
@@ -84,7 +84,7 @@ export function ImagePreviewDialog({
 }: ImagePreviewDialogProps) {
   const revealPath = useRevealPathInFileManager()
   const local = isLocalBackend()
-  const canReveal = Boolean(path) && local
+  const canReveal = Boolean(path) && canOpenNativeApps()
   const canOpenInBrowser = !local && !INLINE_IMAGE_SRC_RE.test(src)
 
   return (

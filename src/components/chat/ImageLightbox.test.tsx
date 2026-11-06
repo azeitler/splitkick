@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/environment', () => ({
   isLocalBackend: () => mocks.isLocalBackend(),
+  canOpenNativeApps: () => mocks.isLocalBackend(),
 }))
 
 vi.mock('@/lib/platform', async importOriginal => ({

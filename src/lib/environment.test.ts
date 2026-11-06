@@ -3,10 +3,13 @@ import {
   canOpenInEditor,
   canOpenNativeApps,
   canOpenRemoteEditorLocally,
+  canPickLocalPaths,
   hasBackend,
   hasBackendTransport,
+  isBackendOnThisMachine,
   isLocalBackend,
   isNativeApp,
+  isNativeOpenAllowed,
   setNativeOpenAllowed,
   setWebAccessEnabled,
   setWsConnected,
@@ -72,10 +75,54 @@ describe('environment detection', () => {
     expect(canOpenInEditor()).toBe(true)
   })
 
-  it('allows host-native open when the server reports nativeOpenAllowed', () => {
-    setNativeOpenAllowed(true)
+  it('local desktop: every native capability is available', () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: { invoke: vi.fn() },
+    })
+
+    expect(isBackendOnThisMachine()).toBe(true)
     expect(canOpenNativeApps()).toBe(true)
     expect(canOpenInEditor()).toBe(true)
+    expect(canOpenRemoteEditorLocally()).toBe(false)
+    expect(canPickLocalPaths()).toBe(true)
+  })
+
+  it('Web Access on localhost: host-native open counts (user sits at the host)', () => {
+    // jsdom serves the page from http://localhost
+    setNativeOpenAllowed(true)
+    expect(isBackendOnThisMachine()).toBe(true)
+    expect(isNativeOpenAllowed()).toBe(true)
+    expect(canOpenNativeApps()).toBe(true)
+    expect(canOpenInEditor()).toBe(true)
+    expect(canPickLocalPaths()).toBe(false)
+  })
+
+  it('Web Access on localhost without host permission: nothing opens', () => {
+    expect(canOpenNativeApps()).toBe(false)
+    expect(canOpenInEditor()).toBe(false)
+  })
+
+  it('native + remote host that allows open: still hidden, Zed path stays', () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: { invoke: vi.fn() },
+    })
+    const remote = addRemoteConnection({
+      name: 'Studio Mac',
+      url: 'https://studio.example.com',
+      token: 'test-token',
+    })
+    selectConnection(remote.id)
+    // The desktop app hosting Web Access always reports true
+    setNativeOpenAllowed(true)
+
+    expect(isBackendOnThisMachine()).toBe(false)
+    expect(isNativeOpenAllowed()).toBe(false)
+    expect(canOpenNativeApps()).toBe(false)
+    expect(canOpenRemoteEditorLocally()).toBe(true)
+    expect(canOpenInEditor()).toBe(true)
+    expect(canPickLocalPaths()).toBe(false)
   })
 
   it('prefers host-native open over local ssh:// remap when remote allows it', () => {

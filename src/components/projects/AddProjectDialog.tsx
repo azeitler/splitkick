@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useState } from 'react'
-import { isLocalBackend } from '@/lib/environment'
+import { canPickLocalPaths } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { FolderOpen, FolderPlus, Globe } from 'lucide-react'
 import {
@@ -34,7 +34,7 @@ export function AddProjectDialog() {
   const handleAddExisting = useCallback(async () => {
     // Remote backends (and pure web) must browse the server filesystem via
     // DirectoryBrowser — the native OS picker only sees the local machine.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setBrowserMode('select')
       return
     }
@@ -87,7 +87,7 @@ export function AddProjectDialog() {
   const handleInitNew = useCallback(async () => {
     // Remote backends (and pure web) must browse the server filesystem via
     // DirectoryBrowser — the native OS picker only sees the local machine.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setBrowserMode('save')
       return
     }
