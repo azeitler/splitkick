@@ -396,3 +396,9 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - An issue text that says "hide (preferred) or disable" is not the final word:
   ask, or default to disable, when the user has not chosen.
 - Keep the reason short and visible without hover (phones have no tooltips).
+
+## Ask which screen before a broad UI simplification
+
+- "Make the graph UI simpler" meant the crowded detail panels, not the whole graph UI. I first audited every screen (header, outline, review, dependencies).
+- When a UI request names an area, not a screen, ask which screens hurt most before a full audit, or present the audit as a short list and let the user pick.
+- "Simpler" here meant progressive disclosure: a simple layer by default and an expert layer on demand, not fewer features.

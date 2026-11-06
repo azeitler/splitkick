@@ -2,7 +2,8 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
-import type { GraphChange } from '@/types/graphs'
+import { useProjectsStore } from '@/store/projects-store'
+import type { GraphChange, GraphRequest } from '@/types/graphs'
 import { GraphNodeDetail } from './GraphNodeDetail'
 import { derived, detail, node } from './graph-test-fixtures'
 
@@ -11,12 +12,14 @@ const mocks = vi.hoisted(() => ({
   markSeen: vi.fn(),
   deleteNode: vi.fn(),
   navigateToSession: vi.fn(),
+  requests: [] as Partial<GraphRequest>[],
 }))
 
 vi.mock('@/services/graphs', () => ({
   useUpdateGraphNode: () => ({ mutate: mocks.updateNode }),
   useMarkGraphChangesSeen: () => ({ mutate: mocks.markSeen }),
   useDeleteGraphNode: () => ({ mutate: mocks.deleteNode }),
+  useGraphRequests: () => ({ data: mocks.requests }),
 }))
 vi.mock('@/lib/navigate-to-session', () => ({
   navigateToSession: mocks.navigateToSession,
@@ -82,6 +85,8 @@ const change = (extra: Partial<GraphChange>): GraphChange => ({
   ...extra,
 })
 
+const handlers = { onSelectNode: vi.fn(), onOpenReview: vi.fn() }
+
 function renderDetail(changes: GraphChange[] = []) {
   render(
     <GraphNodeDetail
@@ -90,20 +95,38 @@ function renderDetail(changes: GraphChange[] = []) {
       nodeId="gs1"
       changes={changes}
       onClose={vi.fn()}
+      {...handlers}
     />
   )
 }
 
-describe('GraphNodeDetail', () => {
-  beforeEach(() => {
-    mocks.updateNode.mockClear()
-    mocks.markSeen.mockClear()
-    mocks.navigateToSession.mockClear()
+beforeEach(() => {
+  mocks.updateNode.mockClear()
+  mocks.markSeen.mockClear()
+  mocks.navigateToSession.mockClear()
+  handlers.onSelectNode.mockClear()
+  handlers.onOpenReview.mockClear()
+  mocks.requests = []
+  useProjectsStore.getState().setGraphDetailsShown(false)
+  useProjectsStore.getState().setGraphRelationsShown(false)
+})
+
+describe('GraphNodeDetail simple layer', () => {
+  it('hides the expert layer until "Show details", and remembers it', async () => {
+    renderDetail()
+    expect(screen.queryByTestId('graph-node-expert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/id gs1/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(screen.getByTestId('graph-node-expert')).toBeInTheDocument()
+    expect(useProjectsStore.getState().graphDetailsShown).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: 'Hide details' }))
+    expect(screen.queryByTestId('graph-node-expert')).not.toBeInTheDocument()
   })
 
-  it('changes the state through update_graph_node', async () => {
+  it('changes the state with plain words', async () => {
     renderDetail()
-    await userEvent.click(screen.getByRole('radio', { name: 'done' }))
+    expect(screen.getByRole('radio', { name: 'Planned' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Done' }))
     expect(mocks.updateNode).toHaveBeenCalledWith({
       graphId: 'g1',
       nodeId: 'gs1',
@@ -111,7 +134,94 @@ describe('GraphNodeDetail', () => {
     })
   })
 
-  it('shows stored and computed relations and the derived blockers', () => {
+  it('says what the node waits for and links the node', async () => {
+    renderDetail()
+    const waiting = screen.getByTestId('graph-waiting-for')
+    expect(waiting).toHaveTextContent('Waiting for')
+    expect(waiting).toHaveTextContent('a decision: storage')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Graph layer design' })
+    )
+    expect(handlers.onSelectNode).toHaveBeenCalledWith('gld')
+  })
+
+  it('points to Review when a request for the node is open', async () => {
+    mocks.requests = [
+      { id: 'r1', nodeId: 'gs1', status: 'open' },
+      { id: 'r2', nodeId: 'gs1', status: 'answered' },
+      { id: 'r3', nodeId: 'docs', status: 'open' },
+    ]
+    renderDetail()
+    await userEvent.click(screen.getByText('1 request waits for you'))
+    expect(handlers.onOpenReview).toHaveBeenCalled()
+  })
+
+  it('offers "Add description" instead of an empty box', async () => {
+    render(
+      <GraphNodeDetail
+        graphId="g1"
+        detail={graph}
+        nodeId="gld"
+        changes={[]}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Description')).not.toBeInTheDocument()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add description' })
+    )
+    await userEvent.type(screen.getByLabelText('Description'), 'Spec first')
+    await userEvent.click(document.body)
+    expect(mocks.updateNode).toHaveBeenCalledWith({
+      graphId: 'g1',
+      nodeId: 'gld',
+      patch: { description: 'Spec first' },
+    })
+  })
+
+  it('opens a serving session', async () => {
+    renderDetail()
+    await userEvent.click(screen.getByText('Roadmap upkeep'))
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 's1',
+    })
+  })
+})
+
+describe('GraphNodeDetail Relationships foldout', () => {
+  it('is closed by default and separate from the details', async () => {
+    renderDetail()
+    const toggle = screen.getByTestId('graph-relations-toggle')
+    // 2 stored relations + 1 incoming
+    expect(toggle).toHaveTextContent('Relationships(3)')
+    expect(screen.queryByTestId('graph-node-relations')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(screen.queryByTestId('graph-node-relations')).toBeNull()
+    await userEvent.click(toggle)
+    expect(screen.getByTestId('graph-node-relations')).toBeInTheDocument()
+    expect(useProjectsStore.getState().graphRelationsShown).toBe(true)
+  })
+
+  it('sits above "Show details"', () => {
+    renderDetail()
+    const relations = screen.getByTestId('graph-relations-toggle')
+    const details = screen.getByTestId('graph-details-toggle')
+    expect(
+      relations.compareDocumentPosition(details) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+})
+
+describe('GraphNodeDetail expert layer and relations', () => {
+  beforeEach(() => {
+    useProjectsStore.getState().setGraphDetailsShown(true)
+    useProjectsStore.getState().setGraphRelationsShown(true)
+  })
+
+  it('shows stored and computed relations with the file words', () => {
     renderDetail()
     const relations = screen.getAllByTestId('graph-relation')
     expect(relations).toHaveLength(2)
@@ -120,9 +230,7 @@ describe('GraphNodeDetail', () => {
     expect(screen.getByTestId('graph-incoming')).toHaveTextContent(
       'needed byDocs guide'
     )
-    expect(screen.getByText(/Derived blocked:/)).toHaveTextContent(
-      'depends-on Graph layer design; blocked-by decision: storage'
-    )
+    expect(screen.getByText(/id gs1/)).toHaveTextContent('state committed')
   })
 
   it('renders an issue attachment as a link', () => {
@@ -233,16 +341,6 @@ describe('GraphNodeDetail', () => {
     const [gone, here] = screen.getAllByTestId('graph-relation')
     expect(gone).toHaveTextContent('g2#gone00↗ Othernot found')
     expect(here).not.toHaveTextContent('not found')
-  })
-
-  it('opens a serving session', async () => {
-    renderDetail()
-    await userEvent.click(screen.getByText('Roadmap upkeep'))
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'p1',
-      worktreeId: 'w1',
-      sessionId: 's1',
-    })
   })
 
   it('shows the node history with who, when and why, and marks it seen', () => {

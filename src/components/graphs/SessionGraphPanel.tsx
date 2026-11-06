@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Check, ExternalLink, Workflow, X } from 'lucide-react'
+import { Check, ExternalLink, Link2, Workflow, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { openGraphView } from '@/lib/graph-view'
+import { openLinkToGraph } from '@/lib/link-to-graph'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { formatRelativeTime } from '@/lib/relative-time'
 import { cn } from '@/lib/utils'
@@ -12,7 +13,6 @@ import {
   useGraphRequests,
   useGraphs,
   useSetSessionGraphPermission,
-  useSetSessionServes,
 } from '@/services/graphs'
 import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
@@ -30,15 +30,22 @@ import {
   NodeStateChip,
   NodeStateGlyph,
   ProgressBar,
+  WaitingFor,
 } from './graph-badges'
 import {
+  GraphDetailsToggle,
+  GraphRelationsToggle,
+  useGraphDetailsShown,
+  useGraphRelationsShown,
+} from './GraphDetailsToggle'
+import {
   buildOutline,
-  graphRef,
   INCOMING_LABELS,
-  issueNumber,
   parentId,
   parseGraphRef,
   resolveRef,
+  waitingFor,
+  waitingOn,
   type OutlineItem,
 } from './graph-utils'
 import { ServesEditor } from './ServesEditor'
@@ -56,10 +63,12 @@ export function sessionHasGraphPanel(
 }
 
 /**
- * The session graph panel (mockup screen 7), right of the chat. A worker
- * (serves a node) sees its node, before and after, its siblings and who
- * else serves it; a manager (serves a whole graph) sees open requests,
- * unseen changes and the outline. Both: the session's permission and serves.
+ * The session graph panel (mockup screen 7), right of the chat. The simple
+ * layer is one card: a worker (serves a node) sees its node, what it waits
+ * for and what comes next; a manager (serves a whole graph) sees progress,
+ * open requests and new changes. A worker also gets the "Relationships"
+ * foldout (before and after, siblings). "Show details" opens the expert
+ * layer: id, other sessions, lists, outline, permission and links editor.
  */
 export function SessionGraphPanel({ session }: { session: PanelSession }) {
   const serves = session.serves ?? []
@@ -70,39 +79,19 @@ export function SessionGraphPanel({ session }: { session: PanelSession }) {
     ? parseGraphRef(current)
     : { graphId: null, nodeId: null }
   const { data: detail } = useGraph(graphId)
+  const showDetails = useGraphDetailsShown()
+  const showRelations = useGraphRelationsShown()
 
   return (
     <aside
       className="flex h-full min-h-0 flex-col overflow-y-auto font-sans"
       data-testid="session-graph-panel"
     >
-      <header className="flex items-start gap-2 border-b px-4 py-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Workflow className="size-3.5" aria-hidden="true" />
-            Graph
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {serves.length === 0 ? (
-              'This session serves nothing yet.'
-            ) : (
-              <>
-                This session <b className="text-foreground">serves</b>{' '}
-                {nodeId ? 'a node' : 'the whole graph'} in{' '}
-                {graphId && (
-                  <button
-                    type="button"
-                    className="underline hover:text-foreground"
-                    onClick={() => openGraphView(graphId)}
-                  >
-                    {detail?.summary.title ?? 'a graph'}
-                  </button>
-                )}
-                .
-              </>
-            )}
-          </p>
-        </div>
+      <header className="flex items-center gap-2 border-b px-4 py-2">
+        <h2 className="flex flex-1 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Workflow className="size-3.5" aria-hidden="true" />
+          Graph
+        </h2>
         <Button
           type="button"
           variant="ghost"
@@ -121,8 +110,17 @@ export function SessionGraphPanel({ session }: { session: PanelSession }) {
         </div>
       )}
 
+      {serves.length === 0 && (
+        <div className="flex flex-col gap-2 border-b p-4 text-sm">
+          <p className="text-muted-foreground">
+            This session is not linked to a graph.
+          </p>
+          <LinkButton session={session} label="Link to Graph…" />
+        </div>
+      )}
+
       {graphId && detail && nodeId && (
-        <WorkerView
+        <WorkerCard
           session={session}
           graphId={graphId}
           nodeId={nodeId}
@@ -130,12 +128,89 @@ export function SessionGraphPanel({ session }: { session: PanelSession }) {
         />
       )}
       {graphId && detail && !nodeId && (
-        <ManagerView graphId={graphId} detail={detail} />
+        <ManagerCard session={session} graphId={graphId} detail={detail} />
       )}
 
-      <PermissionSection session={session} />
-      <ServesSection session={session} />
+      {graphId && detail && nodeId && (
+        <>
+          <GraphRelationsToggle count={relationCount(detail, nodeId)} />
+          {showRelations && (
+            <div data-testid="session-graph-relations">
+              <WorkerRelations nodeId={nodeId} detail={detail} />
+            </div>
+          )}
+        </>
+      )}
+
+      <GraphDetailsToggle />
+
+      {showDetails && (
+        <div data-testid="session-graph-expert">
+          {graphId && detail && nodeId && (
+            <WorkerDetails session={session} nodeId={nodeId} detail={detail} />
+          )}
+          {graphId && detail && !nodeId && (
+            <ManagerDetails graphId={graphId} detail={detail} />
+          )}
+          <PermissionSection session={session} />
+          <ServesSection session={session} />
+        </div>
+      )}
     </aside>
+  )
+}
+
+/** What the Relationships foldout lists: before, after and siblings. */
+function relationCount(detail: GraphDetail, nodeId: string): number {
+  const node = detail.nodes.find(n => n.id === nodeId)
+  if (!node) return 0
+  const ids = new Set(detail.nodes.map(n => n.id))
+  const before = node.relations.filter(
+    r => r.kind === 'depends-on' || r.kind === 'blocked-by'
+  ).length
+  const after = (detail.incoming[nodeId] ?? []).filter(
+    r => r.kind !== 'part-of'
+  ).length
+  const parent = parentId(node, ids)
+  const siblings = parent
+    ? detail.nodes.filter(n => n.id !== nodeId && parentId(n, ids) === parent)
+        .length
+    : 0
+  return before + after + siblings
+}
+
+/** Opens the Link to Graph dialog, the one place to change links. */
+function LinkButton({
+  session,
+  label,
+}: {
+  session: PanelSession
+  label: string
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="w-fit"
+      onClick={() => openLinkToGraph(session)}
+    >
+      <Link2 className="size-3.5" aria-hidden="true" />
+      {label}
+    </Button>
+  )
+}
+
+/** Graph title as a link, the first line of a card. */
+function GraphLink({ graphId, title }: { graphId: string; title: string }) {
+  return (
+    <button
+      type="button"
+      className="w-fit truncate text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+      onClick={() => openGraphView(graphId)}
+    >
+      {title}
+    </button>
   )
 }
 
@@ -229,7 +304,7 @@ function NodeLine({
   )
 }
 
-function WorkerView({
+function WorkerCard({
   session,
   graphId,
   nodeId,
@@ -240,18 +315,81 @@ function WorkerView({
   nodeId: string
   detail: GraphDetail
 }) {
-  const setServes = useSetSessionServes()
   const node = detail.nodes.find(n => n.id === nodeId)
   const derived = detail.derived[nodeId]
-  const ids = useMemo(() => new Set(detail.nodes.map(n => n.id)), [detail])
 
   if (!node) {
     return (
-      <p className="border-b px-4 py-3 text-sm text-muted-foreground">
-        The node {nodeId} is not in this graph any more.
-      </p>
+      <div className="flex flex-col gap-2 border-b p-4 text-sm">
+        <p className="text-muted-foreground">
+          The node {nodeId} is not in this graph any more.
+        </p>
+        <LinkButton session={session} label="Change link…" />
+      </div>
     )
   }
+
+  const next = waitingOn(detail, nodeId)
+  return (
+    <div
+      className="flex flex-col gap-2 border-b p-4"
+      data-testid="session-graph-node-card"
+    >
+      <GraphLink graphId={graphId} title={detail.summary.title} />
+      <div className="text-base leading-snug font-semibold">{node.title}</div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <NodeStateChip state={node.state} />
+        {derived?.active && <ActiveBadge />}
+      </div>
+      <WaitingFor
+        items={waitingFor(detail, node)}
+        onOpen={id => openGraphView(graphId, id)}
+      />
+      {next.length > 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="graph-next">
+          Next:{' '}
+          {next.map((n, i) => (
+            <span key={n.id}>
+              {i > 0 && ', '}
+              <button
+                type="button"
+                className="text-foreground underline-offset-2 hover:underline"
+                onClick={() => openGraphView(graphId, n.id)}
+              >
+                {n.title}
+              </button>
+            </span>
+          ))}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => openGraphView(graphId, nodeId)}
+        >
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          Open in graph
+        </Button>
+        <LinkButton session={session} label="Change link…" />
+      </div>
+    </div>
+  )
+}
+
+/** Relationships foldout of a worker: before and after, and the siblings. */
+function WorkerRelations({
+  nodeId,
+  detail,
+}: {
+  nodeId: string
+  detail: GraphDetail
+}) {
+  const node = detail.nodes.find(n => n.id === nodeId)
+  const derived = detail.derived[nodeId]
+  const ids = useMemo(() => new Set(detail.nodes.map(n => n.id)), [detail])
+  if (!node) return null
 
   const before = node.relations
     .filter(r => r.kind === 'depends-on' || r.kind === 'blocked-by')
@@ -265,74 +403,9 @@ function WorkerView({
     ? detail.nodes.filter(n => parentId(n, ids) === parent)
     : []
   const parentDerived = parent ? detail.derived[parent] : undefined
-  const others = (derived?.serving ?? []).filter(
-    s => s.sessionId !== session.id
-  )
-  const issue = issueNumber(node.attachments)
-
-  const changeNode = (next: string) => {
-    if (!next || next === nodeId) return
-    const from = graphRef(graphId, nodeId)
-    const serves = (session.serves ?? []).map(ref =>
-      ref === from ? graphRef(graphId, next) : ref
-    )
-    setServes.mutate({ sessionId: session.id, serves })
-  }
 
   return (
     <>
-      <div className="border-b p-4">
-        <div
-          className="flex flex-col gap-2 rounded-lg border p-3"
-          data-testid="session-graph-node-card"
-        >
-          <div className="flex flex-wrap items-center gap-1.5">
-            <NodeStateChip state={node.state} />
-            {derived?.active && <ActiveBadge />}
-            {derived?.blocked && <BlockedBadge blockers={derived.blockers} />}
-          </div>
-          <div className="text-base font-semibold">
-            {node.title}
-            {issue && (
-              <span className="ml-1 text-sm font-normal text-muted-foreground">
-                {issue}
-              </span>
-            )}
-          </div>
-          {node.description && (
-            <p className="line-clamp-4 text-sm whitespace-pre-wrap">
-              {node.description}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => openGraphView(graphId, nodeId)}
-            >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-              Open in graph
-            </Button>
-            <NativeSelect
-              aria-label="Change node"
-              value=""
-              onChange={e => changeNode(e.target.value)}
-              className="h-8 w-40 py-0"
-            >
-              <NativeSelectOption value="">Change node…</NativeSelectOption>
-              {detail.nodes
-                .filter(n => n.id !== nodeId)
-                .map(n => (
-                  <NativeSelectOption key={n.id} value={n.id}>
-                    {n.title}
-                  </NativeSelectOption>
-                ))}
-            </NativeSelect>
-          </div>
-        </div>
-      </div>
-
       <Section title="Before and after">
         <ul className="flex flex-col gap-0.5">
           {before.map(({ kind, ref }) => {
@@ -409,7 +482,30 @@ function WorkerView({
           </ul>
         </Section>
       )}
+    </>
+  )
+}
 
+/** Expert layer of a worker: the file id and state, other sessions. */
+function WorkerDetails({
+  session,
+  nodeId,
+  detail,
+}: {
+  session: PanelSession
+  nodeId: string
+  detail: GraphDetail
+}) {
+  const node = detail.nodes.find(n => n.id === nodeId)
+  if (!node) return null
+  const others = (detail.derived[nodeId]?.serving ?? []).filter(
+    s => s.sessionId !== session.id
+  )
+  return (
+    <>
+      <p className="border-b px-4 py-2 font-mono text-xs text-muted-foreground">
+        id {node.id} · state {node.state}
+      </p>
       <Section title="Other sessions on this node">
         {others.length === 0 ? (
           <p className="text-sm text-muted-foreground">None.</p>
@@ -446,7 +542,69 @@ function WorkerView({
   )
 }
 
-function ManagerView({
+function ManagerCard({
+  session,
+  graphId,
+  detail,
+}: {
+  session: PanelSession
+  graphId: string
+  detail: GraphDetail
+}) {
+  const { data: requests } = useGraphRequests(graphId)
+  const { data: changes } = useGraphChanges(graphId)
+  const open = (requests ?? []).filter(r => r.status === 'open').length
+  const unseen = (changes ?? []).filter(c => !c.seen).length
+  const counted = detail.nodes.filter(n => n.state !== 'dropped')
+  const done = counted.filter(n => n.state === 'done').length
+
+  return (
+    <div
+      className="flex flex-col gap-2 border-b p-4 text-sm"
+      data-testid="session-graph-manager-card"
+    >
+      <GraphLink graphId={graphId} title={detail.summary.title} />
+      <p className="text-muted-foreground">
+        This session looks after the whole graph.
+      </p>
+      <ProgressBar done={done} total={counted.length} />
+      {open > 0 && (
+        <button
+          type="button"
+          className="w-fit text-left text-orange-600 hover:underline dark:text-orange-400"
+          onClick={() => openGraphView(graphId)}
+        >
+          {open === 1
+            ? '1 request waits for you'
+            : `${open} requests wait for you`}
+        </button>
+      )}
+      {unseen > 0 && (
+        <button
+          type="button"
+          className="w-fit text-left text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => openGraphView(graphId)}
+        >
+          {unseen === 1 ? '1 new change' : `${unseen} new changes`}
+        </button>
+      )}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => openGraphView(graphId)}
+        >
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          Open graph
+        </Button>
+        <LinkButton session={session} label="Change link…" />
+      </div>
+    </div>
+  )
+}
+
+function ManagerDetails({
   graphId,
   detail,
 }: {

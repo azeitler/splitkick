@@ -909,3 +909,14 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 - [x] Usage per account (Keychain/files/cache per folder), Usage pane + title bar badge, MCP `get_usage.claude_accounts`
 - [x] Tests (Rust + TS + e2e), gates, CHANGELOG
 - Result: all gates green; a real second login is still to be checked end to end by Andreas.
+
+## 2026-11-06 — Graph detail panels: simple layer + "Show details" (#88 follow-up)
+
+- [x] Node detail: title, parent, state (Idea/Planned/Done/Dropped), "Waiting for" with links, open requests → Review, description (link when empty), sessions; expert layer behind "Show details"
+- [x] Session graph panel: one card (worker: node, waiting for, next; manager: progress, requests, changes), "Change link…" → Link to Graph; expert layer behind "Show details"
+- [x] One saved choice `graph_details_shown` (UI state, Rust + TS); plain state labels in chips
+- [x] Tests (vitest), local e2e text, docs (userguide, graph-layer.md, CHANGELOG)
+- [x] Docs site: `guide/graphs.md` + 8 screenshots, demo graph in `scripts/demo-data.mjs` (splitkick-docs, uncommitted)
+- Result: check:all green (3755 unit tests, rust tests exit 0); mocked e2e 9/9 alone (one startup flake under parallel load).
+- [x] Follow-up: "Relationships (n)" foldout above "Show details" in both panels (own saved choice `graph_relations_shown`); docs page + 2 new screenshots
+- Result: typecheck, lint, rust fmt, clippy green; unit 3754/3759 in the full run, the 5 failures (MagicModal, PreferencesDialog) pass alone (load).
