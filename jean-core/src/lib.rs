@@ -67,6 +67,7 @@ mod pi_cli;
 mod platform;
 mod prerequisites;
 mod projects;
+pub mod remote_instances;
 mod server_update;
 pub mod session_backup;
 mod terminal;

@@ -1295,6 +1295,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rust-embed",
+ "security-framework",
  "serde",
  "serde_json",
  "serde_yaml",

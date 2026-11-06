@@ -232,6 +232,7 @@ pub async fn start_server(
             "/api/invoke",
             post(invoke_handler).layer(DefaultBodyLimit::max(INVOKE_BODY_LIMIT)),
         )
+        .route("/api/mcp/call", post(mcp_call_handler))
         .route("/api/init", get(init_handler))
         .route("/api/version", get(version_handler))
         .route("/api/files/{*filepath}", get(file_handler))
@@ -502,6 +503,51 @@ async fn invoke_handler(
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "ok": false, "error": format!("Command panicked: {error}") })),
+        )
+            .into_response(),
+    }
+}
+
+/// Run one MCP tool for another Splitkick instance: `POST /api/mcp/call` with
+/// `{ tool, arguments, origin, hop, depth }` (issue #94).
+///
+/// Same auth as `/api/invoke`. The loop guard and the v1 refusals live in
+/// `remote_instances::serve_remote_call`. Answers `{ ok: true, result }` with
+/// the MCP tool result, or `{ ok: false, error, code }` with 401 (bad token)
+/// or 422 (the tool failed or was refused).
+async fn mcp_call_handler(
+    headers: HeaderMap,
+    Query(params): Query<WsAuth>,
+    State(state): State<AppState>,
+    Json(request): Json<crate::remote_instances::RemoteCallRequest>,
+) -> Response {
+    if state.token_required
+        && !request_is_authorized(params.token.as_deref(), &headers, &state.token)
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "ok": false, "error": "Invalid token" })),
+        )
+            .into_response();
+    }
+
+    // Like `/api/invoke`: tools do blocking work, keep them off the workers.
+    let app = state.app.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        tauri::async_runtime::block_on(crate::remote_instances::serve_remote_call(&app, request))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(result)) => Json(serde_json::json!({ "ok": true, "result": result })).into_response(),
+        Ok(Err(error)) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "ok": false, "error": error.message, "code": error.code })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "ok": false, "error": format!("Tool panicked: {error}") })),
         )
             .into_response(),
     }

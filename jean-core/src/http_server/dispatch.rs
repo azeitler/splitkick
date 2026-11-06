@@ -199,6 +199,34 @@ pub async fn dispatch_command(
         }
 
         // =====================================================================
+        // Remote connections (#94). Tokens go in, never out: the list only
+        // says `hasToken`. The token read is desktop-only
+        // (`get_remote_connection_secrets` in src-tauri), so Web Access
+        // cannot reach it.
+        // =====================================================================
+        "list_remote_connections" => {
+            to_value(crate::remote_instances::list_remote_connections(app)?)
+        }
+        "save_remote_connection" => {
+            let connection = from_field(&args, "connection")?;
+            to_value(crate::remote_instances::save_remote_connection(
+                app, connection,
+            )?)
+        }
+        "remove_remote_connection" => {
+            let id: String = from_field(&args, "id")?;
+            crate::remote_instances::remove_remote_connection(app, &id)?;
+            Ok(Value::Null)
+        }
+        "import_remote_connections" => {
+            let connections = from_field(&args, "connections")?;
+            to_value(crate::remote_instances::import_remote_connections(
+                app,
+                connections,
+            )?)
+        }
+
+        // =====================================================================
         // Activity log
         // =====================================================================
         "list_recent_activity" => {

@@ -93,6 +93,8 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "start_run_environment",
     "unarchive_session",
     "unarchive_worktree",
+    // Forwards to another instance, which applies its own limits too (#94).
+    "remote_tool",
     // Graph layer writes
     "create_node",
     "update_node",
@@ -155,7 +157,8 @@ const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "Take them from the list and search tools.\n",
     "- Sessions come with a link (splitkick://session/<id>). To point the user to a session, ",
     "write a markdown link with its name: [Session name](link).\n",
-    "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes."
+    "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes.\n",
+    "- For another machine (\"on mb16\"), call list_instances, then remote_tool with that instance."
 );
 
 pub fn initialize_result(role: McpRole) -> Value {
@@ -401,7 +404,19 @@ pub fn tool_registry() -> Value {
     if let Some(graphs) = tool_registry_graphs().as_array() {
         tools.extend(graphs.iter().cloned());
     }
+    if let Some(remote) = tool_registry_remote().as_array() {
+        tools.extend(remote.iter().cloned());
+    }
     Value::Array(tools)
+}
+
+/// Tools that reach other Splitkick instances (#94). Contract:
+/// `docs/developer/remote-mcp.md`.
+fn tool_registry_remote() -> Value {
+    json!([
+        {"name":"list_instances","description":"List the other Splitkick instances the user connected (Remote Connections): id, name, url, reachable, version, and error when unreachable. Use the name or id with remote_tool.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"remote_tool","description":"Run one Splitkick MCP tool on another connected Splitkick instance and return its result unchanged, tagged with the instance. Example: instance \"mb16\", tool \"list_projects\", then \"send_chat_message\" with a sessionId from that instance. Ids and links in the result belong to that instance: pass them back through remote_tool, never to local tools. One hop only: the remote cannot forward further. Graph writes (create_node, update_node, set_node_state, send_request, set_serves, create_graph) are refused remotely; read and session tools work. Tools that act on the calling session (get_current_context, set_session_status without sessionId) have no session on the remote side.","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"Instance name or id from list_instances."},"tool":{"type":"string","description":"MCP tool name on the remote instance, e.g. list_projects, list_all_sessions, read_session_messages, send_chat_message."},"arguments":{"type":"object","description":"Arguments for that tool, as its own schema describes.","additionalProperties":true}},"required":["instance","tool"],"additionalProperties":false}},
+    ])
 }
 
 /// Graph layer tools. Contract: `docs/developer/graph-layer.md` ("MCP tools").
@@ -541,6 +556,11 @@ pub async fn call_tool(
         }
     }
 
+    // The remote's MCP result passes through as it is, not wrapped again.
+    if name == "remote_tool" {
+        return crate::remote_instances::remote_tool(app, arguments, source, depth).await;
+    }
+
     let result_json = run_tool(app, name, arguments, source).await?;
     Ok(json!({
         "content": [{
@@ -616,6 +636,7 @@ async fn run_tool(
                 .await
                 .map_err(ToolError::internal)
         }
+        "list_instances" => crate::remote_instances::list_instances(app, source).await,
         "get_worktree" => {
             let worktree_id = require_str(&args, "worktreeId")?;
             dispatch_command(app, "get_worktree", json!({ "worktreeId": worktree_id }))
