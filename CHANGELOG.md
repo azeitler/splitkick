@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Custom magic prompts are marked.** Settings → Magic Prompts shows a
+  "Custom" badge on each prompt that differs from its default. This also
+  marks a saved copy of an older default, which no longer gets updates.
 - **Agents can use your other Splitkick instances** (#94). Two new MCP tools:
   `list_instances` shows the connected instances (reachable, version) and
   `remote_tool` runs one MCP tool on one of them, for example "send a message
