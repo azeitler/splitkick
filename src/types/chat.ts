@@ -374,6 +374,8 @@ export interface Session {
   queued_messages?: QueuedMessage[]
   /** Follow-up notes for future turns, never sent automatically (#46) */
   follow_ups?: FollowUp[]
+  /** Files and URLs the agent registered as outputs */
+  artifacts?: Artifact[]
   /** Total number of runs in this session's metadata (for "more on disk" check) */
   total_runs?: number
   /** Index (in metadata.runs) of the first run included in `messages`. 0 = oldest loaded. */
@@ -1631,6 +1633,27 @@ export type FollowUpOp =
   | { kind: 'remove'; id: string }
   | { kind: 'reorder'; ids: string[] }
   | { kind: 'clear_done' }
+
+// ============================================================================
+// Artifact List Types
+// ============================================================================
+
+/** A file or URL the agent registered as an output (MCP `add_artifact`). */
+export interface Artifact {
+  id: string
+  title: string
+  /** Absolute path, or an http(s)/file URL */
+  target: string
+  note?: string
+  /** Unix timestamp in milliseconds */
+  created_at: number
+}
+
+/** One change to an artifact list, applied atomically by the backend. */
+export type ArtifactOp =
+  | { kind: 'add'; title: string; target: string; note?: string }
+  | { kind: 'remove'; id: string }
+  | { kind: 'clear' }
 
 // ============================================================================
 // Message Queue Types

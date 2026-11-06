@@ -12,6 +12,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Rename in the worktree right-click menu.** Rename was only on
   double-click and in the command palette. The menu item opens the same
   inline name field, also for the base worktree (#106).
+- **Artifacts: the files and links a session produced, in the left panel.**
+  Agents register their outputs (a report, a screenshot, an HTML page, a
+  preview URL) with the new `add_artifact` MCP tool. The left panel gets a
+  fourth tab, Artifacts, with a count; the button with the same count next to
+  the follow-ups button opens it. Click an item to open it: HTML and SVG in
+  the sandboxed preview, other files in the file viewer, URLs in the in-app
+  browser. The external button opens it outside Splitkick; remove one or clear
+  all. Registering the same target again updates it. The list stays with the
+  session through fork, move and transfer, and shows in Web Access and on the
+  phone (#107).
 
 ## [1.5.2] - 2026-11-06
 

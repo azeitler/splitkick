@@ -931,3 +931,15 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 - Result: check:all green (3755 unit tests, rust tests exit 0); mocked e2e 9/9 alone (one startup flake under parallel load).
 - [x] Follow-up: "Relationships (n)" foldout above "Show details" in both panels (own saved choice `graph_relations_shown`); docs page + 2 new screenshots
 - Result: typecheck, lint, rust fmt, clippy green; unit 3754/3759 in the full run, the 5 failures (MagicModal, PreferencesDialog) pass alone (load).
+
+# Artifacts tab (#107)
+
+- [x] Port the backend from `wip/artifacts-panel` (MCP `add_artifact`, `chat/artifacts.rs`, dispatch); tests OS-independent; fork/move/transfer keep the list.
+- [x] Left panel tab Artifacts with count; toolbar button toggles it; HTML/SVG open in the sandboxed preview, files in the viewer, URLs in the in-app browser.
+- [x] E2E (local harness) + live check in an isolated dev build (`tmp/data-107`, ports 1460/3487).
+
+## Review
+
+- Gates: rustfmt (3 crates), clippy 1.99.1 (3 crates), jean-core + src-tauri lib tests, typecheck, eslint, branding, vitest (3956) green.
+- E2E found two bugs: the stub could not read the #102 MCP config file (every `STUB:mcp` test was broken), and the viewer label hid the HTML preview.
+- `e2e/tests/session-network.spec.ts` has 2 failures that also fail with HEAD's ContextPanel (not this change).

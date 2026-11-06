@@ -2,7 +2,7 @@
 
 `bun run test:e2e:local` checks the features that need a real backend or two
 instances: session transfer, remote connections, session links, follow-ups,
-MCP sends and parent/child sessions (issue #65). It runs on one Mac and never
+artifacts, MCP sends and parent/child sessions (issue #65). It runs on one Mac and never
 touches your real data.
 
 The mocked suite (`bun run test:e2e`, see [testing.md](testing.md)) stays the
@@ -26,6 +26,7 @@ fast check for the UI alone.
 | Transfer A → B (#35)            | `transfer.spec.ts`          | Real menu + dialog; B has the history, the pasted text and image, the saved context; the follow-up on B gets all three                                                                                               |
 | Session link (#44)              | `sessions.spec.ts`          | Link shows the session name and path, unknown id shows "not found", click opens it                                                                                                                                   |
 | Follow-up list (#46)            | `sessions.spec.ts`          | MCP `add_follow_up` fills the badge and panel; add, mark done, reload                                                                                                                                                |
+| Artifacts (#107)                | `sessions.spec.ts`          | MCP `add_artifact` for an HTML page, a file and a URL fills the badge and the Artifacts tab; HTML opens in the sandboxed preview, the file in the viewer, the URL in a new tab; remove, reload                       |
 | MCP send keeps the mode (#61)   | `sessions.spec.ts`          | `send_chat_message` with `executionMode: "yolo"` runs in Yolo and keeps it after reload                                                                                                                              |
 | Parent/child inserts (#62)      | `sessions.spec.ts`          | "Sent to session …" and "Started session …" in the parent, "Started by …" in the child                                                                                                                               |
 | Remote MCP (#94)                | `remote-mcp.spec.ts`        | Connection list and file hold no token, no Keychain item; `list_instances` → `remote_tool` `create_session`/`send_chat_message`/`read_session_messages` on B, B's UI shows it; unknown instance, bad token, graph write and loop refused, route without token 401 |

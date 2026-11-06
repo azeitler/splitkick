@@ -33,6 +33,7 @@ import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbar
 import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
+import { ArtifactsButton } from '@/components/chat/toolbar/ArtifactsButton'
 import { FollowUpsButton } from '@/components/chat/toolbar/FollowUpsButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
 import {
@@ -153,6 +154,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   followUpsOpen = false,
   onToggleFollowUps,
   followUpsShortcut,
+  artifactCount = 0,
   availableMcpServers,
   enabledMcpServers,
   onToggleMcpServer,
@@ -703,14 +705,17 @@ export const ChatToolbar = memo(function ChatToolbar({
         </div>
 
         {/* Far right of the bar, outside the scrolling controls (#66) */}
-        {onToggleFollowUps && (
+        {(onToggleFollowUps || artifactCount > 0) && (
           <div className="ml-auto flex shrink-0 items-center">
-            <FollowUpsButton
-              openCount={followUpCount}
-              open={followUpsOpen}
-              onToggle={onToggleFollowUps}
-              shortcut={followUpsShortcut}
-            />
+            <ArtifactsButton count={artifactCount} />
+            {onToggleFollowUps && (
+              <FollowUpsButton
+                openCount={followUpCount}
+                open={followUpsOpen}
+                onToggle={onToggleFollowUps}
+                shortcut={followUpsShortcut}
+              />
+            )}
           </div>
         )}
 

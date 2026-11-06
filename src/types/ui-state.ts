@@ -159,7 +159,7 @@ export interface UIState {
   /** File browser sidebar visibility, defaults to false */
   file_browser_visible?: boolean
   /** Active tab of the left context panel (#98), defaults to "files" */
-  context_panel_tab?: 'files' | 'network' | 'graph' | null
+  context_panel_tab?: 'files' | 'network' | 'graph' | 'artifacts' | null
   /** Whether the session chat is using the reduced-chrome zen layout */
   zen_mode?: boolean
   /** Active session ID per worktree (for restoring open tabs) */

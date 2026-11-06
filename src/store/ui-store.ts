@@ -125,19 +125,21 @@ export type CliLoginModalType =
   | 'coderabbit'
   | null
 
-/** Tabs of the left context panel (#98): file tree, session network, graph. */
-export type ContextPanelTab = 'files' | 'network' | 'graph'
+/** Tabs of the left context panel (#98): file tree, session network, graph,
+ *  and the artifacts the agent registered (#107). */
+export type ContextPanelTab = 'files' | 'network' | 'graph' | 'artifacts'
 
 export const CONTEXT_PANEL_TABS: readonly ContextPanelTab[] = [
   'files',
   'network',
   'graph',
+  'artifacts',
 ]
 
 interface UIState {
   leftSidebarVisible: boolean
   leftSidebarSize: number // Width in pixels, persisted across sessions
-  /** Left context panel visibility (Files | Network | Graph, #98) */
+  /** Left context panel visibility (Files | Network | Graph | Artifacts, #98) */
   fileBrowserVisible: boolean
   /** Left context panel width in pixels, persisted across sessions */
   fileBrowserSize: number

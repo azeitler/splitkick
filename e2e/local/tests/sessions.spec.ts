@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { createSession, readEnv } from '../helpers'
 import { goToSession, openApp, send, shot, uniqueName } from './ui'
@@ -65,6 +67,75 @@ test('MCP add_follow_up fills the follow-up list (#46)', async ({ page }) => {
   await page.reload()
   await goToSession(page, name)
   await expect(page.getByTestId('follow-ups-badge')).toHaveText('1')
+})
+
+test('MCP add_artifact fills the Artifacts tab (#107)', async ({ page }) => {
+  const { a, alphaA } = readEnv()
+  const name = uniqueName('Artifacts')
+  await createSession(a, alphaA, name)
+  const out = join(alphaA.worktreePath, 'e2e-out')
+  mkdirSync(out, { recursive: true })
+  writeFileSync(join(out, 'report.html'), '<h1>E2E report page</h1>')
+  writeFileSync(join(out, 'notes.md'), 'E2E notes file')
+
+  await openApp(page, a)
+  await goToSession(page, name)
+  await send(
+    page,
+    [
+      'STUB:mcp add_artifact {"title":"E2E report","target":"e2e-out/report.html","note":"Generated page"}',
+      'STUB:mcp add_artifact {"title":"E2E notes","target":"e2e-out/notes.md"}',
+      'STUB:mcp add_artifact {"title":"E2E preview","target":"https://example.com/e2e-preview"}',
+    ].join('\n')
+  )
+
+  await expect(page.getByTestId('artifacts-badge')).toHaveText('3')
+  await page.getByRole('button', { name: /^Artifacts \(/ }).click()
+  await expect(page.getByTestId('context-panel-tab-artifacts')).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(page.getByTestId('artifacts-tab-count')).toHaveText('3')
+  const list = page.getByRole('list', { name: 'Artifacts' })
+  await expect(list).toContainText('E2E report')
+  await expect(list).toContainText('Generated page')
+  // The relative target was stored as a path inside the worktree, and is
+  // shown relative to it.
+  await expect(list).toContainText('e2e-out/report.html')
+  await expect(
+    list.locator(`[title="${join(out, 'report.html')}"]`)
+  ).toBeVisible()
+  await shot(page, 'artifacts-tab')
+
+  // HTML opens in the sandboxed preview of the file viewer.
+  await list.getByText('E2E report', { exact: true }).click()
+  const frame = page.locator('iframe[sandbox]')
+  await expect(frame).toBeVisible()
+  await expect(
+    frame.contentFrame().getByRole('heading', { name: 'E2E report page' })
+  ).toBeVisible()
+  // The file viewer closes only from its X (no ESC, by design).
+  const closeViewer = () =>
+    page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await closeViewer()
+  await expect(frame).toBeHidden()
+
+  // Another file opens in the file viewer.
+  await list.getByText('E2E notes', { exact: true }).click()
+  await expect(page.getByText('E2E notes file')).toBeVisible()
+  await closeViewer()
+
+  // Web Access has no in-app browser: a URL opens in a new tab.
+  const popup = page.waitForEvent('popup')
+  await list.getByText('E2E preview', { exact: true }).click()
+  await expect(await popup).toHaveURL('https://example.com/e2e-preview')
+
+  await list.getByRole('button', { name: 'Remove E2E notes' }).click()
+  await expect(page.getByTestId('artifacts-badge')).toHaveText('2')
+
+  await page.reload()
+  await goToSession(page, name)
+  await expect(page.getByTestId('artifacts-badge')).toHaveText('2')
 })
 
 test('MCP send keeps executionMode and links both sessions (#61, #62)', async ({
