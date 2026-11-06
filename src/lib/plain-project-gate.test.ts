@@ -138,6 +138,23 @@ describe('canvas and window gates (source)', () => {
     expect(canvas).toContain(
       "CANVAS_FILTER_TABS.filter(tab => tab.value === 'all')"
     )
+    expect(canvas).toContain("'Plain project (no git)'")
+    expect(canvas).toContain("title={isPlain ? 'Base session' : undefined}")
+  })
+
+  it('offers no "build in a new worktree" plan approval for a plain project', () => {
+    const chat = readFileSync(
+      `${process.cwd()}/src/components/chat/ChatWindow.tsx`,
+      'utf8'
+    )
+    expect(chat).toContain(
+      'const canBuildInWorktree = !!worktree?.project_id && !isPlainProject(project)'
+    )
+    // Every worktree approval entry point uses the gate.
+    expect(chat).not.toMatch(
+      /worktree\?\.project_id\s*\?\s*\w*Worktree(Build|Yolo)/
+    )
+    expect(chat.match(/canBuildInWorktree\s*\?/g)?.length).toBe(10)
   })
 
   it('closes the new worktree modal for a plain project and stops polling', () => {

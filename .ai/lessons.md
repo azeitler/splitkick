@@ -387,3 +387,18 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
   files by name (hunks for shared files), leave nothing uncommitted, never
   `git add -A`, isolate real app builds (`SPLITKICK_DATA_DIR=tmp/...`, a
   free port), and name the other sessions working in parallel.
+
+## Shared checkout: never truncate a file before you read it (2026-11-06)
+
+- `open(p, 'w').write(transform(open(p).read()))` opens for writing first,
+  so the file is empty when it is read. It wiped `ChatWindow.tsx` with
+  another session's uncommitted work. Read into a variable, transform,
+  then write: `src = open(p).read(); out = transform(src); open(p, 'w')`.
+- If it happens: Splitkick snapshots the tree before every chat turn.
+  `git for-each-ref --sort=-creatordate refs/jean/checkpoints` and
+  `git show <ref>:<path>` restore the file; tell the user which session's
+  work may be missing since that snapshot.
+- Staging part of a shared file with `git apply --unidiff-zero` put lines in
+  the wrong place (#93). Build the index blob instead: HEAD text plus your
+  own edits, `git hash-object -w`, `git update-index --cacheinfo`, then
+  check an export of the commit (`git archive HEAD | tar -x -C tmp/...`).

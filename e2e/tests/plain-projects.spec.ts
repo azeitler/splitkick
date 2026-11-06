@@ -1,5 +1,11 @@
 import type { Locator, Page } from '@playwright/test'
-import { test, expect, sidebar, MOD } from '../fixtures/tauri-mock'
+import {
+  test,
+  expect,
+  ensureSidebarOpen,
+  sidebar,
+  MOD,
+} from '../fixtures/tauri-mock'
 import { createProject, createWorktree } from '../fixtures/mock-data'
 
 /**
@@ -54,8 +60,6 @@ test.use({
   deviceScaleFactor: 2,
   responseOverrides: {
     list_projects: [app, paperwork],
-    // Without it the sidebar's graph section crashes on a null list.
-    list_graphs: [],
     list_worktrees: [appMain, appFeature, paperworkBase],
     browse_directory: {
       current_path: NEW_FOLDER,
@@ -84,10 +88,7 @@ test.describe('Plain projects (#93)', () => {
     await expect(mockPage.getByText('Loading Splitkick...')).toHaveCount(0, {
       timeout: 90_000,
     })
-    await mockPage.getByRole('button', { name: 'Show sidebar' }).click()
-    await expect(mockPage.getByTestId('sidebar-home-row')).toBeVisible({
-      timeout: 30_000,
-    })
+    await ensureSidebarOpen(mockPage)
     const panel = sidebar(mockPage)
     await expect(
       panel.getByText('Paperwork', { exact: true }).first()
