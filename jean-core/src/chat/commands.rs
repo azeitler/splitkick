@@ -16,8 +16,8 @@ use super::registry::{cancel_process, cancel_process_if_running};
 use super::run_log;
 use super::storage::{
     cleanup_combined_context_files, delete_session_data, get_base_index_path, get_data_dir,
-    get_index_path, get_session_dir, load_metadata, load_sessions, save_metadata,
-    with_existing_metadata_mut, with_metadata_mut, with_sessions_mut,
+    get_index_path, get_session_dir, load_metadata, load_sessions, with_existing_metadata_mut,
+    with_metadata_mut, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
@@ -2656,14 +2656,14 @@ pub async fn set_active_session(
     })?;
 
     // Update last_opened_at timestamp on the session metadata
-    if let Ok(Some(mut metadata)) = load_metadata(&app, &session_id) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let _ = super::storage::update_metadata_if_exists(&app, &session_id, |metadata| {
         metadata.last_opened_at = Some(now);
-        let _ = save_metadata(&app, &metadata);
-    }
+        true
+    });
 
     emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
     Ok(())
@@ -2678,22 +2678,45 @@ pub async fn set_active_session(
 pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<(), String> {
     log::trace!("Setting last_opened_at for session: {session_id}");
 
-    if let Ok(Some(mut metadata)) = load_metadata(&app, &session_id) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        metadata.last_opened_at = Some(now);
-        if metadata.primary_surface.as_deref() == Some("terminal") {
-            metadata.waiting_for_input = false;
-            metadata.waiting_for_input_type = None;
-        }
-        save_metadata(&app, &metadata)?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let mut worktree_id = None;
+    super::storage::update_metadata_if_exists(&app, &session_id, |metadata| {
+        mark_metadata_opened(metadata, now);
+        worktree_id = Some(metadata.worktree_id.clone());
+        true
+    })?;
+    if let Some(worktree_id) = worktree_id {
         // Broadcast so other clients (native ↔ web) drop stale last_opened_at.
-        emit_worktree_sessions_cache_invalidation(&app, &metadata.worktree_id);
+        emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
     }
 
     Ok(())
+}
+
+/// Set one run back to `Running` on disk. Reloads under the metadata lock:
+/// `resume_session` spawns a tail per run, and the tails write the same file.
+fn mark_run_running(app: &AppHandle, session_id: &str, run_id: &str) -> Result<(), String> {
+    super::storage::update_metadata_if_exists(app, session_id, |metadata| {
+        let Some(run) = metadata.find_run_mut(run_id) else {
+            return false;
+        };
+        run.status = RunStatus::Running;
+        true
+    })?;
+    Ok(())
+}
+
+/// Stamp `last_opened_at`. Viewing a terminal session also acknowledges its
+/// attention signal.
+fn mark_metadata_opened(metadata: &mut super::types::SessionMetadata, now: u64) {
+    metadata.last_opened_at = Some(now);
+    if metadata.primary_surface.as_deref() == Some("terminal") {
+        metadata.waiting_for_input = false;
+        metadata.waiting_for_input_type = None;
+    }
 }
 
 /// Bulk-update last_opened_at for multiple sessions in a single call.
@@ -2717,17 +2740,15 @@ pub async fn set_sessions_last_opened_bulk(
     let mut updated = false;
     let mut result = Ok(());
     for session_id in &session_ids {
-        if let Ok(Some(mut metadata)) = load_metadata(&app, session_id) {
-            metadata.last_opened_at = Some(now);
-            if metadata.primary_surface.as_deref() == Some("terminal") {
-                metadata.waiting_for_input = false;
-                metadata.waiting_for_input_type = None;
-            }
-            if let Err(error) = save_metadata(&app, &metadata) {
+        match super::storage::update_metadata_if_exists(&app, session_id, |metadata| {
+            mark_metadata_opened(metadata, now);
+            true
+        }) {
+            Ok(written) => updated |= written,
+            Err(error) => {
                 result = Err(error);
                 break;
             }
-            updated = true;
         }
     }
 
@@ -8932,7 +8953,6 @@ pub async fn resume_session(
     worktree_id: String,
 ) -> Result<ResumeSessionResponse, String> {
     use super::run_log::RunLogWriter;
-    use super::storage::save_metadata;
 
     log::trace!("Attempting to resume session: {session_id}");
 
@@ -8948,7 +8968,7 @@ pub async fn resume_session(
     }
 
     // Load the metadata to find resumable runs
-    let mut metadata = match load_metadata(&app, &session_id)? {
+    let metadata = match load_metadata(&app, &session_id)? {
         Some(m) => m,
         None => {
             log::trace!("No metadata found for session: {session_id}");
@@ -8999,10 +9019,7 @@ pub async fn resume_session(
             );
 
             // Mark the run as Running again
-            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-                metadata_run.status = RunStatus::Running;
-            }
-            save_metadata(&app, &metadata)?;
+            mark_run_running(&app, &session_id, &run_id)?;
 
             let app_clone = app.clone();
             let session_id_clone = session_id.clone();
@@ -9082,10 +9099,7 @@ pub async fn resume_session(
                 output_file
             );
 
-            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-                metadata_run.status = RunStatus::Running;
-            }
-            save_metadata(&app, &metadata)?;
+            mark_run_running(&app, &session_id, &run_id)?;
 
             if !super::registry::register_detached_process(session_id.clone(), pid) {
                 log::warn!("Resume Pi session {session_id} was cancelled before tailing started");
@@ -9173,10 +9187,7 @@ pub async fn resume_session(
                 continue;
             }
             let output_file = session_dir.join(format!("{run_id}.jsonl"));
-            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-                metadata_run.status = RunStatus::Running;
-            }
-            save_metadata(&app, &metadata)?;
+            mark_run_running(&app, &session_id, &run_id)?;
             if !super::registry::register_detached_process(session_id.clone(), pid) {
                 return Ok(ResumeSessionResponse {
                     resumed: false,
@@ -9256,10 +9267,7 @@ pub async fn resume_session(
             };
             let output_file = session_dir.join(format!("{run_id}.jsonl"));
 
-            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-                metadata_run.status = RunStatus::Running;
-            }
-            save_metadata(&app, &metadata)?;
+            mark_run_running(&app, &session_id, &run_id)?;
 
             if !super::registry::register_detached_process(session_id.clone(), pid) {
                 log::warn!("Resume Kimi session {session_id} was cancelled before tailing started");
@@ -9360,10 +9368,7 @@ pub async fn resume_session(
                 output_file
             );
 
-            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-                metadata_run.status = RunStatus::Running;
-            }
-            save_metadata(&app, &metadata)?;
+            mark_run_running(&app, &session_id, &run_id)?;
 
             if !super::registry::register_detached_process(session_id.clone(), pid) {
                 log::warn!("Resume Grok session {session_id} was cancelled before tailing started");
@@ -9466,10 +9471,7 @@ pub async fn resume_session(
         );
 
         // Mark the run as Running again (from Resumable)
-        if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
-            metadata_run.status = RunStatus::Running;
-        }
-        save_metadata(&app, &metadata)?;
+        mark_run_running(&app, &session_id, &run_id)?;
 
         // Register the PID in the in-memory process registry so cancel works
         // Returns false if a pending cancel was queued (process killed immediately)

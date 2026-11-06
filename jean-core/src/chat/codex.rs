@@ -1465,34 +1465,32 @@ fn persist_codex_recovered_completion_state(
     session_id: &str,
     run_id: &str,
 ) -> Result<(), String> {
-    let Some(mut metadata) = super::storage::load_metadata(app, session_id)? else {
-        return Ok(());
-    };
+    super::storage::update_metadata_if_exists(app, session_id, |metadata| {
+        let is_plan_mode = metadata
+            .runs
+            .iter()
+            .find(|run| run.run_id == run_id)
+            .and_then(|run| run.execution_mode.as_deref())
+            == Some("plan");
 
-    let is_plan_mode = metadata
-        .runs
-        .iter()
-        .find(|run| run.run_id == run_id)
-        .and_then(|run| run.execution_mode.as_deref())
-        == Some("plan");
-
-    if is_plan_mode {
-        metadata.waiting_for_input = true;
-        metadata.waiting_for_input_type = Some("plan".to_string());
-        metadata.is_reviewing = false;
-        if metadata.status_override.as_deref() == Some("review") {
-            metadata.status_override = None;
+        if is_plan_mode {
+            metadata.waiting_for_input = true;
+            metadata.waiting_for_input_type = Some("plan".to_string());
+            metadata.is_reviewing = false;
+            if metadata.status_override.as_deref() == Some("review") {
+                metadata.status_override = None;
+            }
+        } else {
+            metadata.waiting_for_input = false;
+            metadata.waiting_for_input_type = None;
+            metadata.is_reviewing = false;
+            if metadata.status_override.as_deref() == Some("review") {
+                metadata.status_override = None;
+            }
         }
-    } else {
-        metadata.waiting_for_input = false;
-        metadata.waiting_for_input_type = None;
-        metadata.is_reviewing = false;
-        if metadata.status_override.as_deref() == Some("review") {
-            metadata.status_override = None;
-        }
-    }
-
-    super::storage::save_metadata(app, &metadata)
+        true
+    })?;
+    Ok(())
 }
 
 /// Resume a Codex session after Jean crashed.

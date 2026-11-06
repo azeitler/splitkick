@@ -13,7 +13,8 @@ use uuid::Uuid;
 use crate::activity::{ActivityKind, NewActivity};
 
 use super::storage::{
-    get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
+    get_session_dir, list_all_session_ids, load_metadata, update_metadata_if_exists,
+    with_existing_metadata_mut, with_metadata_mut,
 };
 use super::types::{
     is_claude_compaction_summary_text, Backend, ChatMessage, ContentBlock, LimitHit,
@@ -2350,37 +2351,31 @@ Move services between instances without downtime.
 /// This is called synchronously when the user cancels, before emitting chat:cancelled event.
 /// This ensures the metadata is updated immediately, not after tail_claude_output times out.
 pub fn mark_running_run_cancelled(app: &tauri::AppHandle, session_id: &str) -> Result<(), String> {
-    let mut metadata = match load_metadata(app, session_id)? {
-        Some(m) => m,
-        None => return Ok(()), // No metadata = nothing to cancel
-    };
-
     let now = now_timestamp();
-    let mut modified = false;
+    update_metadata_if_exists(app, session_id, |metadata| {
+        let mut modified = false;
 
-    for run in &mut metadata.runs {
-        if run.status == RunStatus::Running {
-            run.status = RunStatus::Cancelled;
-            run.ended_at = Some(now);
-            run.cancelled = true;
-            // Set a placeholder assistant_message_id so this run is NOT treated
-            // as undo_send during the race window between this immediate metadata
-            // write and the deferred run_log_writer.cancel() in commands.rs.
-            // The command handler will overwrite with the real ID (or None for
-            // instant cancel with no content).
-            run.assistant_message_id = Some(format!("pending-{}", run.run_id));
-            modified = true;
-            log::trace!(
-                "Marked run {} as cancelled for session {}",
-                run.run_id,
-                session_id
-            );
+        for run in &mut metadata.runs {
+            if run.status == RunStatus::Running {
+                run.status = RunStatus::Cancelled;
+                run.ended_at = Some(now);
+                run.cancelled = true;
+                // Set a placeholder assistant_message_id so this run is NOT treated
+                // as undo_send during the race window between this immediate metadata
+                // write and the deferred run_log_writer.cancel() in commands.rs.
+                // The command handler will overwrite with the real ID (or None for
+                // instant cancel with no content).
+                run.assistant_message_id = Some(format!("pending-{}", run.run_id));
+                modified = true;
+                log::trace!(
+                    "Marked run {} as cancelled for session {}",
+                    run.run_id,
+                    session_id
+                );
+            }
         }
-    }
-
-    if modified {
-        save_metadata(app, &metadata)?;
-    }
+        modified
+    })?;
 
     Ok(())
 }
@@ -2644,73 +2639,22 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
         if actively_managed.contains(&session_id) || super::commands::has_active_send(&session_id) {
             continue;
         }
-        let mut metadata = match load_metadata(app, &session_id)? {
-            Some(m) => m,
-            None => continue,
-        };
-        let metadata_backend = metadata.backend.clone();
+        // Under the metadata lock: the JSONL reads below can take a while, and a
+        // write in that window (a permission change, #101) must not be lost.
+        update_metadata_if_exists(app, &session_id, |metadata| {
+            let metadata_backend = metadata.backend.clone();
 
-        let mut modified = false;
+            let mut modified = false;
 
-        for run in &mut metadata.runs {
-            // Handle both Running (normal crash recovery) and Resumable (stale from
-            // a previous recovery that never completed — e.g. app crashed twice)
-            if run.status == RunStatus::Running || run.status == RunStatus::Resumable {
-                let process_alive = run.pid.map(is_process_alive).unwrap_or(false);
+            for run in &mut metadata.runs {
+                // Handle both Running (normal crash recovery) and Resumable (stale from
+                // a previous recovery that never completed — e.g. app crashed twice)
+                if run.status == RunStatus::Running || run.status == RunStatus::Resumable {
+                    let process_alive = run.pid.map(is_process_alive).unwrap_or(false);
 
-                if process_alive {
-                    run.status = RunStatus::Resumable;
-                    modified = true;
-
-                    recovered.push(RecoveredRun {
-                        session_id: session_id.clone(),
-                        worktree_id: metadata.worktree_id.clone(),
-                        run_id: run.run_id.clone(),
-                        user_message: run.user_message.clone(),
-                        resumable: true,
-                        execution_mode: run.execution_mode.clone(),
-                        started_at: run.started_at,
-                    });
-
-                    log::trace!(
-                        "Found resumable run: {} in session {} (PID: {:?})",
-                        run.run_id,
-                        session_id,
-                        run.pid
-                    );
-                } else {
-                    // Process is dead - check if it completed successfully
-                    let completed = jsonl_has_result_line(app, &session_id, &run.run_id);
-
-                    if completed {
-                        run.status = RunStatus::Completed;
-                        if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude {
-                            (run.limit_hit, run.run_error) =
-                                jsonl_claude_outcome(app, &session_id, &run.run_id);
-                        }
-                        metadata.is_reviewing = false;
-                        if metadata.status_override.as_deref() == Some("review") {
-                            metadata.status_override = None;
-                        }
-
-                        // Recover the provider-owned session id from JSONL so a
-                        // turn that completed while Jean was closed keeps its context.
-                        if let Some(sid) =
-                            extract_session_id_from_jsonl(app, &session_id, &run.run_id)
-                        {
-                            if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Kimi {
-                                run.kimi_session_id = Some(sid.clone());
-                                metadata.kimi_session_id = Some(sid);
-                            } else if run.claude_session_id.is_none() {
-                                run.claude_session_id = Some(sid.clone());
-                                metadata.claude_session_id = Some(sid);
-                            }
-                        }
-                    } else if run.codex_thread_id.is_some() {
-                        // Codex sessions can be resumed via thread/resume even after
-                        // Jean crashes — threads are persisted to disk by app-server.
-                        // Mark as Resumable so resume_session can recover them.
+                    if process_alive {
                         run.status = RunStatus::Resumable;
+                        modified = true;
 
                         recovered.push(RecoveredRun {
                             session_id: session_id.clone(),
@@ -2723,50 +2667,102 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                         });
 
                         log::trace!(
-                            "Found resumable Codex run: {} in session {} (thread_id: {:?})",
+                            "Found resumable run: {} in session {} (PID: {:?})",
                             run.run_id,
                             session_id,
-                            run.codex_thread_id
+                            run.pid
                         );
-
-                        modified = true;
-                        continue;
                     } else {
-                        run.status = RunStatus::Crashed;
-                    }
-                    if run.ended_at.is_none() {
-                        run.ended_at = Some(now_timestamp());
-                    }
-                    run.recovered = true;
-                    if run.assistant_message_id.is_none() {
-                        run.assistant_message_id = Some(Uuid::new_v4().to_string());
-                    }
-                    modified = true;
+                        // Process is dead - check if it completed successfully
+                        let completed = jsonl_has_result_line(app, &session_id, &run.run_id);
 
-                    recovered.push(RecoveredRun {
-                        session_id: session_id.clone(),
-                        worktree_id: metadata.worktree_id.clone(),
-                        run_id: run.run_id.clone(),
-                        user_message: run.user_message.clone(),
-                        resumable: false,
-                        execution_mode: run.execution_mode.clone(),
-                        started_at: run.started_at,
-                    });
+                        if completed {
+                            run.status = RunStatus::Completed;
+                            if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude
+                            {
+                                (run.limit_hit, run.run_error) =
+                                    jsonl_claude_outcome(app, &session_id, &run.run_id);
+                            }
+                            metadata.is_reviewing = false;
+                            if metadata.status_override.as_deref() == Some("review") {
+                                metadata.status_override = None;
+                            }
 
-                    log::trace!(
-                        "Recovered {} run: {} in session {} (user message: {})",
-                        if completed { "completed" } else { "crashed" },
-                        run.run_id,
-                        session_id,
-                        run.user_message.chars().take(50).collect::<String>()
-                    );
+                            // Recover the provider-owned session id from JSONL so a
+                            // turn that completed while Jean was closed keeps its context.
+                            if let Some(sid) =
+                                extract_session_id_from_jsonl(app, &session_id, &run.run_id)
+                            {
+                                if run.backend.as_ref().unwrap_or(&metadata_backend)
+                                    == &Backend::Kimi
+                                {
+                                    run.kimi_session_id = Some(sid.clone());
+                                    metadata.kimi_session_id = Some(sid);
+                                } else if run.claude_session_id.is_none() {
+                                    run.claude_session_id = Some(sid.clone());
+                                    metadata.claude_session_id = Some(sid);
+                                }
+                            }
+                        } else if run.codex_thread_id.is_some() {
+                            // Codex sessions can be resumed via thread/resume even after
+                            // Jean crashes — threads are persisted to disk by app-server.
+                            // Mark as Resumable so resume_session can recover them.
+                            run.status = RunStatus::Resumable;
+
+                            recovered.push(RecoveredRun {
+                                session_id: session_id.clone(),
+                                worktree_id: metadata.worktree_id.clone(),
+                                run_id: run.run_id.clone(),
+                                user_message: run.user_message.clone(),
+                                resumable: true,
+                                execution_mode: run.execution_mode.clone(),
+                                started_at: run.started_at,
+                            });
+
+                            log::trace!(
+                                "Found resumable Codex run: {} in session {} (thread_id: {:?})",
+                                run.run_id,
+                                session_id,
+                                run.codex_thread_id
+                            );
+
+                            modified = true;
+                            continue;
+                        } else {
+                            run.status = RunStatus::Crashed;
+                        }
+                        if run.ended_at.is_none() {
+                            run.ended_at = Some(now_timestamp());
+                        }
+                        run.recovered = true;
+                        if run.assistant_message_id.is_none() {
+                            run.assistant_message_id = Some(Uuid::new_v4().to_string());
+                        }
+                        modified = true;
+
+                        recovered.push(RecoveredRun {
+                            session_id: session_id.clone(),
+                            worktree_id: metadata.worktree_id.clone(),
+                            run_id: run.run_id.clone(),
+                            user_message: run.user_message.clone(),
+                            resumable: false,
+                            execution_mode: run.execution_mode.clone(),
+                            started_at: run.started_at,
+                        });
+
+                        log::trace!(
+                            "Recovered {} run: {} in session {} (user message: {})",
+                            if completed { "completed" } else { "crashed" },
+                            run.run_id,
+                            session_id,
+                            run.user_message.chars().take(50).collect::<String>()
+                        );
+                    }
                 }
             }
-        }
 
-        if modified {
-            save_metadata(app, &metadata)?;
-        }
+            modified
+        })?;
     }
 
     if !recovered.is_empty() {
@@ -2915,20 +2911,15 @@ pub fn mark_run_as_crashed(
     session_id: &str,
     run_id: &str,
 ) -> Result<(), String> {
-    let mut metadata = load_metadata(app, session_id)?
-        .ok_or_else(|| format!("Metadata not found for session: {session_id}"))?;
-
     let now = now_timestamp();
-
-    if let Some(run) = metadata.find_run_mut(run_id) {
-        run.status = RunStatus::Crashed;
-        run.ended_at = Some(now);
-        run.recovered = true;
-        run.assistant_message_id = Some(Uuid::new_v4().to_string());
-    }
-
-    save_metadata(app, &metadata)?;
-    Ok(())
+    with_existing_metadata_mut(app, session_id, |metadata| {
+        if let Some(run) = metadata.find_run_mut(run_id) {
+            run.status = RunStatus::Crashed;
+            run.ended_at = Some(now);
+            run.recovered = true;
+            run.assistant_message_id = Some(Uuid::new_v4().to_string());
+        }
+    })
 }
 
 // ============================================================================
