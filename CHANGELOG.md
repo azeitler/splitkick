@@ -9,6 +9,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Each project shows its graphs in the sidebar** (#99). Under the project,
+  beside Pinned and Starred, a collapsible **Graphs** row lists the graphs
+  stored in the project, then the graphs from another project or the
+  instance that one of its sessions serves ("from …"). Rows show the open
+  requests and unseen changes, open the graph on click and stay highlighted
+  while it is open. The row is hidden when the project has no such graphs,
+  and its open state is kept per project. The project view (also on a phone)
+  lists the same graphs under Pinned.
 - **The window comes back after macOS suspends Splitkick** (#97). When WebKit's
   content process dies (memory pressure), Splitkick reloads the window itself
   instead of relying on Tauri's default, which could give up silently. After a

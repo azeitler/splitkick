@@ -44,6 +44,8 @@ import {
   type LabelFilter,
 } from '@/lib/label-filter'
 import { WorktreeItem } from './WorktreeItem'
+import { ProjectGraphsSection } from './ProjectGraphsSection'
+import { collectServedGraphIds } from './project-graphs'
 import { WorktreeItemSkeleton } from './WorktreeItemSkeleton'
 import {
   DRAG_SCOPE_WORKTREE_LIST,
@@ -421,6 +423,17 @@ export function WorktreeList({
   )
 
   // The pinned row keeps its own expansion, persisted like a workspace row's.
+  // Graphs this project's sessions serve, from the sessions already loaded.
+  const servedGraphIds = useMemo(
+    () =>
+      collectServedGraphIds(
+        Array.from(sessionsByWorktreeId.values()).flatMap(
+          entry => entry.sessions
+        )
+      ),
+    [sessionsByWorktreeId]
+  )
+
   const isPinnedExpanded = useProjectsStore(state =>
     state.expandedPinnedProjectIds.has(projectId)
   )
@@ -702,6 +715,10 @@ export function WorktreeList({
         expanded={isPinnedExpanded}
         onToggleExpanded={handleTogglePinned}
         onOpen={handleOpenPinnedSession}
+      />
+      <ProjectGraphsSection
+        projectId={projectId}
+        servedGraphIds={servedGraphIds}
       />
       {isFiltering && visibleWorktrees.length === 0 && (
         <div className="px-3 py-1 text-xs text-muted-foreground/70">
