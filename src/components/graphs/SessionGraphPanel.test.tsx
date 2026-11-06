@@ -7,6 +7,7 @@ import { derived, detail, node } from './graph-test-fixtures'
 
 const mocks = vi.hoisted(() => ({
   setServes: vi.fn(),
+  changeServes: vi.fn(),
   setPermission: vi.fn(),
   openGraphView: vi.fn(),
 }))
@@ -61,6 +62,10 @@ vi.mock('@/services/graphs', () => ({
   useGraphChanges: () => ({ data: [] }),
   useGraphRequests: () => ({ data: [] }),
   useSetSessionServes: () => ({ mutate: mocks.setServes }),
+  useChangeSessionServes: () => ({
+    mutate: mocks.changeServes,
+    isPending: false,
+  }),
   useSetSessionGraphPermission: () => ({ mutate: mocks.setPermission }),
 }))
 vi.mock('@/services/preferences', () => ({
@@ -80,6 +85,7 @@ const worker = {
 describe('SessionGraphPanel', () => {
   beforeEach(() => {
     mocks.setServes.mockClear()
+    mocks.changeServes.mockClear()
     mocks.setPermission.mockClear()
     mocks.openGraphView.mockClear()
   })
@@ -120,6 +126,19 @@ describe('SessionGraphPanel', () => {
     render(<SessionGraphPanel session={worker} />)
     expect(screen.getByText('Other one')).toBeInTheDocument()
     expect(screen.queryByText('Network view')).toBeNull()
+  })
+
+  it('removes a link in the Serves section without replacing the list', async () => {
+    render(<SessionGraphPanel session={worker} />)
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Stop serving Splitkick roadmap › Session network view',
+      })
+    )
+    expect(mocks.changeServes).toHaveBeenCalledWith(
+      { sessionId: 'me', remove: ['g1#n77'] },
+      expect.anything()
+    )
   })
 
   it('changes the node and the permission', async () => {

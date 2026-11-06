@@ -20,7 +20,6 @@ import {
   Pause,
   Terminal,
   Globe,
-  Workflow,
   Play,
   Plus,
   X,
@@ -80,7 +79,7 @@ import { LocalPathRootContext } from '@/lib/chat-links'
 import { notify } from '@/lib/notifications'
 import { ChatWindow } from './ChatWindow'
 import { SessionAgentChip } from '@/components/graphs/SessionAgentChip'
-import { sessionHasGraphPanel } from '@/components/graphs/SessionGraphPanel'
+import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
@@ -112,6 +111,7 @@ import {
   SessionContextMenuItems,
   closeOpenSessionContextMenus,
 } from './SessionContextMenuItems'
+import { SessionNetworkGlyph } from './SessionNetworkIndicator'
 import { useSessionRename } from './hooks/useSessionRename'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
@@ -329,7 +329,6 @@ export function SessionChatModal({
     sessions.map(session => session.id)
   )
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
-  const graphPanelVisible = useChatStore(state => state.graphPanelVisible)
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
   // Sessions holding an unsent message, so a tab can show the draft pencil.
@@ -1050,27 +1049,7 @@ export function SessionChatModal({
           session={currentSession}
         />
       )}
-      {sessionHasGraphPanel(currentSession) && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 px-2 text-xs',
-                graphPanelVisible && 'bg-accent'
-              )}
-              aria-label="Toggle graph panel"
-              aria-pressed={graphPanelVisible}
-              onClick={() => useChatStore.getState().toggleGraphPanel()}
-            >
-              <Workflow className="h-3 w-3" />
-              Graph
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Graph panel</TooltipContent>
-        </Tooltip>
-      )}
+      <SessionGraphToggle session={currentSession} />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -1536,6 +1515,10 @@ export function SessionChatModal({
                                 </TooltipContent>
                               </Tooltip>
                             )}
+                            <SessionNetworkGlyph
+                              sessionId={session.id}
+                              startedBySessionId={session.started_by_session_id}
+                            />
                             {renamingSessionId !== session.id &&
                               sessionLabel && (
                                 <span

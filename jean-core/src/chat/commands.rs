@@ -445,7 +445,7 @@ fn claude_session_args_for_turn(
     }
 }
 
-fn default_model_for_backend(
+pub(crate) fn default_model_for_backend(
     backend: &Backend,
     preferences: &crate::AppPreferences,
 ) -> Option<String> {
@@ -1023,6 +1023,52 @@ pub async fn load_older_session_messages(
     Ok(loaded)
 }
 
+/// Backend for a new session: explicit `backend` → project default → global
+/// preference → Claude.
+pub(crate) fn resolve_session_backend(
+    app: &AppHandle,
+    worktree_id: &str,
+    backend: Option<&str>,
+) -> Backend {
+    match backend {
+        Some("codex") => Backend::Codex,
+        Some("opencode") => Backend::Opencode,
+        Some("cursor") => Backend::Cursor,
+        Some("pi") => Backend::Pi,
+        Some("commandcode") => Backend::Commandcode,
+        Some("grok") => Backend::Grok,
+        Some("kimi") => Backend::Kimi,
+        Some("antigravity") => Backend::Antigravity,
+        Some("claude") => Backend::Claude,
+        _ => resolve_default_backend(app, Some(worktree_id)),
+    }
+}
+
+/// Copy issue/PR context references from `worktree_id` to `session_id`
+/// (worktree creation stores refs under worktree_id, but toolbar queries by session_id).
+pub(crate) fn copy_worktree_context_refs(app: &AppHandle, worktree_id: &str, session_id: &str) {
+    if let Ok(issue_keys) = get_session_issue_refs(app, worktree_id) {
+        for key in &issue_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_issue_reference(app, repo_key, number, session_id);
+                }
+            }
+        }
+    }
+    if let Ok(pr_keys) = get_session_pr_refs(app, worktree_id) {
+        for key in &pr_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_pr_reference(app, repo_key, number, session_id);
+                }
+            }
+        }
+    }
+}
+
 /// Create a new session tab
 pub async fn create_session(
     app: AppHandle,
@@ -1046,69 +1092,7 @@ pub async fn create_session(
 
     let preferences = crate::load_preferences(app.clone()).await.ok();
 
-    // Resolve backend: explicit param → project default → global preference → Claude
-    let backend_enum = match backend.as_deref() {
-        Some("codex") => Backend::Codex,
-        Some("opencode") => Backend::Opencode,
-        Some("cursor") => Backend::Cursor,
-        Some("pi") => Backend::Pi,
-        Some("commandcode") => Backend::Commandcode,
-        Some("grok") => Backend::Grok,
-        Some("kimi") => Backend::Kimi,
-        Some("antigravity") => Backend::Antigravity,
-        Some("claude") => Backend::Claude,
-        _ => {
-            // No explicit backend — check project default, then global preference
-            let mut resolved = Backend::Claude;
-            if let Some(prefs) = preferences.as_ref() {
-                if prefs.default_backend == "codex" {
-                    resolved = Backend::Codex;
-                } else if prefs.default_backend == "opencode" {
-                    resolved = Backend::Opencode;
-                } else if prefs.default_backend == "cursor" {
-                    resolved = Backend::Cursor;
-                } else if prefs.default_backend == "pi" {
-                    resolved = Backend::Pi;
-                } else if prefs.default_backend == "commandcode" {
-                    resolved = Backend::Commandcode;
-                } else if prefs.default_backend == "grok" {
-                    resolved = Backend::Grok;
-                } else if prefs.default_backend == "kimi" {
-                    resolved = Backend::Kimi;
-                } else if prefs.default_backend == "antigravity" {
-                    resolved = Backend::Antigravity;
-                }
-            }
-            // Check project-level override
-            if let Ok(data) = crate::projects::storage::load_projects_data(&app) {
-                // Find project that owns this worktree path
-                if let Some(project) = data.projects.iter().find(|p| {
-                    // Match by worktree's project (worktree_id → project)
-                    !p.is_folder
-                        && data
-                            .worktrees
-                            .iter()
-                            .any(|w| w.id == worktree_id && w.project_id == p.id)
-                }) {
-                    if let Some(ref pb) = project.default_backend {
-                        resolved = match pb.as_str() {
-                            "codex" => Backend::Codex,
-                            "opencode" => Backend::Opencode,
-                            "cursor" => Backend::Cursor,
-                            "pi" => Backend::Pi,
-                            "commandcode" => Backend::Commandcode,
-                            "grok" => Backend::Grok,
-                            "kimi" => Backend::Kimi,
-                            "antigravity" => Backend::Antigravity,
-                            "claude" => Backend::Claude,
-                            _ => resolved,
-                        };
-                    }
-                }
-            }
-            resolved
-        }
-    };
+    let backend_enum = resolve_session_backend(&app, &worktree_id, backend.as_deref());
 
     let session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Generate name if not provided
@@ -1141,28 +1125,7 @@ pub async fn create_session(
         Ok(session)
     })?;
 
-    // Copy issue/PR context references from worktree_id to new session_id
-    // (worktree creation stores refs under worktree_id, but toolbar queries by session_id)
-    if let Ok(issue_keys) = get_session_issue_refs(&app, &worktree_id) {
-        for key in &issue_keys {
-            if let Some(number_str) = key.rsplit('-').next() {
-                if let Ok(number) = number_str.parse::<u32>() {
-                    let repo_key = &key[..key.len() - number_str.len() - 1];
-                    let _ = add_issue_reference(&app, repo_key, number, &session.id);
-                }
-            }
-        }
-    }
-    if let Ok(pr_keys) = get_session_pr_refs(&app, &worktree_id) {
-        for key in &pr_keys {
-            if let Some(number_str) = key.rsplit('-').next() {
-                if let Ok(number) = number_str.parse::<u32>() {
-                    let repo_key = &key[..key.len() - number_str.len() - 1];
-                    let _ = add_pr_reference(&app, repo_key, number, &session.id);
-                }
-            }
-        }
-    }
+    copy_worktree_context_refs(&app, &worktree_id, &session.id);
 
     emit_sessions_cache_invalidation(&app);
     Ok(session)

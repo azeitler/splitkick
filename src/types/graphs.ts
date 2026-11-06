@@ -124,7 +124,7 @@ export interface GraphChange {
   /** ms epoch */
   at: number
   actor: GraphActor
-  /** node.create | node.update | node.state | node.delete | graph.update | request.answer | revert */
+  /** node.create | node.update | node.state | node.delete | graph.update | request.answer | session.serves | revert */
   action: string
   summary: string
   why: string | null
@@ -133,6 +133,15 @@ export interface GraphChange {
   revertedBy: string | null
   /** user's own changes are always seen */
   seen: boolean
+  /** session.serves: a manager linked or unlinked another session (#88) */
+  serves?: ServesChange
+}
+/** The refs of one graph that a session.serves change added and removed. */
+export interface ServesChange {
+  sessionId: string
+  sessionName: string
+  added: string[]
+  removed: string[]
 }
 export interface GraphRequest {
   id: string

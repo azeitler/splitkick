@@ -28,7 +28,7 @@ import {
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { LinuxWindowControls } from '@/components/titlebar/LinuxWindowControls'
-import { useToolbarHasOwner, useToolbarSlotRef } from './toolbar-slots'
+import { useToolbarHasTitle, useToolbarSlotRef } from './toolbar-slots'
 
 /** Icon button in the window chrome: 17 pt glyph, bezel on hover (AppKit). */
 export const toolbarButtonClass =
@@ -45,7 +45,9 @@ export function useShortcutLabel(action: KeybindingAction): string {
   )
 }
 
-function ShortcutHint({ action }: { action: KeybindingAction }) {
+/** A shortcut in a tooltip. Native desktop only (CLAUDE.md, "Keyboard
+ * Affordances in Web/Mobile"). */
+export function ShortcutHint({ action }: { action: KeybindingAction }) {
   const label = useShortcutLabel(action)
   if (!isNativeApp()) return null
   return <kbd className="ml-1 text-[0.625rem] opacity-60">{label}</kbd>
@@ -209,7 +211,7 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
   const sidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const hasOwner = useToolbarHasOwner()
+  const hasTitle = useToolbarHasTitle()
   const titleRef = useToolbarSlotRef('title')
   const subtitleRef = useToolbarSlotRef('subtitle')
   const chipsRef = useToolbarSlotRef('chips')
@@ -248,7 +250,7 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
       >
         {/* The slot stays empty for its portal; React must not render into a
             node a portal also writes to. */}
-        {!hasOwner && (
+        {!hasTitle && (
           <div className="truncate text-[0.9375rem] font-bold text-foreground">
             {fallbackTitle}
           </div>

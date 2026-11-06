@@ -14,6 +14,7 @@ import { LimitGlyph } from './limit-hit'
 import { LabelModal } from './LabelModal'
 import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
+import { SessionNetworkGlyph } from './SessionNetworkIndicator'
 import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { useSessionRemoval } from './hooks/useSessionArchive'
 import { useSessionRename } from './hooks/useSessionRename'
@@ -188,6 +189,10 @@ export function SessionShortcutRows({
         const markGlyphs = (
           <>
             <AgentBadge agentId={session.agent_id} sessionName={session.name} />
+            <SessionNetworkGlyph
+              sessionId={session.id}
+              startedBySessionId={session.started_by_session_id}
+            />
             {card.limitHit && <LimitGlyph limit={card.limitHit} />}
             {showStarGlyph && starredIds.has(shortcut.sessionId) && (
               <StarGlyph />
