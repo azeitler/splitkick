@@ -47,6 +47,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   by an earlier `create_session`, the call takes it over (name, backend, model,
   agent, `serves`, started-by) and returns its id. Otherwise it adds a new
   session as before. Worktrees created in the UI keep their "Session 1".
+- **Graph detail panels show a simple view first** (#88). The node panel and
+  the session graph panel open with only what you need: title, state, what
+  the node waits for (with links), open requests, description and sessions;
+  the session panel shows one card with the node and what comes next, or the
+  graph's progress for a whole-graph session. Two foldouts follow:
+  "Relationships" (relations of the node; before, after and siblings in the
+  session panel) and "Show details" (id, properties, attachments, history,
+  permission, links); both choices are remembered. States show as Idea, Planned, Done and Dropped; the
+  file and the MCP tools keep proposed, committed, done and dropped. "Change
+  link…" in the session panel opens "Link to Graph…".
 
 ## [1.5.0] - 2026-11-04
 

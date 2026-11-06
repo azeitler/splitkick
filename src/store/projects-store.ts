@@ -55,6 +55,10 @@ interface ProjectsUIState {
   starredSectionCollapsed: boolean
   // Whether the sidebar's Graphs section is collapsed
   graphsSectionCollapsed: boolean
+  // Whether graph detail panels show the expert layer ("Show details")
+  graphDetailsShown: boolean
+  // Whether graph detail panels show the "Relationships" foldout
+  graphRelationsShown: boolean
   // Whether the sidebar's Folders and Projects sections are collapsed
   foldersSectionCollapsed: boolean
   projectsSectionCollapsed: boolean
@@ -123,6 +127,8 @@ interface ProjectsUIState {
   setStarredSectionCollapsed: (collapsed: boolean) => void
   toggleGraphsSectionCollapsed: () => void
   setGraphsSectionCollapsed: (collapsed: boolean) => void
+  setGraphDetailsShown: (shown: boolean) => void
+  setGraphRelationsShown: (shown: boolean) => void
   toggleFoldersSectionCollapsed: () => void
   setFoldersSectionCollapsed: (collapsed: boolean) => void
   toggleProjectsSectionCollapsed: () => void
@@ -203,6 +209,8 @@ export const useProjectsStore = create<ProjectsUIState>()(
       starredSessions: [],
       starredSectionCollapsed: false,
       graphsSectionCollapsed: false,
+      graphDetailsShown: false,
+      graphRelationsShown: false,
       foldersSectionCollapsed: false,
       projectsSectionCollapsed: false,
       projectRailHidden: false,
@@ -365,6 +373,26 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { starredSectionCollapsed: collapsed },
           undefined,
           'setStarredSectionCollapsed'
+        ),
+
+      setGraphRelationsShown: shown =>
+        set(
+          state =>
+            state.graphRelationsShown === shown
+              ? state
+              : { graphRelationsShown: shown },
+          undefined,
+          'setGraphRelationsShown'
+        ),
+
+      setGraphDetailsShown: shown =>
+        set(
+          state =>
+            state.graphDetailsShown === shown
+              ? state
+              : { graphDetailsShown: shown },
+          undefined,
+          'setGraphDetailsShown'
         ),
 
       toggleGraphsSectionCollapsed: () =>

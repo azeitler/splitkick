@@ -3168,6 +3168,14 @@ pub struct UIState {
     #[serde(default)]
     pub graphs_section_collapsed: bool,
 
+    /// Whether graph detail panels show the expert layer. Defaults to hidden.
+    #[serde(default)]
+    pub graph_details_shown: bool,
+
+    /// Whether graph detail panels show the Relationships foldout. Defaults to hidden.
+    #[serde(default)]
+    pub graph_relations_shown: bool,
+
     /// Whether the sidebar's Projects section is collapsed. Defaults to open.
     #[serde(default)]
     pub projects_section_collapsed: bool,
@@ -3354,6 +3362,8 @@ impl Default for UIState {
             starred_sessions_collapsed: false,
             folders_section_collapsed: false,
             graphs_section_collapsed: false,
+            graph_details_shown: false,
+            graph_relations_shown: false,
             projects_section_collapsed: false,
             project_rail_hidden: false,
             mobile_active_tab: None,

@@ -253,6 +253,23 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   links and adds/removes them with `ServesEditor` — the same editor as the
   panel's "Serves" section. Both use `change_session_serves`, so a UI edit never
   overwrites a ref an agent set meanwhile.
+- **Simple and expert layer** (#88 follow-up). `GraphNodeDetail` and
+  `SessionGraphPanel` render a simple layer first, then two foldouts from
+  `GraphDetailsToggle.tsx`: `GraphRelationsToggle` ("Relationships (n)":
+  relations editor + incoming in the node panel; before/after + siblings for
+  a worker in the session panel, none for a whole-graph session) and
+  `GraphDetailsToggle` ("Show details", the expert layer). Each is one saved
+  choice for both panels: `projects-store.graphRelationsShown` /
+  `graphDetailsShown`, persisted as UI state `graph_relations_shown` /
+  `graph_details_shown`. Simple layer: title, parent, state (plain labels,
+  `STATE_LABELS` in `graph-badges.tsx`: proposed → Idea, committed → Planned),
+  `WaitingFor` (from `waitingFor()` in `graph-utils.ts`, same rules as the
+  Rust blockers but with ids), open requests, description, sessions; the
+  session panel has one card (worker: node, waiting for, "Next" from
+  `waitingOn()`; manager: progress, requests, changes) and "Change link…"
+  (opens `LinkToGraphDialog`). Expert layer: file words (id, `state
+  committed`), properties, attachments, history, delete; in the panel other
+  sessions, lists, outline, permission, `ServesEditor`.
 - Settings → Agents pane; "Start session from agent" dialog; agent badge next to
   session names (badge when the name differs from the agent name, glyph only when
   equal).
