@@ -5,6 +5,7 @@ import {
   FolderOpen,
   GitFork,
   ImageIcon,
+  ImagePlus,
   ListTodo,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,7 +27,9 @@ import {
 import { canOpenNativeApps } from '@/lib/environment'
 import { useFileReference } from '@/lib/file-reference'
 import { getFileManagerName } from '@/lib/platform'
-import { splitFileRefSuffix } from '@/lib/path-utils'
+import { getFilename, splitFileRefSuffix } from '@/lib/path-utils'
+import { generateId } from '@/lib/uuid'
+import { useChatStore } from '@/store/chat-store'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { copyImage } from './ImageLightbox'
 import { HostOnlyHint } from '@/components/ui/host-only-hint'
@@ -70,6 +73,28 @@ interface MessageThreadContextMenuProps {
    * streaming messages have a run in flight and cannot be forked.
    */
   onForkFromHere?: () => void
+  /**
+   * Session whose composer "Mention in chat" attaches a right-clicked image to.
+   * Omit to hide the item.
+   */
+  sessionId?: string
+}
+
+/**
+ * Attach a chat image to the session's composer, like a pasted image. Skips a
+ * path that is already attached.
+ */
+export function mentionImageInChat(sessionId: string, path: string): void {
+  const { pendingImages, addPendingImage } = useChatStore.getState()
+  if ((pendingImages[sessionId] ?? []).some(img => img.path === path)) {
+    toast.info('Image is already attached')
+    return
+  }
+  addPendingImage(sessionId, {
+    id: generateId(),
+    path,
+    filename: getFilename(path),
+  })
 }
 
 /**
@@ -83,6 +108,7 @@ export function MessageThreadContextMenu({
   copyMessageLabel = 'Copy message',
   onCopyMessage,
   onForkFromHere,
+  sessionId,
 }: MessageThreadContextMenuProps) {
   const [selection, setSelection] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -206,6 +232,14 @@ export function MessageThreadContextMenu({
             <FolderOpen className="h-4 w-4" />
             Reveal in {getFileManagerName()}
             {!canReveal && <HostOnlyHint />}
+          </ContextMenuItem>
+        )}
+        {imagePath && sessionId && (
+          <ContextMenuItem
+            onSelect={() => mentionImageInChat(sessionId, imagePath)}
+          >
+            <ImagePlus className="h-4 w-4" />
+            Mention in chat
           </ContextMenuItem>
         )}
         {imageSrc && (

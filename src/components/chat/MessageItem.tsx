@@ -992,6 +992,7 @@ export const MessageItem = memo(function MessageItem({
         copyMessageLabel="Copy message"
         onCopyMessage={onCopyToInput ? handleCopyToInput : undefined}
         onForkFromHere={worktreeId ? handleForkFromHere : undefined}
+        sessionId={sessionId}
       >
         {messageRow}
       </MessageThreadContextMenu>
@@ -1006,6 +1007,7 @@ export const MessageItem = memo(function MessageItem({
         assistantResponse ? handleCopyAssistantResponse : undefined
       }
       onForkFromHere={worktreeId ? handleForkFromHere : undefined}
+      sessionId={sessionId}
     >
       {messageRow}
     </MessageThreadContextMenu>
