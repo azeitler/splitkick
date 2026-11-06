@@ -3057,6 +3057,19 @@ export function useEditFollowUps(
 }
 
 /**
+ * Folder of a session's artifact copies (#108): a version's file is
+ * `<folder>/<version.snapshot>`.
+ */
+export function useArtifactSnapshotDir(sessionId: string | null) {
+  return useQuery({
+    queryKey: [...chatQueryKeys.all, 'artifact-snapshot-dir', sessionId ?? ''],
+    queryFn: () => invoke<string>('get_artifact_snapshot_dir', { sessionId }),
+    enabled: !!sessionId,
+    staleTime: Infinity,
+  })
+}
+
+/**
  * Change a session's artifact list. Same flow as `useEditFollowUps`.
  */
 export function useEditArtifacts(
