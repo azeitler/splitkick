@@ -103,12 +103,12 @@ describe('environment detection', () => {
     expect(canOpenInEditor()).toBe(false)
   })
 
-  it('native + remote host that allows open: still hidden, Zed path stays', () => {
+  it('native + remote host that allows open: still hidden, Zed path stays', async () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
       value: { invoke: vi.fn() },
     })
-    const remote = addRemoteConnection({
+    const remote = await addRemoteConnection({
       name: 'Studio Mac',
       url: 'https://studio.example.com',
       token: 'test-token',
