@@ -3675,6 +3675,8 @@ pub async fn send_chat_message(
         backend: Backend,
         /// Claude stopped the run at the usage limit
         limit_hit: Option<super::types::LimitHit>,
+        /// The run ended with an error (Claude API error, aborted Codex send)
+        run_error: Option<super::types::RunError>,
     }
 
     // Execute CLI in detached mode on a dedicated OS thread.
@@ -3900,6 +3902,7 @@ pub async fn send_chat_message(
                                     usage: response.usage,
                                     backend: Backend::Claude,
                                     limit_hit: response.limit_hit,
+                                    run_error: response.run_error,
                                 },
                             ));
                         }
@@ -4393,6 +4396,13 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Codex,
                             limit_hit: None,
+                            run_error: response.error_message.map(|message| {
+                                super::types::RunError {
+                                    kind: super::types::RunErrorKind::Aborted,
+                                    message,
+                                    retry_message: None,
+                                }
+                            }),
                         },
                     )),
                     Err(e) => {
@@ -4785,6 +4795,7 @@ pub async fn send_chat_message(
                                 usage: response.usage,
                                 backend: Backend::Opencode,
                                 limit_hit: None,
+                                run_error: None,
                             },
                         ))
                     }
@@ -4952,6 +4963,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Cursor,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -4994,6 +5006,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Commandcode,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5148,6 +5161,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Pi,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5319,6 +5333,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Grok,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5366,6 +5381,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Kimi,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5412,6 +5428,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Antigravity,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5437,6 +5454,11 @@ pub async fn send_chat_message(
             if let Some(ref flag) = opencode_cancel_flag {
                 if !flag.load(std::sync::atomic::Ordering::SeqCst) {
                     // Mark run as crashed so it doesn't stay in Running forever
+                    let _ = run_log_writer.set_run_error(super::types::RunError {
+                        kind: super::types::RunErrorKind::Crashed,
+                        message: e.clone(),
+                        retry_message: None,
+                    });
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark OpenCode run as crashed: {mark_err}");
                     }
@@ -5477,6 +5499,11 @@ pub async fn send_chat_message(
                     }
                     emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
                 } else {
+                    let _ = run_log_writer.set_run_error(super::types::RunError {
+                        kind: super::types::RunErrorKind::Crashed,
+                        message: e.clone(),
+                        retry_message: None,
+                    });
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
                     }
@@ -5703,6 +5730,11 @@ pub async fn send_chat_message(
     // Handle error_emitted: backend emitted chat:error during execution (e.g., Codex usage limit).
     // Treat like undo_send so the user message doesn't persist in history.
     if unified_response.error_emitted {
+        if let Some(error) = unified_response.run_error.clone() {
+            if let Err(e) = run_log_writer.set_run_error(error) {
+                log::warn!("Failed to record run error: {e}");
+            }
+        }
         if let Err(e) = run_log_writer.cancel(None, None) {
             log::warn!("Failed to cancel run log after error: {e}");
         }
@@ -5909,6 +5941,11 @@ pub async fn send_chat_message(
             &resume_id_for_log,
             has_resume_worthy_payload,
         );
+        if let Some(error) = unified_response.run_error.clone() {
+            if let Err(e) = run_log_writer.set_run_error(error) {
+                log::warn!("Failed to record run error: {e}");
+            }
+        }
         if let Err(e) = run_log_writer.complete(
             &assistant_msg_id,
             resume_sid,
@@ -9377,7 +9414,7 @@ pub async fn resume_session(
             };
 
             // Tail the output file — Claude backend only (Codex handled above)
-            let (resume_id, usage, cancelled, limit_hit) = {
+            let (resume_id, usage, cancelled, limit_hit, run_error) = {
                 match super::claude::tail_claude_output(
                     &app_clone,
                     &session_id_clone,
@@ -9391,6 +9428,7 @@ pub async fn resume_session(
                         response.usage,
                         response.cancelled,
                         response.limit_hit,
+                        response.run_error,
                     ),
                     Err(e) => {
                         log::error!(
@@ -9435,6 +9473,11 @@ pub async fn resume_session(
                     } else {
                         Some(resume_id.as_str())
                     };
+                    if let Some(error) = run_error {
+                        if let Err(e) = writer.set_run_error(error) {
+                            log::error!("Failed to record run error: {e}");
+                        }
+                    }
                     if let Err(e) =
                         writer.complete(&assistant_message_id, resume_sid, usage.clone(), limit_hit)
                     {

@@ -19,6 +19,7 @@ import {
   type CodexMcpElicitationRequest,
   type CodexDynamicToolCallRequest,
   type LimitHit,
+  type RunError,
 } from '@/types/chat'
 import {
   buildNativeResumeArgs,
@@ -179,6 +180,8 @@ export interface SessionCardData {
   label: LabelData | null
   /** Last run stopped at the Claude usage limit (cleared once a new run starts). */
   limitHit: LimitHit | null
+  /** Last run ended with an error (cleared once a new run starts). */
+  runError: RunError | null
 }
 
 export interface SessionCardProps {
@@ -812,6 +815,7 @@ export function computeSessionCardData(
     pendingPlanMessageId,
     label,
     limitHit: sessionSending ? null : (session.last_run_limit_hit ?? null),
+    runError: sessionSending ? null : (session.last_run_error ?? null),
   }
 }
 

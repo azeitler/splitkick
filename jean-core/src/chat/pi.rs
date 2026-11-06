@@ -1798,6 +1798,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let lines = vec![

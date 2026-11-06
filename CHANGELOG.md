@@ -34,6 +34,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   files, an optional section for large binaries), shows how many files the
   first commit adds, can make an empty first commit instead, and warns when
   the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive.
+- **Failed sessions are marked.** When a run fails, the session gets a red
+  alert icon in the sidebar and the chat shows what went wrong, with a way
+  to go on: **Resume** and **Resume with message** after an API error
+  (for example "API Error: 500") or a crash, **Retry** and **Edit message**
+  when the message was not sent, and **Log in** when the login expired.
+  Before, an API error looked like a normal finished run. The icon and the
+  banner go away when the next run starts.
 
 ### Changed
 
