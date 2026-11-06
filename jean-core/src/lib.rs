@@ -4721,6 +4721,12 @@ pub fn initialize_runtime(context: &RuntimeContext) -> Result<(), String> {
     async_runtime::spawn_blocking(move || {
         opencode_server::cleanup_orphaned_server(&cleanup_context);
         chat::codex_server::cleanup_orphaned_server(&cleanup_context);
+        if let Ok(app_data_dir) = cleanup_context.path().app_data_dir() {
+            let removed = chat::run_secrets::cleanup_stale_run_secrets(&app_data_dir);
+            if removed > 0 {
+                log::debug!("Removed {removed} stale run secret file(s)");
+            }
+        }
         if let Err(error) = opinionated::cleanup_disallowed_opinionated_skills_on_startup() {
             log::warn!("Failed to clean disallowed opinionated skills: {error}");
         }

@@ -2131,9 +2131,13 @@ fn spawn_grok_acp_host(
         .map_err(|e| format!("Failed to create Grok ACP host log dir: {e}"))?;
     let log_file = log_dir.join(format!("{session_id}-{run_id}.log"));
     let mcp_file = log_dir.join(format!("{session_id}-{run_id}.mcp.json"));
-    std::fs::write(
+    // Holds the Splitkick MCP token: owner-only, and only its path goes on
+    // the host's command line (#102). The host deletes it after reading.
+    super::run_secrets::write_private_file(
         &mcp_file,
-        serde_json::to_string(mcp_servers).unwrap_or_else(|_| "[]".to_string()),
+        serde_json::to_string(mcp_servers)
+            .unwrap_or_else(|_| "[]".to_string())
+            .as_bytes(),
     )
     .map_err(|e| format!("Failed to write Grok MCP servers file: {e}"))?;
     let exe = super::detached::current_executable_for_detached_host()?;

@@ -623,7 +623,7 @@ fn build_claude_args(
     allowed_tools: Option<&[String]>,
     parallel_execution_prompt: Option<&str>,
     ai_language: Option<&str>,
-    mcp_config: Option<&str>,
+    mcp_config: Option<ClaudeMcpConfig<'_>>,
     chrome_enabled: bool,
     custom_profile_name: Option<&str>,
     // Claude account folder (`CLAUDE_CONFIG_DIR`); `None` = root install, env untouched.
@@ -1326,18 +1326,26 @@ fn build_claude_args(
     (args, env_vars)
 }
 
-fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
-    let Some(config) = mcp_config else {
+/// The MCP config of one Claude run.
+///
+/// `json` is only read here (server names, dialog server); the command line
+/// gets `file`, a private copy of it. The config holds the Splitkick MCP token
+/// and the env of the user's MCP servers, and `ps` shows every argument (#102).
+#[derive(Clone, Copy)]
+pub(crate) struct ClaudeMcpConfig<'a> {
+    pub json: &'a str,
+    pub file: &'a std::path::Path,
+}
+
+fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<ClaudeMcpConfig<'_>>) {
+    let Some(mcp) = mcp_config.filter(|mcp| !mcp.json.is_empty()) else {
         return;
     };
-    if config.is_empty() {
-        return;
-    }
 
     args.push("--mcp-config".to_string());
-    args.push(config.to_string());
+    args.push(mcp.file.to_string_lossy().to_string());
 
-    let parsed = serde_json::from_str::<serde_json::Value>(config).ok();
+    let parsed = serde_json::from_str::<serde_json::Value>(mcp.json).ok();
     let server_names: Vec<String> = parsed
         .as_ref()
         .and_then(|p| p.get("mcpServers"))
@@ -1387,11 +1395,14 @@ fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
 /// Guarded on the dialog server actually being in the config: naming a tool
 /// that cannot be resolved does not degrade, it kills the run with `exit=1` at
 /// the first permission check.
-fn append_permission_prompt_tool_arg(args: &mut Vec<String>, mcp_config: Option<&str>) {
-    let Some(config) = mcp_config.filter(|c| !c.is_empty()) else {
+fn append_permission_prompt_tool_arg(
+    args: &mut Vec<String>,
+    mcp_config: Option<ClaudeMcpConfig<'_>>,
+) {
+    let Some(mcp) = mcp_config.filter(|mcp| !mcp.json.is_empty()) else {
         return;
     };
-    let has_dialog_server = serde_json::from_str::<serde_json::Value>(config)
+    let has_dialog_server = serde_json::from_str::<serde_json::Value>(mcp.json)
         .ok()
         .and_then(|parsed| {
             parsed
@@ -1462,6 +1473,37 @@ pub fn execute_claude_detached(
         let _ = app.emit_all("chat:error", &error_event);
         return Err(error_msg);
     }
+
+    // The MCP config holds secrets: write it to a private file and pass only
+    // the path (#102). The guard deletes the file when this run returns.
+    let mcp_config_file = match mcp_config.filter(|c| !c.is_empty()) {
+        Some(json) => {
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+            let file = super::run_secrets::write_run_mcp_config(&app_data_dir, session_id, json)
+                .inspect_err(|e| {
+                    log::error!("{e}");
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: e.clone(),
+                        },
+                    );
+                })?;
+            Some((json, file))
+        }
+        None => None,
+    };
+    let mcp_config = mcp_config_file
+        .as_ref()
+        .map(|(json, file)| ClaudeMcpConfig {
+            json,
+            file: file.path(),
+        });
 
     // Build args
     let (args, env_vars) = build_claude_args(
@@ -3355,6 +3397,85 @@ mod tests {
         assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("say so explicitly"));
     }
 
+    fn mcp(json: &str) -> ClaudeMcpConfig<'_> {
+        ClaudeMcpConfig {
+            json,
+            file: std::path::Path::new("/tmp/run-secrets/test.mcp.json"),
+        }
+    }
+
+    /// #102: secrets in the MCP config (Splitkick token, env of user servers)
+    /// must reach Claude through the private file, never through argv.
+    #[test]
+    fn mcp_secrets_never_appear_in_claude_args() {
+        let secret = "SECRET-TOKEN-123";
+        let config = serde_json::json!({
+            "mcpServers": {
+                "splitkick": {
+                    "type": "stdio",
+                    "command": "splitkick",
+                    "env": { "JEAN_MCP_TOKEN": secret }
+                },
+                "splitkick-dialog": {
+                    "type": "stdio",
+                    "command": "splitkick",
+                    "env": { "JEAN_MCP_TOKEN": secret }
+                },
+                "playwright": {
+                    "type": "stdio",
+                    "command": "npx",
+                    "env": { "PLAYWRIGHT_MCP_EXTENSION_TOKEN": secret }
+                }
+            }
+        })
+        .to_string();
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let file =
+            crate::chat::run_secrets::write_run_mcp_config(temp.path(), "session-1", &config)
+                .unwrap();
+
+        let (args, env) = build_claude_args(
+            &app,
+            "session-1",
+            "worktree-1",
+            None,
+            Some("sid-new"),
+            false,
+            Some("opus-fast"),
+            Some("yolo"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(ClaudeMcpConfig {
+                json: &config,
+                file: file.path(),
+            }),
+            false,
+            None,
+            None,
+            false,
+        );
+
+        assert!(
+            args.iter().all(|arg| !arg.contains(secret)),
+            "secret leaked into argv: {args:?}"
+        );
+        assert!(env.iter().all(|(_, value)| !value.contains(secret)));
+        let at = args.iter().position(|a| a == "--mcp-config").unwrap();
+        assert_eq!(args[at + 1], file.path().to_string_lossy());
+        assert!(std::fs::read_to_string(file.path())
+            .unwrap()
+            .contains(secret));
+        // Behaviour beyond the transport is unchanged.
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+        assert!(args.contains(&"mcp__playwright__*".to_string()));
+        assert!(args.contains(&super::super::jean_mcp::dialog_permission_prompt_tool()));
+    }
+
     #[test]
     fn mcp_config_auto_allows_server_and_wildcard_tools() {
         let config = r#"{
@@ -3365,7 +3486,7 @@ mod tests {
         }"#;
         let mut args = Vec::new();
 
-        append_mcp_config_args(&mut args, Some(config));
+        append_mcp_config_args(&mut args, Some(mcp(config)));
 
         assert!(args.contains(&"--mcp-config".to_string()));
         assert!(args.contains(&"--strict-mcp-config".to_string()));
@@ -3505,7 +3626,7 @@ mod tests {
         }"#;
         let mut args = Vec::new();
 
-        append_mcp_config_args(&mut args, Some(config));
+        append_mcp_config_args(&mut args, Some(mcp(config)));
 
         assert!(args.contains(&"mcp__splitkick__*".to_string()));
         assert!(!args.contains(&"mcp__splitkick-dialog".to_string()));
@@ -3521,7 +3642,7 @@ mod tests {
             r#"{"mcpServers": {"splitkick-dialog": {"type": "stdio", "command": "jean"}}}"#;
         let mut args = Vec::new();
 
-        append_mcp_config_args(&mut args, Some(config));
+        append_mcp_config_args(&mut args, Some(mcp(config)));
 
         assert!(args.contains(&"--mcp-config".to_string()));
         assert!(!args.contains(&"--strict-mcp-config".to_string()));
@@ -3537,7 +3658,7 @@ mod tests {
         }"#;
         let mut args = Vec::new();
 
-        append_mcp_config_args(&mut args, Some(config));
+        append_mcp_config_args(&mut args, Some(mcp(config)));
 
         assert!(args.contains(&"--strict-mcp-config".to_string()));
     }
@@ -3548,7 +3669,7 @@ mod tests {
             r#"{"mcpServers": {"splitkick-dialog": {"type": "stdio", "command": "jean"}}}"#;
         let mut args = Vec::new();
 
-        append_permission_prompt_tool_arg(&mut args, Some(config));
+        append_permission_prompt_tool_arg(&mut args, Some(mcp(config)));
 
         assert_eq!(
             args,
@@ -3568,18 +3689,20 @@ mod tests {
         assert!(args.is_empty());
 
         let mut args = Vec::new();
-        append_permission_prompt_tool_arg(&mut args, Some(""));
+        append_permission_prompt_tool_arg(&mut args, Some(mcp("")));
         assert!(args.is_empty());
 
         let mut args = Vec::new();
         append_permission_prompt_tool_arg(
             &mut args,
-            Some(r#"{"mcpServers": {"jean": {"type": "stdio", "command": "jean"}}}"#),
+            Some(mcp(
+                r#"{"mcpServers": {"jean": {"type": "stdio", "command": "jean"}}}"#,
+            )),
         );
         assert!(args.is_empty(), "no dialog server means no flag");
 
         let mut args = Vec::new();
-        append_permission_prompt_tool_arg(&mut args, Some("{not json"));
+        append_permission_prompt_tool_arg(&mut args, Some(mcp("{not json")));
         assert!(
             args.is_empty(),
             "unparseable config must not enable the flag"

@@ -25,6 +25,7 @@ pub mod project_preset;
 pub mod recap;
 pub mod registry;
 pub mod run_log;
+pub mod run_secrets;
 pub mod schedules;
 pub mod search;
 pub mod session_links;

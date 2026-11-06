@@ -373,6 +373,15 @@ let output = Command::new("git")
 
 The helpers are defined in `jean-core/src/platform/process.rs` and re-exported via `pub use process::*` in `platform/mod.rs` (`open_url_in_browser` is also re-exported from `jean_core`).
 
+#### Secrets Never Go Into Process Arguments
+
+**CRITICAL:** `ps` shows every argument of every process. Never put a token,
+API key or header into argv — not as inline JSON (`--mcp-config '{…}'`), not
+as `-c key=value`, not inside a `sh -c "<script>"` string. Use the child's
+env (`.env()`), stdin, or a 0600 file. Per-run MCP configs go through
+`chat::run_secrets::write_run_mcp_config` (path on argv, file deleted when the
+run ends). Details and the per-backend audit: `docs/developer/process-secrets.md` (#102).
+
 #### Canvas Views Architecture
 
 **"Canvas"** refers to **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`):

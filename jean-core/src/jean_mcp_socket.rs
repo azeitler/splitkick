@@ -644,6 +644,14 @@ mod tests {
                 }
             }
         }});
+        // Same transport as production: a private file, not inline JSON (#102).
+        let config_file = crate::chat::run_secrets::write_run_mcp_config(
+            temp.path(),
+            SESSION,
+            &config.to_string(),
+        )
+        .unwrap();
+        let config_path = config_file.path().to_string_lossy().to_string();
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -693,7 +701,7 @@ mod tests {
                 "--model".into(),
                 "haiku".into(),
                 "--mcp-config".into(),
-                config.to_string(),
+                config_path,
                 "--strict-mcp-config".into(),
                 "--permission-prompt-tool".into(),
                 crate::chat::jean_mcp::dialog_permission_prompt_tool(),
