@@ -1,4 +1,5 @@
-import { Bot, Play, Workflow } from 'lucide-react'
+import { Bot, PanelRight, Play, Workflow } from 'lucide-react'
+import { toggleActiveSessionGraphPanel } from '@/lib/session-graph-panel'
 import { useUIStore } from '@/store/ui-store'
 import type { AppCommand } from './types'
 
@@ -24,6 +25,21 @@ export const graphCommands: AppCommand[] = [
     keywords: ['agent', 'session', 'start', 'persona', 'graph'],
     execute: () => {
       useUIStore.getState().setStartAgentSessionTarget({})
+    },
+  },
+  {
+    // Visible for every session: one without a graph link gets an
+    // explanation instead of an empty panel (#84).
+    id: 'graphs.toggle-session-panel',
+    label: 'Toggle Graph Panel',
+    description:
+      "Show or hide the session's graph panel (desktop only; needs a graph link)",
+    icon: PanelRight,
+    group: 'sessions',
+    keywords: ['graph', 'panel', 'node', 'serves', 'agent', 'toggle'],
+    isAvailable: context => context.hasActiveSession(),
+    execute: context => {
+      toggleActiveSessionGraphPanel(context.queryClient)
     },
   },
   {

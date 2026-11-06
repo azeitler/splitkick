@@ -4,6 +4,7 @@ import { isNativeApp, hasBackend } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { PRODUCT_NAME, UPSTREAM_BASE_VERSION } from '@/lib/build-info'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { toggleActiveSessionGraphPanel } from '@/lib/session-graph-panel'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -309,7 +310,8 @@ export function shouldAllowKeybindingThroughOpenOverlay(
     uiState.sessionChatModalOpen &&
     (action === 'toggle_zen_mode' ||
       action === 'clear_session_context' ||
-      action === 'add_follow_up')
+      action === 'add_follow_up' ||
+      action === 'toggle_session_graph')
   ) {
     return true
   }
@@ -797,6 +799,10 @@ function executeKeybindingAction(
       }
       break
     }
+    case 'toggle_session_graph':
+      logger.debug('Keybinding: toggle_session_graph')
+      toggleActiveSessionGraphPanel(queryClient)
+      break
     case 'toggle_browser': {
       logger.debug('Keybinding: toggle_browser')
       const target = resolveBrowserSurfaceTarget()
