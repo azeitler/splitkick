@@ -328,7 +328,8 @@ pub(crate) fn copy_session_run_files(
 }
 
 /// Copy the data that hangs off a session id rather than living in its directory:
-/// attached saved contexts and GitHub/Linear/Sentry/advisory references.
+/// attached saved contexts and GitHub/Linear/Sentry/advisory references; plus the
+/// artifact copies, which live in the directory but outside the run logs.
 ///
 /// Best effort. The fork itself has already succeeded by the time this runs, so a
 /// failure here is logged rather than propagated.
@@ -342,6 +343,14 @@ pub(crate) fn copy_session_side_data(
     }
     if let Err(e) = copy_context_references(app, source_session_id, target_session_id) {
         log::warn!("Fork: failed to copy context references for {source_session_id}: {e}");
+    }
+    // The fork's artifact versions (#108) point at these copies by file name.
+    let copied = super::artifacts::snapshot_dir(app, source_session_id).and_then(|from| {
+        let to = super::artifacts::snapshot_dir(app, target_session_id)?;
+        super::artifacts::copy_snapshots(&from, &to).map_err(|e| e.to_string())
+    });
+    if let Err(e) = copied {
+        log::warn!("Fork: failed to copy artifact versions for {source_session_id}: {e}");
     }
 }
 
@@ -923,6 +932,7 @@ mod tests {
             target: "https://preview.example.dev".to_string(),
             note: Some("v1".to_string()),
             created_at: 1,
+            versions: vec![],
         }];
         let forked_session =
             prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Handoff);

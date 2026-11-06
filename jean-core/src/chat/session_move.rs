@@ -410,6 +410,7 @@ mod tests {
             target: "https://preview.example.dev".to_string(),
             note: None,
             created_at: 1,
+            versions: vec![],
         }];
 
         prepare_moved_metadata(&mut metadata, "/old/worktree");
