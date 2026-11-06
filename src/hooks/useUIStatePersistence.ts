@@ -27,7 +27,12 @@ import type {
   PendingTextFile,
   ReadTextResponse,
 } from '@/types/chat'
-import { isMobileTab, isSidebarTab, type UIState } from '@/types/ui-state'
+import {
+  isArchivedSort,
+  isMobileTab,
+  isSidebarTab,
+  type UIState,
+} from '@/types/ui-state'
 
 // Simple debounce implementation.
 // `flush` applies the pending call now, so a save that is still waiting out its
@@ -223,6 +228,9 @@ export function useUIStatePersistence() {
     }
     if (isSidebarTab(uiState.sidebar_tab)) {
       useUIStore.getState().setSidebarTab(uiState.sidebar_tab)
+    }
+    if (isArchivedSort(uiState.archived_sort)) {
+      useUIStore.getState().setArchivedSort(uiState.archived_sort)
     }
 
     // Restore the expanded pinned-sessions rows, keyed by project id.
@@ -1003,6 +1011,7 @@ export function useUIStatePersistence() {
     let prevZenMode = useUIStore.getState().zenMode
     let prevMobileActiveTab = useUIStore.getState().mobileActiveTab
     let prevSidebarTab = useUIStore.getState().sidebarTab
+    let prevArchivedSort = useUIStore.getState().archivedSort
     let prevSessionTerminalIds = useUIStore.getState().sessionTerminalIds
     let prevSessionPrimarySurface = useUIStore.getState().sessionPrimarySurface
     let prevSeenFailedWorkflowRunIds =
@@ -1123,6 +1132,7 @@ export function useUIStatePersistence() {
       const mobileActiveTabChanged =
         state.mobileActiveTab !== prevMobileActiveTab
       const sidebarTabChanged = state.sidebarTab !== prevSidebarTab
+      const archivedSortChanged = state.archivedSort !== prevArchivedSort
       const sessionTerminalIdsChanged =
         state.sessionTerminalIds !== prevSessionTerminalIds
       const sessionPrimarySurfaceChanged =
@@ -1138,6 +1148,7 @@ export function useUIStatePersistence() {
         zenModeChanged ||
         mobileActiveTabChanged ||
         sidebarTabChanged ||
+        archivedSortChanged ||
         sessionTerminalIdsChanged ||
         sessionPrimarySurfaceChanged ||
         seenFailedWorkflowRunIdsChanged
@@ -1149,6 +1160,7 @@ export function useUIStatePersistence() {
         prevZenMode = state.zenMode
         prevMobileActiveTab = state.mobileActiveTab
         prevSidebarTab = state.sidebarTab
+        prevArchivedSort = state.archivedSort
         prevSessionTerminalIds = state.sessionTerminalIds
         prevSessionPrimarySurface = state.sessionPrimarySurface
         prevSeenFailedWorkflowRunIds = state.seenFailedWorkflowRunIds

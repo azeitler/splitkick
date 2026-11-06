@@ -47,6 +47,14 @@ export function isSidebarTab(value: unknown): value is SidebarTab {
   return value === 'projects' || value === 'recent'
 }
 
+/** How the Archived page orders its rows: last archived, name, or project. */
+export type ArchivedSort = 'archived' | 'name' | 'project'
+
+/** Narrow a persisted value, which may predate a sort or be hand-edited. */
+export function isArchivedSort(value: unknown): value is ArchivedSort {
+  return value === 'archived' || value === 'name' || value === 'project'
+}
+
 export interface StarredSessionEntry {
   project_id: string
   worktree_id: string
@@ -134,6 +142,8 @@ export interface UIState {
   mobile_active_tab?: MobileTab | null
   /** The desktop sidebar's selected tab; absent means Projects */
   sidebar_tab?: SidebarTab | null
+  /** The Archived page's sort; absent means last archived */
+  archived_sort?: ArchivedSort | null
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -246,6 +256,7 @@ export const defaultUIState: UIState = {
   project_rail_hidden: false,
   mobile_active_tab: null,
   sidebar_tab: null,
+  archived_sort: null,
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,
