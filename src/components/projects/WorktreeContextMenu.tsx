@@ -3,6 +3,7 @@ import {
   Code,
   Link,
   FolderOpen,
+  Pencil,
   GitBranch,
   Play,
   Terminal,
@@ -34,6 +35,7 @@ import {
   getGitClientLabel,
   getTerminalLabel,
 } from '@/types/preferences'
+import { useRef } from 'react'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
@@ -43,11 +45,14 @@ interface WorktreeContextMenuProps {
   // Computed once by the parent (WorktreeItem) and passed in so the hook isn't
   // run twice per worktree row.
   actions: ReturnType<typeof useWorktreeMenuActions>
+  /** Starts the row's inline rename. Called after the menu has closed. */
+  onRename: () => void
   children: React.ReactNode
 }
 
 export function WorktreeContextMenu({
   actions,
+  onRename,
   children,
 }: WorktreeContextMenuProps) {
   const {
@@ -67,11 +72,32 @@ export function WorktreeContextMenu({
     handleDelete,
     handleCopyLink,
   } = actions
+  // Rename starts only once the menu has closed. Starting it from onSelect
+  // races the menu: Radix returns focus to the row when it closes, which
+  // blurs the new input and commits the rename at once (azeitler/jean#29).
+  const renameOnCloseRef = useRef(false)
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="min-w-48">
+      <ContextMenuContent
+        className="min-w-48"
+        onCloseAutoFocus={e => {
+          if (!renameOnCloseRef.current) return
+          renameOnCloseRef.current = false
+          e.preventDefault()
+          onRename()
+        }}
+      >
+        <ContextMenuItem
+          onSelect={() => {
+            renameOnCloseRef.current = true
+          }}
+        >
+          <Pencil className="mr-2 h-4 w-4" />
+          Rename
+        </ContextMenuItem>
+        {runScripts.length > 0 && <ContextMenuSeparator />}
         {runScripts.length === 1 && (
           <ContextMenuItem onClick={handleRun}>
             <Play className="mr-2 h-4 w-4" />

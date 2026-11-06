@@ -570,13 +570,17 @@ export function WorktreeItem({
     ]
   )
 
+  const handleStartWorktreeRename = useCallback(() => {
+    setEditValue(worktree.name)
+    setIsEditing(true)
+  }, [worktree.name])
+
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      setEditValue(worktree.name)
-      setIsEditing(true)
+      handleStartWorktreeRename()
     },
-    [worktree.name]
+    [handleStartWorktreeRename]
   )
 
   const handleSubmit = useCallback(() => {
@@ -769,7 +773,10 @@ export function WorktreeItem({
         )}
         style={{ top: 'var(--sb-worktree-top)' }}
       >
-        <WorktreeContextMenu actions={menuActions}>
+        <WorktreeContextMenu
+          actions={menuActions}
+          onRename={handleStartWorktreeRename}
+        >
           <div
             role="button"
             tabIndex={0}

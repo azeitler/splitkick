@@ -137,7 +137,7 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
     it('worktree context menu', async () => {
       await setClientMode(mode)
       render(
-        <WorktreeContextMenu actions={worktreeActions()}>
+        <WorktreeContextMenu actions={worktreeActions()} onRename={vi.fn()}>
           <button type="button">feature</button>
         </WorktreeContextMenu>
       )
@@ -147,6 +147,7 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
       expectItem(fileManager(), expected.native)
       expectItem(/open in terminal/i, expected.native)
       expectItem(/copy link/i, true)
+      expectItem(/^rename$/i, true)
     })
 
     it('project context menu (sidebar)', async () => {
