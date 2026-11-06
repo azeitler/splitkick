@@ -23,6 +23,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   Access; Settings → Show Logs in a remote window opens this app's logs; in
   the Open In modal, Enter no longer runs an option that is not available.
   The full table is in `docs/developer/remote-capabilities.md`.
+- **Project icons in `docs/public/`** (#91). The project icon detection now also
+  finds `favicon.svg`, `favicon.ico`, `favicon.png` and
+  `apple-touch-icon.png` in `docs/public/`, where VitePress sites keep them.
+  It checks the project root first, then `public/`, then `docs/public/`.
 
 ## [1.5.0] - 2026-11-04
 
