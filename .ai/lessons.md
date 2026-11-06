@@ -326,6 +326,7 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - Before writing a spec from approved mockups, list every visible difference between mockup and current UI, and mark each one in scope or out of scope in the spec. Ask about each one that is unclear.
 
 ## 2026-10-15 — GitHub posts on own repos need no approval
+
 - User changed the global rule: issues, PRs, comments, labels, reviews on repos owned by `azeitler` or their orgs are posted directly, then reported with a link.
 - Still ask for: other owners' repos (upstream `coollabsio/jean`), `git push`, releases, publishing, deploys.
 - Fork is now `azeitler/splitkick` (renamed from `azeitler/jean`); use `--repo azeitler/splitkick`.
@@ -374,3 +375,15 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - The reverted 1.0.1 merge (`1cf20d58`, reverted in `54d762af`) keeps 173 upstream commits reachable in `git log`, but none of their code is in the tree.
 - A commit-subject match against `git log HEAD` therefore says "fork has it" for reverted work. It did so for ten upstream Windows fixes in the #71 evaluation, and one of them (npm shims, `d499d506`) was a real Windows defect found later in the VM.
 - Check with `git merge-base --is-ancestor <commit> <sha from docs/upstream/last-sync.json>`. A commit after the baseline is missing unless it was cherry-picked after the revert; confirm by reading the code in the tree.
+
+## Launch a new session, not a worktree
+
+- "Launch a session" means `create_session` in the existing worktree
+  (usually the base checkout). Call `create_worktree` only when Andreas
+  explicitly asks for a worktree in that message (decided 2026-11-06).
+- Worktrees for every task cost setup time, disk and sidebar entries, and
+  were not needed for reviews, evaluations or docs.
+- Sessions then share the checkout: every brief says commit only your own
+  files by name (hunks for shared files), leave nothing uncommitted, never
+  `git add -A`, isolate real app builds (`SPLITKICK_DATA_DIR=tmp/...`, a
+  free port), and name the other sessions working in parallel.
