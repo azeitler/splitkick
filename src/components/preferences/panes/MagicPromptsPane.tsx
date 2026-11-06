@@ -9,6 +9,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -622,6 +623,17 @@ const PROMPT_SECTIONS: PromptSection[] = [
 
 // Flat list for lookups
 const PROMPT_CONFIGS = PROMPT_SECTIONS.flatMap(s => s.configs)
+
+function CustomizedBadge({ title }: { title?: string }) {
+  return (
+    <Badge
+      title={title ?? 'Differs from the default'}
+      className="h-4 rounded px-1.5 text-[10px] bg-primary/15 text-primary"
+    >
+      Custom
+    </Badge>
+  )
+}
 const PROMPT_CONFIG_KEYS = new Set(PROMPT_CONFIGS.map(config => config.key))
 const MAGIC_PROMPT_HIGHLIGHT_DURATION_MS = 1800
 const BACKEND_EFFORT_FALLBACK = {
@@ -902,6 +914,17 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
     : bundledSelectedConfig
   const currentValue =
     currentPrompts[selectedKey] ?? selectedConfig.defaultValue
+  // A prompt is customized only when its saved text differs from the current
+  // default. A saved copy of an older default counts: it no longer gets updates.
+  const isPromptCustomized = (key: keyof MagicPrompts) => {
+    const stored = currentPrompts[key]
+    if (stored == null) return false
+    const defaultValue =
+      serverCapabilities?.magicPrompts.find(prompt => prompt.id === key)
+        ?.defaultPrompt ?? PROMPT_CONFIGS.find(c => c.key === key)?.defaultValue
+    return stored !== defaultValue
+  }
+  const selectedIsCustomized = isPromptCustomized(selectedKey)
   const rawCurrentModel = selectedConfig.modelKey
     ? (currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel)
     : undefined
@@ -1874,6 +1897,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                   {section.configs.map(config => (
                     <SelectItem key={config.key} value={config.key}>
                       {config.label}
+                      {isPromptCustomized(config.key) && ' (custom)'}
                     </SelectItem>
                   ))}
                 </React.Fragment>
@@ -1893,7 +1917,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                 {section.label}
               </h4>
               {section.configs.map(config => {
-                const promptIsModified = currentPrompts[config.key] !== null
+                const promptIsCustomized = isPromptCustomized(config.key)
                 return (
                   <button
                     type="button"
@@ -1902,7 +1926,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                     id={getMagicPromptItemId(config.key)}
                     data-settings-target={config.key}
                     className={cn(
-                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate ring-1 ring-transparent',
+                      'flex w-full items-center gap-1.5 px-2 py-1.5 rounded-md text-left text-sm transition-colors ring-1 ring-transparent',
                       selectedKey === config.key
                         ? 'bg-accent text-accent-foreground'
                         : 'hover:bg-muted/50 text-foreground',
@@ -1911,10 +1935,10 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                         : ''
                     )}
                   >
-                    {config.label}
-                    {promptIsModified && (
-                      <span className="text-muted-foreground ml-1">*</span>
-                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {config.label}
+                    </span>
+                    {promptIsCustomized && <CustomizedBadge />}
                   </button>
                 )
               })}
@@ -1926,7 +1950,12 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
         <div className="flex-1 flex flex-col min-h-0">
           {/* Header */}
           <div className="mb-2 shrink-0">
-            <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
+              {selectedIsCustomized && (
+                <CustomizedBadge title="This prompt differs from the default. Updates to the default do not reach it until you reset it." />
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {selectedConfig.description}
             </p>
