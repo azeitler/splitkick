@@ -23,6 +23,14 @@ static NATIVE_HISTORY_CACHE: OnceLock<
 > = OnceLock::new();
 static NATIVE_SESSION_TRACKERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
+/// Entries in the native history cache (memory report, issue #97).
+pub(super) fn cache_len() -> usize {
+    NATIVE_HISTORY_CACHE
+        .get()
+        .and_then(|cache| cache.lock().ok().map(|cache| cache.len()))
+        .unwrap_or(0)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeCliHistorySession {

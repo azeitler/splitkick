@@ -124,3 +124,13 @@ pub fn increment_tailer_count() {
 pub fn decrement_tailer_count() {
     ACTIVE_TAILER_COUNT.fetch_sub(1, Ordering::Relaxed);
 }
+
+/// Run-log tailers streaming right now (memory report, issue #97).
+pub(crate) fn active_tailer_count() -> usize {
+    ACTIVE_TAILER_COUNT.load(Ordering::Relaxed)
+}
+
+/// Native CLI history cache entries (memory report, issue #97).
+pub(crate) fn native_history_cache_len() -> usize {
+    native_history::cache_len()
+}

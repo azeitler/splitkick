@@ -308,6 +308,22 @@ impl WsBroadcaster {
         self.tx.subscribe()
     }
 
+    /// `(clients, buffered session events, terminal replay bytes)` for the
+    /// memory report (issue #97). Each WebSocket connection holds one receiver.
+    pub fn memory_stats(&self) -> (usize, usize, usize) {
+        let events = self
+            .session_buffers
+            .lock()
+            .map(|buffers| buffers.values().map(VecDeque::len).sum())
+            .unwrap_or(0);
+        let terminal_bytes = self
+            .terminal_buffers
+            .lock()
+            .map(|buffers| buffers.values().map(|buffer| buffer.bytes).sum())
+            .unwrap_or(0);
+        (self.tx.receiver_count(), events, terminal_bytes)
+    }
+
     /// Replay buffered events for a session after the given sequence number.
     /// Returns events in order, each with its sequence number and pre-serialized JSON.
     pub fn replay_events(&self, session_id: &str, after_seq: u64) -> Vec<(u64, Arc<str>)> {
