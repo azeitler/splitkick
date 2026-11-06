@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Project icons in `docs/public/`** (#91). The project icon detection now also
+  finds `favicon.svg`, `favicon.ico`, `favicon.png` and
+  `apple-touch-icon.png` in `docs/public/`, where VitePress sites keep them.
+  It checks the project root first, then `public/`, then `docs/public/`.
+
 ## [1.5.0] - 2026-11-04
 
 Built on Jean 0.1.73.
