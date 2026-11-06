@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
@@ -6,6 +6,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import type { AllSessionsEntry, Session } from '@/types/chat'
 import { SidebarStarredSection } from './SidebarStarredSection'
+import { SIDEBAR_ROW_SELECTED } from './sidebar-row-styles'
 
 const mocks = vi.hoisted(() => ({
   entries: [] as AllSessionsEntry[],
@@ -73,7 +74,7 @@ describe('SidebarStarredSection', () => {
       starredSectionCollapsed: false,
       projectCanvasSettings: {},
     })
-    useChatStore.setState({ sessionLabels: {} })
+    useChatStore.setState({ sessionLabels: {}, activeSessionIds: {} })
   })
 
   it('renders nothing while nothing is starred', () => {
@@ -187,5 +188,73 @@ describe('SidebarStarredSection', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Unstar' }))
 
     expect(useProjectsStore.getState().starredSessions).toEqual([])
+  })
+
+  // The open session is marked here as it is in the tree (#92).
+  describe('active row', () => {
+    const row = (name: string) => screen.getByText(name).closest('button')
+    const open = (worktreeId: string, sessionId: string) => {
+      useProjectsStore.setState({ selectedWorktreeId: worktreeId })
+      useChatStore.setState({ activeSessionIds: { [worktreeId]: sessionId } })
+    }
+
+    beforeEach(() => {
+      useProjectsStore.setState({
+        selectedWorktreeId: null,
+        starredSessions: [
+          star('s-1', 'Jean', 'main'),
+          star('s-2', 'Coolify', 'feat/deploy'),
+        ],
+      })
+    })
+
+    it('highlights the open session with the tree selection style', () => {
+      open('id-main', 's-1')
+      render(<SidebarStarredSection />)
+
+      expect(row('Investigation')).toHaveAttribute('aria-current', 'page')
+      expect(row('Investigation')?.className).toContain(SIDEBAR_ROW_SELECTED)
+      expect(row('Investigation')).toHaveClass('font-medium')
+      expect(row('Deploy pipeline')).not.toHaveAttribute('aria-current')
+      expect(row('Deploy pipeline')).not.toHaveClass('bg-foreground/10')
+    })
+
+    // The tree marks a session only in the selected workspace; so does Starred.
+    it('ignores the remembered session of a workspace that is not selected', () => {
+      useChatStore.setState({ activeSessionIds: { 'id-main': 's-1' } })
+      render(<SidebarStarredSection />)
+
+      expect(row('Investigation')).not.toHaveAttribute('aria-current')
+    })
+
+    it('moves the highlight when another session opens', () => {
+      open('id-main', 's-1')
+      render(<SidebarStarredSection />)
+
+      act(() => open('id-feat/deploy', 's-2'))
+
+      expect(row('Deploy pipeline')).toHaveAttribute('aria-current', 'page')
+      expect(row('Investigation')).not.toHaveAttribute('aria-current')
+    })
+
+    it('highlights the open session as soon as it is starred', () => {
+      useProjectsStore.setState({
+        starredSessions: [star('s-2', 'Coolify', 'feat/deploy')],
+      })
+      open('id-main', 's-1')
+      render(<SidebarStarredSection />)
+      expect(screen.queryByText('Investigation')).toBeNull()
+
+      act(() => {
+        useProjectsStore.setState({
+          starredSessions: [
+            star('s-2', 'Coolify', 'feat/deploy'),
+            star('s-1', 'Jean', 'main'),
+          ],
+        })
+      })
+
+      expect(row('Investigation')).toHaveAttribute('aria-current', 'page')
+    })
   })
 })

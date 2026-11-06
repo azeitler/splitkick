@@ -15,6 +15,7 @@ import {
   SIDEBAR_SESSION_LIST,
   SIDEBAR_WORKTREE_SECTION_PADDING,
 } from '@/components/projects/sidebar-row-styles'
+import { useSidebarActiveSessionId } from '@/components/projects/useSidebarActiveSessionId'
 
 const LABELS: Record<ProjectShortcutKind, string> = {
   pinned: 'Pinned',
@@ -59,6 +60,9 @@ export function PinnedSessionsSection({
   onToggleExpanded,
   onOpen,
 }: PinnedSessionsSectionProps) {
+  // The open session, highlighted here as well as in the tree (#92). Called
+  // before the early return: hooks run on every render.
+  const activeSessionId = useSidebarActiveSessionId()
   const kind = getProjectShortcutKind(rows.map(({ row }) => row))
   if (!kind) return null
 
@@ -131,6 +135,7 @@ export function PinnedSessionsSection({
               variant="sidebar"
               showPinGlyph={showPinGlyph}
               showStarGlyph={showStarGlyph}
+              activeSessionId={activeSessionId}
               onOpen={handleOpen}
             />
           </div>

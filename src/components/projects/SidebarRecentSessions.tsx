@@ -14,9 +14,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
-import { useChatStore } from '@/store/chat-store'
-import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
+import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
 
 /**
  * The list is a jump list, not an archive; older sessions live in the tree.
@@ -40,12 +39,7 @@ export function SidebarRecentSessions() {
   const { data: preferences } = usePreferences()
   const limit = preferences?.sidebar_recent_limit ?? SIDEBAR_RECENT_LIMIT
   // The open session: the active one of the selected workspace, as in the tree.
-  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
-  const activeSessionId = useChatStore(state =>
-    selectedWorktreeId
-      ? (state.activeSessionIds[selectedWorktreeId] ?? null)
-      : null
-  )
+  const activeSessionId = useSidebarActiveSessionId()
 
   const groups = useMemo(() => {
     const rows = flattenAllSessions(data?.entries ?? []).slice(0, limit)

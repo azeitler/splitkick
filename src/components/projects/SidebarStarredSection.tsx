@@ -19,6 +19,7 @@ import {
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
 import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
+import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
 
 /**
  * Starred sessions near the top of the sidebar, pinned under the Home row.
@@ -35,6 +36,8 @@ export function SidebarStarredSection() {
   // Only fetch once something is starred; the cache is usually warm anyway.
   const { data } = useAllSessions(stars.length > 0)
   const storeState = useCanvasStoreState()
+  // The open session, highlighted here as well as in the tree (#92).
+  const activeSessionId = useSidebarActiveSessionId()
 
   const shortcuts = useMemo((): SessionShortcut[] => {
     return resolveStarredSessions(stars, data?.entries ?? []).map(row => ({
@@ -101,6 +104,7 @@ export function SidebarStarredSection() {
             sidebarRowClassName={cn('py-1', SIDEBAR_WORKTREE_ROW_PADDING)}
             // Every row here is a star; marking each would be noise.
             showStarGlyph={false}
+            activeSessionId={activeSessionId}
             onOpen={handleOpen}
           />
         </div>

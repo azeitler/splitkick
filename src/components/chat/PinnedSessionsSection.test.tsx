@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -12,6 +12,7 @@ import { PinnedSessionsSection } from './PinnedSessionsSection'
 import type { SessionCardData } from './session-card-utils'
 import type { ProjectShortcutRow } from './pinned-sessions'
 import {
+  SIDEBAR_ROW_SELECTED,
   SIDEBAR_SESSION_LIST,
   SIDEBAR_SESSION_ROW_PADDING,
   SIDEBAR_WORKTREE_SECTION_PADDING,
@@ -93,8 +94,9 @@ describe('PinnedSessionsSection', () => {
     useProjectsStore.setState({
       projectCanvasSettings: {},
       starredSessions: [],
+      selectedWorktreeId: null,
     })
-    useChatStore.setState({ sessionLabels: {} })
+    useChatStore.setState({ sessionLabels: {}, activeSessionIds: {} })
   })
 
   it('renders nothing when no session is pinned', () => {
@@ -620,5 +622,67 @@ describe('PinnedSessionsSection', () => {
     )
 
     expect(screen.getByText('Bug')).toBeInTheDocument()
+  })
+
+  // The open session is marked here as it is in the tree (#92).
+  describe('active row', () => {
+    const row = (name: string) => screen.getByText(name).closest('button')
+    const open = (worktreeId: string, sessionId: string) => {
+      useProjectsStore.setState({ selectedWorktreeId: worktreeId })
+      useChatStore.setState({ activeSessionIds: { [worktreeId]: sessionId } })
+    }
+    const rows = [
+      entry('s-1', 'Investigation', 'feature-a'),
+      entry('s-2', 'Review', 'feature-b'),
+    ]
+
+    it('highlights the open session in the sidebar with the tree style', () => {
+      open('wt-s-1', 's-1')
+      render(
+        <PinnedSessionsSection
+          rows={rows}
+          variant="sidebar"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+
+      expect(row('Investigation')).toHaveAttribute('aria-current', 'page')
+      expect(row('Investigation')?.className).toContain(SIDEBAR_ROW_SELECTED)
+      expect(row('Investigation')).toHaveClass('font-medium')
+      expect(row('Review')).not.toHaveAttribute('aria-current')
+    })
+
+    it('moves the highlight when another session opens', () => {
+      open('wt-s-1', 's-1')
+      render(
+        <PinnedSessionsSection
+          rows={rows}
+          variant="sidebar"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+
+      act(() => open('wt-s-2', 's-2'))
+
+      expect(row('Review')).toHaveAttribute('aria-current', 'page')
+      expect(row('Investigation')).not.toHaveAttribute('aria-current')
+    })
+
+    // The canvas opens sessions in a modal over the list; nothing to mark.
+    it('leaves canvas rows unmarked', () => {
+      open('wt-s-1', 's-1')
+      render(
+        <PinnedSessionsSection
+          rows={rows}
+          variant="canvas"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+
+      expect(row('Investigation')).not.toHaveAttribute('aria-current')
+    })
   })
 })

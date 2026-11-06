@@ -1154,6 +1154,11 @@ export function WorktreeItem({
                               card.session.id
                             )}
                             onContextMenuCapture={closeOpenSessionContextMenus}
+                            aria-current={
+                              activeSessionId === card.session.id && isSelected
+                                ? 'page'
+                                : undefined
+                            }
                             className={rowClassName}
                             onClick={e => {
                               e.stopPropagation()
