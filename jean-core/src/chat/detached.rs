@@ -47,7 +47,12 @@ fn wsl_shell_quote(value: &str) -> String {
 /// value (e.g. `C:\Users\..`) is resolved relative to the Linux cwd and fails
 /// (notably `--append-system-prompt-file`, which aborts the whole run).
 #[cfg(any(windows, test))]
-const WSL_PATH_VALUE_FLAGS: &[&str] = &["--add-dir", "--append-system-prompt-file", "--settings"];
+const WSL_PATH_VALUE_FLAGS: &[&str] = &[
+    "--add-dir",
+    "--append-system-prompt-file",
+    "--settings",
+    "--mcp-config",
+];
 
 #[cfg(any(windows, test))]
 fn looks_like_windows_path(value: &str) -> bool {
@@ -140,17 +145,6 @@ fn build_wsl_claude_script(
         wsl_shell_quote(pid_path),
         wsl_shell_quote(input_path)
     );
-    if !env_vars.is_empty() {
-        inner.push_str("env ");
-        inner.push_str(
-            &env_vars
-                .iter()
-                .map(|(key, value)| format!("{key}={}", wsl_shell_quote(value)))
-                .collect::<Vec<_>>()
-                .join(" "),
-        );
-        inner.push(' ');
-    }
     inner.push_str(&wsl_shell_quote(cli_path));
     for arg in args {
         inner.push(' ');
@@ -160,10 +154,18 @@ fn build_wsl_claude_script(
 
     // Outer launcher: detach the session, wait for the pid to land (≤2s), print
     // it, then exit — after which `wsl.exe` exits and Claude keeps running.
+    //
+    // Env values may be secrets, so they are exported by this stdin-fed
+    // launcher and inherited by Claude. Putting them into the inner `sh -c`
+    // string would show them in `ps` for the whole run (#102).
+    let exports: String = env_vars
+        .iter()
+        .map(|(key, value)| format!("export {key}={}\n", wsl_shell_quote(value)))
+        .collect();
     let inner_q = wsl_shell_quote(&inner);
     let pid_q = wsl_shell_quote(pid_path);
     format!(
-        "setsid sh -c {inner_q} </dev/null &\n\
+        "{exports}setsid sh -c {inner_q} </dev/null &\n\
          i=0; while [ ! -s {pid_q} ] && [ $i -lt 40 ]; do sleep 0.05; i=$((i+1)); done\n\
          cat {pid_q}\n"
     )
@@ -330,25 +332,14 @@ pub fn spawn_detached_claude(
         .collect::<Vec<_>>()
         .join(" ");
 
-    // Build environment variable exports
-    let env_exports = env_vars
-        .iter()
-        .map(|(k, v)| format!("{}={}", k, shell_escape(v)))
-        .collect::<Vec<_>>()
-        .join(" ");
-
     // The full shell command - use cat pipe instead of file redirection
-    // Claude CLI with --print requires piped stdin, not file redirection
-    // NOTE: env vars must be placed AFTER the pipe so they apply to Claude, not cat
-    let shell_cmd = if env_exports.is_empty() {
-        format!(
-            "cat {input_path_escaped} | nohup {cli_path_escaped} {args_str} >> {output_path_escaped} 2>&1 & echo $!"
-        )
-    } else {
-        format!(
-            "cat {input_path_escaped} | {env_exports} nohup {cli_path_escaped} {args_str} >> {output_path_escaped} 2>&1 & echo $!"
-        )
-    };
+    // Claude CLI with --print requires piped stdin, not file redirection.
+    // Env vars are NOT written into this string: it is the `sh -c` argument,
+    // which `ps` shows, and env values may be secrets (#102). They go into the
+    // shell's environment instead and Claude inherits them.
+    let shell_cmd = format!(
+        "cat {input_path_escaped} | nohup {cli_path_escaped} {args_str} >> {output_path_escaped} 2>&1 & echo $!"
+    );
 
     log::trace!("Spawning detached Claude CLI");
     log::trace!("Shell command: {shell_cmd}");
@@ -367,6 +358,7 @@ pub fn spawn_detached_claude(
     let mut child = silent_command("sh")
         .arg("-c")
         .arg(&shell_cmd)
+        .envs(env_vars.iter().copied())
         .current_dir(working_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -493,8 +485,8 @@ pub fn spawn_detached_claude(
         let _ = std::fs::remove_file(&pid_file);
         let unix_pid = crate::platform::win_to_wsl_path(&pid_file.to_string_lossy());
         // Feeding the script through stdin avoids Windows-to-WSL argument
-        // rewriting. Only the run path lands in the pid file (deleted below);
-        // the MCP token stays in Claude's argv/env, never on disk.
+        // rewriting and keeps env values (secrets) out of every argv. Only
+        // the run path lands in the pid file (deleted below).
         let shell_cmd = build_wsl_claude_script(
             cli_name,
             &wsl_args,
@@ -707,6 +699,56 @@ mod tests {
         }
     }
 
+    /// #102: env values (secrets) reach Claude through its environment and
+    /// never show in the argv of Claude or of the launcher shell.
+    #[cfg(unix)]
+    #[test]
+    fn detached_claude_env_reaches_the_child_but_not_any_argv() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cli = tmp.path().join("fake-claude");
+        std::fs::write(
+            &cli,
+            "#!/bin/sh\n\
+             cat >/dev/null\n\
+             echo \"env=$SPLITKICK_TEST_SECRET\"\n\
+             echo \"self=$(ps -o args= -p $$)\"\n\
+             echo \"parent=$(ps -o args= -p $PPID)\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let input = tmp.path().join("in.jsonl");
+        let output = tmp.path().join("out.jsonl");
+        std::fs::write(&input, "{}\n").unwrap();
+        std::fs::write(&output, "").unwrap();
+
+        spawn_detached_claude(
+            &cli,
+            &["--print".to_string()],
+            &input,
+            &output,
+            tmp.path(),
+            &[("SPLITKICK_TEST_SECRET", "SECRET-TOKEN-123")],
+        )
+        .expect("spawn");
+
+        let mut out = String::new();
+        for _ in 0..100 {
+            out = std::fs::read_to_string(&output).unwrap();
+            if out.contains("parent=") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(out.contains("env=SECRET-TOKEN-123"), "{out}");
+        let argv_lines: Vec<&str> = out
+            .lines()
+            .filter(|l| l.starts_with("self=") || l.starts_with("parent="))
+            .collect();
+        assert_eq!(argv_lines.len(), 2, "{out}");
+        assert!(argv_lines.iter().all(|l| !l.contains("SECRET-TOKEN-123")));
+    }
+
     #[test]
     fn test_is_process_alive() {
         // Current process should be alive
@@ -774,6 +816,17 @@ mod tests {
     }
 
     #[test]
+    fn test_wslify_path_args_translates_the_mcp_config_file() {
+        let args = vec![
+            "--mcp-config".to_string(),
+            r"C:\Users\u\AppData\Roaming\app\run-secrets\s-1.mcp.json".to_string(),
+        ];
+        let out = wslify_path_args(&args);
+        assert_eq!(out[1], crate::platform::win_to_wsl_path(&args[1]));
+        assert!(out[1].starts_with("/mnt/c/"));
+    }
+
+    #[test]
     fn test_wsl_claude_script_detaches_with_setsid() {
         let script = build_wsl_claude_script(
             "/usr/bin/claude",
@@ -784,8 +837,14 @@ mod tests {
             &[("JEAN_MCP_TOKEN", "secret")],
         );
 
+        // Env values are exported by the stdin-fed launcher, never part of
+        // the long-lived `sh -c` argument (#102).
+        let (exports, launcher) = script.split_once("setsid sh -c ").unwrap();
+        assert_eq!(exports, "export JEAN_MCP_TOKEN='secret'\n");
+        assert!(!launcher.contains("secret"));
+        assert!(!launcher.contains("JEAN_MCP_TOKEN"));
         // New session so Claude survives wsl.exe exiting, detached from stdin.
-        assert!(script.starts_with("setsid sh -c "));
+        assert!(script.contains("setsid sh -c "));
         assert!(script.contains("</dev/null &"));
         // Inner command records the session-leader pid, then pipes input into
         // Claude. (Inner single quotes are re-escaped by the outer `sh -c '...'`
@@ -793,8 +852,6 @@ mod tests {
         assert!(script.contains("echo $$ >"));
         assert!(script.contains("cat "));
         assert!(script.contains(" | "));
-        assert!(script.contains("env JEAN_MCP_TOKEN="));
-        assert!(script.contains("secret"));
         assert!(script.contains("/usr/bin/claude"));
         assert!(script.contains("--print"));
         assert!(script.contains("hello world"));

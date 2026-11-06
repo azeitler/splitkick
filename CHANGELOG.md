@@ -56,6 +56,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **MCP tokens no longer show in `ps`** (#102). Claude runs get their MCP
+  config (with the Splitkick MCP token and the env of your MCP servers) as a
+  private file that is deleted when the run ends, not as inline JSON on the
+  command line. Detached runs pass env values through the environment instead
+  of the launcher's shell command, and the Grok MCP servers file is owner-only.
 - **A session's graph permission change now sticks** (#101). Marking a session
   opened (which the UI does often), a cancel, run recovery on page load and a
   session resume each wrote back a copy of the session metadata read a moment
