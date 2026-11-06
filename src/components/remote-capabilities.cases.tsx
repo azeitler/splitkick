@@ -5,7 +5,7 @@
  * and asserts.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
+import { fireEvent, render, screen } from '@/test/test-utils'
 import { setNativeOpenAllowed, setWsConnected } from '@/lib/environment'
 import {
   addRemoteConnection,
@@ -13,6 +13,7 @@ import {
   selectConnection,
 } from '@/lib/remote-connections'
 import { getFileManagerName } from '@/lib/platform'
+import { HOST_ONLY_REASON } from '@/components/ui/host-only-hint'
 import { WorktreeContextMenu } from '@/components/projects/WorktreeContextMenu'
 import { ProjectContextMenu } from '@/components/projects/ProjectContextMenu'
 import { FileTreeContextMenu } from '@/components/file-browser/FileTreeContextMenu'
@@ -30,9 +31,9 @@ export type ClientMode =
   | 'Web Access from another machine (host allows open)'
 
 export interface Expected {
-  /** Finder / terminal / default app / worktrees folder */
+  /** Finder / terminal / default app / worktrees folder enabled (else disabled, "Host only") */
   native: boolean
-  /** Open in editor (host-native or local Zed via ssh://) */
+  /** Open in editor enabled (host-native or local Zed via ssh://) */
   editor: boolean
 }
 
@@ -69,10 +70,16 @@ export function resetClientMode(): void {
 const fileManager = () =>
   new RegExp(`(reveal|open) in ${getFileManagerName()}`, 'i')
 
-function expectItem(name: RegExp, visible: boolean) {
-  const item = screen.queryByRole('menuitem', { name })
-  if (visible) expect(item).not.toBeNull()
-  else expect(item).toBeNull()
+/** The item is always there; off actions are disabled and say why. */
+function expectItem(name: RegExp, enabled: boolean) {
+  const item = screen.getByRole('menuitem', { name })
+  if (enabled) {
+    expect(item).not.toHaveAttribute('aria-disabled')
+    expect(item).not.toHaveTextContent(HOST_ONLY_REASON)
+  } else {
+    expect(item).toHaveAttribute('aria-disabled', 'true')
+    expect(item).toHaveTextContent(HOST_ONLY_REASON)
+  }
 }
 
 function worktreeActions(): ReturnType<typeof useWorktreeMenuActions> {
@@ -234,11 +241,16 @@ export function describeMenusIn(mode: ClientMode, expected: Expected): void {
       )
 
       await screen.findByTestId('highlighted')
-      await waitFor(() => {
-        const button = screen.queryByRole('button', { name: /open in editor/i })
-        if (expected.editor) expect(button).not.toBeNull()
-        else expect(button).toBeNull()
+      const button = await screen.findByRole('button', {
+        name: /open in editor/i,
       })
+      if (expected.editor) {
+        expect(button).toBeEnabled()
+        expect(button).not.toHaveTextContent(HOST_ONLY_REASON)
+      } else {
+        expect(button).toBeDisabled()
+        expect(button).toHaveTextContent(HOST_ONLY_REASON)
+      }
     })
 
     it('⌘K: no command opens Finder, a terminal app or an editor', async () => {

@@ -101,7 +101,7 @@ describe('WorktreeDropdownMenu', () => {
     expect(actionMocks.handleRun).not.toHaveBeenCalled()
   })
 
-  it('hides open-in editor/terminal/finder on remote connections without native open', async () => {
+  it('disables open-in editor/terminal/finder on remote connections without native open', async () => {
     const user = userEvent.setup()
     envMocks.isNativeApp = true
     envMocks.isLocalBackend = false
@@ -119,7 +119,12 @@ describe('WorktreeDropdownMenu', () => {
 
     await user.click(screen.getByRole('button'))
 
-    expect(screen.queryByRole('menuitem', { name: /open in/i })).toBeNull()
+    const openItems = screen.getAllByRole('menuitem', { name: /open in/i })
+    expect(openItems).toHaveLength(3)
+    for (const item of openItems) {
+      expect(item).toHaveAttribute('aria-disabled', 'true')
+      expect(item).toHaveTextContent('Host only')
+    }
   })
 
   it('shows open-in editor when the native shell can open remote paths in Zed', async () => {
@@ -140,10 +145,15 @@ describe('WorktreeDropdownMenu', () => {
 
     await user.click(screen.getByRole('button'))
 
-    expect(
-      screen.getByRole('menuitem', { name: /open in/i })
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
+    const finder = screen.getByRole('menuitem', { name: /finder/i })
+    expect(finder).toHaveAttribute('aria-disabled', 'true')
+    expect(finder).toHaveTextContent('Host only')
+    const editor = screen
+      .getAllByRole('menuitem', { name: /open in/i })
+      .find(item => !/finder|terminal/i.test(item.textContent ?? ''))
+    expect(editor).toBeDefined()
+    expect(editor).not.toHaveAttribute('aria-disabled')
+    expect(editor).not.toHaveTextContent('Host only')
   })
 
   it('shows open-in editor/terminal/finder when the remote backend allows native open', async () => {
@@ -165,6 +175,10 @@ describe('WorktreeDropdownMenu', () => {
     await user.click(screen.getByRole('button'))
 
     const openItems = screen.getAllByRole('menuitem', { name: /open in/i })
-    expect(openItems.length).toBeGreaterThanOrEqual(1)
+    expect(openItems).toHaveLength(3)
+    for (const item of openItems) {
+      expect(item).not.toHaveAttribute('aria-disabled')
+    }
+    expect(screen.queryByText('Host only')).toBeNull()
   })
 })

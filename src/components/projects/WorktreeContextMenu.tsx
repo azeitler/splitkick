@@ -37,6 +37,7 @@ import {
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface WorktreeContextMenuProps {
   // Computed once by the parent (WorktreeItem) and passed in so the hook isn't
@@ -70,7 +71,7 @@ export function WorktreeContextMenu({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
+      <ContextMenuContent className="min-w-48">
         {runScripts.length === 1 && (
           <ContextMenuItem onClick={handleRun}>
             <Play className="mr-2 h-4 w-4" />
@@ -97,28 +98,34 @@ export function WorktreeContextMenu({
           </ContextMenuSub>
         )}
 
-        {(canOpenInEditor() || canOpenNativeApps()) && <ContextMenuSeparator />}
+        <ContextMenuSeparator />
 
-        {canOpenInEditor() && (
-          <ContextMenuItem onClick={handleOpenInEditor}>
-            <Code className="mr-2 h-4 w-4" />
-            Open in {getEditorLabel(preferences?.editor)}
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem
+          disabled={!canOpenInEditor()}
+          onClick={handleOpenInEditor}
+        >
+          <Code className="mr-2 h-4 w-4" />
+          Open in {getEditorLabel(preferences?.editor)}
+          {!canOpenInEditor() && <HostOnlyHint />}
+        </ContextMenuItem>
 
-        {canOpenNativeApps() && (
-          <ContextMenuItem onClick={handleOpenInFinder}>
-            <FolderOpen className="mr-2 h-4 w-4" />
-            Open in {getFileManagerName()}
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem
+          disabled={!canOpenNativeApps()}
+          onClick={handleOpenInFinder}
+        >
+          <FolderOpen className="mr-2 h-4 w-4" />
+          Open in {getFileManagerName()}
+          {!canOpenNativeApps() && <HostOnlyHint />}
+        </ContextMenuItem>
 
-        {canOpenNativeApps() && (
-          <ContextMenuItem onClick={handleOpenInTerminal}>
-            <Terminal className="mr-2 h-4 w-4" />
-            Open in {getTerminalLabel(preferences?.terminal)}
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem
+          disabled={!canOpenNativeApps()}
+          onClick={handleOpenInTerminal}
+        >
+          <Terminal className="mr-2 h-4 w-4" />
+          Open in {getTerminalLabel(preferences?.terminal)}
+          {!canOpenNativeApps() && <HostOnlyHint />}
+        </ContextMenuItem>
 
         {gitClient && (
           <ContextMenuItem onClick={handleOpenInGitClient}>

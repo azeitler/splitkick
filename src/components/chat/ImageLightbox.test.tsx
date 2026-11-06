@@ -75,24 +75,29 @@ describe('ImagePreviewDialog', () => {
     expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull()
   })
 
-  it('native remote session: Open in browser instead of Reveal', async () => {
+  it('native remote session: Open in browser, Reveal disabled', async () => {
     mocks.isLocalBackend.mockReturnValue(false)
     const user = userEvent.setup()
     renderDialog(REMOTE_SRC, '/remote/app-data/pasted-images/shot.png')
 
-    expect(screen.queryByRole('button', { name: /Reveal in/ })).toBeNull()
+    const reveal = screen.getByRole('button', { name: /Reveal in/ })
+    expect(reveal).toBeDisabled()
+    expect(reveal).toHaveTextContent('Host only')
     await user.click(screen.getByRole('button', { name: 'Open in browser' }))
     expect(mocks.openExternal).toHaveBeenCalledWith(REMOTE_SRC)
     expect(screen.getByRole('button', { name: 'Copy image' })).toBeVisible()
   })
 
-  it('web access: Open in browser with the served URL, no Reveal', async () => {
+  it('web access: Open in browser with the served URL, Reveal disabled', async () => {
     mocks.isLocalBackend.mockReturnValue(false)
     const user = userEvent.setup()
     const src = '/api/files/pasted-images/shot.png?token=t'
     renderDialog(src, '/srv/app-data/pasted-images/shot.png')
 
-    expect(screen.queryByRole('button', { name: /Reveal in/ })).toBeNull()
+    const reveal = screen.getByRole('button', { name: /Reveal in/ })
+    expect(reveal).toBeDisabled()
+    expect(reveal).toHaveTextContent('Host only')
+    expect(mocks.reveal).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Open in browser' }))
     expect(mocks.openExternal).toHaveBeenCalledWith(src)
   })

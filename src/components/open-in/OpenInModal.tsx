@@ -50,6 +50,7 @@ import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { resolvePortUrl } from '@/components/browser/default-tab-url'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface ModalOption {
   id: string
@@ -58,6 +59,8 @@ interface ModalOption {
   key?: string
   metaKey?: boolean
   url?: string
+  /** Shown but off: the action opens on a host this user does not sit at. */
+  disabled?: boolean
 }
 
 export function OpenInModal() {
@@ -181,10 +184,11 @@ export function OpenInModal() {
         : []),
     ]
 
-    return allOptions.filter(opt => {
-      if (opt.id === 'editor') return canOpenEditor
-      if (opt.id === 'terminal' || opt.id === 'finder') return canOpenLocally
-      return true
+    return allOptions.map(opt => {
+      if (opt.id === 'editor') return { ...opt, disabled: !canOpenEditor }
+      if (opt.id === 'terminal' || opt.id === 'finder')
+        return { ...opt, disabled: !canOpenLocally }
+      return opt
     })
   }, [
     preferences?.editor,
@@ -325,10 +329,20 @@ export function OpenInModal() {
     [baseOptions, portOptions, contextOptions]
   )
 
+  // The stored selection can name a disabled option (it starts on 'editor');
+  // then the first enabled option is the one Enter runs.
+  const activeOption = allOptions.some(
+    opt => opt.id === selectedOption && !opt.disabled
+  )
+    ? selectedOption
+    : (allOptions.find(opt => !opt.disabled)?.id ?? selectedOption)
+
   const useWideLayout = portOptions.length + contextOptions.length > 4
 
   const executeAction = useCallback(
     (optionId: string) => {
+      if (baseOptions.some(o => o.id === optionId && o.disabled)) return
+
       // Handle port options
       const portOpt = portOptions.find(o => o.id === optionId)
       if (portOpt?.url) {
@@ -409,6 +423,7 @@ export function OpenInModal() {
       setOpenInModalOpen(false)
     },
     [
+      baseOptions,
       portOptions,
       contextOptions,
       targetPath,
@@ -428,11 +443,12 @@ export function OpenInModal() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const allIds = allOptions.map(opt => opt.id)
+      const enabled = allOptions.filter(opt => !opt.disabled)
+      const allIds = enabled.map(opt => opt.id)
       const hasMeta = e.metaKey || e.ctrlKey
 
       // Quick select with shortcut keys (metaKey options require Cmd/Ctrl)
-      const matchedOption = allOptions.find(
+      const matchedOption = enabled.find(
         opt =>
           opt.key &&
           opt.key.toLowerCase() === key &&
@@ -446,10 +462,10 @@ export function OpenInModal() {
       } else if (key === 'enter') {
         e.preventDefault()
         e.stopPropagation()
-        executeAction(selectedOption)
+        executeAction(activeOption)
       } else if (key === 'arrowdown' || key === 'arrowup') {
         e.preventDefault()
-        const currentIndex = allIds.indexOf(selectedOption)
+        const currentIndex = allIds.indexOf(activeOption)
         const newIndex =
           key === 'arrowdown'
             ? (currentIndex + 1) % allIds.length
@@ -460,7 +476,7 @@ export function OpenInModal() {
         }
       }
     },
-    [executeAction, selectedOption, allOptions]
+    [executeAction, activeOption, allOptions]
   )
 
   const handleOpenSettings = useCallback(() => {
@@ -470,17 +486,21 @@ export function OpenInModal() {
 
   const renderOption = (option: ModalOption) => {
     const Icon = option.icon
-    const isSelected = selectedOption === option.id
+    const isSelected = activeOption === option.id
 
     return (
       <button
         type="button"
         key={option.id}
+        disabled={option.disabled}
         onClick={() => executeAction(option.id)}
-        onMouseEnter={() => setSelectedOption(option.id)}
+        onMouseEnter={() => {
+          if (!option.disabled) setSelectedOption(option.id)
+        }}
         className={cn(
           'w-full min-w-0 flex items-center justify-between px-4 py-2 text-sm transition-colors',
           'hover:bg-accent focus:outline-none',
+          'disabled:pointer-events-none disabled:opacity-50',
           isSelected && 'bg-accent'
         )}
       >
@@ -488,10 +508,14 @@ export function OpenInModal() {
           <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="truncate">{option.label}</span>
         </div>
-        {option.key && (
-          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
-            {option.metaKey ? `⌘${option.key}` : option.key}
-          </kbd>
+        {option.disabled ? (
+          <HostOnlyHint />
+        ) : (
+          option.key && (
+            <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
+              {option.metaKey ? `⌘${option.key}` : option.key}
+            </kbd>
+          )
         )}
       </button>
     )

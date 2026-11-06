@@ -48,6 +48,7 @@ import {
   svgToDataUrl,
 } from '@/components/artifact-preview/sandbox'
 import { openFileInBrowser } from '@/components/artifact-preview/open-in-browser'
+import { HOST_ONLY_REASON, HostOnlyHint } from '@/components/ui/host-only-hint'
 
 // Lazy load CodeEditor (Pierre File + edit mode) so the main bundle stays lean
 const CodeEditor = lazy(() => import('@/components/ui/code-editor'))
@@ -488,16 +489,25 @@ export function FileContentModal({
                     </Button>
                   </>
                 )}
-                {canOpenInEditor() && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleOpenExternal}
-                  >
-                    <ExternalLink className="h-4 w-4 sm:mr-1" />
-                    <span className="hidden sm:inline">Open in Editor</span>
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleOpenExternal}
+                  disabled={!canOpenInEditor()}
+                  title={
+                    canOpenInEditor()
+                      ? undefined
+                      : `Open in Editor: ${HOST_ONLY_REASON}`
+                  }
+                >
+                  <ExternalLink className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Open in Editor</span>
+                  {!canOpenInEditor() && (
+                    <span className="hidden sm:inline">
+                      <HostOnlyHint />
+                    </span>
+                  )}
+                </Button>
               </div>
             )}
           </div>
