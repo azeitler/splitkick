@@ -157,6 +157,15 @@ impl RuntimeContext {
         id
     }
 
+    /// Registered backend event listeners (memory report, issue #97).
+    pub fn listener_count(&self) -> usize {
+        self.inner
+            .listeners
+            .lock()
+            .map(|listeners| listeners.values().map(HashMap::len).sum())
+            .unwrap_or(0)
+    }
+
     pub fn unlisten(&self, id: u64) {
         let mut listeners = self.inner.listeners.lock().expect("listener lock");
         for handlers in listeners.values_mut() {

@@ -62,6 +62,11 @@ static TURN_EXECUTION_MODE: Lazy<Mutex<HashMap<String, String>>> =
 /// quitting). Claude CLI and host-backed Pi/Grok/Kimi/Antigravity runs are detached.
 static DETACHED_SESSIONS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
+/// CLI runs in the registry (memory report, issue #97).
+pub(crate) fn registered_process_count() -> usize {
+    lock_recover(&PROCESS_REGISTRY, "PROCESS_REGISTRY").len()
+}
+
 fn lock_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
     match mutex.lock() {
         Ok(guard) => guard,

@@ -43,6 +43,14 @@ struct CachedSessionSummary {
     rendered_message_count: u32,
 }
 
+/// Sessions cached in memory (memory report, issue #97).
+pub(crate) fn session_summary_cache_len() -> usize {
+    SESSION_SUMMARY_CACHE
+        .lock()
+        .map(|cache| cache.len())
+        .unwrap_or(0)
+}
+
 /// Global mutex to prevent concurrent read-modify-write races on session-context-metadata.json.
 static SAVED_CONTEXTS_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
