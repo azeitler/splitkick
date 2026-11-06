@@ -32,6 +32,9 @@ async function parkAndHideIfActive(tabId: string): Promise<void> {
     if (!exists) return
     await browserBackend.setBounds(tabId, OFFSCREEN_BOUNDS)
     await browserBackend.setVisible(tabId, false)
+    // The pane is gone but the webview lives on, so a video would keep
+    // playing unseen.
+    await browserBackend.pauseMedia(tabId)
   } catch (err) {
     // Cleanup races are expected when a tab is intentionally closed: the store
     // removes React content while `browser_close` unregisters the native
@@ -51,7 +54,8 @@ async function parkAndHideIfActive(tabId: string): Promise<void> {
  *      navigation between worktrees), `browser_set_bounds` instead.
  *   2. ResizeObserver + window resize → debounced rAF → `browser_set_bounds`.
  *   3. Active flag flips → `browser_set_visible`.
- *   4. On unmount: hide (do NOT close — keeps history when re-mounted).
+ *   4. On unmount: hide and pause media (do NOT close — keeps history when
+ *      re-mounted).
  */
 const BrowserWebviewContent = memo(function BrowserWebviewContent({
   tabId,
@@ -283,7 +287,8 @@ const BrowserWebviewContent = memo(function BrowserWebviewContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, tabId])
 
-  // On unmount: park off-screen + hide (keeps webview alive in Rust for re-mount)
+  // On unmount: park off-screen, hide, pause media (keeps webview alive in
+  // Rust for re-mount)
   useEffect(() => {
     return () => {
       void parkAndHideIfActive(tabId)

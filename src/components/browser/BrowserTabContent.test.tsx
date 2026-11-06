@@ -10,6 +10,7 @@ const browserBackendMock = vi.hoisted(() => ({
   setBounds: vi.fn(),
   setVisible: vi.fn(),
   hasActive: vi.fn(),
+  pauseMedia: vi.fn(),
   close: vi.fn(),
 }))
 
@@ -49,6 +50,7 @@ describe('BrowserTabContent', () => {
     browserBackendMock.setVisible.mockResolvedValue(undefined)
     browserBackendMock.hasActive.mockResolvedValue(false)
     browserBackendMock.close.mockResolvedValue(undefined)
+    browserBackendMock.pauseMedia.mockResolvedValue(undefined)
     invokeMock.mockResolvedValue('')
     useBrowserStore.setState({ tabs: {}, activeTabIds: {} })
   })
@@ -70,6 +72,40 @@ describe('BrowserTabContent', () => {
     })
     expect(browserBackendMock.setBounds).not.toHaveBeenCalled()
     expect(browserBackendMock.setVisible).not.toHaveBeenCalled()
+    expect(browserBackendMock.pauseMedia).not.toHaveBeenCalled()
+  })
+
+  it('pauses media when the pane closes, so a hidden video stops playing', async () => {
+    browserBackendMock.hasActive.mockResolvedValue(true)
+    const { unmount } = render(<BrowserTabContent tabId="tab-1" isActive />)
+
+    unmount()
+
+    await waitFor(() => {
+      expect(browserBackendMock.pauseMedia).toHaveBeenCalledWith('tab-1')
+    })
+    expect(browserBackendMock.setVisible).toHaveBeenCalledWith('tab-1', false)
+  })
+
+  it('does not pause media when the tab only goes inactive', async () => {
+    // A modal over the pane or a switch to another tab hides the webview
+    // for a moment; playback must go on.
+    browserBackendMock.hasActive.mockResolvedValue(true)
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      setTimeout(() => cb(0), 0)
+      return 1
+    })
+    const { rerender } = render(<BrowserTabContent tabId="tab-1" isActive />)
+    await waitFor(() =>
+      expect(browserBackendMock.setVisible).toHaveBeenCalledWith('tab-1', true)
+    )
+
+    rerender(<BrowserTabContent tabId="tab-1" isActive={false} />)
+
+    await waitFor(() =>
+      expect(browserBackendMock.setVisible).toHaveBeenCalledWith('tab-1', false)
+    )
+    expect(browserBackendMock.pauseMedia).not.toHaveBeenCalled()
   })
 
   it('renders a local text file itself instead of creating a webview', async () => {

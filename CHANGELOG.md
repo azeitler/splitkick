@@ -39,6 +39,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Closing the in-app browser pauses its video and audio.** The page stays
+  loaded in the background, so before this a video kept playing unseen.
 - **The open session is highlighted in Starred and Pinned too** (#92). Its
   rows there now get the same selection style as its row in the project tree.
 
