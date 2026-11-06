@@ -400,13 +400,18 @@ mod tests {
 
     #[test]
     fn normalize_config_dir_expands_and_trims() {
-        let home = Path::new("/Users/alice");
+        // A real temp dir is absolute on every platform; "/Users/alice" has
+        // no drive letter, so Windows does not treat it as absolute.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let expected = home.join(".claude-work").to_string_lossy().to_string();
         assert_eq!(
             normalize_config_dir(" ~/.claude-work/ ", Some(home)).as_deref(),
-            Some("/Users/alice/.claude-work")
+            Some(expected.as_str())
         );
         assert_eq!(normalize_config_dir("relative/dir", Some(home)), None);
         assert_eq!(normalize_config_dir("  ", Some(home)), None);
+        #[cfg(unix)]
         assert_eq!(normalize_config_dir("/", Some(home)).as_deref(), Some("/"));
     }
 
