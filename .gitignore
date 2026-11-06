@@ -45,3 +45,6 @@ jean-core/target/
 
 # Playwright MCP console logs
 .playwright-mcp/
+
+# Local-only mockup with real project names as demo data
+docs/mockups/sidebar-sticky/
