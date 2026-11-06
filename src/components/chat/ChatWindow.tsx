@@ -53,7 +53,7 @@ import {
   type PackageScript,
 } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import type { Worktree } from '@/types/projects'
+import { isPlainProject, type Worktree } from '@/types/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -692,6 +692,8 @@ export function ChatWindow({
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
+  // "Build in a new worktree" needs git: not for a plain project (#93).
+  const canBuildInWorktree = !!worktree?.project_id && !isPlainProject(project)
 
   // Git status for pull indicator
   const { data: gitStatus } = useGitStatus(activeWorktreeId ?? null)
@@ -3306,12 +3308,12 @@ export function ChatWindow({
                                       handleClearContextApprovalBuild
                                     }
                                     onWorktreeBuildApproval={
-                                      worktree?.project_id
+                                      canBuildInWorktree
                                         ? handleWorktreeBuildApproval
                                         : undefined
                                     }
                                     onWorktreeYoloApproval={
-                                      worktree?.project_id
+                                      canBuildInWorktree
                                         ? handleWorktreeYoloApproval
                                         : undefined
                                     }
@@ -3386,12 +3388,12 @@ export function ChatWindow({
                                       handleClearContextApprovalBuild
                                     }
                                     onWorktreeBuildApproval={
-                                      worktree?.project_id
+                                      canBuildInWorktree
                                         ? handleWorktreeBuildApproval
                                         : undefined
                                     }
                                     onWorktreeYoloApproval={
-                                      worktree?.project_id
+                                      canBuildInWorktree
                                         ? handleWorktreeYoloApproval
                                         : undefined
                                     }
@@ -3656,12 +3658,12 @@ export function ChatWindow({
                         }
                         onClearContextApprove={floatingClearContextApprove}
                         onWorktreeBuildApprove={
-                          worktree?.project_id
+                          canBuildInWorktree
                             ? floatingWorktreeBuildApprove
                             : undefined
                         }
                         onWorktreeYoloApprove={
-                          worktree?.project_id
+                          canBuildInWorktree
                             ? floatingWorktreeYoloApprove
                             : undefined
                         }
@@ -4293,12 +4295,12 @@ export function ChatWindow({
                 handlePlanDialogClearContextBuildApprove
               }
               onWorktreeBuildApprove={
-                worktree?.project_id
+                canBuildInWorktree
                   ? handlePlanDialogWorktreeBuildApprove
                   : undefined
               }
               onWorktreeYoloApprove={
-                worktree?.project_id
+                canBuildInWorktree
                   ? handlePlanDialogWorktreeYoloApprove
                   : undefined
               }
@@ -4335,12 +4337,12 @@ export function ChatWindow({
                 handlePlanDialogClearContextBuildApprove
               }
               onWorktreeBuildApprove={
-                worktree?.project_id
+                canBuildInWorktree
                   ? handlePlanDialogWorktreeBuildApprove
                   : undefined
               }
               onWorktreeYoloApprove={
-                worktree?.project_id
+                canBuildInWorktree
                   ? handlePlanDialogWorktreeYoloApprove
                   : undefined
               }
