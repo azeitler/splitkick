@@ -8,9 +8,9 @@ import {
 } from '@/components/ui/sheet'
 import { useUIStore } from '@/store/ui-store'
 
-const FileBrowserSidebar = lazy(() =>
-  import('./FileBrowserSidebar').then(mod => ({
-    default: mod.FileBrowserSidebar,
+const ContextPanel = lazy(() =>
+  import('@/components/layout/ContextPanel').then(mod => ({
+    default: mod.ContextPanel,
   }))
 )
 
@@ -21,7 +21,8 @@ interface MobileFileBrowserProps {
 }
 
 /**
- * Mobile file browser as a left overlay drawer (same pattern as projects sidebar).
+ * The left context panel (Files | Network | Graph, #98) as a left overlay
+ * drawer on a phone.
  */
 export function MobileFileBrowser({
   open,
@@ -67,13 +68,13 @@ export function MobileFileBrowser({
         data-testid="mobile-file-browser"
       >
         <SheetHeader className="sr-only">
-          <SheetTitle>File browser</SheetTitle>
+          <SheetTitle>Side panel</SheetTitle>
           <SheetDescription>
-            Browse and open files in the current worktree
+            Files, session network and graph of the current session
           </SheetDescription>
         </SheetHeader>
         <Suspense fallback={null}>
-          <FileBrowserSidebar hideCloseButton={false} />
+          <ContextPanel />
         </Suspense>
       </SheetContent>
     </Sheet>

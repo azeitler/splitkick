@@ -1,11 +1,3 @@
-import { Network } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { navigateToSession } from '@/lib/navigate-to-session'
@@ -38,12 +30,14 @@ function NetworkRow({
   node,
   depth,
   isCurrent,
+  isFocus,
   storeState,
   onOpen,
 }: {
   node: SessionNetworkNode
   depth: number
   isCurrent: boolean
+  isFocus: boolean
   storeState: ChatStoreState
   onOpen: (node: SessionNetworkNode) => void
 }) {
@@ -62,13 +56,13 @@ function NetworkRow({
             ? 'Archived. Restore it from the archive to open it.'
             : undefined
         }
-        style={{ paddingLeft: `${0.5 + depth * 1.25}rem` }}
+        style={{ paddingLeft: `${0.5 + depth}rem` }}
         className={cn(
           'flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm',
           archived
             ? 'cursor-default opacity-50'
             : 'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
-          isCurrent && 'bg-muted'
+          (isCurrent || isFocus) && 'bg-muted'
         )}
       >
         {depth > 0 && (
@@ -110,69 +104,72 @@ function NetworkRow({
 /**
  * The tree of sessions around one session (#77): its root through
  * `started_by`, and every session started from there, in any project.
- * This is the schedule side (who started whom); the graph panel is the roadmap.
+ * This is the schedule side (who started whom); the Graph tab is the roadmap.
+ * Shown in the left panel's Network tab (#98); live through the `sessions`
+ * cache invalidation.
  */
-export function SessionNetworkDialog() {
-  const sessionId = useUIStore(state => state.sessionNetworkSessionId)
-  const close = () => useUIStore.getState().setSessionNetworkSessionId(null)
+export function SessionNetworkTree({
+  sessionId,
+  currentSessionId,
+  onOpened,
+}: {
+  /** The session whose network to show. */
+  sessionId: string
+  /** The session open on screen; marked "This session". */
+  currentSessionId: string | null
+  /** Called after a click opened a session. */
+  onOpened?: () => void
+}) {
   const { data: network, isLoading, isError } = useSessionNetwork(sessionId)
   const storeState = useCanvasStoreState()
   const depths = network ? networkDepths(network) : null
 
   const open = (node: SessionNetworkNode) => {
-    close()
+    // The opened session is in this network, so the pin is no longer needed.
+    useUIStore.getState().setSessionNetworkSessionId(null)
     navigateToSession({
       projectId: node.projectId,
       worktreeId: node.worktreeId,
       sessionId: node.session.id,
     })
+    onOpened?.()
   }
 
+  if (isLoading) {
+    return <p className="px-2 py-4 text-sm text-muted-foreground">Loading…</p>
+  }
+  if (isError || !network || !depths) {
+    return (
+      <p className="px-2 py-4 text-sm text-muted-foreground">
+        This session is not on this device.
+      </p>
+    )
+  }
   return (
-    <Dialog open={!!sessionId} onOpenChange={next => !next && close()}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Network className="h-4 w-4" />
-            Session network
-          </DialogTitle>
-          <DialogDescription>
-            Which session started which. Click a session to open it.
-          </DialogDescription>
-        </DialogHeader>
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : isError || !network || !depths ? (
-          <p className="text-sm text-muted-foreground">
-            This session is not on this device.
-          </p>
-        ) : (
-          <div className="max-h-[60vh] overflow-y-auto">
-            {network.rootParentMissing && (
-              <p className="mb-1 px-2 text-xs text-muted-foreground">
-                Started by a session that is not on this device.
-              </p>
-            )}
-            <ul className="space-y-0.5" aria-label="Session network">
-              {network.nodes.map(node => (
-                <NetworkRow
-                  key={node.session.id}
-                  node={node}
-                  depth={depths.get(node.session.id) ?? 0}
-                  isCurrent={node.session.id === sessionId}
-                  storeState={storeState}
-                  onOpen={open}
-                />
-              ))}
-            </ul>
-            {network.nodes.length === 1 && (
-              <p className="mt-2 px-2 text-xs text-muted-foreground">
-                This session has not started other sessions.
-              </p>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+    <div className="p-1">
+      {network.rootParentMissing && (
+        <p className="mb-1 px-2 text-xs text-muted-foreground">
+          Started by a session that is not on this device.
+        </p>
+      )}
+      <ul className="space-y-0.5" aria-label="Session network">
+        {network.nodes.map(node => (
+          <NetworkRow
+            key={node.session.id}
+            node={node}
+            depth={depths.get(node.session.id) ?? 0}
+            isCurrent={node.session.id === currentSessionId}
+            isFocus={node.session.id === sessionId}
+            storeState={storeState}
+            onOpen={open}
+          />
+        ))}
+      </ul>
+      {network.nodes.length === 1 && (
+        <p className="mt-2 px-2 text-xs text-muted-foreground">
+          This session has not started other sessions.
+        </p>
+      )}
+    </div>
   )
 }

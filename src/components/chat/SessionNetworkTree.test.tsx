@@ -10,7 +10,7 @@ import type {
   SessionNetwork,
   SessionNetworkNode,
 } from '@/types/chat'
-import { networkDepths, SessionNetworkDialog } from './SessionNetworkDialog'
+import { networkDepths, SessionNetworkTree } from './SessionNetworkTree'
 
 const network = vi.hoisted(() => ({
   current: undefined as SessionNetwork | null | undefined,
@@ -108,23 +108,36 @@ describe('linkedSessionIds', () => {
   })
 })
 
-describe('SessionNetworkDialog', () => {
+describe('SessionNetworkTree (#77, #98)', () => {
   beforeEach(() => {
     network.current = tree
     navigateToSession.mockClear()
-    useUIStore.getState().setSessionNetworkSessionId('a')
+    useUIStore.getState().setSessionNetworkSessionId(null)
   })
 
   it('lists the whole tree with project › worktree and marks this session', () => {
-    render(<SessionNetworkDialog />)
+    render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
     expect(screen.getByText('Session root')).toBeInTheDocument()
     expect(screen.getByText('Session a1')).toBeInTheDocument()
     expect(screen.getByText('Demo › tree-a1')).toBeInTheDocument()
     expect(screen.getByText('This session')).toBeInTheDocument()
   })
 
-  it('opens a session on click and closes', () => {
-    render(<SessionNetworkDialog />)
+  it('marks no row as this session for a pinned other network', () => {
+    render(<SessionNetworkTree sessionId="a" currentSessionId="other" />)
+    expect(screen.queryByText('This session')).toBeNull()
+  })
+
+  it('opens a session on click and drops the pinned network', () => {
+    const onOpened = vi.fn()
+    useUIStore.getState().setSessionNetworkSessionId('a')
+    render(
+      <SessionNetworkTree
+        sessionId="a"
+        currentSessionId={null}
+        onOpened={onOpened}
+      />
+    )
     fireEvent.click(screen.getByText('Session a1'))
     expect(navigateToSession).toHaveBeenCalledWith({
       projectId: 'p1',
@@ -132,10 +145,11 @@ describe('SessionNetworkDialog', () => {
       sessionId: 'a1',
     })
     expect(useUIStore.getState().sessionNetworkSessionId).toBeNull()
+    expect(onOpened).toHaveBeenCalled()
   })
 
   it('shows archived sessions greyed out and not clickable', () => {
-    render(<SessionNetworkDialog />)
+    render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
     const row = screen.getByText('Session b').closest('button')
     expect(row).toBeDisabled()
     expect(row?.textContent).toContain('Archived')
@@ -143,7 +157,7 @@ describe('SessionNetworkDialog', () => {
 
   it('says when the root was started by a session not on this device', () => {
     network.current = { ...tree, rootParentMissing: true }
-    render(<SessionNetworkDialog />)
+    render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
     expect(
       screen.getByText('Started by a session that is not on this device.')
     ).toBeInTheDocument()

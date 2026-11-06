@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Check, ExternalLink, Link2, Workflow, X } from 'lucide-react'
+import { Check, ExternalLink, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { openGraphView } from '@/lib/graph-view'
@@ -14,7 +14,6 @@ import {
   useGraphs,
   useSetSessionGraphPermission,
 } from '@/services/graphs'
-import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
 import type { GraphDetail, GraphNode, GraphPermission } from '@/types/graphs'
 import { AgentBadge } from './AgentBadge'
@@ -63,7 +62,8 @@ export function sessionHasGraphPanel(
 }
 
 /**
- * The session graph panel (mockup screen 7), right of the chat. The simple
+ * The session graph panel (mockup screen 7), the Graph tab of the left
+ * context panel (#98). The simple
  * layer is one card: a worker (serves a node) sees its node, what it waits
  * for and what comes next; a manager (serves a whole graph) sees progress,
  * open requests and new changes. A worker also gets the "Relationships"
@@ -87,23 +87,6 @@ export function SessionGraphPanel({ session }: { session: PanelSession }) {
       className="flex h-full min-h-0 flex-col overflow-y-auto font-sans"
       data-testid="session-graph-panel"
     >
-      <header className="flex items-center gap-2 border-b px-4 py-2">
-        <h2 className="flex flex-1 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Workflow className="size-3.5" aria-hidden="true" />
-          Graph
-        </h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          aria-label="Close graph panel"
-          onClick={() => useChatStore.getState().setGraphPanelVisible(false)}
-        >
-          <X className="size-4" aria-hidden="true" />
-        </Button>
-      </header>
-
       {serves.length > 1 && (
         <div className="border-b px-4 py-2">
           <RefPicker refs={serves} value={current} onChange={setPicked} />

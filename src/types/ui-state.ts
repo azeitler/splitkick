@@ -156,6 +156,8 @@ export interface UIState {
   file_browser_size?: number
   /** File browser sidebar visibility, defaults to false */
   file_browser_visible?: boolean
+  /** Active tab of the left context panel (#98), defaults to "files" */
+  context_panel_tab?: 'files' | 'network' | 'graph' | null
   /** Whether the session chat is using the reduced-chrome zen layout */
   zen_mode?: boolean
   /** Active session ID per worktree (for restoring open tabs) */
@@ -267,6 +269,7 @@ export const defaultUIState: UIState = {
   left_sidebar_visible: false,
   file_browser_size: 280,
   file_browser_visible: false,
+  context_panel_tab: 'files',
   zen_mode: false,
   active_session_ids: {},
   input_drafts: {},

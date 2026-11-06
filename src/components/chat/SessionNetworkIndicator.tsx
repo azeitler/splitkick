@@ -3,9 +3,11 @@ import { cn } from '@/lib/utils'
 import { useIsSessionLinked } from '@/services/chat'
 import { useUIStore } from '@/store/ui-store'
 
-/** Open the session network dialog (#77) for a session. */
+/** Open the left panel's Network tab (#77, #98) on a session's network. */
 export function openSessionNetwork(sessionId: string) {
-  useUIStore.getState().setSessionNetworkSessionId(sessionId)
+  const { setSessionNetworkSessionId, openContextPanel } = useUIStore.getState()
+  setSessionNetworkSessionId(sessionId)
+  openContextPanel('network')
 }
 
 /**

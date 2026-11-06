@@ -1371,6 +1371,53 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists and restores the left context panel tab (#98)', async () => {
+    const wrapper = () =>
+      createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      )
+    useUIStore.setState({ contextPanelTab: 'files' })
+    renderHook(() => useUIStatePersistence(), { wrapper: wrapper() })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useUIStore.getState().setContextPanelTab('graph')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ context_panel_tab: 'graph' })
+      )
+    })
+
+    // The saved tab comes back on the next load; an unknown one is ignored.
+    for (const [saved, expected] of [
+      ['network', 'network'],
+      ['timeline', 'files'],
+    ] as const) {
+      useUIStore.setState({ contextPanelTab: 'files' })
+      mockUseUIState.mockReturnValue({
+        data: buildUiState({
+          context_panel_tab: saved as 'network',
+        }),
+        isSuccess: true,
+      })
+      useUIStore.setState({ uiStateInitialized: false })
+      renderHook(() => useUIStatePersistence(), { wrapper: wrapper() })
+
+      await waitFor(() => {
+        expect(useUIStore.getState().uiStateInitialized).toBe(true)
+      })
+      expect(useUIStore.getState().contextPanelTab).toBe(expected)
+    }
+  })
+
   it('ignores a persisted tab it does not know', async () => {
     // A hand-edited file, or one written by a build with a different set of
     // tabs, must not leave the shell rendering no tab at all.

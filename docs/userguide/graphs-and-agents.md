@@ -60,7 +60,9 @@ Start a session from an agent with **Start session…** (in a graph, on a node, 
 Settings → Agents, or in the command palette). The persona and the nodes the
 session serves are added to its system prompt. An edit to the persona reaches
 every session of that agent, also running ones, with its next message. In the
-session, the **Graph** button opens a panel with one card: its node, what it
+session, the **Graph** button (or ⌘K **Toggle Graph Panel**, or
+<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>) opens the **Graph** tab of the
+side panel on the left, next to **Files** and **Network**. It has one card: its node, what it
 waits for and what comes next (or, for a whole-graph session, the progress,
 requests and new changes). **Change link…** opens **Link to Graph…**;
 **Relationships** shows before and after and the siblings; **Show details**

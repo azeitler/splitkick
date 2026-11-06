@@ -37,7 +37,7 @@ desktop title bar carries has a home on the phone:
 | App / server / CLI update badges | Updates section of the Settings page, and a dot on the Home gear                                                                                                                                     |
 | GitHub, Sponsor, version         | About section of the Settings page                                                                                                                                                                   |
 | Unread bell                      | Unread section on Home, and a count badge on the Home icon                                                                                                                                           |
-| File browser toggle              | The session header (the file browser browses that session's worktree)                                                                                                                                |
+| File browser toggle              | The session header: opens the side panel drawer on its Files tab; Network and Graph are the other tabs (#98)                                                                                       |
 | Sidebar toggle, back / forward   | Nothing: the tab bar and the project / session stack are the navigation                                                                                                                              |
 
 The unread bell was also the only thing that refetched `['all-sessions']` when a

@@ -7,20 +7,23 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import type { Session } from '@/types/chat'
 import { sessionHasGraphPanel } from './SessionGraphPanel'
 
 /**
  * The "Graph" header button of a session (session window and full chat
- * view). Hidden for a session without a graph link: the panel would be empty.
+ * view): opens or closes the left panel on its Graph tab (#98). Hidden for a
+ * session without a graph link; ⌘K "Toggle Graph Panel" still reaches it.
  */
 export function SessionGraphToggle({
   session,
 }: {
   session: Pick<Session, 'serves' | 'agent_id'> | null | undefined
 }) {
-  const visible = useChatStore(state => state.graphPanelVisible)
+  const visible = useUIStore(
+    state => state.fileBrowserVisible && state.contextPanelTab === 'graph'
+  )
   if (!sessionHasGraphPanel(session)) return null
 
   return (
@@ -33,7 +36,7 @@ export function SessionGraphToggle({
           aria-label="Toggle graph panel"
           aria-pressed={visible}
           data-testid="session-graph-toggle"
-          onClick={() => useChatStore.getState().toggleGraphPanel()}
+          onClick={() => useUIStore.getState().toggleContextPanel('graph')}
         >
           <Workflow className="h-3 w-3" />
           Graph

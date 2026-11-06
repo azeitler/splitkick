@@ -6,12 +6,12 @@ decisions: `docs/superpowers/specs/2026-10-14-unified-toolbar-design.md`.
 
 ```
 SidebarHeader (traffic lights, toggle) │ WindowToolbar (‹ › title chips … actions search)
-ProjectsSidebar                        │ file browser │ view content
+ProjectsSidebar                        │ side panel   │ view content
 SidebarFooter (settings, usage, …)     │              │
 ```
 
 - `src/components/toolbar/WindowToolbar.tsx`: the bar. Owns Back/Forward, the
-  file browser toggle, the sidebar toggle and traffic-light inset when the
+  file browser toggle (opens the side panel on Files, see `context-panel.md`), the sidebar toggle and traffic-light inset when the
   sidebar is hidden, the zen variant, Linux window controls, drag regions.
 - `src/components/sidebar/SidebarHeader.tsx`, `SidebarFooter.tsx`: app-level
   items (Settings, Connections, Usage, Updates, Unread, ⋯ GitHub/Sponsor/
