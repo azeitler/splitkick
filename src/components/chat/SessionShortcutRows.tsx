@@ -154,7 +154,7 @@ export function SessionShortcutRows({
             : 'flex items-center gap-1.5 truncate',
           isActive
             ? isSidebar
-              ? SIDEBAR_ROW_SELECTED
+              ? cn(SIDEBAR_ROW_SELECTED, 'font-medium')
               : 'bg-primary/10 text-foreground'
             : isStacked
               ? 'text-foreground/90'
@@ -290,6 +290,7 @@ export function SessionShortcutRows({
                   onClick={() => onOpen(shortcut)}
                   onContextMenuCapture={closeOpenSessionContextMenus}
                   title={`${session.name} — ${shortcut.context}`}
+                  aria-current={isActive ? 'page' : undefined}
                   className={rowClassName}
                 >
                   {rowContent}

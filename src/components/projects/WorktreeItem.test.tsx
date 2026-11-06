@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
 import { WorktreeItem } from './WorktreeItem'
+import { SidebarStarredSection } from './SidebarStarredSection'
+import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
+import type { SessionCardData } from '@/components/chat/session-card-utils'
+import { SIDEBAR_ROW_SELECTED } from './sidebar-row-styles'
 import type { Worktree } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { useProjectsStore } from '@/store/projects-store'
@@ -36,6 +40,20 @@ vi.mock('@/services/chat', () => ({
     },
   }),
   useRenameSession: () => ({ mutate: vi.fn() }),
+  useAllSessions: () => ({
+    data: {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'Jean',
+          worktree_id: 'wt-1',
+          worktree_name: 'feature',
+          worktree_path: '/tmp/jean-feature',
+          sessions: mocks.sessions,
+        },
+      ],
+    },
+  }),
 }))
 vi.mock('@/services/projects', () => ({
   useRenameWorktree: () => ({ mutate: vi.fn() }),
@@ -78,6 +96,7 @@ vi.mock('@/components/chat/hooks/useSessionArchive', () => ({
     handleArchiveSession: vi.fn(),
     handleDeleteSession: vi.fn(),
   }),
+  useSessionRemoval: () => ({ archive: vi.fn(), remove: vi.fn() }),
 }))
 vi.mock('@/components/chat/SessionContextMenuItems', () => ({
   SessionContextMenuItems: () => null,
@@ -902,6 +921,76 @@ describe('WorktreeItem agent badge', () => {
     expect(badge).toHaveTextContent('Planner')
     for (const name of ['Plain', 'Gone agent']) {
       expect(rowOf(name).querySelector('[data-testid^="agent-"]')).toBeNull()
+    }
+  })
+})
+
+// One session can sit in the tree, in Starred and in Pinned; every row of it
+// is marked as open, the same way (#92).
+describe('WorktreeItem active session across sections', () => {
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor'), session('b', 'Billing')]
+    useProjectsStore.setState({
+      selectedWorktreeId: 'wt-1',
+      expandedWorktreeIds: new Set(['wt-1']),
+      starredSectionCollapsed: false,
+      projectCanvasSettings: {},
+      starredSessions: [
+        { projectId: 'project-1', worktreeId: 'wt-1', sessionId: 'a' },
+      ],
+    })
+    useChatStore.setState({ activeSessionIds: { 'wt-1': 'a' } })
+  })
+
+  it('marks the tree, Starred and Pinned rows of the open session alike', () => {
+    const [a] = mocks.sessions
+    if (!a) throw new Error('fixture')
+    render(
+      <>
+        <SidebarStarredSection />
+        <PinnedSessionsSection
+          rows={[
+            {
+              row: {
+                sessionId: 'a',
+                worktreeId: 'wt-1',
+                worktreePath: '/tmp/jean-feature',
+                worktreeName: 'feature',
+                session: a,
+                isPinned: true,
+                isStarred: true,
+              },
+              card: {
+                session: a,
+                status: 'idle',
+                automaticStatus: 'idle',
+                statusOverride: null,
+                label: null,
+              } as unknown as SessionCardData,
+            },
+          ]}
+          variant="sidebar"
+          projectId="project-1"
+          onOpen={vi.fn()}
+        />
+        <WorktreeItem
+          worktree={worktree}
+          projectId="project-1"
+          projectPath="/tmp/jean"
+          defaultBranch="main"
+        />
+      </>
+    )
+
+    const current = screen
+      .getAllByRole('button')
+      .filter(button => button.getAttribute('aria-current') === 'page')
+    // Starred, Pinned and the tree row; nothing else.
+    expect(current).toHaveLength(3)
+    for (const button of current) {
+      expect(button).toHaveTextContent('Auth Refactor')
+      expect(button.className).toContain(SIDEBAR_ROW_SELECTED)
+      expect(button).toHaveClass('font-medium')
     }
   })
 })
