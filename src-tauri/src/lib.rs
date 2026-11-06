@@ -431,6 +431,7 @@ pub fn run() {
             desktop_commands::start_http_server,
             desktop_commands::stop_http_server,
             desktop_commands::install_remote_jean_server,
+            desktop_commands::get_remote_connection_secrets,
             connection_window::open_connection_window,
             connection_window::focus_main_window,
             connection_window::close_connection_window,

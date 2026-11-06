@@ -655,3 +655,18 @@ mod tests {
         );
     }
 }
+
+/// Remote connections with their tokens, for this desktop shell's windows
+/// (issue #94). Desktop IPC only: it is not in the WebSocket dispatch, so a
+/// Web Access client can never read a stored token.
+#[tauri::command]
+pub async fn get_remote_connection_secrets(
+    runtime: State<'_, CoreRuntime>,
+) -> Result<Vec<jean_core::remote_instances::RemoteConnectionSecret>, String> {
+    let app = runtime.0.clone();
+    tokio::task::spawn_blocking(move || {
+        jean_core::remote_instances::remote_connection_secrets(&app)
+    })
+    .await
+    .map_err(|error| format!("Failed to read remote connections: {error}"))?
+}
