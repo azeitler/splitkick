@@ -3260,6 +3260,33 @@ pub async fn send_chat_message(
         .as_deref()
         .filter(|sid| *sid != session_id)
         .map(ToOwned::to_owned);
+    // Claude account of this session (#90): the recorded one, the root install
+    // for a session from before accounts, else the active account. Recorded now,
+    // so resume, fork and move keep using the folder that holds the transcript.
+    let claude_account_dir: Option<String> = if effective_backend == Backend::Claude {
+        let recorded = sessions
+            .find_session(&session_id)
+            .and_then(|s| s.claude_account_id.clone());
+        let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
+        let account_id = crate::claude_cli::accounts::session_account_id(
+            recorded.as_deref(),
+            claude_session_id.is_some(),
+            &crate::claude_cli::accounts::active_account(&prefs).id,
+        );
+        if recorded.as_deref() != Some(account_id.as_str()) {
+            if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+                if let Some(session) = sessions.find_session_mut(&session_id) {
+                    session.claude_account_id = Some(account_id.clone());
+                }
+                Ok(())
+            }) {
+                log::warn!("Failed to record Claude account for session {session_id}: {e}");
+            }
+        }
+        crate::claude_cli::accounts::resolve_account(&prefs, Some(&account_id)).config_dir
+    } else {
+        None
+    };
     if raw_pi_session_id.as_deref() == Some(session_id.as_str()) {
         let _ = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
             if let Some(session) = sessions.find_session_mut(&session_id) {
@@ -3326,13 +3353,18 @@ pub async fn send_chat_message(
             previous_metadata
                 .as_ref()
                 .is_some_and(|metadata| completed_claude_run_used(metadata, sid))
-                && (!super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
+                && (!super::claude::claude_transcript_exists(
+                    sid,
+                    custom_profile_name.as_deref(),
+                    claude_account_dir.as_deref(),
+                )
                     // After a move Claude resumes from the old project folder, but
                     // not when several folders hold a copy: it reports "not found".
                     || (pending_move.is_some()
                         && super::claude::claude_transcript_count(
                             sid,
                             custom_profile_name.as_deref(),
+                            claude_account_dir.as_deref(),
                         ) > 1))
         }) {
         log::info!(
@@ -3732,6 +3764,7 @@ pub async fn send_chat_message(
     // only a session id, so record the mode this turn launched with.
     super::registry::set_turn_execution_mode(&session_id, execution_mode.as_deref());
     let thread_custom_profile = custom_profile_name.clone();
+    let thread_claude_account_dir = claude_account_dir.clone();
     let thread_codex_provider = if effective_backend == Backend::Codex {
         let prefs_for_codex = crate::load_preferences(app.clone()).await.ok();
         custom_profile_name.as_ref().and_then(|name| {
@@ -3831,6 +3864,7 @@ pub async fn send_chat_message(
                             super::claude::claude_transcript_exists(
                                 sid,
                                 thread_custom_profile.as_deref(),
+                                thread_claude_account_dir.as_deref(),
                             )
                         })
                     };
@@ -3862,6 +3896,7 @@ pub async fn send_chat_message(
                         thread_mcp_config.as_deref(),
                         chrome,
                         thread_custom_profile.as_deref(),
+                        thread_claude_account_dir.as_deref(),
                         thread_include_recap,
                         Some(make_pid_callback()),
                     ) {
@@ -8378,6 +8413,7 @@ fn execute_summarization_claude(
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     crate::chat::claude::apply_custom_profile_env(&mut cmd, custom_profile_name);
+    crate::claude_cli::accounts::load_active_account(app).apply_env(&mut cmd);
     cmd.args([
         "--print",
         "--input-format",
@@ -9310,6 +9346,9 @@ pub async fn resume_session(
         };
         let output_file = session_dir.join(format!("{run_id}.jsonl"));
         let custom_profile_name = run.custom_profile_name.clone();
+        let claude_account_dir =
+            crate::claude_cli::accounts::load_account(&app, metadata.claude_account_id.as_deref())
+                .config_dir;
 
         log::trace!(
             "Resuming run: {run_id}, PID: {pid}, output: {:?}",
@@ -9359,6 +9398,7 @@ pub async fn resume_session(
                     &output_file,
                     pid,
                     custom_profile_name.as_deref(),
+                    claude_account_dir.as_deref(),
                 ) {
                     Ok(response) => (
                         response.session_id,
@@ -9669,8 +9709,10 @@ fn check_mcp_health_claude(app: &AppHandle) -> Result<McpHealthResult, String> {
 
     log::debug!("Running: claude mcp list");
 
+    // MCP servers are per account folder: list the active account's.
     let output = crate::platform::cli_command(&cli_path.to_string_lossy(), None)
         .args(["mcp", "list"])
+        .envs(crate::claude_cli::accounts::load_active_account(app).env())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

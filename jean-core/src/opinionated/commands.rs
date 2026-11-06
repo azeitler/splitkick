@@ -1893,9 +1893,13 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
 
     if detected_backends.contains(&"claude") {
         let binary_path = crate::claude_cli::resolve_cli_binary(app);
+        // Plugins are per account folder: install into the active account.
+        let account_env = crate::claude_cli::accounts::load_active_account(app).env();
         let bin = binary_path.clone();
+        let add_env = account_env.clone();
         let add_result = tokio::task::spawn_blocking(move || {
             silent_command(&bin)
+                .envs(add_env)
                 .args(["plugin", "marketplace", "add", "obra/superpowers"])
                 .output()
         })
@@ -1914,6 +1918,7 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
         let bin = binary_path;
         let install_result = tokio::task::spawn_blocking(move || {
             silent_command(&bin)
+                .envs(account_env)
                 .args(["plugin", "install", superpowers_claude_plugin_target()])
                 .output()
         })

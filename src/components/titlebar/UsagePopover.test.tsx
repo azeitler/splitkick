@@ -1,3 +1,4 @@
+import type * as PreferencesService from '@/services/preferences'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
@@ -8,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   useClaudeCliStatus: vi.fn(),
   useClaudeCliAuth: vi.fn(),
   useClaudeUsage: vi.fn(),
+  // Usage per Claude account id; falls back to useClaudeUsage for one account.
+  useClaudeAccountUsage: vi.fn(),
+  usePreferences: vi.fn(),
   useCodexCliStatus: vi.fn(),
   useCodexCliAuth: vi.fn(),
   useCodexUsage: vi.fn(),
@@ -20,6 +24,13 @@ vi.mock('@/services/claude-cli', () => ({
   useClaudeCliStatus: () => mocks.useClaudeCliStatus(),
   useClaudeCliAuth: () => mocks.useClaudeCliAuth(),
   useClaudeUsage: () => mocks.useClaudeUsage(),
+  useClaudeAccountsUsage: (ids: string[]) =>
+    ids.map(id => mocks.useClaudeAccountUsage(id) ?? mocks.useClaudeUsage()),
+}))
+
+vi.mock('@/services/preferences', async importOriginal => ({
+  ...(await importOriginal<typeof PreferencesService>()),
+  usePreferences: () => mocks.usePreferences(),
 }))
 
 vi.mock('@/services/codex-cli', () => ({
@@ -48,6 +59,8 @@ function idleQuery(data: unknown = undefined) {
 describe('UsagePopover', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.usePreferences.mockReturnValue({ data: undefined })
+    mocks.useClaudeAccountUsage.mockReturnValue(undefined)
     mocks.useClaudeCliStatus.mockReturnValue(
       idleQuery({ installed: true, version: '1.0.0', path: '/usr/bin/claude' })
     )
@@ -128,6 +141,34 @@ describe('UsagePopover', () => {
     })
     expect(trigger).toHaveTextContent('91%')
     expect(trigger.querySelector('svg')).toHaveClass('text-destructive')
+  })
+
+  it('takes the peak across every Claude account and names it', () => {
+    mocks.usePreferences.mockReturnValue({
+      data: {
+        claude_root_label: 'Personal',
+        claude_accounts: [
+          {
+            id: 'acc-work',
+            label: 'Work',
+            config_dir: '/Users/me/.claude-work',
+          },
+        ],
+      },
+    })
+    mocks.useClaudeAccountUsage.mockImplementation((id: string) =>
+      idleQuery({
+        session: { usedPercent: id === 'acc-work' ? 83 : 20, resetsAt: null },
+        weekly: { usedPercent: 10, resetsAt: null },
+        fetchedAt: 0,
+      })
+    )
+
+    render(<UsagePopover />)
+
+    expect(
+      screen.getByRole('button', { name: 'Usage, Claude Work · Session 83%' })
+    ).toBeInTheDocument()
   })
 
   it('ignores backends that are not signed in', () => {

@@ -304,16 +304,18 @@ pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_na
 /// Whether Claude CLI already has a transcript for `claude_session_id`.
 ///
 /// Claude keeps one `<config dir>/projects/<escaped cwd>/<id>.jsonl` per
-/// conversation. Looks in the profile's `CLAUDE_CONFIG_DIR`, the process
-/// `CLAUDE_CONFIG_DIR`, and `~/.claude`. A miss is not fatal: the CLI then
+/// conversation. Looks in the profile's `CLAUDE_CONFIG_DIR`, then the session's
+/// Claude account folder (`account_config_dir`), or for the root install the
+/// process `CLAUDE_CONFIG_DIR` and `~/.claude`. A miss is not fatal: the CLI then
 /// rejects `--session-id` as "already in use" and the caller retries with
 /// `--resume`.
 pub fn claude_transcript_exists(
     claude_session_id: &str,
     custom_profile_name: Option<&str>,
+    account_config_dir: Option<&str>,
 ) -> bool {
     let file_name = format!("{claude_session_id}.jsonl");
-    claude_config_dirs(custom_profile_name)
+    claude_config_dirs(custom_profile_name, account_config_dir)
         .iter()
         .any(|dir| transcript_in_projects_dir(&dir.join("projects"), &file_name))
 }
@@ -327,9 +329,10 @@ pub fn claude_transcript_exists(
 pub fn claude_transcript_count(
     claude_session_id: &str,
     custom_profile_name: Option<&str>,
+    account_config_dir: Option<&str>,
 ) -> usize {
     let file_name = format!("{claude_session_id}.jsonl");
-    claude_config_dirs(custom_profile_name)
+    claude_config_dirs(custom_profile_name, account_config_dir)
         .iter()
         .map(|dir| count_transcripts_in_projects_dir(&dir.join("projects"), &file_name))
         .max()
@@ -348,13 +351,24 @@ fn count_transcripts_in_projects_dir(projects_dir: &std::path::Path, file_name: 
 }
 
 /// Config dirs Claude may keep its transcripts in, most specific first.
-fn claude_config_dirs(custom_profile_name: Option<&str>) -> Vec<std::path::PathBuf> {
+///
+/// A non-root account (`account_config_dir`) has its transcripts only in its own
+/// folder, so `~/.claude` is not searched: a hit there would `--resume` a
+/// conversation the account's CLI cannot find.
+fn claude_config_dirs(
+    custom_profile_name: Option<&str>,
+    account_config_dir: Option<&str>,
+) -> Vec<std::path::PathBuf> {
     let mut config_dirs: Vec<std::path::PathBuf> =
         load_custom_profile_env_vars(custom_profile_name)
             .into_iter()
             .filter(|(key, _)| key == "CLAUDE_CONFIG_DIR")
             .map(|(_, value)| value.into())
             .collect();
+    if let Some(dir) = account_config_dir {
+        config_dirs.push(dir.into());
+        return config_dirs;
+    }
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         config_dirs.push(dir.into());
     }
@@ -609,6 +623,8 @@ fn build_claude_args(
     mcp_config: Option<&str>,
     chrome_enabled: bool,
     custom_profile_name: Option<&str>,
+    // Claude account folder (`CLAUDE_CONFIG_DIR`); `None` = root install, env untouched.
+    claude_config_dir: Option<&str>,
     include_recap: bool,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
@@ -672,9 +688,13 @@ fn build_claude_args(
         args.push(dir.clone());
     }
 
-    // Add Claude CLI skills and commands directories (~/.claude/skills and ~/.claude/commands)
-    if let Some(home_dir) = dirs::home_dir() {
-        let claude_dir = home_dir.join(".claude");
+    // Add Claude CLI skills and commands directories of the account's folder
+    // (~/.claude/skills and ~/.claude/commands for the root install)
+    let account_claude_dir = match claude_config_dir {
+        Some(dir) => Some(std::path::PathBuf::from(dir)),
+        None => dirs::home_dir().map(|home| home.join(".claude")),
+    };
+    if let Some(claude_dir) = account_claude_dir {
         for subdir in ["skills", "commands"] {
             let dir_path = claude_dir.join(subdir);
             if dir_path.exists() {
@@ -725,6 +745,11 @@ fn build_claude_args(
     }
     if should_mirror_custom_profile_env_for_detached() {
         env_vars.extend(load_custom_profile_env_vars(custom_profile_name));
+    }
+    // The Claude account must be in the process env: `--settings` env does not
+    // switch the login (#90). The root install keeps Jean's env as it is.
+    if let Some(dir) = claude_config_dir {
+        env_vars.push(("CLAUDE_CONFIG_DIR".to_string(), dir.to_string()));
     }
 
     // Thinking/effort settings: passed as separate --settings JSON (no secrets here)
@@ -1401,6 +1426,7 @@ pub fn execute_claude_detached(
     mcp_config: Option<&str>,
     chrome_enabled: bool,
     custom_profile_name: Option<&str>,
+    claude_config_dir: Option<&str>,
     include_recap: bool,
     pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
 ) -> Result<(u32, ClaudeResponse), String> {
@@ -1448,6 +1474,7 @@ pub fn execute_claude_detached(
         mcp_config,
         chrome_enabled,
         custom_profile_name,
+        claude_config_dir,
         include_recap,
     );
 
@@ -1526,6 +1553,7 @@ pub fn execute_claude_detached(
         output_file,
         pid,
         custom_profile_name,
+        claude_config_dir,
     ) {
         Ok(resp) => {
             super::decrement_tailer_count();
@@ -1639,6 +1667,7 @@ pub fn tail_claude_output(
     output_file: &std::path::Path,
     pid: u32,
     custom_profile_name: Option<&str>,
+    claude_config_dir: Option<&str>,
 ) -> Result<ClaudeResponse, String> {
     use super::detached::is_process_alive;
     use super::tail::{next_poll_interval, NdjsonTailer};
@@ -2064,7 +2093,10 @@ pub fn tail_claude_output(
                                             if !claude_session_id.is_empty()
                                                 && is_process_alive(pid)
                                                 && !wait_for_transcript_entry(
-                                                    &claude_config_dirs(custom_profile_name),
+                                                    &claude_config_dirs(
+                                                        custom_profile_name,
+                                                        claude_config_dir,
+                                                    ),
                                                     &claude_session_id,
                                                     &id,
                                                     TRANSCRIPT_FLUSH_TIMEOUT,
@@ -2786,6 +2818,84 @@ pub fn merge_limit_hit(current: &mut Option<LimitHit>, msg: &serde_json::Value) 
 mod tests {
     use super::*;
 
+    fn args_for_account(claude_config_dir: Option<&str>) -> (Vec<String>, Vec<(String, String)>) {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        build_claude_args(
+            &app,
+            "session-1",
+            "worktree-1",
+            None,
+            Some("sid-new"),
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            None,
+            claude_config_dir,
+            false,
+        )
+    }
+
+    #[test]
+    fn chat_env_sets_claude_config_dir_only_for_a_non_root_account() {
+        let account = tempfile::tempdir().unwrap();
+        fs_skills(account.path());
+        let dir = account.path().to_string_lossy().to_string();
+
+        let (args, env) = args_for_account(Some(&dir));
+        let config_dirs: Vec<_> = env
+            .iter()
+            .filter(|(key, _)| key == "CLAUDE_CONFIG_DIR")
+            .collect();
+        assert_eq!(config_dirs.len(), 1);
+        assert_eq!(config_dirs[0].1, dir);
+        let skills = account.path().join("skills").to_string_lossy().to_string();
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "--add-dir" && w[1] == skills),
+            "skills come from the account folder"
+        );
+
+        let (_, root_env) = args_for_account(None);
+        assert!(
+            root_env.iter().all(|(key, _)| key != "CLAUDE_CONFIG_DIR"),
+            "the root install keeps Jean's env untouched"
+        );
+    }
+
+    fn fs_skills(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir.join("skills")).unwrap();
+    }
+
+    #[test]
+    fn transcript_lookup_uses_only_the_account_folder() {
+        let account = tempfile::tempdir().unwrap();
+        let project = account.path().join("projects").join("-tmp-project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("sid-acc.jsonl"), "{}\n").unwrap();
+        let dir = account.path().to_string_lossy().to_string();
+
+        assert!(claude_transcript_exists("sid-acc", None, Some(&dir)));
+        assert_eq!(claude_transcript_count("sid-acc", None, Some(&dir)), 1);
+        assert!(!claude_transcript_exists("sid-missing", None, Some(&dir)));
+
+        let dirs = claude_config_dirs(None, Some(&dir));
+        assert_eq!(dirs, vec![std::path::PathBuf::from(&dir)]);
+        let root_dirs = claude_config_dirs(None, None);
+        assert_eq!(
+            root_dirs.last(),
+            dirs::home_dir().map(|home| home.join(".claude")).as_ref()
+        );
+    }
+
     #[test]
     fn resume_args_fork_only_alongside_a_resume_id() {
         let mut args = Vec::new();
@@ -3404,8 +3514,16 @@ mod tests {
             .spawn()
             .unwrap();
 
-        let response =
-            tail_claude_output(&app, "session-73", "worktree-73", &output, cli.id(), None).unwrap();
+        let response = tail_claude_output(
+            &app,
+            "session-73",
+            "worktree-73",
+            &output,
+            cli.id(),
+            None,
+            None,
+        )
+        .unwrap();
         let _ = cli.wait();
 
         let names: Vec<String> = response.tool_calls.iter().map(|t| t.name.clone()).collect();
