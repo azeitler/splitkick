@@ -670,3 +670,52 @@ pub async fn get_remote_connection_secrets(
     .await
     .map_err(|error| format!("Failed to read remote connections: {error}"))?
 }
+
+// Browser for agents (#104). Desktop IPC only: not in the WebSocket dispatch,
+// so Web Access shows the setting read-only and never sends a token.
+
+#[tauri::command]
+pub async fn set_browser_engine(
+    runtime: State<'_, CoreRuntime>,
+    engine: jean_core::agent_browser::playwright::BrowserEngine,
+    backends: Option<Vec<String>>,
+    take_over: Option<bool>,
+) -> Result<Vec<jean_core::agent_browser::playwright::EngineApplyResult>, String> {
+    jean_core::agent_browser::playwright::set_browser_engine(
+        runtime.0.clone(),
+        engine,
+        backends,
+        take_over.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn save_browser_extension_token(
+    runtime: State<'_, CoreRuntime>,
+    token: String,
+) -> Result<bool, String> {
+    jean_core::agent_browser::playwright::save_browser_extension_token(runtime.0.clone(), token)
+        .await
+}
+
+#[tauri::command]
+pub async fn test_browser_connection(
+    runtime: State<'_, CoreRuntime>,
+    extension: bool,
+    token: Option<String>,
+) -> Result<String, String> {
+    jean_core::agent_browser::playwright::test_browser_connection(
+        runtime.0.clone(),
+        extension,
+        token,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn install_playwright_mcp(
+    runtime: State<'_, CoreRuntime>,
+) -> Result<jean_core::agent_browser::playwright::BrowserEngineStatus, String> {
+    jean_core::agent_browser::playwright::install_playwright_mcp(runtime.0.clone()).await
+}

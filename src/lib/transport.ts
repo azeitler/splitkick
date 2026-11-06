@@ -209,6 +209,11 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'stop_http_server',
   'install_remote_jean_server',
   'get_remote_connection_secrets',
+  // Browser for agents (#104): Web Access shows it read-only.
+  'set_browser_engine',
+  'save_browser_extension_token',
+  'test_browser_connection',
+  'install_playwright_mcp',
   'browser_create',
   'browser_navigate',
   'browser_back',

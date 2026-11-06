@@ -9,6 +9,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Browser for agents: Playwright, also in your own Chrome** (#104).
+  Settings → MCP Servers → Browser for agents chooses the browser your agents
+  drive: Off, Agent Browser, Playwright (its own browser) or Playwright with
+  your Chrome (the Playwright extension, with a clear warning that agents then
+  act in your logged-in browser). Splitkick writes the server into every
+  installed CLI (Claude, Codex, OpenCode, Cursor, Grok, Kimi, Antigravity) and
+  does not add a second one next to a Playwright server you set up yourself;
+  Take over replaces yours (a backup is kept). The extension's connection token
+  lives in the macOS Keychain and reaches Playwright MCP only through its
+  environment, never through a config file or a command line. Test connection
+  checks the setup. Web Access shows the setting read-only.
 - **Check for Updates… in the sidebar's more menu** (#100). Windows and Linux
   have no menu bar, so the sidebar footer's more menu (…) now has the same
   update check as the macOS menu bar item, in the desktop app on every OS.

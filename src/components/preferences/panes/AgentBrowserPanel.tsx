@@ -7,10 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { copyToClipboard } from '@/lib/clipboard'
 import { invoke } from '@/lib/transport'
-import { useInstalledBackends } from '@/hooks/useInstalledBackends'
-import { invalidateAllMcpServers } from '@/services/mcp'
-import type { CliBackend } from '@/types/preferences'
-import { SettingsSection } from '../SettingsSection'
 
 interface AgentBrowserStatus {
   installed: boolean
@@ -25,33 +21,17 @@ interface AgentBrowserStatus {
   installHint: string
 }
 
-interface AgentBrowserInstallResult {
-  backend: string
-  status: 'installed' | 'error' | string
-  path: string | null
-  backupPath: string | null
-  serverName: string
-  message: string
-}
-
-const INSTALLABLE_BACKENDS = [
-  'claude',
-  'codex',
-  'opencode',
-  'cursor',
-  'grok',
-  'kimi',
-  'antigravity',
-] as const satisfies readonly CliBackend[]
-
-type InstallState = 'idle' | 'installing' | 'success' | 'error'
 type BinaryInstallState = 'idle' | 'installing' | 'success' | 'error'
 
-export const AgentBrowserSection: React.FC = () => {
+/**
+ * Agent Browser engine details inside "Browser for agents": the binary, the
+ * profile and the snippets. Writing the MCP entry is the engine choice.
+ */
+export const AgentBrowserPanel: React.FC<{
+  readOnly: boolean
+  onInstalled?: () => void
+}> = ({ readOnly, onInstalled }) => {
   const queryClient = useQueryClient()
-  const { installedBackends } = useInstalledBackends()
-  const [installState, setInstallState] = useState<InstallState>('idle')
-  const [installMessage, setInstallMessage] = useState('')
   const [binaryInstallState, setBinaryInstallState] =
     useState<BinaryInstallState>('idle')
   const [binaryInstallMessage, setBinaryInstallMessage] = useState('')
@@ -66,10 +46,6 @@ export const AgentBrowserSection: React.FC = () => {
     queryFn: () => invoke<AgentBrowserStatus>('get_agent_browser_status'),
     staleTime: 15_000,
   })
-
-  const installableBackends = INSTALLABLE_BACKENDS.filter(b =>
-    installedBackends.includes(b)
-  )
 
   const handleEnsureProfile = useCallback(async () => {
     try {
@@ -98,51 +74,13 @@ export const AgentBrowserSection: React.FC = () => {
           : 'Installed agent-browser and Chromium'
       )
       toast.success('agent-browser installed', { id: toastId })
+      onInstalled?.()
     } catch (e) {
       setBinaryInstallState('error')
       setBinaryInstallMessage(`Install failed: ${e}`)
       toast.error(`agent-browser install failed: ${e}`, { id: toastId })
     }
-  }, [queryClient, refetch])
-
-  const handleInstall = useCallback(async () => {
-    if (installableBackends.length === 0) {
-      setInstallState('error')
-      setInstallMessage(
-        'Install a supported CLI first (Claude, Codex, Cursor, Grok, Kimi, Antigravity, or OpenCode)'
-      )
-      return
-    }
-    setInstallState('installing')
-    setInstallMessage('')
-    try {
-      const results = await invoke<AgentBrowserInstallResult[]>(
-        'install_agent_browser_mcp',
-        { backends: installableBackends }
-      )
-      const successes = results.filter(r => r.status === 'installed')
-      const failures = results.filter(r => r.status === 'error')
-      invalidateAllMcpServers(undefined, installableBackends)
-      queryClient.invalidateQueries({ queryKey: ['preferences'] })
-      await refetch()
-      if (failures.length > 0) {
-        setInstallState('error')
-        setInstallMessage(
-          `Added ${successes.length}/${results.length}; ${failures.length} failed`
-        )
-      } else {
-        setInstallState('success')
-        setInstallMessage(
-          `Added agent-browser MCP to ${successes.length} backend${successes.length === 1 ? '' : 's'}`
-        )
-        toast.success('Agent browser MCP installed')
-      }
-    } catch (e) {
-      setInstallState('error')
-      setInstallMessage('Failed to install agent-browser MCP')
-      toast.error(`Install failed: ${e}`)
-    }
-  }, [installableBackends, queryClient, refetch])
+  }, [queryClient, refetch, onInstalled])
 
   const handleCopy = (label: string, content: string | undefined) => {
     if (!content) {
@@ -154,10 +92,7 @@ export const AgentBrowserSection: React.FC = () => {
   }
 
   return (
-    <SettingsSection
-      title="Agent Browser"
-      anchorId="pref-mcp-section-agent-browser"
-    >
+    <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         Give coding agents a real Chromium browser with a {PRODUCT_NAME}-managed
         login profile (Vercel agent-browser). Log in manually once; sessions
@@ -219,54 +154,35 @@ export const AgentBrowserSection: React.FC = () => {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void handleInstallBinary()}
-            disabled={binaryInstallState === 'installing'}
-          >
-            {binaryInstallState === 'installing' ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Installing agent-browser…
-              </>
-            ) : status?.installed ? (
-              'Reinstall / update agent-browser'
-            ) : (
-              'Install agent-browser'
-            )}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void handleEnsureProfile()}
-          >
-            Create profile
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void handleInstall()}
-            disabled={
-              installState === 'installing' || status?.installed === false
-            }
-          >
-            {installState === 'installing' ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Installing MCP…
-              </>
-            ) : installState === 'success' ? (
-              <>
-                <CheckCircle className="size-3.5" />
-                MCP installed
-              </>
-            ) : (
-              'Install MCP into backends'
-            )}
-          </Button>
+          {!readOnly && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleInstallBinary()}
+                disabled={binaryInstallState === 'installing'}
+              >
+                {binaryInstallState === 'installing' ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Installing agent-browser…
+                  </>
+                ) : status?.installed ? (
+                  'Reinstall / update agent-browser'
+                ) : (
+                  'Install agent-browser'
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleEnsureProfile()}
+              >
+                Create profile
+              </Button>
+            </>
+          )}
           {status && (
             <>
               <Button
@@ -302,18 +218,6 @@ export const AgentBrowserSection: React.FC = () => {
             {binaryInstallMessage}
           </p>
         )}
-        {installMessage && (
-          <p
-            className={
-              installState === 'error'
-                ? 'text-xs text-red-600 dark:text-red-400'
-                : 'text-xs text-muted-foreground'
-            }
-          >
-            {installMessage}
-          </p>
-        )}
-
         <div className="space-y-1 text-xs text-muted-foreground">
           <Label className="text-xs text-foreground">How to use</Label>
           <ol className="list-decimal space-y-0.5 pl-4">
@@ -322,18 +226,20 @@ export const AgentBrowserSection: React.FC = () => {
               Chromium into {PRODUCT_NAME} app data). Requires <code>npm</code>{' '}
               on PATH.
             </li>
-            <li>Click Install MCP into backends (or paste a snippet).</li>
+            <li>
+              Choose <strong>Agent Browser</strong> above; {PRODUCT_NAME} adds
+              it to your CLI backends (or paste a snippet).
+            </li>
             <li>
               First login: run headed (or under VNC) and sign in manually.
             </li>
             <li>
               In chat, ask the agent to use the browser; it reuses the{' '}
-              {PRODUCT_NAME}
-              profile.
+              {PRODUCT_NAME} profile.
             </li>
           </ol>
         </div>
       </div>
-    </SettingsSection>
+    </div>
   )
 }

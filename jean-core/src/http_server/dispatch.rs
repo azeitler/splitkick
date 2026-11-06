@@ -3278,6 +3278,12 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["mcp", "jean-mcp-snippet"]);
             to_value(result)
         }
+        // Browser for agents (#104). Status only: it never holds the token.
+        // Engine, token, test and install are desktop IPC only
+        // (`src-tauri/src/desktop_commands.rs`), so Web Access stays read-only.
+        "get_browser_engine_status" => to_value(
+            crate::agent_browser::playwright::get_browser_engine_status(app.clone()).await?,
+        ),
         "get_agent_browser_status" => {
             let result = crate::agent_browser::get_agent_browser_status(app.clone()).await?;
             to_value(result)
