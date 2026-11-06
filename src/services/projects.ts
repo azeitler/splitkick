@@ -2956,6 +2956,7 @@ export function useUpdateProjectSettings() {
       sentryOrganizationSlug,
       sentryProjectSlug,
       autoFixSettings,
+      preset,
     }: {
       projectId: string
       name?: string
@@ -2973,6 +2974,7 @@ export function useUpdateProjectSettings() {
       sentryProjectSlug?: string
       autoFixSettings?: Project['auto_fix_settings']
       linkedProjectIds?: string[]
+      preset?: Project['preset']
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -3000,6 +3002,7 @@ export function useUpdateProjectSettings() {
         sentryProjectSlug,
         autoFixSettings,
         linkedProjectIds,
+        preset,
       })
       logger.info('Project settings updated', { project })
       return project

@@ -761,6 +761,7 @@ pub async fn add_project(
         auto_fix_settings: None,
         is_git: !plain,
         git_detected: false,
+        preset: None,
     };
 
     data.add_project(project.clone());
@@ -825,6 +826,7 @@ pub async fn init_project(
         auto_fix_settings: None,
         is_git: true,
         git_detected: false,
+        preset: None,
     };
 
     data.add_project(project.clone());
@@ -885,6 +887,7 @@ pub async fn clone_project(
         auto_fix_settings: None,
         is_git: true,
         git_detected: false,
+        preset: None,
     };
 
     data.add_project(project.clone());
@@ -6064,6 +6067,7 @@ pub async fn update_project_settings(
     sentry_project_slug: Option<String>,
     linked_project_ids: Option<Vec<String>>,
     auto_fix_settings: Option<Option<ProjectAutoFixSettings>>,
+    preset: Option<Option<crate::projects::types::ProjectPreset>>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -6165,6 +6169,11 @@ pub async fn update_project_settings(
     if let Some(settings) = auto_fix_settings {
         log::trace!("Updating Mr. Robot settings: {settings:?}");
         project.auto_fix_settings = settings;
+    }
+
+    if let Some(preset) = preset {
+        log::trace!("Updating project preset: {preset:?}");
+        project.preset = preset;
     }
 
     // Handle linked_project_ids with bidirectional sync
@@ -12961,6 +12970,7 @@ pub async fn create_folder(
         auto_fix_settings: None,
         is_git: true,
         git_detected: false,
+        preset: None,
     };
 
     data.add_project(folder.clone());
@@ -15552,6 +15562,7 @@ mod tests {
             auto_fix_settings: None,
             is_git: true,
             git_detected: false,
+            preset: None,
         };
 
         attach_default_avatar(&mut project);

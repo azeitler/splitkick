@@ -848,7 +848,11 @@ fn build_claude_args(
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
                     .unwrap_or(DEFAULT_GLOBAL_SYSTEM_PROMPT);
-                system_prompt_parts.push(prompt.to_string());
+                system_prompt_parts.push(super::project_preset::global_prompt_for_worktree(
+                    app,
+                    worktree_id,
+                    prompt,
+                ));
             }
         }
     }

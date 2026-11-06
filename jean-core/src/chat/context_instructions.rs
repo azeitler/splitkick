@@ -71,7 +71,11 @@ fn build_system_prompt_parts(
         .as_ref()
         .and_then(|prefs| trimmed_non_empty(prefs.magic_prompts.global_system_prompt.as_deref()))
         .unwrap_or_else(crate::default_global_system_prompt);
-    parts.push(global_prompt);
+    parts.push(super::project_preset::global_prompt_for_worktree(
+        app,
+        worktree_id,
+        &global_prompt,
+    ));
 
     if prefs
         .as_ref()

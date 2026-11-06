@@ -21,6 +21,7 @@ mod native_history;
 pub(crate) mod opencode;
 pub mod overview;
 pub(crate) mod pi;
+pub mod project_preset;
 pub mod recap;
 pub mod registry;
 pub mod run_log;
