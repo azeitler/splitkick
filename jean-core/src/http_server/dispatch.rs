@@ -224,7 +224,10 @@ pub async fn dispatch_command(
         "add_project" => {
             let path: String = from_field(&args, "path")?;
             let parent_id: Option<String> = field_opt(&args, "parentId", "parent_id")?;
-            let result = crate::projects::add_project(app.clone(), path, parent_id).await?;
+            let plain: Option<bool> = from_field_opt(&args, "plain")?;
+            let result =
+                crate::projects::add_project(app.clone(), path, parent_id, plain.unwrap_or(false))
+                    .await?;
             emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
@@ -2080,7 +2083,22 @@ pub async fn dispatch_command(
         // =====================================================================
         "init_git_in_folder" => {
             let path: String = from_field(&args, "path")?;
-            let result = crate::projects::init_git_in_folder(path).await?;
+            // Old clients send no flag: keep their "commit everything".
+            let commit_all: Option<bool> = field_opt(&args, "commitAll", "commit_all")?;
+            let result =
+                crate::projects::init_git_in_folder(path, commit_all.unwrap_or(true)).await?;
+            to_value(result)
+        }
+        "inspect_git_init_folder" => {
+            let path: String = from_field(&args, "path")?;
+            to_value(crate::projects::inspect_git_init_folder(&path)?)
+        }
+        "set_project_is_git" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let is_git: bool = field(&args, "isGit", "is_git")?;
+            let result =
+                crate::projects::set_project_is_git(app.clone(), project_id, is_git).await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "init_project" => {

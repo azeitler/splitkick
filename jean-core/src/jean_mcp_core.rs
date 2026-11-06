@@ -428,8 +428,8 @@ fn tool_registry_graphs() -> Value {
 
 fn tool_registry_core() -> Value {
     json!([
-        {"name":"list_projects","description":"List all Splitkick projects (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-        {"name":"add_project","description":"Add an existing local git repository as a Splitkick project. Path must already be a git repo (use init_project for a new folder, or clone_project for a remote URL). Returns the created project (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path to an existing local git repository."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
+        {"name":"list_projects","description":"List all Splitkick projects (id, name, path, default_branch, kind). kind is \"git\", \"plain\" (a folder without git: base session only, no worktrees, diffs, commits, PRs or GitHub tools) or \"folder\" (a sidebar group).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"add_project","description":"Add an existing local git repository as a Splitkick project. Path must already be a git repo (use init_project for a new folder, or clone_project for a remote URL), unless plain is true: then any folder becomes a plain project without git (base session only). Returns the created project (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path to an existing local git repository, or any folder when plain is true."},"plain":{"type":"boolean","description":"Add the folder as a plain project without git. Default false."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
         {"name":"clone_project","description":"Clone a remote git repository to a local path and add it as a Splitkick project. Returns the created project.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"Git remote URL to clone (https or ssh)."},"path":{"type":"string","description":"Absolute local path where the repo should be cloned."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["url","path"],"additionalProperties":false}},
         {"name":"init_project","description":"Create a new git repository at path (creating the directory if needed) and add it as a Splitkick project. Use add_project instead when the path is already a git repo. Returns the created project.","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path for the new project directory."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
         {"name":"list_worktrees","description":"List all worktrees for a project.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
@@ -558,9 +558,13 @@ async fn run_tool(
     source: &str,
 ) -> Result<Value, ToolError> {
     match name {
-        "list_projects" => dispatch_command(app, "list_projects", json!({}))
-            .await
-            .map_err(ToolError::internal),
+        "list_projects" => {
+            let mut projects = dispatch_command(app, "list_projects", json!({}))
+                .await
+                .map_err(ToolError::internal)?;
+            add_project_kinds(&mut projects);
+            Ok(projects)
+        }
         "add_project" => {
             let path = require_nonempty_str(&args, "path")?;
             let parent_id =
@@ -577,6 +581,7 @@ async fn run_tool(
         "clone_project" => {
             let url = require_nonempty_str(&args, "url")?;
             let path = require_nonempty_str(&args, "path")?;
+    ensure_mcp_git_tool(app, name, &args)?;
             let parent_id =
                 optional_str(&args, "parentId").or_else(|| optional_str(&args, "parent_id"));
             let mut payload = serde_json::Map::new();
@@ -590,6 +595,9 @@ async fn run_tool(
                 .map_err(ToolError::internal)
         }
         "init_project" => {
+            if let Some(plain) = args.get("plain").and_then(Value::as_bool) {
+                payload.insert("plain".to_string(), Value::Bool(plain));
+            }
             let path = require_nonempty_str(&args, "path")?;
             let parent_id =
                 optional_str(&args, "parentId").or_else(|| optional_str(&args, "parent_id"));
@@ -1961,6 +1969,7 @@ enum MessageRoleFilter {
     User,
     Assistant,
     All,
+        "kind": project.kind(),
 }
 
 fn parse_message_role_arg(args: &Value) -> Result<MessageRoleFilter, ToolError> {
@@ -3973,6 +3982,75 @@ fn resolve_worktree_project(
     worktree_id: &str,
 ) -> Result<(String, String, String), ToolError> {
     let data = crate::projects::storage::load_projects_data(app)
+/// MCP tools that need a git project, keyed by `projectId`.
+const GIT_PROJECT_TOOLS: &[&str] = &[
+    "list_github_issues",
+    "list_github_prs",
+    "list_security_issues",
+    "list_security_advisories",
+    "create_worktree",
+    "create_worktree_from_existing_branch",
+    "import_worktree",
+];
+
+/// MCP tools that need a git project, keyed by `worktreeId`.
+const GIT_WORKTREE_TOOLS: &[&str] = &[
+    "get_worktree_changes",
+    "get_worktree_diff",
+    "create_commit",
+    "push_worktree",
+    "detect_open_pr",
+    "create_pull_request",
+    "merge_pull_request",
+    "run_review",
+];
+
+/// Reject git tools for a plain project with a clear error (#93), before
+/// the tool runs git in a folder without a repository. Unknown ids pass, so
+/// each tool keeps its own "Unknown projectId" error.
+fn ensure_mcp_git_tool(app: &AppHandle, name: &str, args: &Value) -> Result<(), ToolError> {
+    let by_project = GIT_PROJECT_TOOLS.contains(&name);
+    if !by_project && !GIT_WORKTREE_TOOLS.contains(&name) {
+        return Ok(());
+    }
+    let key = if by_project {
+        "projectId"
+    } else {
+        "worktreeId"
+    };
+    let Some(id) = args.get(key).and_then(Value::as_str) else {
+        return Ok(());
+    };
+    let data = crate::projects::storage::load_projects_data(app)
+        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+    let checked = if by_project {
+        data.ensure_git_project(id)
+    } else {
+        data.ensure_git_worktree(id)
+    };
+    checked.map_err(ToolError::invalid_params)
+}
+
+/// Add `kind` ("git", "plain" or "folder") to each `list_projects` entry.
+fn add_project_kinds(projects: &mut Value) {
+    let Some(items) = projects.as_array_mut() else {
+        return;
+    };
+    for item in items {
+        let Some(object) = item.as_object_mut() else {
+            continue;
+        };
+        let kind = if object.get("is_folder").and_then(Value::as_bool) == Some(true) {
+            "folder"
+        } else if object.get("is_git").and_then(Value::as_bool) == Some(false) {
+            "plain"
+        } else {
+            "git"
+        };
+        object.insert("kind".to_string(), Value::String(kind.to_string()));
+    }
+}
+
         .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
     let wt = data
         .find_worktree(worktree_id)
@@ -6772,3 +6850,103 @@ mod tests {
         assert_eq!(error.code, -32602);
     }
 }
+
+    /// A plain project and a git project side by side (#93).
+    fn plain_project_fixture() -> (tempfile::TempDir, AppHandle) {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let plain_path = temp.path().join("paperwork");
+        std::fs::create_dir_all(&plain_path).unwrap();
+        let data: crate::projects::types::ProjectsData = serde_json::from_value(json!({
+            "projects": [
+                {
+                    "id": "plain-p",
+                    "name": "paperwork",
+                    "path": plain_path,
+                    "default_branch": "",
+                    "added_at": 0,
+                    "order": 0,
+                    "is_git": false,
+                },
+                {
+                    "id": "git-p",
+                    "name": "app",
+                    "path": temp.path().join("app"),
+                    "default_branch": "main",
+                    "added_at": 0,
+                    "order": 1,
+                },
+                {
+                    "id": "group",
+                    "name": "Clients",
+                    "path": "",
+                    "default_branch": "",
+                    "added_at": 0,
+                    "order": 2,
+                    "is_folder": true,
+                },
+            ],
+            "worktrees": [{
+                "id": "plain-base",
+                "project_id": "plain-p",
+                "name": "paperwork",
+                "path": plain_path,
+                "branch": "",
+                "created_at": 0,
+                "session_type": "base",
+            }],
+        }))
+        .unwrap();
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+        (temp, app)
+    }
+
+    #[test]
+    fn git_tools_return_a_clear_error_for_a_plain_project() {
+        let (_temp, app) = plain_project_fixture();
+
+        for tool in GIT_PROJECT_TOOLS {
+            let error =
+                call(&app, tool, json!({ "projectId": "plain-p", "name": "x" })).expect_err(tool);
+            assert_eq!(error.code, -32602, "{tool}");
+            assert!(
+                error.message.contains("plain project"),
+                "{tool}: {}",
+                error.message
+            );
+        }
+        for tool in GIT_WORKTREE_TOOLS {
+            let error = call(&app, tool, json!({ "worktreeId": "plain-base" })).expect_err(tool);
+            assert_eq!(error.code, -32602, "{tool}");
+            assert!(
+                error.message.contains("plain project"),
+                "{tool}: {}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn list_projects_and_project_context_show_the_kind() {
+        let (_temp, app) = plain_project_fixture();
+        // run_tool("list_projects") goes through dispatch_command, whose future
+        // overflows the test thread's stack in debug builds; use its parts.
+        let data = crate::projects::storage::load_projects_data(&app).unwrap();
+        let mut projects = serde_json::to_value(&data.projects).unwrap();
+        add_project_kinds(&mut projects);
+        let kind = |id: &str| {
+            projects
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["id"] == id)
+                .map(|p| p["kind"].clone())
+                .unwrap()
+        };
+        assert_eq!(kind("plain-p"), "plain");
+        assert_eq!(kind("git-p"), "git");
+        assert_eq!(kind("group"), "folder");
+
+        let context = get_project_context(&app, "plain-p").unwrap();
+        assert_eq!(context["kind"], "plain");
+    }

@@ -450,6 +450,7 @@ pub async fn session_overview(
                 .or_insert_with(|| {
                     projects_data
                         .find_worktree(&record.worktree_id)
+                        .filter(|w| !projects_data.is_plain_project(&w.project_id))
                         .and_then(open_work_for)
                 })
                 .clone();

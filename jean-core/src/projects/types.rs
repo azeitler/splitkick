@@ -181,6 +181,56 @@ pub struct Project {
     /// Per-project automated issue fixing settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_fix_settings: Option<ProjectAutoFixSettings>,
+    /// False for a plain project: a folder without git. It has only its base
+    /// session; every git, worktree and GitHub feature is off. Old
+    /// projects.json files have no field, so they stay git projects.
+    #[serde(default = "default_is_git")]
+    pub is_git: bool,
+    /// Plain projects only: the folder has a `.git` now. Detected again on
+    /// every load (never trusted from disk), so the UI can offer the switch.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub git_detected: bool,
+}
+
+fn default_is_git() -> bool {
+    true
+}
+
+/// Error for git operations on a plain project. Shared so the UI, the web
+/// dispatch and MCP all return the same text.
+pub fn plain_project_error(project_name: &str) -> String {
+    format!(
+        "'{project_name}' is a plain project (no git). Worktrees, diffs, commits, \
+        pull requests and GitHub features need a git project. Initialize Git for \
+        this project in Project Settings first."
+    )
+}
+
+impl Project {
+    /// THE gate for git features: true for a project added without git.
+    /// Sidebar folders (`is_folder`) are not plain projects.
+    pub fn is_plain(&self) -> bool {
+        !self.is_folder && !self.is_git
+    }
+
+    /// "folder" (sidebar group), "plain" (no git) or "git". Shown by MCP.
+    pub fn kind(&self) -> &'static str {
+        if self.is_folder {
+            "folder"
+        } else if self.is_git {
+            "git"
+        } else {
+            "plain"
+        }
+    }
+
+    /// Err with [`plain_project_error`] when this is a plain project.
+    pub fn ensure_git(&self) -> Result<(), String> {
+        if self.is_plain() {
+            return Err(plain_project_error(&self.name));
+        }
+        Ok(())
+    }
 }
 
 /// A git worktree created for a project
@@ -342,6 +392,38 @@ impl ProjectsData {
     #[allow(dead_code)]
     pub fn find_project_mut(&mut self, id: &str) -> Option<&mut Project> {
         self.projects.iter_mut().find(|p| p.id == id)
+    }
+
+    /// True when the project is a plain project (see [`Project::is_plain`]).
+    /// Unknown ids are not plain, so callers keep their own not-found errors.
+    pub fn is_plain_project(&self, project_id: &str) -> bool {
+        self.find_project(project_id).is_some_and(Project::is_plain)
+    }
+
+    /// Err when the project is a plain project. Unknown ids pass.
+    pub fn ensure_git_project(&self, project_id: &str) -> Result<(), String> {
+        match self.find_project(project_id) {
+            Some(project) => project.ensure_git(),
+            None => Ok(()),
+        }
+    }
+
+    /// Err when the worktree belongs to a plain project. Unknown ids pass.
+    pub fn ensure_git_worktree(&self, worktree_id: &str) -> Result<(), String> {
+        match self.find_worktree(worktree_id) {
+            Some(worktree) => self.ensure_git_project(&worktree.project_id),
+            None => Ok(()),
+        }
+    }
+
+    /// Re-detects `.git` in every plain project folder. Returns nothing to
+    /// save: the flag is never trusted from disk.
+    pub fn detect_git_in_plain_projects(&mut self) {
+        for project in &mut self.projects {
+            project.git_detected = project.is_plain()
+                && !project.path.is_empty()
+                && std::path::Path::new(&project.path).join(".git").exists();
+        }
     }
 
     /// Find a worktree by ID

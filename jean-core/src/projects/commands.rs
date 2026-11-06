@@ -694,30 +694,38 @@ pub async fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     Ok(projects)
 }
 
-/// Add a new project from a git repository path
+/// Add a new project from a git repository path, or — with `plain` — any
+/// folder as a plain project (no git, base session only, see
+/// `docs/developer/plain-projects.md`).
 pub async fn add_project(
     app: AppHandle,
     path: String,
     parent_id: Option<String>,
+    plain: bool,
 ) -> Result<Project, String> {
-    log::trace!("Adding project from path: {path}, parent_id: {parent_id:?}");
+    log::trace!("Adding project from path: {path}, parent_id: {parent_id:?}, plain: {plain}");
 
     // A save dialog can return a new path that does not exist yet.
     git::ensure_project_directory(Path::new(&path))?;
 
-    // Validate it's a git repository
-    if !git::validate_git_repo(&path)? {
+    // Validate it's a git repository. The frontend matches on "not a git
+    // repository" to offer "Add without git" and "Initialize Git".
+    if !plain && !git::validate_git_repo(&path)? {
         return Err(format!(
             "The selected folder is not a git repository.\n\n\
-            To add this project, first initialize it as a git repository by running:\n\
+            Add it as a plain project (no git), or initialize it as a git repository:\n\
             cd \"{path}\" && git init"
         ));
     }
 
-    // Get repository name and current branch
     let name = git::get_repo_name(&path)?;
-    // Fall back to "main" if HEAD doesn't exist yet (no commits)
-    let default_branch = git::get_current_branch(&path).unwrap_or_else(|_| "main".to_string());
+    // Plain projects have no branch. Git projects fall back to "main" if
+    // HEAD doesn't exist yet (no commits).
+    let default_branch = if plain {
+        String::new()
+    } else {
+        git::get_current_branch(&path).unwrap_or_else(|_| "main".to_string())
+    };
 
     // Check if project already exists
     let mut data = load_projects_data(&app)?;
@@ -751,6 +759,8 @@ pub async fn add_project(
         sentry_project_slug: None,
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
+        is_git: !plain,
+        git_detected: false,
     };
 
     data.add_project(project.clone());
@@ -761,104 +771,6 @@ pub async fn add_project(
     attach_default_avatar(&mut project);
     log::trace!("Successfully added project: {}", project.name);
     Ok(project)
-}
-
-/// Initialize git in an existing folder (without adding to project list)
-///
-/// This command:
-/// 1. Validates the path exists and is a directory
-/// 2. Checks it's not already a git repository
-/// 3. Runs `git init`
-/// 4. Stages all files with `git add .`
-/// 5. Creates initial commit with "Initial commit"
-///
-/// Returns the path on success, allowing caller to then add_project
-pub async fn init_git_in_folder(path: String) -> Result<String, String> {
-    log::trace!("Initializing git in existing folder: {path}");
-
-    // Create directory if it doesn't exist (new project flow)
-    let path_obj = std::path::Path::new(&path);
-    if !path_obj.exists() {
-        std::fs::create_dir_all(path_obj)
-            .map_err(|e| format!("Failed to create directory: {e}"))?;
-    }
-    if !path_obj.is_dir() {
-        return Err(format!("Path is not a directory: {path}"));
-    }
-
-    // Check if already a git repo
-    let git_path = path_obj.join(".git");
-    let already_git_repo = git_path.exists();
-
-    if already_git_repo {
-        // Check if it has any commits (HEAD exists)
-        let has_commits = wsl_aware_command("git", Some(Path::new(&path)))
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-
-        if has_commits {
-            return Err("Directory is already a git repository with commits".to_string());
-        }
-        // If no commits, we'll skip git init and just make the initial commit
-        log::trace!("Git repo exists but has no commits, will create initial commit");
-    }
-
-    // Run git init (skip if already a git repo)
-    if !already_git_repo {
-        let output = wsl_aware_command("git", Some(Path::new(&path)))
-            .args(["init"])
-            .output()
-            .map_err(|e| format!("Failed to run git init: {e}"))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("git init failed: {stderr}"));
-        }
-    }
-
-    // Stage all files
-    let add_output = wsl_aware_command("git", Some(Path::new(&path)))
-        .args(["add", "."])
-        .output()
-        .map_err(|e| format!("Failed to run git add: {e}"))?;
-
-    if !add_output.status.success() {
-        let stderr = String::from_utf8_lossy(&add_output.stderr);
-        return Err(format!("git add failed: {stderr}"));
-    }
-
-    // Create initial commit
-    let commit_output = wsl_aware_command("git", Some(Path::new(&path)))
-        .args(["commit", "-m", "Initial commit"])
-        .output()
-        .map_err(|e| format!("Failed to run git commit: {e}"))?;
-
-    if !commit_output.status.success() {
-        let stderr = String::from_utf8_lossy(&commit_output.stderr);
-        let stdout = String::from_utf8_lossy(&commit_output.stdout);
-        // Handle case where there are no files to commit
-        // Git outputs "nothing to commit" to stdout, not stderr
-        if stderr.contains("nothing to commit") || stdout.contains("nothing to commit") {
-            log::warn!("No files to commit, creating empty initial commit");
-            // Create an empty commit with --allow-empty
-            let empty_commit = wsl_aware_command("git", Some(Path::new(&path)))
-                .args(["commit", "--allow-empty", "-m", "Initial commit"])
-                .output()
-                .map_err(|e| format!("Failed to create empty commit: {e}"))?;
-
-            if !empty_commit.status.success() {
-                let empty_stderr = String::from_utf8_lossy(&empty_commit.stderr);
-                return Err(format!("git commit failed: {empty_stderr}"));
-            }
-        } else {
-            return Err(format!("git commit failed: {stderr}"));
-        }
-    }
-
-    log::trace!("Successfully initialized git in {path}");
-    Ok(path)
 }
 
 /// Initialize a new project by creating directory and running git init
@@ -912,6 +824,8 @@ pub async fn init_project(
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
     };
+        is_git: true,
+        git_detected: false,
 
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
@@ -971,6 +885,8 @@ pub async fn clone_project(
         auto_fix_settings: None,
     };
 
+        is_git: true,
+        git_detected: false,
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
     allow_project_in_asset_scope(&app, &project.path);
@@ -1275,6 +1191,7 @@ fn resolve_worktree_and_project_default(
     Ok((worktree, project.default_branch.clone()))
 }
 
+    project.ensure_git()?;
 fn git_output(repo_path: &str, args: &[&str]) -> Result<String, String> {
     let output = silent_command("git")
         .args(args)
@@ -1454,6 +1371,7 @@ pub async fn create_worktree(
 
     // Use provided base branch, the PR's target branch when opening a PR, or the
     // project's default. A base may be remote-qualified ("fork/main") to start
+    project.ensure_git()?;
     // from another remote than origin. The git start point uses the qualified
     // ref; the worktree stores the short branch name plus base_remote so
     // status/diff/pull compare against the same remote later.
@@ -2704,6 +2622,7 @@ pub async fn create_worktree_from_existing_branch(
 
     // Use the branch name as the worktree name
     let name = branch_name.clone();
+    project.ensure_git()?;
 
     // Build worktree path: <base>/<project-name>/<folder-name>
     // Use sanitized name for folder path (branch name may contain slashes)
@@ -3284,6 +3203,7 @@ pub async fn checkout_pr(
 
     // Check if there's an archived worktree for this PR — restore it instead of creating a new one
     if let Some(archived_wt) = data.worktrees.iter().find(|w| {
+    project.ensure_git()?;
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
@@ -4074,6 +3994,87 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
 /// Create or reopen a base branch session for a project
 /// Base sessions use the project's base directory directly (no git worktree creation)
 /// If a preserved sessions file exists from a previous close, it will be restored
+/// Base session name: the branch, or the folder name for a plain project
+/// (it has no branch).
+fn base_session_name(project: &Project) -> String {
+    if project.is_plain() || project.default_branch.is_empty() {
+        project.name.clone()
+    } else {
+        project.default_branch.clone()
+    }
+}
+
+/// Switch a project between git and plain (#93).
+///
+/// - To git: the folder must have a `.git` (Initialize Git first). The
+///   branch is read again and the base session renamed to it.
+/// - To plain: only when the project has no worktrees besides its base
+///   session (they need git). Nothing on disk changes.
+pub async fn set_project_is_git(
+    app: AppHandle,
+    project_id: String,
+    is_git: bool,
+) -> Result<Project, String> {
+    let project = load_projects_data(&app)?
+        .find_project(&project_id)
+        .cloned()
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+    if project.is_folder {
+        return Err("A sidebar folder has no git mode".to_string());
+    }
+    let branch = if is_git {
+        if !git::validate_git_repo(&project.path)? {
+            return Err(format!(
+                "'{}' has no .git folder yet. Initialize Git first.",
+                project.name
+            ));
+        }
+        Some(git::get_current_branch(&project.path).unwrap_or_else(|_| "main".to_string()))
+    } else {
+        None
+    };
+
+    let mut result: Result<Project, String> = Err(format!("Project not found: {project_id}"));
+    update_projects_data(&app, |data| {
+        if !is_git
+            && data.worktrees.iter().any(|w| {
+                w.project_id == project_id
+                    && w.session_type != SessionType::Base
+                    && w.archived_at.is_none()
+            })
+        {
+            result = Err(
+                "Archive or delete the worktrees of this project first: a plain project has only its base session."
+                    .to_string(),
+            );
+            return false;
+        }
+        let Some(project) = data.projects.iter_mut().find(|p| p.id == project_id) else {
+            return false;
+        };
+        project.is_git = is_git;
+        if let Some(branch) = &branch {
+            project.default_branch = branch.clone();
+        }
+        let project = project.clone();
+        let name = base_session_name(&project);
+        for worktree in data
+            .worktrees
+            .iter_mut()
+            .filter(|w| w.project_id == project_id && w.session_type == SessionType::Base)
+        {
+            worktree.name = name.clone();
+            worktree.branch = project.default_branch.clone();
+        }
+        data.detect_git_in_plain_projects();
+        result = Ok(data.find_project(&project_id).cloned().unwrap_or(project));
+        true
+    })?;
+    let mut project = result?;
+    attach_default_avatar(&mut project);
+    Ok(project)
+}
+
 pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<Worktree, String> {
     log::trace!("Creating base session for project: {project_id}");
 
@@ -4095,7 +4096,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
     let session = Worktree {
         id: Uuid::new_v4().to_string(),
         project_id: project_id.clone(),
-        name: project.default_branch.clone(),
+        name: base_session_name(&project),
         path: project.path.clone(), // Uses project's base directory directly
         branch: project.default_branch.clone(),
         base_branch: None,
@@ -4489,10 +4490,10 @@ pub async fn import_worktree(
 
     let mut data = load_projects_data(&app)?;
 
-    // Verify project exists
-    let _ = data
-        .find_project(&project_id)
-        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+    // Verify project exists and can hold worktrees
+    data.find_project(&project_id)
+        .ok_or_else(|| format!("Project not found: {project_id}"))?
+        .ensure_git()?;
 
     // Check if a worktree with this path already exists
     if data.worktrees.iter().any(|w| w.path == path) {
@@ -12967,6 +12968,8 @@ pub async fn create_folder(
     Ok(folder)
 }
 
+        is_git: true,
+        git_detected: false,
 /// Rename a folder
 pub async fn rename_folder(
     app: AppHandle,
@@ -15557,6 +15560,8 @@ mod tests {
     #[test]
     fn test_parse_command_content_with_allowed_tools_list() {
         let content = r#"---
+            is_git: true,
+            git_detected: false,
 allowed-tools: [Read, "Bash(git status:*)"]
 description: Test command
 ---
@@ -15932,5 +15937,149 @@ Body
 
         wt.base_branch = Some("  ".into());
         assert_eq!(resolve_worktree_status_base(&wt, "next"), "next");
+    }
+}
+
+#[cfg(test)]
+mod plain_project_tests {
+    //! Plain projects: folders without git, base session only (#93).
+    use super::*;
+
+    fn app_with_folder() -> (tempfile::TempDir, AppHandle, String) {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().join("data"), temp.path().join("res")).unwrap();
+        let folder = temp.path().join("Paperwork");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("invoice.pdf"), "pdf").unwrap();
+        (temp, app, folder.to_string_lossy().to_string())
+    }
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn a_folder_without_git_needs_the_plain_flag() {
+        let (_temp, app, folder) = app_with_folder();
+
+        let error = block_on(add_project(app.clone(), folder.clone(), None, false)).unwrap_err();
+        assert!(error.contains("not a git repository"), "{error}");
+
+        let project = block_on(add_project(app.clone(), folder.clone(), None, true)).unwrap();
+        assert!(!project.is_git);
+        assert!(project.is_plain());
+        assert_eq!(project.kind(), "plain");
+        assert_eq!(project.name, "Paperwork");
+        assert_eq!(project.default_branch, "");
+        // Nothing was written into the user's folder.
+        assert!(!Path::new(&folder).join(".git").exists());
+
+        let base = block_on(create_base_session(app.clone(), project.id.clone())).unwrap();
+        assert_eq!(base.session_type, SessionType::Base);
+        assert_eq!(base.name, "Paperwork");
+        assert_eq!(base.path, folder);
+    }
+
+    #[test]
+    fn worktree_commands_refuse_a_plain_project() {
+        let (_temp, app, folder) = app_with_folder();
+        let project = block_on(add_project(app.clone(), folder, None, true)).unwrap();
+        let base = block_on(create_base_session(app.clone(), project.id.clone())).unwrap();
+
+        let error = block_on(get_worktree_changes(app.clone(), base.id.clone(), None))
+            .err()
+            .unwrap();
+        assert!(error.contains("plain project"), "{error}");
+        let data = load_projects_data(&app).unwrap();
+        assert!(data.ensure_git_project(&project.id).is_err());
+        assert!(data.ensure_git_worktree(&base.id).is_err());
+        assert!(data.ensure_git_project("unknown").is_ok());
+    }
+
+    #[test]
+    fn old_projects_json_stays_git_and_git_detection_runs_on_load() {
+        let (_temp, app, folder) = app_with_folder();
+        // An entry written before #93 has no is_git field.
+        let legacy: super::super::types::ProjectsData = serde_json::from_value(serde_json::json!({
+            "projects": [{
+                "id": "old", "name": "old", "path": folder,
+                "default_branch": "main", "added_at": 0, "order": 0,
+            }],
+            "worktrees": [],
+        }))
+        .unwrap();
+        assert!(legacy.projects[0].is_git);
+        assert!(!legacy.projects[0].is_plain());
+
+        let project = block_on(add_project(app.clone(), folder.clone(), None, true)).unwrap();
+        assert!(
+            !load_projects_data(&app)
+                .unwrap()
+                .find_project(&project.id)
+                .unwrap()
+                .git_detected
+        );
+
+        std::fs::create_dir(Path::new(&folder).join(".git")).unwrap();
+        assert!(
+            load_projects_data(&app)
+                .unwrap()
+                .find_project(&project.id)
+                .unwrap()
+                .git_detected
+        );
+
+        std::fs::remove_dir(Path::new(&folder).join(".git")).unwrap();
+        let reloaded = load_projects_data(&app).unwrap();
+        let reloaded = reloaded.find_project(&project.id).unwrap();
+        assert!(!reloaded.git_detected);
+        // Losing .git never turns a project into another kind by itself.
+        assert!(!reloaded.is_git);
+    }
+
+    #[test]
+    fn switching_kind_needs_git_and_no_worktrees() {
+        let (_temp, app, folder) = app_with_folder();
+        let project = block_on(add_project(app.clone(), folder.clone(), None, true)).unwrap();
+        block_on(create_base_session(app.clone(), project.id.clone())).unwrap();
+
+        let error =
+            block_on(set_project_is_git(app.clone(), project.id.clone(), true)).unwrap_err();
+        assert!(error.contains("Initialize Git"), "{error}");
+
+        let init = silent_command("git")
+            .args(["init", "-b", "trunk"])
+            .current_dir(&folder)
+            .output()
+            .unwrap();
+        assert!(init.status.success());
+        let switched = block_on(set_project_is_git(app.clone(), project.id.clone(), true)).unwrap();
+        assert!(switched.is_git);
+        assert!(!switched.git_detected);
+        assert_eq!(switched.default_branch, "trunk");
+        let data = load_projects_data(&app).unwrap();
+        assert_eq!(data.find_base_session(&project.id).unwrap().name, "trunk");
+
+        // Back to plain is an explicit action, refused while a worktree exists.
+        update_projects_data(&app, |data| {
+            let mut worktree = data.find_base_session(&project.id).unwrap().clone();
+            worktree.id = "wt".to_string();
+            worktree.session_type = SessionType::Worktree;
+            data.add_worktree(worktree);
+            true
+        })
+        .unwrap();
+        let error =
+            block_on(set_project_is_git(app.clone(), project.id.clone(), false)).unwrap_err();
+        assert!(error.contains("worktrees"), "{error}");
+
+        update_projects_data(&app, |data| data.remove_worktree("wt").is_some()).unwrap();
+        let plain = block_on(set_project_is_git(app.clone(), project.id.clone(), false)).unwrap();
+        assert!(plain.is_plain());
+        assert!(plain.git_detected);
     }
 }

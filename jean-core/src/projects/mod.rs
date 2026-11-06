@@ -2,6 +2,7 @@ mod auto_archive;
 pub mod checkpoints;
 mod commands;
 pub mod git;
+mod git_init;
 pub mod git_log;
 pub mod git_status;
 pub mod github_actions;
@@ -24,6 +25,7 @@ pub use checkpoints::{
     restore_ai_checkpoint_file, restore_ai_checkpoint_turn,
 };
 pub use commands::*;
+pub use git_init::{init_git_in_folder, inspect_git_init_folder};
 pub use github_actions::*;
 pub use github_issues::*;
 pub use linear_issues::*;
