@@ -41,6 +41,7 @@ fn should_run_server() -> bool {
         "--jean-pi-rpc-host",
         "--jean-grok-acp-host",
         "--jean-kimi-acp-host",
+        "--splitkick-browser-mcp",
     ];
     std::env::var("JEAN_HEADLESS").is_ok_and(|value| value != "0" && value != "false")
         || std::env::args().any(|argument| SERVER_ARGS.contains(&argument.as_str()))
@@ -445,6 +446,10 @@ pub fn run() {
             desktop_commands::stop_http_server,
             desktop_commands::install_remote_jean_server,
             desktop_commands::get_remote_connection_secrets,
+            desktop_commands::set_browser_engine,
+            desktop_commands::save_browser_extension_token,
+            desktop_commands::test_browser_connection,
+            desktop_commands::install_playwright_mcp,
             webview_watchdog::webview_liveness_pong,
             webview_watchdog::take_webview_recovery,
             connection_window::open_connection_window,

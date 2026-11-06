@@ -38,7 +38,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod activity;
-mod agent_browser;
+pub mod agent_browser;
 mod antigravity_cli;
 mod auto_fix;
 mod background_tasks;
@@ -464,6 +464,8 @@ pub struct AppPreferences {
     pub sidebar_recent_limit: u32, // Sessions in the sidebar Recent tab (default 30)
     #[serde(default)]
     pub agent_profiles: Vec<AgentProfile>, // Saved agent profiles (graph layer)
+    #[serde(default)]
+    pub browser_engine: agent_browser::playwright::BrowserEngine, // Browser MCP for agents (#104)
 }
 
 /// A saved agent profile. A session started from it stores `agent_id`.
@@ -2971,6 +2973,7 @@ impl Default for AppPreferences {
             jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
             sidebar_recent_limit: default_sidebar_recent_limit(),
             agent_profiles: Vec::new(),
+            browser_engine: Default::default(),
         }
     }
 }
@@ -4817,6 +4820,9 @@ pub async fn run_server() -> Result<(), String> {
     if std::env::args().any(|argument| argument == jean_mcp_core::JEAN_MCP_STDIO_ARG) {
         jean_mcp_stdio::run_stdio_server()?;
         return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some(agent_browser::playwright::LAUNCHER_ARG) {
+        return agent_browser::playwright::run_launcher_from_args();
     }
     if std::env::args().any(|argument| argument == chat::pi::PI_RPC_HOST_ARG) {
         chat::pi::run_pi_rpc_host_from_args()?;

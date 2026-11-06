@@ -31,8 +31,11 @@ files older than a minute (runs Splitkick did not see end). The CLI reads its
 config when it starts, so a detached run that outlives Splitkick no longer needs
 the file.
 
-Any new MCP server entry that carries a token (e.g. a browser engine
-connection token) goes into the config JSON and through this helper. Use
+Any new MCP server entry that carries a token goes into the config JSON and
+through this helper — unless the server can fetch the token itself: the
+Playwright browser engine (#104) points the entry at Splitkick's launcher,
+which reads the token from the Keychain and passes it to the server's
+environment (`docs/developer/browser-for-agents.md`). Use
 `write_private_file(path, bytes)` when a file needs a different owner or
 lifetime (the Grok ACP host reads and deletes its own `--mcp-servers-file`).
 

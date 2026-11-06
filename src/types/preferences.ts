@@ -1288,6 +1288,12 @@ export interface AppPreferences {
   custom_pi_providers: PiProviderProfile[]
   /** Saved agent profiles for graph sessions (docs/developer/graph-layer.md) */
   agent_profiles: AgentProfile[]
+  /** Browser MCP for agents (#104); written by `set_browser_engine` */
+  browser_engine?:
+    | 'off'
+    | 'agent_browser'
+    | 'playwright'
+    | 'playwright_extension'
   favorite_models: string[] // Favourited model keys ("backend:model") shown at top of picker
   favorite_package_scripts?: string[] // Favourited package script keys ("project_id:script")
   /** Starred base branches for new worktrees ("project_id:branch"), shown at top of picker */
@@ -2522,6 +2528,7 @@ export const defaultPreferences: AppPreferences = {
   default_codex_provider: null,
   custom_pi_providers: [],
   agent_profiles: [],
+  browser_engine: 'agent_browser',
   favorite_models: [],
   favorite_package_scripts: [],
   favorite_base_branches: [],

@@ -5,10 +5,12 @@
 //! backend MCP configs so Claude/Codex/etc. can drive a browser the user logged
 //! into manually. The browser itself is Chromium / Chrome for Testing.
 
+pub mod config;
+pub mod playwright;
+
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 use crate::platform::{detect_cli_in_path, host_cli_command};
@@ -58,79 +60,13 @@ pub struct AgentBrowserInstallResult {
     pub message: String,
 }
 
-struct McpEntry {
-    command: String,
-    profile_path: String,
-}
-
-impl McpEntry {
-    fn new(command: String, profile_path: String) -> Self {
-        Self {
-            command,
-            profile_path,
-        }
-    }
-
-    fn env_map(&self) -> serde_json::Map<String, Value> {
-        let mut env = serde_json::Map::new();
-        env.insert(PROFILE_ENV.into(), self.profile_path.clone().into());
-        env
-    }
-
-    fn claude_server_json(&self) -> Value {
-        json!({
-            "type": "stdio",
-            "command": self.command,
-            "args": ["mcp"],
-            "env": self.env_map(),
-        })
-    }
-
-    fn cursor_server_json(&self) -> Value {
-        self.claude_server_json()
-    }
-
-    fn kimi_server_json(&self) -> Value {
-        self.claude_server_json()
-    }
-
-    fn opencode_server_json(&self) -> Value {
-        json!({
-            "type": "local",
-            "command": [self.command.clone(), "mcp"],
-            "enabled": true,
-            "environment": self.env_map(),
-        })
-    }
-
-    fn claude_snippet(&self) -> String {
-        let v = json!({
-            "mcpServers": {
-                MCP_SERVER_NAME: self.claude_server_json()
-            }
-        });
-        serde_json::to_string_pretty(&v).unwrap_or_default()
-    }
-
-    fn codex_snippet(&self) -> String {
-        format!(
-            "[mcp_servers.{}]\ncommand = \"{}\"\nargs = [\"mcp\"]\nenv = {{ {} = \"{}\" }}\nenabled = true\n",
-            MCP_SERVER_NAME,
-            escape_toml_string(&self.command),
-            PROFILE_ENV,
-            escape_toml_string(&self.profile_path),
-        )
-    }
-
-    fn codex_table_item(&self) -> toml_edit::Item {
-        let mut table = toml_edit::Table::new();
-        table["command"] = toml_edit::value(self.command.clone());
-        table["args"] = toml_edit::value(toml_edit::Array::from_iter(["mcp"]));
-        let mut env = toml_edit::InlineTable::new();
-        env.insert(PROFILE_ENV, self.profile_path.clone().into());
-        table["env"] = toml_edit::value(env);
-        table["enabled"] = toml_edit::value(true);
-        toml_edit::Item::Table(table)
+/// The agent-browser server entry: `agent-browser mcp` with the profile env.
+fn agent_browser_spec(command: String, profile_path: String) -> config::ServerSpec {
+    config::ServerSpec {
+        name: MCP_SERVER_NAME.to_string(),
+        command,
+        args: vec!["mcp".to_string()],
+        env: vec![(PROFILE_ENV.to_string(), profile_path)],
     }
 }
 
@@ -237,14 +173,14 @@ pub fn ensure_profile(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn build_entry(app: &AppHandle) -> Result<McpEntry, String> {
+fn build_entry(app: &AppHandle) -> Result<config::ServerSpec, String> {
     let profile = ensure_profile(app)?;
     let resolved = resolve_agent_browser_binary(app);
     let command = resolved
         .path
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| "agent-browser".to_string());
-    Ok(McpEntry::new(
+    Ok(agent_browser_spec(
         command,
         profile.to_string_lossy().to_string(),
     ))
@@ -256,7 +192,7 @@ pub async fn get_agent_browser_status(app: AppHandle) -> Result<AgentBrowserStat
     let profile_exists = profile.is_dir();
     let managed_dir = managed_cli_dir(&app)?;
     let resolved = resolve_agent_browser_binary(&app);
-    let entry = McpEntry::new(
+    let entry = agent_browser_spec(
         resolved
             .path
             .clone()
@@ -378,7 +314,7 @@ fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowserStatus, Str
     if !resolved.installed {
         return Err("agent-browser install finished but binary still not detected".to_string());
     }
-    let entry = McpEntry::new(
+    let entry = agent_browser_spec(
         resolved
             .path
             .clone()
@@ -410,66 +346,61 @@ pub async fn install_agent_browser_mcp(
     backends: Option<Vec<String>>,
 ) -> Result<Vec<AgentBrowserInstallResult>, String> {
     let entry = build_entry(&app)?;
-    let backends = backends.unwrap_or_else(|| {
-        vec![
-            "claude".to_string(),
-            "codex".to_string(),
-            "opencode".to_string(),
-            "cursor".to_string(),
-            "grok".to_string(),
-            "kimi".to_string(),
-            "antigravity".to_string(),
-        ]
-    });
+    let backends =
+        backends.unwrap_or_else(|| config::BACKENDS.iter().map(|b| b.to_string()).collect());
 
-    let mut results = Vec::with_capacity(backends.len());
-    for backend in backends {
-        let result = match backend.as_str() {
-            "claude" => install_claude(&entry),
-            "codex" => install_codex(&entry),
-            "opencode" => install_opencode(&entry),
-            "cursor" => install_cursor(&entry),
-            "grok" => install_grok(&entry),
-            "kimi" => install_kimi(&entry),
-            "antigravity" => install_antigravity(&entry),
-            other => Err(format!("Unsupported MCP config backend: {other}")),
-        };
-        results.push(match result {
-            Ok((path, backup_path)) => AgentBrowserInstallResult {
-                backend,
-                status: "installed".to_string(),
-                path: Some(path.to_string_lossy().to_string()),
-                backup_path: backup_path.map(|p| p.to_string_lossy().to_string()),
-                server_name: MCP_SERVER_NAME.to_string(),
-                message: format!("Installed {MCP_SERVER_NAME}"),
-            },
-            Err(error) => AgentBrowserInstallResult {
-                backend,
-                status: "error".to_string(),
-                path: None,
-                backup_path: None,
-                server_name: MCP_SERVER_NAME.to_string(),
-                message: error,
-            },
-        });
-    }
+    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
+    let results: Vec<AgentBrowserInstallResult> = backends
+        .into_iter()
+        .map(|backend| {
+            match config::backend_config(&home, &backend)
+                .and_then(|target| config::edit_servers(&target, &[], Some(&entry)))
+            {
+                Ok((path, backup_path)) => AgentBrowserInstallResult {
+                    backend,
+                    status: "installed".to_string(),
+                    path: Some(path.to_string_lossy().to_string()),
+                    backup_path: backup_path.map(|p| p.to_string_lossy().to_string()),
+                    server_name: MCP_SERVER_NAME.to_string(),
+                    message: format!("Installed {MCP_SERVER_NAME}"),
+                },
+                Err(error) => AgentBrowserInstallResult {
+                    backend,
+                    status: "error".to_string(),
+                    path: None,
+                    backup_path: None,
+                    server_name: MCP_SERVER_NAME.to_string(),
+                    message: error,
+                },
+            }
+        })
+        .collect();
 
     // Best-effort: enable agent-browser for installed backends in Jean prefs.
-    if let Err(e) = enable_in_preferences(&app, &results) {
+    let installed: Vec<String> = results
+        .iter()
+        .filter(|r| r.status == "installed")
+        .map(|r| r.backend.clone())
+        .collect();
+    if let Err(e) = enable_in_preferences(&app, MCP_SERVER_NAME, &installed, None) {
         log::warn!("Failed to auto-enable agent-browser MCP in preferences: {e}");
     }
 
     Ok(results)
 }
 
-fn enable_in_preferences(
+/// Mark `server_name` as known and enabled for `backends` in the
+/// preferences file, and set `browser_engine` when given.
+pub(crate) fn enable_in_preferences(
     app: &AppHandle,
-    results: &[AgentBrowserInstallResult],
+    server_name: &str,
+    backends: &[String],
+    browser_engine: Option<&str>,
 ) -> Result<(), String> {
     let path = crate::get_preferences_path(app)?;
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => "{}".to_string(),
         Err(e) => return Err(format!("Failed to read preferences: {e}")),
     };
     let mut prefs: Value =
@@ -479,6 +410,9 @@ fn enable_in_preferences(
         return Ok(());
     };
 
+    if let Some(engine) = browser_engine {
+        obj.insert("browser_engine".into(), json!(engine));
+    }
     if !obj.contains_key("default_enabled_mcp_servers") {
         obj.insert("default_enabled_mcp_servers".into(), json!([]));
     }
@@ -486,10 +420,9 @@ fn enable_in_preferences(
         obj.insert("known_mcp_servers".into(), json!([]));
     }
 
-    let keys: Vec<String> = results
+    let keys: Vec<String> = backends
         .iter()
-        .filter(|r| r.status == "installed")
-        .map(|r| format!("{}:{MCP_SERVER_NAME}", r.backend))
+        .map(|backend| format!("{backend}:{server_name}"))
         .collect();
 
     for field in ["default_enabled_mcp_servers", "known_mcp_servers"] {
@@ -510,380 +443,22 @@ fn enable_in_preferences(
     Ok(())
 }
 
-fn install_claude(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_json_server(
-        home.join(".claude.json"),
-        "mcpServers",
-        entry.claude_server_json(),
-    )
-}
-
-fn install_cursor(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_json_server(
-        home.join(".cursor").join("mcp.json"),
-        "mcpServers",
-        entry.cursor_server_json(),
-    )
-}
-
-fn install_kimi(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_json_server(
-        home.join(".kimi-code").join("mcp.json"),
-        "mcpServers",
-        entry.kimi_server_json(),
-    )
-}
-
-fn install_antigravity(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_antigravity_at(
-        home.join(".gemini").join("config").join("mcp_config.json"),
-        entry,
-    )
-}
-
-fn install_antigravity_at(
-    path: PathBuf,
-    entry: &McpEntry,
-) -> Result<(PathBuf, Option<PathBuf>), String> {
-    install_json_server(path, "mcpServers", entry.claude_server_json())
-}
-
-fn install_opencode(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    let path = find_opencode_config_path(&home)
-        .unwrap_or_else(|| home.join(".config").join("opencode").join("opencode.json"));
-    install_json_server(path, "mcp", entry.opencode_server_json())
-}
-
-fn install_codex(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_toml_server(
-        home.join(".codex").join("config.toml"),
-        entry,
-        "Codex",
-        false,
-    )
-}
-
-fn install_grok(entry: &McpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    install_toml_server(home.join(".grok").join("config.toml"), entry, "Grok", true)
-}
-
-fn find_opencode_config_path(home: &Path) -> Option<PathBuf> {
-    for dir in [home.join(".config").join("opencode"), home.to_path_buf()] {
-        for name in ["opencode.jsonc", "opencode.json", "config.json"] {
-            let p = dir.join(name);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-mod antigravity_install_tests {
-    use super::*;
-
-    #[test]
-    fn installs_agent_browser_in_antigravity_global_config() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let path = temp.path().join("mcp_config.json");
-        let entry = McpEntry {
-            command: "agent-browser".to_string(),
-            profile_path: temp.path().join("profile").to_string_lossy().to_string(),
-        };
-
-        install_antigravity_at(path.clone(), &entry).expect("install");
-
-        let value: Value =
-            serde_json::from_str(&std::fs::read_to_string(path).expect("read")).expect("json");
-        assert_eq!(
-            value["mcpServers"][MCP_SERVER_NAME]["command"],
-            "agent-browser"
-        );
-    }
-}
-
-fn install_json_server(
-    path: PathBuf,
-    container_key: &str,
-    server_value: Value,
-) -> Result<(PathBuf, Option<PathBuf>), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(format!("Failed to read {}: {e}", path.display())),
-    };
-
-    let mut root: Value = if content.trim().is_empty() {
-        json!({})
-    } else {
-        // Strip simple // and /* */ comments for JSONC configs
-        let cleaned = strip_jsonc_comments_simple(&content);
-        serde_json::from_str(&cleaned)
-            .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?
-    };
-
-    let obj = root
-        .as_object_mut()
-        .ok_or_else(|| format!("{} root must be an object", path.display()))?;
-
-    let container = obj
-        .entry(container_key.to_string())
-        .or_insert_with(|| json!({}));
-    let container_obj = container
-        .as_object_mut()
-        .ok_or_else(|| format!("{container_key} must be an object in {}", path.display()))?;
-    container_obj.insert(MCP_SERVER_NAME.to_string(), server_value);
-
-    let updated = serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("Failed to serialize {}: {e}", path.display()))?;
-    let backup = write_atomic_with_backup(&path, &updated)?;
-    Ok((path, backup))
-}
-
-fn install_toml_server(
-    path: PathBuf,
-    entry: &McpEntry,
-    label: &str,
-    clear_disabled_list: bool,
-) -> Result<(PathBuf, Option<PathBuf>), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(format!("Failed to read {}: {e}", path.display())),
-    };
-
-    let mut doc = if content.trim().is_empty() {
-        toml_edit::DocumentMut::new()
-    } else {
-        content
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| format!("Failed to parse {label} TOML {}: {e}", path.display()))?
-    };
-
-    if !doc.as_table().contains_key("mcp_servers") {
-        doc["mcp_servers"] = toml_edit::Item::Table(toml_edit::Table::new());
-    }
-    doc["mcp_servers"][MCP_SERVER_NAME] = entry.codex_table_item();
-
-    if clear_disabled_list {
-        if let Some(item) = doc.get_mut("disabled_mcp_servers") {
-            if let Some(arr) = item.as_array_mut() {
-                let mut i = 0;
-                while i < arr.len() {
-                    let is_match = arr
-                        .get(i)
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s == MCP_SERVER_NAME);
-                    if is_match {
-                        arr.remove(i);
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    let updated = doc.to_string();
-    updated
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|e| format!("Generated invalid {label} TOML: {e}"))?;
-    let backup = write_atomic_with_backup(&path, &updated)?;
-    Ok((path, backup))
-}
-
-fn write_atomic_with_backup(path: &Path, content: &str) -> Result<Option<PathBuf>, String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-
-    let backup = if path.exists() {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or_default();
-        let backup = path.with_extension(format!(
-            "{}.bak.{ts}",
-            path.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("config")
-        ));
-        std::fs::copy(path, &backup)
-            .map_err(|e| format!("Failed to create backup {}: {e}", backup.display()))?;
-        Some(backup)
-    } else {
-        None
-    };
-
-    let tmp = path.with_extension(format!(
-        "{}.tmp",
-        path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("config")
-    ));
-    std::fs::write(&tmp, content).map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| {
-        format!(
-            "Failed to replace {} with {}: {e}",
-            path.display(),
-            tmp.display()
-        )
-    })?;
-    Ok(backup)
-}
-
-fn strip_jsonc_comments_simple(input: &str) -> String {
-    // Minimal strip for // line comments and /* block */ — good enough for MCP JSONC.
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    let mut in_string = false;
-    let mut escape = false;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if in_string {
-            out.push(b as char);
-            if escape {
-                escape = false;
-            } else if b == b'\\' {
-                escape = true;
-            } else if b == b'"' {
-                in_string = false;
-            }
-            i += 1;
-            continue;
-        }
-        if b == b'"' {
-            in_string = true;
-            out.push('"');
-            i += 1;
-            continue;
-        }
-        if b == b'/' && i + 1 < bytes.len() {
-            if bytes[i + 1] == b'/' {
-                i += 2;
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-                continue;
-            }
-            if bytes[i + 1] == b'*' {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                i = (i + 2).min(bytes.len());
-                continue;
-            }
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
-}
-
-fn escape_toml_string(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::TempDir;
 
     #[test]
-    fn mcp_entry_claude_snippet_includes_profile_env() {
-        let entry = McpEntry::new(
-            "agent-browser".into(),
-            "/tmp/jean-agent-browser/profile".into(),
-        );
-        let snippet = entry.claude_snippet();
-        assert!(snippet.contains("agent-browser"));
-        assert!(snippet.contains("AGENT_BROWSER_PROFILE"));
-        assert!(snippet.contains("/tmp/jean-agent-browser/profile"));
-        assert!(snippet.contains("\"mcp\""));
-    }
-
-    #[test]
-    fn mcp_entry_codex_snippet_is_toml() {
-        let entry = McpEntry::new("agent-browser".into(), "/data/profile".into());
-        let snippet = entry.codex_snippet();
-        assert!(snippet.contains("[mcp_servers.agent-browser]"));
-        assert!(snippet.contains("AGENT_BROWSER_PROFILE"));
-        assert!(snippet.contains("/data/profile"));
-        assert!(snippet.contains("enabled = true"));
-    }
-
-    #[test]
-    fn install_json_server_upserts_mcp_entry() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("mcp.json");
-        fs::write(
-            &path,
-            r#"{ "mcpServers": { "other": { "command": "x" } } }"#,
-        )
-        .unwrap();
-
-        let entry = McpEntry::new("agent-browser".into(), "/p".into());
-        install_json_server(path.clone(), "mcpServers", entry.claude_server_json()).unwrap();
-
-        let parsed: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(parsed["mcpServers"]["other"].is_object());
-        assert_eq!(
-            parsed["mcpServers"]["agent-browser"]["command"],
-            "agent-browser"
-        );
-        assert_eq!(
-            parsed["mcpServers"]["agent-browser"]["env"]["AGENT_BROWSER_PROFILE"],
-            "/p"
-        );
-    }
-
-    #[test]
-    fn install_toml_server_upserts_mcp_entry() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("config.toml");
-        fs::write(&path, "[mcp_servers.existing]\ncommand = \"foo\"\n").unwrap();
-
-        let entry = McpEntry::new("/usr/bin/agent-browser".into(), "/var/profile".into());
-        install_toml_server(path.clone(), &entry, "Codex", false).unwrap();
-
-        let content = fs::read_to_string(&path).unwrap();
-        assert!(content.contains("[mcp_servers.existing]"));
-        assert!(content.contains("[mcp_servers.agent-browser]"));
-        assert!(content.contains("/usr/bin/agent-browser"));
-        assert!(content.contains("/var/profile"));
-    }
-
-    #[test]
-    fn strip_jsonc_preserves_strings_with_slashes() {
-        let input = r#"{ "url": "https://example.com" } // trailing"#;
-        let cleaned = strip_jsonc_comments_simple(input);
-        assert!(cleaned.contains("https://example.com"));
-        assert!(!cleaned.contains("trailing"));
+    fn agent_browser_snippets_carry_the_profile_env() {
+        let entry = agent_browser_spec("agent-browser".into(), "/data/profile".into());
+        let claude = entry.claude_snippet();
+        assert!(claude.contains("AGENT_BROWSER_PROFILE"));
+        assert!(claude.contains("/data/profile"));
+        assert!(claude.contains("\"mcp\""));
+        let codex = entry.codex_snippet();
+        assert!(codex.contains("[mcp_servers.agent-browser]"));
+        assert!(codex.contains("AGENT_BROWSER_PROFILE"));
+        assert!(codex.contains("enabled = true"));
     }
 
     #[test]

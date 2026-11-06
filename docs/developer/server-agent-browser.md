@@ -112,13 +112,14 @@ MCP entry shape (Claude):
 
 ## UI
 
-Settings → **MCP Servers** → **Agent Browser** (`AgentBrowserSection.tsx`):
+Settings → **MCP Servers** → **Browser for agents** → engine **Agent Browser**
+(`BrowserForAgentsSection.tsx` + `AgentBrowserPanel.tsx`; engines: `browser-for-agents.md`):
 
 - Status (installed / missing binary; Jean-managed vs PATH)
 - Profile path
 - **Install agent-browser** (npm into app data + Chromium download)
 - Create profile
-- Install MCP into installed backends
+- The engine choice writes the MCP entry into the installed backends
 - Copy Claude / Codex snippets
 - Operator fallback: `npm install -g agent-browser && agent-browser install`
 
@@ -176,7 +177,8 @@ agent-browser install          # Chrome for Testing
 agent-browser install --with-deps
 ```
 
-Then: **Install MCP into backends**.
+Then choose the **Agent Browser** engine (or, if it is already chosen,
+installing the binary writes the MCP entry).
 
 In chat (after first manual login):
 
