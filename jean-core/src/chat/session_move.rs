@@ -402,6 +402,23 @@ mod tests {
     }
 
     #[test]
+    fn a_move_keeps_the_artifact_list() {
+        let mut metadata = metadata_with_every_resume_id();
+        metadata.artifacts = vec![super::super::types::Artifact {
+            id: "art-1".to_string(),
+            title: "Report".to_string(),
+            target: "https://preview.example.dev".to_string(),
+            note: None,
+            created_at: 1,
+        }];
+
+        prepare_moved_metadata(&mut metadata, "/old/worktree");
+
+        assert_eq!(metadata.artifacts.len(), 1);
+        assert_eq!(metadata.artifacts[0].id, "art-1");
+    }
+
+    #[test]
     fn a_second_move_before_any_turn_keeps_the_first_path() {
         let mut metadata = metadata_with_every_resume_id();
 
