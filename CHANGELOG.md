@@ -7,6 +7,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The open session is highlighted in Starred and Pinned too** (#92). Its
+  rows there now get the same selection style as its row in the project tree.
+
 ## [1.5.0] - 2026-11-04
 
 Built on Jean 0.1.73.
