@@ -49,6 +49,9 @@ interface ProjectsUIState {
   // The row sits beside the workspace rows, so it keeps its own expansion.
   expandedPinnedProjectIds: Set<string>
 
+  // Project IDs whose Graphs row (#99) is expanded in the sidebar tree.
+  expandedGraphsProjectIds: Set<string>
+
   // Starred sessions, across every project, in star order
   starredSessions: StarredSessionRef[]
   // Whether the sidebar's Starred section is collapsed
@@ -122,6 +125,8 @@ interface ProjectsUIState {
 
   // Pinned-sessions row expansion, per project
   togglePinnedExpanded: (projectId: string) => void
+  // Project Graphs row expansion, per project (#99)
+  toggleProjectGraphsExpanded: (projectId: string) => void
 
   // Starred sessions
   starSession: (star: StarredSessionRef) => void
@@ -218,6 +223,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedProjectIds: new Set<string>(),
       expandedWorktreeIds: new Set<string>(),
       expandedPinnedProjectIds: new Set<string>(),
+      expandedGraphsProjectIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
       graphsSectionCollapsed: false,
@@ -496,6 +502,21 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'togglePinnedExpanded'
+        ),
+
+      toggleProjectGraphsExpanded: projectId =>
+        set(
+          state => {
+            const newSet = new Set(state.expandedGraphsProjectIds)
+            if (newSet.has(projectId)) {
+              newSet.delete(projectId)
+            } else {
+              newSet.add(projectId)
+            }
+            return { expandedGraphsProjectIds: newSet }
+          },
+          undefined,
+          'toggleProjectGraphsExpanded'
         ),
 
       // Dashboard collapse actions
