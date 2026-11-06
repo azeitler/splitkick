@@ -9,8 +9,10 @@ mod desktop_commands;
 mod dock;
 mod http_server;
 mod installed_apps;
+mod memory_log;
 mod platform;
 mod remote_install;
+mod webview_watchdog;
 
 pub(crate) struct CoreRuntime(pub jean_core::RuntimeContext);
 
@@ -315,6 +317,9 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     // "invisible" window after the browser process exits). No-op elsewhere.
     platform::install_process_failed_recovery(app);
 
+    // Liveness pings, resume detection and the memory log line (issue #97).
+    webview_watchdog::install(app.handle());
+
     Ok(())
 }
 
@@ -359,7 +364,13 @@ pub fn run() {
     // main window (with its WebView) exists. See jean_core::jean_import.
     apply_pending_import(&context.config().identifier);
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Replaces Tauri's default reload, which gives up silently (issue #97).
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .on_web_content_process_terminate(webview_watchdog::on_web_content_process_terminate);
+
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
@@ -400,6 +411,8 @@ pub fn run() {
                 if let Some(window) = window.app_handle().get_webview_window(window.label()) {
                     connection_window::ensure_usable_geometry(&window);
                 }
+                // Activation after a suspend: check the page still answers.
+                webview_watchdog::ping_window(window.app_handle(), window.label(), "focus");
             }
         })
         .setup(setup_runtime)
@@ -432,6 +445,8 @@ pub fn run() {
             desktop_commands::stop_http_server,
             desktop_commands::install_remote_jean_server,
             desktop_commands::get_remote_connection_secrets,
+            webview_watchdog::webview_liveness_pong,
+            webview_watchdog::take_webview_recovery,
             connection_window::open_connection_window,
             connection_window::focus_main_window,
             connection_window::close_connection_window,

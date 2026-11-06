@@ -18,7 +18,8 @@ View     Toggle Left Sidebar / File Browser / Right Sidebar, Toggle Terminal / B
 Go       Back, Forward, Next / Previous Session, Unread Sessions, Focus Chat Input
 Session  Run, Cancel Prompt, Label…, Clear Context
 Window   Magic Menu, Quick Menu, Minimize, Zoom, (open windows)
-Help     Feature Tour, Install AI Backends   (AppKit adds the menu search field)
+Help     Feature Tour, Install AI Backends, Show Log, Copy Memory Report
+         (AppKit adds the menu search field)
 ```
 
 ### Item ids and events

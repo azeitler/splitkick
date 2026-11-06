@@ -242,6 +242,7 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
         )?)
         .separator()
         .item(&MenuItemBuilder::with_id("show-log", "Show Log").build(app)?)
+        .item(&MenuItemBuilder::with_id("copy-memory-report", "Copy Memory Report").build(app)?)
         .build()?;
     let menu = MenuBuilder::new(app)
         .item(&app_menu)
@@ -278,6 +279,16 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
                 if let Err(error) = crate::desktop_commands::show_log_file(&app).await {
                     log::warn!("Show Log failed: {error}");
                 }
+            });
+            return;
+        }
+        if event.id().as_ref() == "copy-memory-report" {
+            let app = app.clone();
+            let label = focused
+                .map(|window| window.label().to_string())
+                .unwrap_or_else(|| crate::connection_window::MAIN_WINDOW.to_string());
+            tauri::async_runtime::spawn(async move {
+                crate::memory_log::copy_report(&app, label).await;
             });
             return;
         }

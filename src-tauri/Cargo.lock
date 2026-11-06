@@ -2808,10 +2808,12 @@ version = "0.1.73"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "chrono",
  "dirs 5.0.1",
  "gtk",
  "image",
  "jean-core",
+ "libc",
  "log",
  "objc2",
  "objc2-app-kit",

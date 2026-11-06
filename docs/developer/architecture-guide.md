@@ -122,6 +122,7 @@ Each major system has focused documentation:
 - **[State Management](./state-management.md)** - Zustand + TanStack Query patterns
 - **[Notifications](./notifications.md)** - Toast and native notifications
 - **[Logging](./logging.md)** - Rust and TypeScript logging
+- **[Webview Recovery](./webview-recovery.md)** - Empty-window recovery and the memory log
 - **[Performance](./performance-patterns.md)** - Render optimization patterns
 - **[Testing](./testing.md)** - Quality gates and test patterns
 - **[Releases](./releases.md)** - Automated release process
