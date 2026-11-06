@@ -17,6 +17,7 @@
 //! the Edge runtime, and the report says the content process is unknown.
 
 use jean_core::memory_report::{self, ProcessMemory, MEMORY_WARN_BYTES};
+#[cfg(target_os = "macos")]
 use std::collections::BTreeMap;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
