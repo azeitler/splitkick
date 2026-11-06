@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-06
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Browser for agents: Playwright, also in your own Chrome** (#104).
@@ -2490,7 +2494,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.1...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.2...HEAD
+[1.5.2]: https://github.com/azeitler/jean/compare/splitkick-v1.5.1...splitkick-v1.5.2
 [1.5.1]: https://github.com/azeitler/jean/compare/splitkick-v1.5.0...splitkick-v1.5.1
 [1.5.0]: https://github.com/azeitler/jean/compare/splitkick-v1.4.1...splitkick-v1.5.0
 [1.4.1]: https://github.com/azeitler/jean/compare/splitkick-v1.4.0...splitkick-v1.4.1
