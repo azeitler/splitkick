@@ -13,6 +13,12 @@ import { ContextPanel } from './ContextPanel'
 
 const mobile = vi.hoisted(() => ({ value: false }))
 const session = { id: 's1', name: 'One', serves: ['g1#n1'] } as Session
+const artifact = (id: string, title: string, created_at: number) => ({
+  id,
+  title,
+  target: `/w1/tmp/${id}.html`,
+  created_at,
+})
 
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => mobile.value,
@@ -68,6 +74,7 @@ describe('ContextPanel (#98)', () => {
     })
     useChatStore.setState({ activeWorktreeId: null, activeSessionIds: {} })
     useProjectsStore.setState({ selectedWorktreeId: null })
+    session.artifacts = undefined
   })
 
   it('shows the file tree on the Files tab', () => {
@@ -94,6 +101,7 @@ describe('ContextPanel (#98)', () => {
     for (const [id, reason] of [
       ['network', 'Open a session to see its network.'],
       ['graph', 'Open a session to see its graph.'],
+      ['artifacts', 'Open a session to see its artifacts.'],
     ] as const) {
       expect(tab(id)).toHaveAttribute('aria-disabled', 'true')
       expect(tab(id)).toHaveAttribute('title', reason)
@@ -109,6 +117,40 @@ describe('ContextPanel (#98)', () => {
     expect(
       screen.getByText('Open a session to see its graph.')
     ).toBeInTheDocument()
+  })
+
+  it('lists the artifacts of the session, newest first, with a count (#107)', () => {
+    session.artifacts = [
+      artifact('a', 'Old report', 1),
+      artifact('b', 'New page', 2),
+    ]
+    openSession()
+    render(<ContextPanel />)
+
+    expect(screen.getByTestId('artifacts-tab-count')).toHaveTextContent('2')
+    fireEvent.click(tab('artifacts'))
+    expect(useUIStore.getState().contextPanelTab).toBe('artifacts')
+    const items = screen.getAllByRole('listitem')
+    expect(items.map(li => li.querySelector('.truncate')?.textContent)).toEqual(
+      ['New page', 'Old report']
+    )
+  })
+
+  it('names only the selected tab; the others show their icon (#107)', () => {
+    openSession()
+    render(<ContextPanel />)
+    expect(tab('files')).toHaveTextContent('Files')
+    expect(tab('graph').querySelector('.sr-only')).toHaveTextContent('Graph')
+    expect(tab('graph')).toHaveAttribute('title', 'Graph')
+    expect(screen.getByRole('tab', { name: 'Artifacts' })).toBeInTheDocument()
+  })
+
+  it('shows no count and an empty state without artifacts (#107)', () => {
+    openSession()
+    useUIStore.setState({ contextPanelTab: 'artifacts' })
+    render(<ContextPanel />)
+    expect(screen.queryByTestId('artifacts-tab-count')).toBeNull()
+    expect(screen.getByText(/No artifacts yet/)).toBeInTheDocument()
   })
 
   it('closes from its close button', () => {

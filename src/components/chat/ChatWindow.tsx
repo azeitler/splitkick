@@ -128,6 +128,7 @@ import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { SendCancelButton } from './toolbar/SendCancelButton'
 import { FollowUpsButton } from './toolbar/FollowUpsButton'
+import { ArtifactsButton } from './toolbar/ArtifactsButton'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
 import { ReviewMethodModal } from './ReviewMethodModal'
 import { QueuedPromptsPanel } from './QueuedPromptsPanel'
@@ -2866,6 +2867,9 @@ export function ChatWindow({
     () => followUps.filter(item => !item.done).length,
     [followUps]
   )
+  // Artifacts (#107): the button opens the left panel's Artifacts tab
+  const artifactCount =
+    session?.id === activeSessionId ? (session?.artifacts?.length ?? 0) : 0
   const handleToggleFollowUps = useCallback(() => {
     const { followUpsOpen, setFollowUpsOpen } = useUIStore.getState()
     setFollowUpsOpen(!followUpsOpen)
@@ -3933,6 +3937,7 @@ export function ChatWindow({
                                     }
                                     onCancel={handleCancel}
                                   />
+                                  <ArtifactsButton count={artifactCount} />
                                   <FollowUpsButton
                                     openCount={openFollowUpCount}
                                     open={followUpsOpen}
@@ -4079,6 +4084,7 @@ export function ChatWindow({
                                     followUpsOpen={followUpsOpen}
                                     onToggleFollowUps={handleToggleFollowUps}
                                     followUpsShortcut={followUpsShortcut}
+                                    artifactCount={artifactCount}
                                     availableMcpServers={availableMcpServers}
                                     enabledMcpServers={enabledMcpServers}
                                     onToggleMcpServer={handleToggleMcpServer}

@@ -36,6 +36,8 @@ import type {
   Backend,
   FollowUp,
   FollowUpOp,
+  Artifact,
+  ArtifactOp,
 } from '@/types/chat'
 import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { hasBackendTransport } from '@/lib/environment'
@@ -3047,6 +3049,40 @@ export function useEditFollowUps(
       } catch (error) {
         logger.error('Failed to edit follow-ups', { error, sessionId, op })
         toast.error(`Could not change the follow-up list: ${error}`)
+        return false
+      }
+    },
+    [queryClient, sessionId, worktreeId, worktreePath]
+  )
+}
+
+/**
+ * Change a session's artifact list. Same flow as `useEditFollowUps`.
+ */
+export function useEditArtifacts(
+  sessionId: string | null,
+  worktreeId: string | null,
+  worktreePath: string | null
+) {
+  const queryClient = useQueryClient()
+  return useCallback(
+    async (op: ArtifactOp): Promise<boolean> => {
+      if (!sessionId || !worktreeId || !worktreePath) return false
+      try {
+        const artifacts = await invoke<Artifact[]>('edit_session_artifacts', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          op,
+        })
+        queryClient.setQueryData<Session | null>(
+          chatQueryKeys.session(sessionId),
+          old => (old ? { ...old, artifacts } : old)
+        )
+        return true
+      } catch (error) {
+        logger.error('Failed to edit artifacts', { error, sessionId, op })
+        toast.error(`Could not change the artifact list: ${error}`)
         return false
       }
     },

@@ -118,6 +118,8 @@ export interface ChatToolbarProps {
   followUpsOpen?: boolean
   onToggleFollowUps?: () => void
   followUpsShortcut?: string
+  /** Registered artifacts (#107); the Artifacts button shows when above 0. */
+  artifactCount?: number
 
   availableMcpServers: McpServerInfo[]
   enabledMcpServers: string[]

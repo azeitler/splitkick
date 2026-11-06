@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react'
-import { FolderTree, Network, Workflow, X } from 'lucide-react'
+import { FolderTree, Network, Package, Workflow, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { FileBrowserSidebar } from '@/components/file-browser/FileBrowserSidebar'
 import { SessionNetworkTree } from '@/components/chat/SessionNetworkTree'
 import { SessionGraphPanel } from '@/components/graphs/SessionGraphPanel'
+import {
+  SessionArtifactsTab,
+  useSessionArtifacts,
+} from '@/components/artifacts/SessionArtifactsTab'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useActiveSessionTarget } from '@/lib/session-transfer'
 import { cn } from '@/lib/utils'
@@ -16,10 +20,11 @@ const TABS: { id: ContextPanelTab; label: string; icon: typeof Network }[] = [
   { id: 'files', label: 'Files', icon: FolderTree },
   { id: 'network', label: 'Network', icon: Network },
   { id: 'graph', label: 'Graph', icon: Workflow },
+  { id: 'artifacts', label: 'Artifacts', icon: Package },
 ]
 
 /**
- * The left context panel (#98): Files | Network | Graph for the session on
+ * The left context panel (#98): Files | Network | Graph | Artifacts for the session on
  * screen. Same place, width and visibility (`fileBrowserVisible`) as the
  * file tree before it. The desktop sidebar and the phone drawer both render
  * it; tabs that cannot show anything stay visible but disabled.
@@ -37,6 +42,7 @@ export function ContextPanel() {
     files: null,
     network: networkSessionId ? null : 'Open a session to see its network.',
     graph: currentSessionId ? null : 'Open a session to see its graph.',
+    artifacts: currentSessionId ? null : 'Open a session to see its artifacts.',
   }
   const reason = reasons[tab]
 
@@ -80,6 +86,13 @@ export function ContextPanel() {
         />
       </ScrollArea>
     )
+  } else if (tab === 'artifacts' && target) {
+    content = (
+      <SessionArtifactsTab
+        worktreeId={target.worktreeId}
+        sessionId={target.sessionId}
+      />
+    )
   } else if (target) {
     content = (
       <GraphTab worktreeId={target.worktreeId} sessionId={target.sessionId} />
@@ -108,14 +121,15 @@ export function ContextPanel() {
                 id={`context-panel-tab-${id}`}
                 aria-selected={selected}
                 aria-disabled={tabReason ? true : undefined}
-                title={tabReason ?? undefined}
+                title={tabReason ?? label}
                 data-testid={`context-panel-tab-${id}`}
                 onClick={() => {
                   if (tabReason) return
                   useUIStore.getState().setContextPanelTab(id)
                 }}
                 className={cn(
-                  'flex h-6 min-w-0 items-center gap-1 rounded-md px-2 text-xs font-medium',
+                  'flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium',
+                  selected ? 'min-w-0' : 'shrink-0',
                   selected
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-muted-foreground',
@@ -126,7 +140,17 @@ export function ContextPanel() {
                 )}
               >
                 <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">{label}</span>
+                {/* Four names do not fit the panel's width: only the
+                    selected tab shows its name, the others their icon. */}
+                <span className={selected ? 'truncate' : 'sr-only'}>
+                  {label}
+                </span>
+                {id === 'artifacts' && target && (
+                  <ArtifactCount
+                    worktreeId={target.worktreeId}
+                    sessionId={target.sessionId}
+                  />
+                )}
               </button>
             )
           })}
@@ -150,6 +174,27 @@ export function ContextPanel() {
         {content}
       </div>
     </div>
+  )
+}
+
+/** Count badge of the Artifacts tab; nothing while the list is empty. */
+function ArtifactCount({
+  worktreeId,
+  sessionId,
+}: {
+  worktreeId: string
+  sessionId: string
+}) {
+  const { artifacts } = useSessionArtifacts(worktreeId, sessionId)
+  if (artifacts.length === 0) return null
+  return (
+    <span
+      data-testid="artifacts-tab-count"
+      aria-label={`${artifacts.length} artifacts`}
+      className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums"
+    >
+      {artifacts.length > 99 ? '99+' : artifacts.length}
+    </span>
   )
 }
 
