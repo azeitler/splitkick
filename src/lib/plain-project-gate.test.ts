@@ -135,6 +135,9 @@ describe('canvas and window gates (source)', () => {
     )
     expect(canvas).toContain('const mobileGitHubEnabled = isMobile && !isPlain')
     expect(canvas).toMatch(/\{!isPlain && \(\s*<DropdownMenuItem/)
+    expect(canvas).toContain(
+      "CANVAS_FILTER_TABS.filter(tab => tab.value === 'all')"
+    )
   })
 
   it('closes the new worktree modal for a plain project and stops polling', () => {
