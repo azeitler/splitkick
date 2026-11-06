@@ -154,13 +154,13 @@ fn should_auto_name_branch(worktree: Option<&Worktree>) -> bool {
 }
 
 /// RAII claim on a session's send slot — released on drop (any return path).
-struct SendClaim {
+pub(crate) struct SendClaim {
     session_id: String,
     generation: u64,
 }
 
 impl SendClaim {
-    fn try_acquire(session_id: &str) -> Option<Self> {
+    pub(crate) fn try_acquire(session_id: &str) -> Option<Self> {
         let mut active = ACTIVE_SENDS.lock().unwrap();
         if active.contains_key(session_id) {
             return None;
@@ -194,8 +194,14 @@ fn release_active_send(session_id: &str) {
     }
 }
 
-fn has_active_send(session_id: &str) -> bool {
+pub(crate) fn has_active_send(session_id: &str) -> bool {
     ACTIVE_SENDS.lock().unwrap().contains_key(session_id)
+}
+
+/// Sessions with a `send_chat_message` call in flight. Their run is already
+/// `Running` in metadata while the CLI is not spawned or registered yet.
+fn active_send_session_ids() -> Vec<String> {
+    ACTIVE_SENDS.lock().unwrap().keys().cloned().collect()
 }
 
 fn should_forward_cancel_request(session_id: &str) -> bool {
@@ -9603,7 +9609,10 @@ pub async fn check_resumable_sessions(
     // Also report sessions that are actively managed (being tailed right now).
     // The web client needs these to mark sessions as "sending" and show streaming UI.
     // resume_session will no-op for these since they're already being tailed.
-    let actively_managed = super::registry::get_actively_managed_sessions();
+    // A send still starting its CLI counts too: a page loaded in that window
+    // must show the run as sending (#97).
+    let mut actively_managed = super::registry::get_actively_managed_sessions();
+    actively_managed.extend(active_send_session_ids());
     for session_id in &actively_managed {
         // Skip if already reported by recover_incomplete_runs
         if resumable.iter().any(|r| r.session_id == *session_id) {
