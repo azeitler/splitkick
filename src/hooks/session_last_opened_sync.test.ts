@@ -19,8 +19,10 @@ describe('set_session_last_opened multi-client sync', () => {
     expect(singleFn?.[0]).toBeTruthy()
     // Scoped to the session's worktree so a session switch does not reload
     // every session list.
-    expect(singleFn?.[0]).toContain(
-      'emit_worktree_sessions_cache_invalidation(&app, &metadata.worktree_id)'
+    // The worktree id may come from the metadata or from the atomic update
+    // closure (#101); what matters is the scoped broadcast.
+    expect(singleFn?.[0]).toMatch(
+      /emit_worktree_sessions_cache_invalidation\(&app, &(metadata\.)?worktree_id\)/
     )
   })
 
