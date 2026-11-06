@@ -54,6 +54,8 @@ export const defaultResponses: Record<string, unknown> = {
   // An array: WorktreeContextMenu reads `.length`, and null crashed every
   // sidebar render into the error boundary.
   get_run_scripts: [],
+  // Graph layer (1.4.0): the sidebar's Graphs section reads `.length`.
+  list_graphs: [],
 
   // Sessions
   get_sessions: { sessions: [], active_session_id: null },
@@ -66,6 +68,9 @@ export const defaultResponses: Record<string, unknown> = {
   },
   // Matches the Rust AllSessionsResponse: { entries: AllSessionsEntry[] }.
   list_all_sessions: { entries: [] },
+  list_graphs: [],
+  list_graph_changes: [],
+  list_graph_requests: [],
   create_session: {
     id: 'session-new',
     name: 'New Session',

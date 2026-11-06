@@ -1,4 +1,6 @@
+import { useContext } from 'react'
 import { useSessionLink } from '@/services/chat'
+import { CurrentSessionContext } from './CurrentSessionContext'
 import { SessionLinkRow } from './SessionLinkInsert'
 
 /** Top-of-chat row naming the session that started (or was forked into) this one (#62). */
@@ -9,6 +11,7 @@ export function SessionOriginBanner({
   startedBySessionId?: string | null
   forkedFromSessionId?: string | null
 }) {
+  const currentSessionId = useContext(CurrentSessionContext)
   const originId = startedBySessionId || forkedFromSessionId || null
   const { data: link, isSuccess } = useSessionLink(originId)
   if (!originId || !isSuccess) return null
@@ -19,6 +22,9 @@ export function SessionOriginBanner({
       link={link}
       goneText={`${prefix} a session that is no longer available`}
       className="mb-2"
+      networkSessionId={
+        startedBySessionId ? (currentSessionId ?? startedBySessionId) : null
+      }
     />
   )
 }

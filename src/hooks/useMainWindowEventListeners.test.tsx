@@ -626,6 +626,7 @@ describe('dialog overlay keybinding passthrough', () => {
     'toggle_zen_mode',
     'clear_session_context',
     'add_follow_up',
+    'toggle_session_graph',
   ] as const)('allows %s through the open session chat modal', action => {
     useUIStore.setState({ sessionChatModalOpen: true })
 

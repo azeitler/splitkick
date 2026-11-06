@@ -41,6 +41,46 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   with its label and email, and the MCP `get_usage` tool returns them as
   `claude_accounts`. MCP servers, plugins and skills are separate per folder.
   No per-session or per-project choice yet.
+### Added
+
+- **Sessions read and change their graph links; managers link others** (#88).
+  "Link to Graph…" in the session context menu (sidebar, canvas tabs,
+  Starred/Pinned rows; long press on mobile) and in the command palette opens
+  a picker for every session: it shows the current links and adds or removes a
+  node or a whole graph. The graph panel's "Serves" section uses the same
+  editor, and "Toggle Graph Panel" on an unlinked session now offers "Link to
+  Graph…". Over MCP, `get_current_context` also returns `serves` (with graph
+  and node titles), `agentId` and the effective `graphPermission`;
+  `set_serves` takes `add`/`remove` besides `serves` (removing a missing ref is
+  a no-op) and returns the resulting list. With another session's `sessionId`
+  it needs graph permission `manage` and a `reason`; the change goes into the
+  graph's change log ("Changes since you last looked"), where it can be
+  reverted.
+- **Session network: see which session started which** (#77). A dialog shows
+  the tree around a session: its root and every session started from there,
+  across worktrees and projects. Each row shows the name, project › worktree,
+  backend and live status; archived sessions show greyed out. Click a row to
+  open the session. Open it from "Network" in the "Started by" banner and the
+  "Started session" inserts, or from "Show Session Network" in the session
+  context menu. A small network icon marks linked sessions in the sidebar, the
+  canvas tabs and the Starred/Pinned rows. Sessions on other devices are not
+  shown; a root whose parent is not here says so.
+- **Open the session graph panel from anywhere** (#84). The "Graph" button now
+  also shows in the full chat view, the command palette has "Toggle Graph
+  Panel", and `Mod+Shift+G` toggles it (configurable in Settings →
+  Keybindings). For a session that does not serve a graph node yet, the command
+  explains how to link it instead of opening an empty panel. The panel stays
+  desktop-only.
+
+### Changed
+
+- **MCP `create_session` reuses the worktree's empty "Session 1"** (#83). A
+  worktree created over MCP no longer ends up with an unused "Session 1" next
+  to the agent's session. When the default session is the only non-archived
+  session, was never sent or started, has nothing pending and was not claimed
+  by an earlier `create_session`, the call takes it over (name, backend, model,
+  agent, `serves`, started-by) and returns its id. Otherwise it adds a new
+  session as before. Worktrees created in the UI keep their "Session 1".
 
 ## [1.5.0] - 2026-11-04
 

@@ -46,6 +46,16 @@ describe('toolbar slots', () => {
     expect(screen.getByRole('button', { name: 'Run' })).toBeInTheDocument()
   })
 
+  it('keeps the window title for a view that only adds actions (#84)', () => {
+    render(
+      <Shell>
+        <ToolbarContent actions={<button type="button">Graph</button>} />
+      </Shell>
+    )
+    expect(title()).toHaveTextContent('jean › main')
+    expect(screen.getByRole('button', { name: 'Graph' })).toBeInTheDocument()
+  })
+
   it('gives the toolbar to the newest view and back when it closes', async () => {
     function Views() {
       const [modal, setModal] = useState(true)

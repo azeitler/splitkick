@@ -217,4 +217,33 @@ describe('GraphReview', () => {
     const row = screen.getByTestId('graph-change')
     expect(within(row).queryByRole('button', { name: /Revert/ })).toBeNull()
   })
+
+  it("shows a manager's serves change with its reason and reverts it (#88)", async () => {
+    renderReview([
+      change({
+        id: 'c4',
+        nodeId: null,
+        action: 'session.serves',
+        summary: 'Session "Windows worker" linked to Windows support',
+        why: 'Release work moves to the node',
+        serves: {
+          sessionId: 's9',
+          sessionName: 'Windows worker',
+          added: ['g1#n71'],
+          removed: [],
+        },
+      }),
+    ])
+    const row = screen.getByTestId('graph-change')
+    expect(
+      within(row).getByText(
+        'Session "Windows worker" linked to Windows support'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(row).getByText('Release work moves to the node')
+    ).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: /Revert/ }))
+    expect(mocks.revert).toHaveBeenCalledWith({ graphId: 'g1', changeId: 'c4' })
+  })
 })

@@ -15,7 +15,7 @@ use crate::chat::types::LabelData;
 use crate::graphs::{
     GraphActor, GraphAttachment, GraphChange, GraphNode, GraphPermission, GraphRelation,
     GraphRequest, GraphRequestKind, GraphRequestStatus, NewGraphNode, NodeDerived, NodeState,
-    RelationKind,
+    RelationKind, ServesChange, ServesEdit,
 };
 use crate::http_server::dispatch::dispatch_command;
 use crate::http_server::EmitExt;
@@ -434,7 +434,7 @@ fn tool_registry_graphs() -> Value {
         {"name":"update_node","description":"Change a node: title, description, properties, relations, attachments. Use set_node_state for the state. Needs write. Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"setProperties":properties,"removeProperties":{"type":"array","items":{"type":"string"}},"addRelations":relations,"removeRelations":relations,"addAttachments":attachments,"removeAttachments":attachments,"why":why},"required":["graphId","nodeId","why"],"additionalProperties":false}},
         {"name":"set_node_state","description":"Set a node's state. proposed needs write; committed, done and dropped need manage (without it, ask with send_request kind accept-done). Give a why.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"state":state,"why":why},"required":["graphId","nodeId","state","why"],"additionalProperties":false}},
         {"name":"send_request","description":"Ask the user about a node: accept-done (mark it done; list evidence) or decision (pick an option; blocker = the blocked-by text it resolves). Needs write.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"kind":{"type":"string","enum":["accept-done","decision"]},"title":{"type":"string"},"body":{"type":"string"},"evidence":{"type":"array","items":{"type":"string"}},"options":{"type":"array","items":{"type":"string"}},"blocker":{"type":"string"}},"required":["graphId","nodeId","kind","title"],"additionalProperties":false}},
-        {"name":"set_serves","description":"Set which graph nodes this session serves (replaces the list). Each entry is <graphId>#<nodeId> or <graphId> for the whole graph. Own session only.","inputSchema":{"type":"object","properties":{"serves":{"type":"array","items":{"type":"string"}}},"required":["serves"],"additionalProperties":false}},
+        {"name":"set_serves","description":"Change which graph nodes a session serves. Each ref is <graphId>#<nodeId> or <graphId> for the whole graph. Give either 'serves' (replaces the whole list) or 'add' and/or 'remove' (removing a ref that is not there is a no-op). Returns the resulting list with graph and node titles. Without sessionId it changes the calling session (any permission). With another session's sessionId it needs graph permission manage and a 'reason'; the change goes into the graph change log, where the user can review and revert it. get_current_context shows the current list.","inputSchema":{"type":"object","properties":{"serves":{"type":"array","items":{"type":"string"},"description":"Replace the whole list with these refs ([] clears it). Do not combine with add/remove."},"add":{"type":"array","items":{"type":"string"},"description":"Refs to add; the others stay."},"remove":{"type":"array","items":{"type":"string"},"description":"Refs to remove; the others stay."},"sessionId":{"type":"string","description":"Session to change. Omit for the calling session. Another session needs graph permission manage and a reason."},"reason":{"type":"string","description":"Required for another session: one sentence why. Goes into the graph change log."}},"additionalProperties":false}},
         {"name":"list_requests","description":"List the requests of a graph, newest first, with the user's answer once given. Use it to follow up on your send_request calls (mine: true). Node refs are <graphId>#<nodeId>. Needs read.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"status":{"type":"string","enum":["open","answered","all"],"default":"all","description":"answered = accepted, sent-back or answered."},"mine":{"type":"boolean","default":false,"description":"Only requests sent by this session."},"nodeId":{"type":"string"}},"required":["graphId"],"additionalProperties":false}},
         {"name":"list_changes","description":"Read a graph's change log, newest first: who changed what and why, and which changes were reverted (revertedByUser = the user undid it). Does not mark anything as seen. Node refs are <graphId>#<nodeId>. Needs read.","inputSchema":{"type":"object","properties":{"graphId":{"type":"string"},"nodeId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":30},"since":{"type":"integer","minimum":0,"description":"Only changes at or after this time (ms since epoch)."},"withSnapshots":{"type":"boolean","default":false,"description":"Add the node before and after each change (large)."}},"required":["graphId"],"additionalProperties":false}},
         {"name":"create_graph","description":"Create a new graph file and register it. Give either path (absolute .yml/.yaml, ~/ allowed) or projectId (file inside that project's repo, default .splitkick/graphs/<slug>.yml). Needs manage. Give a why. Returns the graph id; node refs are <graphId>#<nodeId>.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"graphType":{"type":"string","description":"One free word, for example roadmap, plan, release."},"path":{"type":"string","description":"Absolute path of the new .yml file. Not with projectId."},"projectId":{"type":"string","description":"Put the file inside this project's repo. Not with path."},"relativePath":{"type":"string","description":"With projectId: path inside the repo. Default .splitkick/graphs/<slug of title>.yml."},"why":why},"required":["title","graphType","why"],"additionalProperties":false}}
@@ -487,7 +487,7 @@ fn tool_registry_session() -> Value {
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the root Claude install; claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, and sessionLink/worktreeLink/projectLink for markdown links in chat. Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), agentId and graphPermission (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"get_run_environments","description":"List Splitkick Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
         ,{"name":"start_run_environment","description":"Start or reuse a Splitkick-managed Run environment for a worktree using a run command configured in splitkick.json (or jean.json). When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
         ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Splitkick's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Splitkick desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
@@ -1153,18 +1153,37 @@ async fn run_tool(
             // Fail fast when the worktree is archived (also enforced in create_session).
             ensure_mcp_worktree_not_archived(app, &worktree_id)?;
             let worktree_path = resolve_worktree_path(app, &worktree_id)?;
-            let mut payload = serde_json::Map::new();
-            payload.insert("worktreeId".to_string(), Value::String(worktree_id));
-            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
-            if let Some(n) = args.get("name").and_then(|v| v.as_str()) {
-                payload.insert("name".to_string(), Value::String(n.to_string()));
-            }
-            if let Some(b) = args.get("backend").and_then(|v| v.as_str()) {
-                payload.insert("backend".to_string(), Value::String(b.to_string()));
-            }
-            let session = dispatch_command(app, "create_session", Value::Object(payload))
-                .await
-                .map_err(ToolError::internal)?;
+            let name = args.get("name").and_then(|v| v.as_str());
+            let backend = args.get("backend").and_then(|v| v.as_str());
+            let reused = reuse_untouched_default_session(
+                app,
+                &worktree_id,
+                &worktree_path,
+                name,
+                backend,
+                source,
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            let session = match reused {
+                Some(session) => {
+                    serde_json::to_value(session).map_err(|e| ToolError::internal(e.to_string()))?
+                }
+                None => {
+                    let mut payload = serde_json::Map::new();
+                    payload.insert("worktreeId".to_string(), Value::String(worktree_id));
+                    payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+                    if let Some(n) = name {
+                        payload.insert("name".to_string(), Value::String(n.to_string()));
+                    }
+                    if let Some(b) = backend {
+                        payload.insert("backend".to_string(), Value::String(b.to_string()));
+                    }
+                    dispatch_command(app, "create_session", Value::Object(payload))
+                        .await
+                        .map_err(ToolError::internal)?
+                }
+            };
             if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
                 crate::chat::session_links::record_started_by(app, id, source, false);
                 if let Some(serves) = serves {
@@ -1915,6 +1934,9 @@ async fn run_tool(
                 .map_err(|_| no_current_context_error(source))?;
             let (project_id, project_name, project_path) =
                 resolve_worktree_project(app, &worktree_id)?;
+            let metadata = crate::chat::storage::load_metadata(app, source)
+                .ok()
+                .flatten();
             Ok(json!({
                 "sessionId": source,
                 "worktreeId": worktree_id,
@@ -1925,6 +1947,9 @@ async fn run_tool(
                 "sessionLink": crate::links::splitkick_link("session", source),
                 "worktreeLink": crate::links::splitkick_link("worktree", &worktree_id),
                 "projectLink": crate::links::splitkick_link("project", &project_id),
+                "serves": describe_serves(app, &metadata.as_ref().map(|m| m.serves.clone()).unwrap_or_default()),
+                "agentId": metadata.and_then(|m| m.agent_id),
+                "graphPermission": crate::graphs::effective_permission(app, source).as_str(),
             }))
         }
         "list_graphs" | "read_graph" | "create_node" | "update_node" | "set_node_state"
@@ -2402,6 +2427,131 @@ fn validate_serves(app: &AppHandle, serves: &[String]) -> Result<(), ToolError> 
     Ok(())
 }
 
+/// `set_serves` arguments: `serves` (replace) or `add`/`remove`, not both.
+fn serves_edit(args: &Value) -> Result<ServesEdit, ToolError> {
+    let replace = optional_string_list(args, "serves")?;
+    let add = optional_string_list(args, "add")?;
+    let remove = optional_string_list(args, "remove")?;
+    match (replace, add, remove) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => Err(ToolError::invalid_params(
+            "Use either 'serves' (replaces the list) or 'add'/'remove', not both",
+        )),
+        (Some(list), None, None) => Ok(ServesEdit::Replace(list)),
+        (None, None, None) => Err(ToolError::invalid_params(
+            "Give 'serves' (replaces the list) or 'add'/'remove' (arrays of refs)",
+        )),
+        (None, add, remove) => Ok(ServesEdit::Change {
+            add: add.unwrap_or_default(),
+            remove: remove.unwrap_or_default(),
+        }),
+    }
+}
+
+/// Split a ref into graph id and optional node id.
+fn split_ref(r: &str) -> (&str, Option<&str>) {
+    match r.split_once('#') {
+        Some((g, n)) => (g, Some(n)),
+        None => (r, None),
+    }
+}
+
+/// Serves refs with graph and node titles (null when the graph or node is gone).
+fn describe_serves(app: &AppHandle, serves: &[String]) -> Vec<Value> {
+    let mut graphs: HashMap<String, Option<crate::graphs::GraphFile>> = HashMap::new();
+    serves
+        .iter()
+        .map(|r| {
+            let (graph_id, node_id) = split_ref(r);
+            let graph = graphs
+                .entry(graph_id.to_string())
+                .or_insert_with(|| crate::graphs::store::load_graph(app, graph_id).ok());
+            let node_title = node_id.and_then(|id| {
+                graph
+                    .as_ref()
+                    .and_then(|g| g.nodes.iter().find(|n| n.id == id))
+                    .map(|n| n.title.clone())
+            });
+            json!({
+                "ref": r,
+                "graphId": graph_id,
+                "graphTitle": graph.as_ref().map(|g| g.title.clone()),
+                "nodeId": node_id,
+                "nodeTitle": node_title,
+            })
+        })
+        .collect()
+}
+
+/// Log a manager's change of another session's serves: one `session.serves`
+/// entry per graph whose refs changed, so each graph's review shows it.
+fn record_serves_change(
+    app: &AppHandle,
+    actor: &GraphActor,
+    session_id: &str,
+    before: &[String],
+    after: &[String],
+    reason: &str,
+) -> Result<(), ToolError> {
+    let added: Vec<&String> = after.iter().filter(|r| !before.contains(r)).collect();
+    let removed: Vec<&String> = before.iter().filter(|r| !after.contains(r)).collect();
+    let session_name = crate::chat::storage::load_metadata(app, session_id)
+        .ok()
+        .flatten()
+        .map(|m| m.name)
+        .unwrap_or_else(|| session_id.to_string());
+    let mut graph_ids: Vec<&str> = Vec::new();
+    for r in added.iter().chain(removed.iter()) {
+        let (graph_id, _) = split_ref(r);
+        if !graph_ids.contains(&graph_id) {
+            graph_ids.push(graph_id);
+        }
+    }
+    for graph_id in graph_ids {
+        let in_graph = |list: &[&String]| -> Vec<String> {
+            list.iter()
+                .filter(|r| split_ref(r).0 == graph_id)
+                .map(|r| r.to_string())
+                .collect()
+        };
+        let (added, removed) = (in_graph(&added), in_graph(&removed));
+        let titles = node_titles(app, graph_id);
+        let label = |r: &String| match split_ref(r).1 {
+            Some(node_id) => titles
+                .get(node_id)
+                .cloned()
+                .unwrap_or_else(|| node_id.to_string()),
+            None => "the whole graph".to_string(),
+        };
+        let mut parts = Vec::new();
+        if !added.is_empty() {
+            let list: Vec<String> = added.iter().map(label).collect();
+            parts.push(format!("linked to {}", list.join(", ")));
+        }
+        if !removed.is_empty() {
+            let list: Vec<String> = removed.iter().map(label).collect();
+            parts.push(format!("unlinked from {}", list.join(", ")));
+        }
+        let mut change = crate::graphs::changes::new_change(
+            graph_id,
+            None,
+            actor,
+            "session.serves",
+            format!("Session \"{session_name}\" {}", parts.join("; ")),
+            Some(reason.to_string()),
+            None,
+            None,
+        );
+        change.serves = Some(ServesChange {
+            session_id: session_id.to_string(),
+            session_name: session_name.clone(),
+            added,
+            removed,
+        });
+        crate::graphs::changes::append_change(app, &change).map_err(ToolError::internal)?;
+    }
+    Ok(())
+}
+
 fn node_result(graph_id: &str, node: &GraphNode) -> Value {
     let mut out = serde_json::to_value(node).unwrap_or(Value::Null);
     if let Some(obj) = out.as_object_mut() {
@@ -2668,16 +2818,45 @@ async fn run_graph_tool(
         "set_serves" => {
             if source == crate::graphs::permissions::ANON_SOURCE {
                 return Err(ToolError::invalid_params(
-                    "set_serves only works from a Splitkick session (it sets the calling session's serves)",
+                    "set_serves only works from a Splitkick session",
                 ));
             }
-            let serves = optional_string_list(args, "serves")?
-                .ok_or_else(|| ToolError::invalid_params("missing 'serves' (array of refs)"))?;
-            validate_serves(app, &serves)?;
-            crate::graphs::set_session_serves(app.clone(), source.to_string(), serves.clone())
-                .await
-                .map_err(ToolError::internal)?;
-            Ok(json!({ "sessionId": source, "serves": serves }))
+            let edit = serves_edit(args)?;
+            // Another session: only a manager, and the change goes into the
+            // graph change log with its reason (#88).
+            let other = optional_str(args, "sessionId").filter(|id| id != source);
+            let reason = match &other {
+                Some(_) => {
+                    require_graph_permission(
+                        app,
+                        source,
+                        GraphPermission::Manage,
+                        "set_serves for another session",
+                    )?;
+                    Some(optional_str(args, "reason").ok_or_else(|| {
+                        ToolError::invalid_params(
+                            "'reason' is required when you change another session's serves: say in one sentence why. It goes into the graph change log.",
+                        )
+                    })?)
+                }
+                None => None,
+            };
+            // Removing needs no valid ref: a stale ref must stay removable.
+            match &edit {
+                ServesEdit::Replace(list) => validate_serves(app, list)?,
+                ServesEdit::Change { add, .. } => validate_serves(app, add)?,
+            }
+            let session_id = other.unwrap_or_else(|| source.to_string());
+            let (before, after) = crate::graphs::edit_session_serves(app, &session_id, &edit)
+                .map_err(ToolError::invalid_params)?;
+            if let Some(reason) = reason {
+                record_serves_change(app, &actor(), &session_id, &before, &after, &reason)?;
+            }
+            Ok(json!({
+                "sessionId": session_id,
+                "serves": after,
+                "refs": describe_serves(app, &after),
+            }))
         }
         "list_requests" => {
             require_graph_permission(app, source, GraphPermission::Read, name)?;
@@ -2865,6 +3044,9 @@ fn compact_change(
     o.insert("summary".into(), json!(c.summary));
     if let Some(why) = &c.why {
         o.insert("why".into(), json!(why));
+    }
+    if let Some(serves) = &c.serves {
+        o.insert("serves".into(), json!(serves));
     }
     if let Some(reverted_by) = &c.reverted_by {
         o.insert("revertedBy".into(), json!(reverted_by));
@@ -4105,6 +4287,90 @@ fn resolve_session_worktree(
         .ok_or_else(|| ToolError::invalid_params(format!("Unknown sessionId: {session_id}")))?;
     let worktree_path = resolve_worktree_path(app, &metadata.worktree_id)?;
     Ok((metadata.worktree_id, worktree_path))
+}
+
+/// The worktree's default "Session 1" when it can stand in for a new MCP
+/// session (#83): it is the only non-archived session, was never sent or
+/// started, and has nothing pending. Never the calling session itself, and
+/// never one an earlier create_session already claimed (started_by, agent,
+/// serves) but has not sent to yet.
+fn untouched_default_session<'a>(
+    sessions: &'a [crate::chat::types::Session],
+    source: &str,
+) -> Option<&'a crate::chat::types::Session> {
+    let mut live = sessions.iter().filter(|s| s.archived_at.is_none());
+    let s = live.next()?;
+    if live.next().is_some() {
+        return None;
+    }
+    let untouched = s.id != source
+        && s.started_by_session_id.is_none()
+        && s.agent_id.is_none()
+        && s.serves.is_empty()
+        && s.primary_surface.is_none()
+        && s.total_runs == 0
+        && s.message_count.unwrap_or(0) == 0
+        && s.last_run_status.is_none()
+        && s.queued_messages.is_empty()
+        && !s.waiting_for_input
+        && s.waiting_for_input_type.is_none()
+        && s.pending_plan_message_id.is_none()
+        && s.pending_permission_denials.is_empty()
+        && s.pending_codex_permission_requests.is_empty()
+        && s.pending_opencode_permission_requests.is_empty()
+        && s.pending_codex_command_approval_requests.is_empty()
+        && s.pending_codex_user_input_requests.is_empty()
+        && s.pending_codex_mcp_elicitation_requests.is_empty()
+        && s.pending_codex_dynamic_tool_call_requests.is_empty();
+    untouched.then_some(s)
+}
+
+/// MCP `create_session` takes over an untouched default session instead of
+/// adding a second one next to it. The session gets what `create_session`
+/// gives a new one (name, backend, default model, active tab, issue/PR refs);
+/// it keeps its id and tab position, and an unnamed one keeps its name.
+/// Returns `None` when a new session must be created.
+async fn reuse_untouched_default_session(
+    app: &AppHandle,
+    worktree_id: &str,
+    worktree_path: &str,
+    name: Option<&str>,
+    backend: Option<&str>,
+    source: &str,
+) -> Result<Option<crate::chat::types::Session>, String> {
+    // Read-only check first: with_sessions_mut rewrites every session's metadata.
+    let current = crate::chat::storage::load_sessions(app, worktree_path, worktree_id)?;
+    if untouched_default_session(&current.sessions, source).is_none() {
+        return Ok(None);
+    }
+    let preferences = crate::load_preferences(app.clone()).await.ok();
+    let backend = crate::chat::resolve_session_backend(app, worktree_id, backend);
+    let model = preferences
+        .as_ref()
+        .and_then(|prefs| crate::chat::default_model_for_backend(&backend, prefs));
+
+    let reused = crate::chat::with_sessions_mut(app, worktree_path, worktree_id, |sessions| {
+        // Check again under the index lock.
+        let Some(old) = untouched_default_session(&sessions.sessions, source) else {
+            return Ok(None);
+        };
+        let (id, order) = (old.id.clone(), old.order);
+        let name = name.map_or_else(|| old.name.clone(), str::to_string);
+        let mut session = crate::chat::types::Session::new(name, order, backend);
+        session.id = id.clone();
+        session.selected_model = model;
+        if let Some(slot) = sessions.find_session_mut(&id) {
+            *slot = session.clone();
+        }
+        sessions.active_session_id = Some(id);
+        Ok(Some(session))
+    })?;
+
+    if let Some(session) = &reused {
+        crate::chat::copy_worktree_context_refs(app, worktree_id, &session.id);
+        crate::chat::emit_sessions_cache_invalidation(app);
+    }
+    Ok(reused)
 }
 
 /// Reject MCP mutations/runs when the worktree is archived.
@@ -6291,6 +6557,193 @@ mod tests {
         assert_eq!(m.serves, vec![r, graph_id]);
     }
 
+    /// A second session (`tool-s2`, "worker") in the fixture worktree.
+    fn add_worker_session(app: &AppHandle, serves: &[String]) {
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            "tool-s2".to_string(),
+            "tool-wt".to_string(),
+            "worker".to_string(),
+            1,
+        );
+        metadata.serves = serves.to_vec();
+        crate::chat::storage::save_metadata(app, &metadata).unwrap();
+    }
+
+    fn serves_of(app: &AppHandle, session_id: &str) -> Vec<String> {
+        crate::chat::storage::load_metadata(app, session_id)
+            .unwrap()
+            .unwrap()
+            .serves
+    }
+
+    #[test]
+    fn get_current_context_returns_serves_agent_and_permission() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+        let r = format!("{graph_id}#{node_id}");
+        call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": [r.clone()] }),
+            "tool-s1",
+        )
+        .unwrap();
+
+        let ctx = call_as(&app, "get_current_context", json!({}), "tool-s1").unwrap();
+
+        assert_eq!(ctx["graphPermission"], "write");
+        assert_eq!(ctx["agentId"], Value::Null);
+        assert_eq!(
+            ctx["serves"],
+            json!([{
+                "ref": r,
+                "graphId": graph_id,
+                "graphTitle": "Roadmap",
+                "nodeId": node_id,
+                "nodeTitle": "Graph support",
+            }])
+        );
+    }
+
+    #[test]
+    fn set_serves_adds_removes_and_replaces() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(None);
+        let r = format!("{graph_id}#{node_id}");
+
+        let out = call_as(&app, "set_serves", json!({ "add": [r.clone()] }), "tool-s1").unwrap();
+        assert_eq!(out["serves"], json!([r.clone()]));
+        assert_eq!(out["refs"][0]["nodeTitle"], "Graph support");
+        // Adding keeps the others; adding twice keeps one.
+        let out = call_as(
+            &app,
+            "set_serves",
+            json!({ "add": [graph_id.clone(), r.clone()] }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(out["serves"], json!([r.clone(), graph_id.clone()]));
+        // Removing a ref that is not there is a no-op, and needs no valid ref.
+        let out = call_as(
+            &app,
+            "set_serves",
+            json!({ "remove": [r.clone(), "gone#abc123"] }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(out["serves"], json!([graph_id.clone()]));
+        // An invalid added ref still fails and changes nothing.
+        assert!(call_as(&app, "set_serves", json!({ "add": ["nope"] }), "tool-s1").is_err());
+        assert_eq!(serves_of(&app, "tool-s1"), vec![graph_id.clone()]);
+        // One mode per call.
+        let error = call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": [r.clone()], "add": [r.clone()] }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("not both"));
+        assert!(call_as(&app, "set_serves", json!({}), "tool-s1").is_err());
+        // Replace, and [] clears.
+        let out = call_as(
+            &app,
+            "set_serves",
+            json!({ "serves": [r.clone()] }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(out["serves"], json!([r]));
+        call_as(&app, "set_serves", json!({ "serves": [] }), "tool-s1").unwrap();
+        assert!(serves_of(&app, "tool-s1").is_empty());
+        // Own changes do not go into the change log.
+        assert!(crate::graphs::changes::list_changes(&app, &graph_id)
+            .unwrap()
+            .iter()
+            .all(|c| c.action != "session.serves"));
+    }
+
+    #[test]
+    fn set_serves_for_another_session_needs_manage_and_reason() {
+        let (_temp, app, graph_id, node_id) = graph_fixture(Some("write"));
+        let r = format!("{graph_id}#{node_id}");
+        add_worker_session(&app, &[graph_id.clone()]);
+
+        let error = call_as(
+            &app,
+            "set_serves",
+            json!({ "sessionId": "tool-s2", "add": [r.clone()], "reason": "x" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("needs graph permission 'manage'"));
+
+        let mut m = crate::chat::storage::load_metadata(&app, "tool-s1")
+            .unwrap()
+            .unwrap();
+        m.graph_permission = Some("manage".into());
+        crate::chat::storage::save_metadata(&app, &m).unwrap();
+
+        let error = call_as(
+            &app,
+            "set_serves",
+            json!({ "sessionId": "tool-s2", "add": [r.clone()] }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("'reason' is required"));
+        assert_eq!(serves_of(&app, "tool-s2"), vec![graph_id.clone()]);
+
+        let out = call_as(
+            &app,
+            "set_serves",
+            json!({
+                "sessionId": "tool-s2",
+                "add": [r.clone()],
+                "remove": [graph_id.clone()],
+                "reason": "Release work moves to the node",
+            }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(out["sessionId"], "tool-s2");
+        assert_eq!(out["serves"], json!([r.clone()]));
+        assert_eq!(serves_of(&app, "tool-s2"), vec![r.clone()]);
+        // The caller's own serves are untouched.
+        assert!(serves_of(&app, "tool-s1").is_empty());
+
+        let changes = crate::graphs::changes::list_changes(&app, &graph_id).unwrap();
+        let change = changes
+            .iter()
+            .find(|c| c.action == "session.serves")
+            .expect("serves change logged");
+        assert_eq!(change.actor.session_id(), Some("tool-s1"));
+        assert_eq!(
+            change.why.as_deref(),
+            Some("Release work moves to the node")
+        );
+        assert!(!change.seen, "shows in changes since you last looked");
+        assert_eq!(
+            change.serves,
+            Some(ServesChange {
+                session_id: "tool-s2".into(),
+                session_name: "worker".into(),
+                added: vec![r.clone()],
+                removed: vec![graph_id.clone()],
+            })
+        );
+        assert!(change
+            .summary
+            .contains("\"worker\" linked to Graph support"));
+        assert!(change.summary.contains("unlinked from the whole graph"));
+
+        crate::graphs::changes::revert_change(&app, &graph_id, &change.id).unwrap();
+        assert_eq!(serves_of(&app, "tool-s2"), vec![graph_id.clone()]);
+        let changes = crate::graphs::changes::list_changes(&app, &graph_id).unwrap();
+        assert!(changes
+            .iter()
+            .any(|c| c.id == change.id && c.reverted_by.is_some()));
+        assert!(changes.iter().any(|c| c.action == "revert"));
+    }
+
     fn created_session_id(result: &Value) -> String {
         result["id"].as_str().expect("session id").to_string()
     }
@@ -6338,6 +6791,207 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message.contains("Unknown agentId"));
+    }
+
+    // ------------------------------------------------------------------
+    // create_session reuses the untouched default session (#83)
+    // ------------------------------------------------------------------
+
+    /// `graph_fixture` (caller `tool-s1` may manage) plus a second worktree
+    /// `fresh-wt` whose lazily created default session exists. Returns
+    /// (temp, app, default session id, serves ref).
+    fn fresh_worktree_fixture() -> (tempfile::TempDir, AppHandle, String, String) {
+        let (temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
+        let worktree_path = temp.path().join("fresh-wt");
+        std::fs::create_dir_all(&worktree_path).unwrap();
+        let mut data = crate::projects::storage::load_projects_data(&app).unwrap();
+        let mut worktree = data.worktrees[0].clone();
+        worktree.id = "fresh-wt".to_string();
+        worktree.name = "calm-otter".to_string();
+        worktree.path = worktree_path.to_string_lossy().to_string();
+        data.worktrees.push(worktree);
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+
+        let sessions = crate::chat::storage::load_sessions(&app, "", "fresh-wt").unwrap();
+        assert_eq!(sessions.sessions.len(), 1, "lazy default session");
+        let default_id = sessions.sessions[0].id.clone();
+        (temp, app, default_id, format!("{graph_id}#{node_id}"))
+    }
+
+    /// Change the default session's metadata as JSON (created if missing).
+    fn edit_metadata(app: &AppHandle, session_id: &str, edit: impl FnOnce(&mut Value)) {
+        let metadata = crate::chat::storage::load_metadata(app, session_id)
+            .unwrap()
+            .unwrap_or_else(|| {
+                crate::chat::types::SessionMetadata::new(
+                    session_id.to_string(),
+                    "fresh-wt".to_string(),
+                    "Session 1".to_string(),
+                    0,
+                )
+            });
+        let mut value = serde_json::to_value(metadata).unwrap();
+        edit(&mut value);
+        let metadata = serde_json::from_value(value).unwrap();
+        crate::chat::storage::save_metadata(app, &metadata).unwrap();
+    }
+
+    fn create_in_fresh_worktree(app: &AppHandle, mut args: Value) -> Value {
+        args["worktreeId"] = json!("fresh-wt");
+        // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || call_as(app, "create_session", args, "tool-s1"))
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+        .unwrap()
+    }
+
+    fn fresh_session_ids(app: &AppHandle) -> Vec<String> {
+        crate::chat::storage::load_sessions(app, "", "fresh-wt")
+            .unwrap()
+            .sessions
+            .into_iter()
+            .map(|s| s.id)
+            .collect()
+    }
+
+    #[test]
+    fn create_session_reuses_the_untouched_default_session() {
+        let (_temp, app, default_id, serves) = fresh_worktree_fixture();
+        save_agent_profiles(&app, vec![agent_profile("planner", "write", "")]);
+
+        let session = create_in_fresh_worktree(
+            &app,
+            json!({ "name": "Worker", "backend": "codex", "agentId": "planner", "serves": [serves.clone()] }),
+        );
+
+        assert_eq!(created_session_id(&session), default_id);
+        assert_eq!(session["name"], "Worker");
+        assert_eq!(session["backend"], "codex");
+        assert_eq!(fresh_session_ids(&app), vec![default_id.clone()]);
+        let sessions = crate::chat::storage::load_sessions(&app, "", "fresh-wt").unwrap();
+        assert_eq!(
+            sessions.active_session_id.as_deref(),
+            Some(default_id.as_str())
+        );
+        assert_eq!(sessions.sessions[0].name, "Worker");
+        let m = crate::chat::storage::load_metadata(&app, &default_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.backend, crate::chat::types::Backend::Codex);
+        assert_eq!(m.started_by_session_id.as_deref(), Some("tool-s1"));
+        assert_eq!(m.serves, vec![serves]);
+        assert_eq!(m.agent_id.as_deref(), Some("planner"));
+        assert_eq!(m.graph_permission.as_deref(), Some("write"));
+    }
+
+    #[test]
+    fn create_session_reuse_keeps_the_default_name_when_unnamed() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+
+        let session = create_in_fresh_worktree(&app, json!({}));
+
+        assert_eq!(created_session_id(&session), default_id);
+        assert_eq!(session["name"], "Session 1");
+        assert_eq!(fresh_session_ids(&app).len(), 1);
+    }
+
+    #[test]
+    fn create_session_adds_a_session_when_the_default_was_used() {
+        let run = json!({
+            "run_id": "r1", "user_message_id": "m1", "user_message": "hi",
+            "started_at": 1, "ended_at": 2, "status": "completed",
+        });
+        let denial = json!({ "tool_name": "Bash", "tool_use_id": "t1", "tool_input": {} });
+        let cases: Vec<(&str, Box<dyn FnOnce(&mut Value)>)> = vec![
+            (
+                "a message and run",
+                Box::new(move |m| m["runs"] = json!([run])),
+            ),
+            (
+                "a queued message",
+                Box::new(|m| m["queued_messages"] = json!([{ "id": "q1" }])),
+            ),
+            (
+                "a pending permission request",
+                Box::new(move |m| m["pending_permission_denials"] = json!([denial])),
+            ),
+            (
+                "a pending question",
+                Box::new(|m| {
+                    m["waiting_for_input"] = json!(true);
+                    m["waiting_for_input_type"] = json!("question");
+                }),
+            ),
+            (
+                "a pending plan",
+                Box::new(|m| m["pending_plan_message_id"] = json!("plan-1")),
+            ),
+            (
+                "an archived default",
+                Box::new(|m| m["archived_at"] = json!(1)),
+            ),
+        ];
+        for (case, edit) in cases {
+            let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+            edit_metadata(&app, &default_id, edit);
+            if case == "an archived default" {
+                crate::chat::storage::with_index_mut(&app, "fresh-wt", |index| {
+                    index.sessions[0].archived_at = Some(1);
+                    Ok(())
+                })
+                .unwrap();
+            }
+
+            let session = create_in_fresh_worktree(&app, json!({ "name": "Worker" }));
+
+            assert_ne!(created_session_id(&session), default_id, "{case}");
+            assert_eq!(fresh_session_ids(&app).len(), 2, "{case}");
+            let m = crate::chat::storage::load_metadata(&app, &default_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(m.name, "Session 1", "{case}: default untouched");
+        }
+    }
+
+    #[test]
+    fn create_session_adds_a_session_when_the_worktree_has_two() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        crate::chat::storage::with_sessions_mut(&app, "", "fresh-wt", |stored| {
+            stored.sessions.push(crate::chat::types::Session::new(
+                "Other".to_string(),
+                1,
+                crate::chat::types::Backend::Claude,
+            ));
+            Ok(())
+        })
+        .unwrap();
+
+        let session = create_in_fresh_worktree(&app, json!({ "name": "Worker" }));
+
+        assert_ne!(created_session_id(&session), default_id);
+        assert_eq!(fresh_session_ids(&app).len(), 3);
+    }
+
+    #[test]
+    fn create_session_does_not_take_over_a_session_it_already_reused() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        let first = create_in_fresh_worktree(&app, json!({ "name": "First" }));
+        assert_eq!(created_session_id(&first), default_id);
+
+        // Not sent to yet, but claimed by tool-s1: a second call adds a session.
+        let second = create_in_fresh_worktree(&app, json!({ "name": "Second" }));
+
+        assert_ne!(created_session_id(&second), default_id);
+        assert_eq!(fresh_session_ids(&app).len(), 2);
+        let m = crate::chat::storage::load_metadata(&app, &default_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.name, "First");
     }
 
     #[test]

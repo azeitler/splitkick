@@ -30,11 +30,17 @@ export type ToolbarSlot = (typeof TOOLBAR_SLOTS)[number]
 
 type SlotTargets = Partial<Record<ToolbarSlot, HTMLElement | null>>
 
+interface ToolbarOwner {
+  id: string
+  /** False for a view that only adds actions: the window title stays. */
+  hasTitle: boolean
+}
+
 interface ToolbarSlotsContextValue {
   targets: SlotTargets
   setTarget: (slot: ToolbarSlot, element: HTMLElement | null) => void
-  owners: string[]
-  register: (id: string) => void
+  owners: ToolbarOwner[]
+  register: (id: string, hasTitle: boolean) => void
   unregister: (id: string) => void
 }
 
@@ -42,7 +48,7 @@ const ToolbarSlotsContext = createContext<ToolbarSlotsContextValue | null>(null)
 
 export function ToolbarSlotsProvider({ children }: { children: ReactNode }) {
   const [targets, setTargets] = useState<SlotTargets>({})
-  const [owners, setOwners] = useState<string[]>([])
+  const [owners, setOwners] = useState<ToolbarOwner[]>([])
 
   const setTarget = useCallback(
     (slot: ToolbarSlot, element: HTMLElement | null) =>
@@ -52,14 +58,23 @@ export function ToolbarSlotsProvider({ children }: { children: ReactNode }) {
     []
   )
   const register = useCallback(
-    (id: string) =>
-      setOwners(current => (current.includes(id) ? current : [...current, id])),
+    (id: string, hasTitle: boolean) =>
+      setOwners(current => {
+        const index = current.findIndex(owner => owner.id === id)
+        if (index === -1) return [...current, { id, hasTitle }]
+        if (current[index]?.hasTitle === hasTitle) return current
+        return current.map(owner =>
+          owner.id === id ? { id, hasTitle } : owner
+        )
+      }),
     []
   )
   const unregister = useCallback(
     (id: string) =>
       setOwners(current =>
-        current.includes(id) ? current.filter(owner => owner !== id) : current
+        current.some(owner => owner.id === id)
+          ? current.filter(owner => owner.id !== id)
+          : current
       ),
     []
   )
@@ -81,9 +96,10 @@ export function useHasWindowToolbar(): boolean {
   return useContext(ToolbarSlotsContext) !== null
 }
 
-/** Whether any view fills the toolbar. Without one it shows the window title. */
-export function useToolbarHasOwner(): boolean {
-  return (useContext(ToolbarSlotsContext)?.owners.length ?? 0) > 0
+/** Whether the view on screen gives the toolbar a title. Without one the
+ * toolbar shows the window title. */
+export function useToolbarHasTitle(): boolean {
+  return useContext(ToolbarSlotsContext)?.owners.at(-1)?.hasTitle ?? false
 }
 
 /** Ref callback that makes an element the target of a slot. */
@@ -102,14 +118,18 @@ export function ToolbarContent(props: ToolbarContentProps) {
   const id = useId()
   const register = context?.register
   const unregister = context?.unregister
+  const hasTitle = props.title != null
 
   useEffect(() => {
-    if (!register || !unregister) return
-    register(id)
+    if (!register) return
+    register(id, hasTitle)
+  }, [id, hasTitle, register])
+  useEffect(() => {
+    if (!unregister) return
     return () => unregister(id)
-  }, [id, register, unregister])
+  }, [id, unregister])
 
-  if (!context || context.owners.at(-1) !== id) return null
+  if (!context || context.owners.at(-1)?.id !== id) return null
   return (
     <>
       {TOOLBAR_SLOTS.map(slot => {

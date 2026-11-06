@@ -33,6 +33,7 @@ preferences pane.
 | `cycle_execution_mode`      | `Shift+Tab`       | Cycle through Plan/Build/Yolo modes     |
 | `approve_plan`              | `Cmd+Enter`       | Approve plan or answer question         |
 | `restore_last_archived`     | `Cmd+Shift+Alt+T` | Restore most recently archived item     |
+| `toggle_session_graph`      | `Cmd+Shift+G`     | Show/hide the session graph panel       |
 
 **Note:** `Cmd` on Mac, `Ctrl` on Windows/Linux.
 

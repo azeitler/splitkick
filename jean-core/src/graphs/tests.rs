@@ -833,3 +833,41 @@ async fn session_metadata_commands() {
         .unwrap();
     assert_eq!(effective_permission(&app, "s1"), GraphPermission::Read);
 }
+
+#[test]
+fn serves_edit_adds_removes_and_cleans() {
+    let current = vec!["g1#a".to_string(), "g1".to_string()];
+    let change = ServesEdit::Change {
+        add: vec![" g2 ".into(), "g1#a".into(), String::new()],
+        remove: vec!["g1".into(), "missing".into()],
+    };
+    assert_eq!(
+        change.apply(&current),
+        vec!["g1#a".to_string(), "g2".to_string()]
+    );
+    let replace = ServesEdit::Replace(vec!["g3".into(), "g3".into()]);
+    assert_eq!(replace.apply(&current), vec!["g3".to_string()]);
+}
+
+#[tokio::test]
+async fn change_session_serves_returns_the_resulting_list() {
+    let (_temp, app) = app();
+    add_session(&app, "s1");
+    set_session_serves(app.clone(), "s1".into(), vec!["g1#a".into()])
+        .await
+        .unwrap();
+    let after = change_session_serves(
+        app.clone(),
+        "s1".into(),
+        vec!["g2".into()],
+        vec!["g1#a".into(), "g9".into()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(after, vec!["g2".to_string()]);
+    assert!(
+        change_session_serves(app.clone(), "nope".into(), vec![], vec![])
+            .await
+            .is_err()
+    );
+}

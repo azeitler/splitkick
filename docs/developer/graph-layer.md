@@ -128,10 +128,15 @@ type GraphActor =
   | { kind: 'session'; sessionId: string; sessionName: string; agentId: string | null }
 interface GraphChange {
   id: string; graphId: string; nodeId: string | null; at: number   // ms epoch
-  actor: GraphActor; action: string   // node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | revert
+  actor: GraphActor; action: string   // node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | session.serves | revert
   summary: string; why: string | null
   before: GraphNode | null; after: GraphNode | null
   revertedBy: string | null; seen: boolean   // seen: user's own changes are always seen
+  serves?: ServesChange                // only session.serves (and its revert)
+}
+// A manager changed another session's serves (#88): the refs of this graph only.
+interface ServesChange {
+  sessionId: string; sessionName: string; added: string[]; removed: string[]
 }
 interface GraphRequest {
   id: string; graphId: string; nodeId: string
@@ -166,11 +171,12 @@ interface GraphLocationInfo {
 | `delete_graph_node` | `graphId, nodeId, why?` (also removes same-graph relations to it) | `null` |
 | `list_graph_changes` | `graphId` | `GraphChange[]` newest first |
 | `mark_graph_changes_seen` | `graphId, changeIds?` (missing = all) | `null` |
-| `revert_graph_change` | `graphId, changeId` (refuses when the node changed after it) | `null` |
+| `revert_graph_change` | `graphId, changeId` (node change: refuses when the node changed after it; `session.serves`: removes what it added, adds back what it removed) | `null` |
 | `list_graph_requests` | `graphId?` | `GraphRequest[]` newest first |
 | `answer_graph_request` | `graphId, requestId, action: 'accept' \| 'send-back' \| 'answer', answer?` | `GraphRequest` |
 | `commit_graph` | `graphId, message?` (stages and commits only this file: `git add -- f` + `git commit --only -- f`) | commit sha |
-| `set_session_serves` | `sessionId, serves: string[]` | `null` |
+| `set_session_serves` | `sessionId, serves: string[]` (replaces) | `null` |
+| `change_session_serves` | `sessionId, add?: string[], remove?: string[]` (removing a missing ref is a no-op) | `string[]` resulting list |
 | `set_session_agent` | `sessionId, agentId: string \| null, permission?: GraphPermission` (≤ profile level) | `null` |
 | `set_session_graph_permission` | `sessionId, permission` | `null` |
 
@@ -214,11 +220,12 @@ system prompt of every backend through one helper
 | `update_node` | write | `graphId, nodeId, title?, description?, setProperties?, removeProperties?, addRelations?, removeRelations?, addAttachments?, removeAttachments?, why` |
 | `set_node_state` | write / manage | `proposed` needs write; `committed`, `done`, `dropped` need manage; `why` |
 | `send_request` | write | `graphId, nodeId, kind, title, body?, evidence?, options?, blocker?` |
-| `set_serves` | read | `serves: string[]`, own session only |
+| `set_serves` | read / manage | `serves` (replaces) **or** `add`/`remove` (arrays of refs; removing a missing ref is a no-op), `sessionId?`, `reason?`. Own session (no `sessionId`): any permission, not logged. Another session: manage and `reason`; logs one `session.serves` change per touched graph (actor = caller, `serves.sessionId` = target, `why` = reason), revertable in Review. Added refs are validated, removed ones not. Returns `{ sessionId, serves, refs }` |
 | `list_requests` | read | `graphId, status? (open \| answered \| all, default all; answered = accepted, sent-back, answered), mine?, nodeId?` — newest first, with `answer`/`answeredAt`; empty `body`/`options`/`blocker` left out |
-| `list_changes` | read | `graphId, nodeId?, limit? (30, max 200), since? (ms), withSnapshots?` — newest first; actor `you` or session name + `agentId`; `revertedBy`, `revertedByUser`; no `before`/`after` unless `withSnapshots`; never changes seen |
+| `list_changes` | read | `graphId, nodeId?, limit? (30, max 200), since? (ms), withSnapshots?` — newest first; actor `you` or session name + `agentId`; `revertedBy`, `revertedByUser`, `serves` for `session.serves`; no `before`/`after` unless `withSnapshots`; never changes seen |
 | `create_graph` | manage | `title, graphType, why` and either `path` (absolute `.yml`/`.yaml`, `~/` expanded) or `projectId` + `relativePath?` (default `.splitkick/graphs/<slug>.yml`, slug as the UI's `slugify`); logs `graph.create` with the session as actor |
 | `create_session` (existing) | — | new optional `serves`, `agentId` (agentId needs manage) |
+| `get_current_context` (existing) | — | also `serves` (`{ ref, graphId, graphTitle, nodeId, nodeTitle }`, titles null when gone), `agentId`, `graphPermission` (effective) |
 
 Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 `anon` callers have `read`.
@@ -233,7 +240,19 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   Node detail panel on the right. Navigation history kind `graph`.
 - New graph dialog (three locations) and "Open existing graph file…".
 - Session graph panel in `ChatWindow` (a second collapsible right panel,
-  `chat-store.graphPanelVisible`), toggle in the session actions.
+  `chat-store.graphPanelVisible`, desktop only). Entry points (#84): the
+  shared `SessionGraphToggle` button in the window toolbar (session window and
+  full chat view; hidden for a session without a panel), the ⌘K command
+  "Toggle Graph Panel" and the `toggle_session_graph` shortcut (`Mod+Shift+G`).
+  The command and the shortcut go through `toggleActiveSessionGraphPanel`
+  (`src/lib/session-graph-panel.ts`): an unlinked session gets a toast that
+  explains the link and offers "Link to Graph…"; a phone gets a desktop-only note.
+- **Link to Graph…** (#88) for every session: session context menu (sidebar,
+  canvas tabs, Starred/Pinned rows; long press on mobile) and ⌘K. Opens
+  `LinkToGraphDialog` (`ui-store.linkToGraphTarget`), which shows the current
+  links and adds/removes them with `ServesEditor` — the same editor as the
+  panel's "Serves" section. Both use `change_session_serves`, so a UI edit never
+  overwrites a ref an agent set meanwhile.
 - Settings → Agents pane; "Start session from agent" dialog; agent badge next to
   session names (badge when the name differs from the agent name, glyph only when
   equal).
@@ -248,7 +267,8 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   is not found blocks with its text; a `depends-on` target that is not found does
   not block; done or dropped nodes are never blocked. Progress also counts
   `part-of` children from other registered graphs.
-- **Revert:** refuses when the node changed after the change; reverting a delete
+- **Revert:** a `session.serves` change undoes only its own refs, other refs the
+  session got since then stay. A node revert refuses when the node changed after the change; reverting a delete
   appends the node at the end and does not restore relations the delete removed
   from other nodes; a revert marks the original change as seen.
 - **Cache events** are sent by the graph functions themselves (also for MCP
