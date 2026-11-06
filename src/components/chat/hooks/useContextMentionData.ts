@@ -35,6 +35,7 @@ import type {
 } from '@/types/github'
 import type { LinearIssue } from '@/types/linear'
 import { LinearIcon } from '@/components/icons/LinearIcon'
+import { useIsPlainProject } from '@/services/projects'
 
 export type ContextMentionType =
   | 'issue'
@@ -175,8 +176,11 @@ export function useContextMentionData({
   query: string
   includeClosed: boolean
 }): { groups: ContextMentionGroup[]; isFetching: boolean } {
-  const enabledProjectPath = open ? projectPath : null
-  const enabledProjectId = open ? projectId : null
+  // GitHub and Linear items need git: none for a plain project (#93).
+  const isPlain = useIsPlainProject(projectId)
+  const gitEnabled = open && !isPlain
+  const enabledProjectPath = gitEnabled ? projectPath : null
+  const enabledProjectId = gitEnabled ? projectId : null
   const activeQuery = open ? query : ''
   const itemNumber = parseItemNumber(activeQuery)
   const linearNumber = parseLinearItemNumber(activeQuery)

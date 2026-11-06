@@ -71,7 +71,7 @@ import {
   performGitPull,
   performGitSync,
 } from '@/services/git-status'
-import { isBaseSession } from '@/types/projects'
+import { isBaseSession, isPlainProject } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { useModKeyHeld } from '@/hooks/use-mod-key-held'
@@ -384,7 +384,12 @@ export function SessionChatModal({
     project?.default_branch,
     worktree?.base_remote
   )
-  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
+  // A plain project (#93) has no git: no status, diffs or GitHub badges.
+  const isPlain = isPlainProject(project)
+  const { data: openPRs } = useGitHubPRs(
+    isPlain ? null : (project?.path ?? null),
+    'open'
+  )
   const stackedOnPR = resolveStackedOnPr(
     stackedBaseBranch,
     openPRs,
@@ -991,7 +996,7 @@ export function SessionChatModal({
           )}
         </span>
       )}
-      {!zenMode && (
+      {!zenMode && !isPlain && (
         <GitStatusBadges
           behindCount={behindCount}
           unpushedCount={unpushedCount}
@@ -1007,7 +1012,7 @@ export function SessionChatModal({
           onBranchDiffClick={handleBranchDiffClick}
         />
       )}
-      {!zenMode && project && (
+      {!zenMode && project && !isPlain && (
         <div className="hidden items-center gap-2 md:flex">
           <NewIssuesBadge projectPath={project.path} projectId={project.id} />
           <OpenPRsBadge projectPath={project.path} projectId={project.id} />

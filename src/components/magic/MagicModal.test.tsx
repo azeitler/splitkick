@@ -149,6 +149,7 @@ vi.mock('@/store/chat-store', () => ({
 
 vi.mock('@/services/projects', () => ({
   useWorktree: () => ({ data: mocks.worktree }),
+  useIsPlainProject: () => false,
   useProjects: () => ({
     data: [
       {

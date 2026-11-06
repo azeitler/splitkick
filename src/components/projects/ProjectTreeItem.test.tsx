@@ -10,6 +10,7 @@ import { useUIStore } from '@/store/ui-store'
 const mocks = vi.hoisted(() => ({
   worktrees: [] as Worktree[],
   updateSettingsMutate: vi.fn(),
+  fetchWorktreesStatus: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({
@@ -30,7 +31,7 @@ vi.mock('@/services/projects', () => ({
 }))
 
 vi.mock('@/services/git-status', () => ({
-  useFetchWorktreesStatus: () => undefined,
+  useFetchWorktreesStatus: mocks.fetchWorktreesStatus,
   useGitStatus: () => ({ data: null }),
   gitPush: vi.fn(),
   fetchWorktreesStatus: vi.fn(),
@@ -38,7 +39,7 @@ vi.mock('@/services/git-status', () => ({
 }))
 
 vi.mock('@/components/shared/NewIssuesBadge', () => ({
-  NewIssuesBadge: () => null,
+  NewIssuesBadge: () => <span data-testid="new-issues-badge" />,
 }))
 vi.mock('@/components/shared/OpenPRsBadge', () => ({
   OpenPRsBadge: () => null,
@@ -314,5 +315,48 @@ describe('ProjectTreeItem', () => {
     expect(
       screen.getByTestId('project-row-project-1').parentElement
     ).not.toHaveClass('pb-0.5')
+  })
+
+  describe('plain project (#93)', () => {
+    const plainProject: Project = {
+      ...project,
+      id: 'project-1',
+      name: 'Paperwork',
+      default_branch: '',
+      is_git: false,
+    }
+
+    it('hides new worktree, GitHub badges and git status polling', () => {
+      mocks.worktrees = [
+        { ...worktree, session_type: 'base', name: 'Paperwork' },
+      ]
+      render(<ProjectTreeItem project={plainProject} />)
+
+      expect(
+        screen.queryByRole('button', { name: 'New worktree' })
+      ).not.toBeInTheDocument()
+      expect(screen.queryByTestId('new-issues-badge')).not.toBeInTheDocument()
+      expect(mocks.fetchWorktreesStatus).toHaveBeenLastCalledWith(
+        'project-1',
+        false
+      )
+      // Session features stay.
+      expect(
+        screen.getByRole('button', { name: 'Project settings' })
+      ).toBeInTheDocument()
+    })
+
+    it('keeps every git feature for a git project', () => {
+      render(<ProjectTreeItem project={project} />)
+
+      expect(
+        screen.getByRole('button', { name: 'New worktree' })
+      ).toBeInTheDocument()
+      expect(screen.getByTestId('new-issues-badge')).toBeInTheDocument()
+      expect(mocks.fetchWorktreesStatus).toHaveBeenLastCalledWith(
+        'project-1',
+        true
+      )
+    })
   })
 })

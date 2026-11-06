@@ -9,6 +9,7 @@ import {
   useOpenWorktreeInEditor,
   useOpenWorktreeInGitClient,
   useRunScripts,
+  useIsPlainProject,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useSessions } from '@/services/chat'
@@ -34,7 +35,9 @@ export function useWorktreeMenuActions({
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
   const openInGitClient = useOpenWorktreeInGitClient()
-  const gitClient = useGitClient()
+  const preferredGitClient = useGitClient()
+  // A plain project (#93) has no repository to open in a git client.
+  const gitClient = useIsPlainProject(projectId) ? null : preferredGitClient
   const { data: runScripts = [] } = useRunScripts(worktree.path)
   const { data: preferences } = usePreferences()
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)

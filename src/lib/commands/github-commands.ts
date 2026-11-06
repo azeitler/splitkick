@@ -4,11 +4,19 @@ import {
   Activity,
   LayoutDashboard,
 } from 'lucide-react'
-import type { AppCommand } from './types'
+import type { AppCommand, CommandContext } from './types'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { projectsQueryKeys } from '@/services/projects'
+import { isPlainProjectId, projectsQueryKeys } from '@/services/projects'
 import type { Project } from '@/types/projects'
+
+/** GitHub needs git: hidden for a plain project (#93). */
+function hasSelectedGitProject(context: CommandContext): boolean {
+  return (
+    context.hasSelectedProject() &&
+    !isPlainProjectId(useProjectsStore.getState().selectedProjectId)
+  )
+}
 
 export const githubCommands: AppCommand[] = [
   {
@@ -25,7 +33,7 @@ export const githubCommands: AppCommand[] = [
       setNewWorktreeModalDefaultTab('issues')
       setNewWorktreeModalOpen(true)
     },
-    isAvailable: context => context.hasSelectedProject(),
+    isAvailable: hasSelectedGitProject,
   },
 
   {
@@ -42,7 +50,7 @@ export const githubCommands: AppCommand[] = [
       setNewWorktreeModalDefaultTab('prs')
       setNewWorktreeModalOpen(true)
     },
-    isAvailable: context => context.hasSelectedProject(),
+    isAvailable: hasSelectedGitProject,
   },
 
   {
@@ -74,7 +82,7 @@ export const githubCommands: AppCommand[] = [
       const { setWorkflowRunsModalOpen } = useUIStore.getState()
       setWorkflowRunsModalOpen(true, project.path)
     },
-    isAvailable: context => context.hasSelectedProject(),
+    isAvailable: hasSelectedGitProject,
   },
 
   {

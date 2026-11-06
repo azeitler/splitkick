@@ -51,7 +51,7 @@ import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects, isTauri, useCreateWorktree } from '@/services/projects'
-import { isFolder } from '@/types/projects'
+import { isFolder, isPlainProject } from '@/types/projects'
 import {
   isGhAuthError,
   githubQueryKeys,
@@ -679,7 +679,7 @@ export function GitHubDashboardModal() {
 
   // Only query projects with a valid path (exclude folders)
   const projects = useMemo(
-    () => allProjects.filter(p => !isFolder(p) && p.path),
+    () => allProjects.filter(p => !isFolder(p) && !isPlainProject(p) && p.path),
     [allProjects]
   )
 
@@ -1334,103 +1334,107 @@ export function GitHubDashboardModal() {
                         project={project}
                         count={items.length}
                       >
-                    {activeTab === 'issues' &&
-                      (items as GitHubIssue[]).map(issue => (
-                        <IssueRow
-                          key={issue.number}
-                          issue={issue}
-                          isCreating={creatingId === `issue-${issue.number}`}
-                          onClick={() =>
-                            setPreview({
-                              projectPath: project.path,
-                              type: 'issue',
-                              number: issue.number,
-                            })
-                          }
-                          onInvestigate={bg =>
-                            handleInvestigateIssue(
-                              issue,
-                              project.id,
-                              project.path,
-                              bg
-                            )
-                          }
-                          onLabelClick={handleLabelClick}
-                        />
-                      ))}
-                    {activeTab === 'prs' &&
-                      (items as GitHubPullRequest[]).map(pr => (
-                        <PRRow
-                          key={pr.number}
-                          pr={pr}
-                          isCreating={creatingId === `pr-${pr.number}`}
-                          onClick={() =>
-                            setPreview({
-                              projectPath: project.path,
-                              type: 'pr',
-                              number: pr.number,
-                            })
-                          }
-                          onInvestigate={bg =>
-                            handleInvestigatePR(
-                              pr,
-                              project.id,
-                              project.path,
-                              bg
-                            )
-                          }
-                          onLabelClick={handleLabelClick}
-                        />
-                      ))}
-                    {activeTab === 'security' &&
-                      (items as DependabotAlert[]).map(alert => (
-                        <SecurityAlertRow
-                          key={alert.number}
-                          alert={alert}
-                          isCreating={creatingId === `security-${alert.number}`}
-                          onClick={() =>
-                            setPreview({
-                              projectPath: project.path,
-                              type: 'security',
-                              number: alert.number,
-                            })
-                          }
-                          onInvestigate={bg =>
-                            handleInvestigateSecurityAlert(
-                              alert,
-                              project.id,
-                              project.path,
-                              bg
-                            )
-                          }
-                        />
-                      ))}
-                    {activeTab === 'advisories' &&
-                      (items as RepositoryAdvisory[]).map(advisory => (
-                        <AdvisoryRow
-                          key={advisory.ghsaId}
-                          advisory={advisory}
-                          isCreating={
-                            creatingId === `advisory-${advisory.ghsaId}`
-                          }
-                          onClick={() =>
-                            setPreview({
-                              projectPath: project.path,
-                              type: 'advisory',
-                              number: 0,
-                              ghsaId: advisory.ghsaId,
-                            })
-                          }
-                          onInvestigate={bg =>
-                            handleInvestigateAdvisory(
-                              advisory,
-                              project.id,
-                              project.path,
-                              bg
-                            )
-                          }
-                        />
-                      ))}
+                        {activeTab === 'issues' &&
+                          (items as GitHubIssue[]).map(issue => (
+                            <IssueRow
+                              key={issue.number}
+                              issue={issue}
+                              isCreating={
+                                creatingId === `issue-${issue.number}`
+                              }
+                              onClick={() =>
+                                setPreview({
+                                  projectPath: project.path,
+                                  type: 'issue',
+                                  number: issue.number,
+                                })
+                              }
+                              onInvestigate={bg =>
+                                handleInvestigateIssue(
+                                  issue,
+                                  project.id,
+                                  project.path,
+                                  bg
+                                )
+                              }
+                              onLabelClick={handleLabelClick}
+                            />
+                          ))}
+                        {activeTab === 'prs' &&
+                          (items as GitHubPullRequest[]).map(pr => (
+                            <PRRow
+                              key={pr.number}
+                              pr={pr}
+                              isCreating={creatingId === `pr-${pr.number}`}
+                              onClick={() =>
+                                setPreview({
+                                  projectPath: project.path,
+                                  type: 'pr',
+                                  number: pr.number,
+                                })
+                              }
+                              onInvestigate={bg =>
+                                handleInvestigatePR(
+                                  pr,
+                                  project.id,
+                                  project.path,
+                                  bg
+                                )
+                              }
+                              onLabelClick={handleLabelClick}
+                            />
+                          ))}
+                        {activeTab === 'security' &&
+                          (items as DependabotAlert[]).map(alert => (
+                            <SecurityAlertRow
+                              key={alert.number}
+                              alert={alert}
+                              isCreating={
+                                creatingId === `security-${alert.number}`
+                              }
+                              onClick={() =>
+                                setPreview({
+                                  projectPath: project.path,
+                                  type: 'security',
+                                  number: alert.number,
+                                })
+                              }
+                              onInvestigate={bg =>
+                                handleInvestigateSecurityAlert(
+                                  alert,
+                                  project.id,
+                                  project.path,
+                                  bg
+                                )
+                              }
+                            />
+                          ))}
+                        {activeTab === 'advisories' &&
+                          (items as RepositoryAdvisory[]).map(advisory => (
+                            <AdvisoryRow
+                              key={advisory.ghsaId}
+                              advisory={advisory}
+                              isCreating={
+                                creatingId === `advisory-${advisory.ghsaId}`
+                              }
+                              onClick={() =>
+                                setPreview({
+                                  projectPath: project.path,
+                                  type: 'advisory',
+                                  number: 0,
+                                  ghsaId: advisory.ghsaId,
+                                })
+                              }
+                              onInvestigate={bg =>
+                                handleInvestigateAdvisory(
+                                  advisory,
+                                  project.id,
+                                  project.path,
+                                  bg
+                                )
+                              }
+                            />
+                          ))}
                       </ProjectSection>,
                     ]
               )}

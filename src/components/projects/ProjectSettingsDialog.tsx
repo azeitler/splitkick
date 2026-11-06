@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects } from '@/services/projects'
+import { isPlainProject } from '@/types/projects'
 import { GeneralPane } from './panes/GeneralPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { JeanJsonPane } from './panes/JeanJsonPane'
@@ -54,6 +55,12 @@ const navigationItems = [
   { id: 'mcp-servers' as const, name: 'MCP Servers', icon: Plug },
   { id: 'jean-json' as const, name: 'splitkick.json', icon: FileJson },
 ]
+
+/** Linear/Sentry and Mr. Robot (GitHub issues) need git (#93) */
+const GIT_ONLY_PANES = new Set<ProjectSettingsPane>([
+  'integrations',
+  'auto-fix',
+])
 
 const getPaneTitle = (pane: ProjectSettingsPane): string => {
   switch (pane) {
@@ -98,15 +105,22 @@ function ProjectSettingsDialogContent({
   initialPane: string | null
   onClose: () => void
 }) {
-  const validInitialPane =
-    initialPane && navigationItems.some(item => item.id === initialPane)
-      ? (initialPane as ProjectSettingsPane)
-      : 'general'
-  const [activePane, setActivePane] =
-    useState<ProjectSettingsPane>(validInitialPane)
-
   const { data: projects = [] } = useProjects()
   const project = projects.find(p => p.id === projectId)
+  const isPlain = isPlainProject(project)
+  const visibleItems = isPlain
+    ? navigationItems.filter(item => !GIT_ONLY_PANES.has(item.id))
+    : navigationItems
+
+  const validInitialPane =
+    initialPane && visibleItems.some(item => item.id === initialPane)
+      ? (initialPane as ProjectSettingsPane)
+      : 'general'
+  const [selectedPane, setActivePane] =
+    useState<ProjectSettingsPane>(validInitialPane)
+  // Falls back to General when the project becomes plain on an open pane.
+  const activePane =
+    isPlain && GIT_ONLY_PANES.has(selectedPane) ? 'general' : selectedPane
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -137,7 +151,7 @@ function ProjectSettingsDialogContent({
               <SidebarGroup>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {navigationItems.map(item => (
+                    {visibleItems.map(item => (
                       <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
                           asChild
@@ -172,7 +186,7 @@ function ProjectSettingsDialogContent({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {navigationItems.map(item => (
+                    {visibleItems.map(item => (
                       <SelectItem key={item.id} value={item.id}>
                         {item.name}
                       </SelectItem>

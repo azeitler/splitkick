@@ -23,7 +23,10 @@ import type {
   WorktreePathExistsEvent,
   WorktreeBranchExistsEvent,
   WorktreeSetupCompleteEvent,
+  GitInitPreview,
 } from '@/types/projects'
+import { isPlainProject } from '@/types/projects'
+import { queryClient as appQueryClient } from '@/lib/query-client'
 import type { WorktreeSessions } from '@/types/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -83,6 +86,27 @@ export function useProjects() {
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
   })
+}
+
+/**
+ * Plain-project gate as a hook (#93): true when `projectId` is a plain
+ * project. Unknown or loading projects are not plain.
+ */
+export function useIsPlainProject(projectId: string | null | undefined) {
+  const { data: projects } = useProjects()
+  return isPlainProject(projects?.find(p => p.id === projectId))
+}
+
+/**
+ * Plain-project gate for callbacks and commands outside React render
+ * (#93). Reads the cached project list.
+ */
+export function isPlainProjectId(projectId: string | null | undefined) {
+  if (!projectId) return false
+  const projects = appQueryClient.getQueryData<Project[]>(
+    projectsQueryKeys.list()
+  )
+  return isPlainProject(projects?.find(p => p.id === projectId))
 }
 
 /** One-shot project open payload (worktrees + session lists with counts). */
@@ -292,22 +316,33 @@ export function useAddProject() {
     mutationFn: async ({
       path,
       parentId,
+      plain,
     }: {
       path: string
       parentId?: string
+      /** Add the folder as a plain project (no git, #93) */
+      plain?: boolean
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Adding project', { path, parentId })
-      const project = await invoke<Project>('add_project', { path, parentId })
+      logger.debug('Adding project', { path, parentId, plain })
+      const project = await invoke<Project>('add_project', {
+        path,
+        parentId,
+        ...(plain ? { plain: true } : {}),
+      })
       logger.info('Project added successfully', { project })
       return project
     },
     onSuccess: (project, { parentId }) => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
-      toast.success(`Added project: ${project.name}`)
+      toast.success(
+        isPlainProject(project)
+          ? `Added plain project: ${project.name}`
+          : `Added project: ${project.name}`
+      )
 
       // Auto-expand the new project and parent folder if applicable
       const { expandProject, expandFolder, selectProject } =
@@ -318,8 +353,10 @@ export function useAddProject() {
       expandProject(project.id)
       selectProject(project.id)
 
-      // Show jean.json wizard if not seen yet
-      maybeShowJeanConfigWizard(project.id, queryClient)
+      // Show jean.json wizard if not seen yet (worktree setup: git only)
+      if (!isPlainProject(project)) {
+        maybeShowJeanConfigWizard(project.id, queryClient)
+      }
 
       // Auto-create and open the base session for immediate use
       openBaseSessionForProject(project.id, queryClient)
@@ -333,6 +370,8 @@ export function useAddProject() {
             ? error.message
             : 'Unknown error occurred'
       logger.error('Failed to add project', { error })
+      // A folder without git opens the git init modal instead (#93).
+      if (message.includes('not a git repository')) return
       toast.error('Failed to add project', { description: message })
     },
   })
@@ -399,13 +438,23 @@ export function useInitProject() {
  */
 export function useInitGitInFolder() {
   return useMutation({
-    mutationFn: async (path: string): Promise<string> => {
+    mutationFn: async ({
+      path,
+      commitAll,
+    }: {
+      path: string
+      /** Commit all files now; false makes an empty initial commit */
+      commitAll: boolean
+    }): Promise<string> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Initializing git in folder', { path })
-      const result = await invoke<string>('init_git_in_folder', { path })
+      logger.debug('Initializing git in folder', { path, commitAll })
+      const result = await invoke<string>('init_git_in_folder', {
+        path,
+        commitAll,
+      })
       logger.info('Git initialized successfully', { path: result })
       return result
     },
@@ -420,6 +469,50 @@ export function useInitGitInFolder() {
             : 'Unknown error occurred'
       logger.error('Failed to initialize git', { error, message })
       // Don't show toast here - let the modal handle error display
+    },
+  })
+}
+
+/**
+ * Preview for "Initialize Git": file count and size the first commit would
+ * add, whether a .gitignore exists, and the cloud-sync folder warning (#93).
+ */
+export function useGitInitPreview(path: string | null) {
+  return useQuery({
+    queryKey: ['git-init-preview', path],
+    queryFn: () =>
+      invoke<GitInitPreview>('inspect_git_init_folder', { path: path ?? '' }),
+    enabled: !!path && isTauri(),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+/**
+ * Switch a project between git and plain (#93). To git needs a `.git` in
+ * the folder; to plain needs no worktrees besides the base session.
+ */
+export function useSetProjectIsGit() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ projectId, isGit }: { projectId: string; isGit: boolean }) =>
+      invoke<Project>('set_project_is_git', { projectId, isGit }),
+    onSuccess: project => {
+      queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      queryClient.invalidateQueries({
+        queryKey: projectsQueryKeys.worktrees(project.id),
+      })
+      toast.success(
+        isPlainProject(project)
+          ? `${project.name} is now a plain project`
+          : `${project.name} is now a git project`
+      )
+    },
+    onError: error => {
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error('Failed to change the project kind', { description: message })
     },
   })
 }

@@ -123,7 +123,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { isBaseSession, type Worktree } from '@/types/projects'
+import { isBaseSession, isPlainProject, type Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import type { LabelData, Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
@@ -131,6 +131,7 @@ import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-utils'
 import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
+import { PlainProjectGitNotice } from '@/components/projects/PlainProjectGitNotice'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import {
@@ -1047,37 +1048,41 @@ export function ProjectCanvasView({
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
+  // Plain project (#93): no git, so no GitHub queries, badges or worktrees.
+  const isPlain = isPlainProject(project)
+  // Null disables every GitHub query below for a plain project.
+  const gitHubProjectPath = isPlain ? null : (project?.path ?? null)
 
   // Open PRs: used to link a worktree's base_branch to a PR number in row badges
-  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
+  const { data: openPRs } = useGitHubPRs(gitHubProjectPath, 'open')
 
   // Mobile-only: GitHub status counts for project dropdown menu items.
   // Trigger gh auth query directly so it works on web/mobile access (App.tsx
   // only runs it in native mode).
   useGhCliAuth({ enabled: isMobile })
-  const mobileGitHubEnabled = isMobile
+  const mobileGitHubEnabled = isMobile && !isPlain
   const BADGE_STALE_TIME = 5 * 60 * 1000
   const { data: mobileIssueResult } = useGitHubIssues(
-    project?.path ?? null,
+    gitHubProjectPath,
     'open',
     { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
   )
-  const { data: mobileOpenPRs } = useGitHubPRs(project?.path ?? null, 'open', {
+  const { data: mobileOpenPRs } = useGitHubPRs(gitHubProjectPath, 'open', {
     enabled: mobileGitHubEnabled,
     staleTime: BADGE_STALE_TIME,
   })
   const { data: mobileAlerts } = useDependabotAlerts(
-    project?.path ?? null,
+    gitHubProjectPath,
     'open',
     { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
   )
   const { data: mobileAdvisories } = useRepositoryAdvisories(
-    project?.path ?? null,
+    gitHubProjectPath,
     undefined,
     { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
   )
   const { data: mobileWorkflowRuns } = useWorkflowRuns(
-    project?.path ?? null,
+    gitHubProjectPath,
     undefined,
     { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
   )
@@ -3197,7 +3202,8 @@ export function ProjectCanvasView({
 
   // Periodically refresh git status for all worktrees while on the dashboard
   useEffect(() => {
-    if (!isTauri() || !projectId || readyWorktrees.length === 0) return
+    if (!isTauri() || !projectId || readyWorktrees.length === 0 || isPlain)
+      return
 
     const refreshMs = getCanvasStatusRefreshMs(preferences?.git_poll_interval)
     const interval = setInterval(() => {
@@ -3207,7 +3213,12 @@ export function ProjectCanvasView({
     }, refreshMs)
 
     return () => clearInterval(interval)
-  }, [projectId, readyWorktrees.length, preferences?.git_poll_interval])
+  }, [
+    projectId,
+    readyWorktrees.length,
+    preferences?.git_poll_interval,
+    isPlain,
+  ])
 
   // Refresh git status when session modal closes (user returns to canvas)
   const prevModalRef = useRef(selectedWorktreeModal)
@@ -3216,10 +3227,10 @@ export function ProjectCanvasView({
     const isOpen = !!selectedWorktreeModal
     prevModalRef.current = selectedWorktreeModal
 
-    if (wasOpen && !isOpen && isTauri() && projectId) {
+    if (wasOpen && !isOpen && isTauri() && projectId && !isPlain) {
       fetchWorktreesStatus(projectId)
     }
-  }, [selectedWorktreeModal, projectId])
+  }, [selectedWorktreeModal, projectId, isPlain])
 
   // Check if loading
   const isLoading =
@@ -3254,7 +3265,8 @@ export function ProjectCanvasView({
   // On the phone the overview has its own segment, so it never sits above the
   // worktrees; the issues stay with the worktrees.
   const showOverviewColumn = isMobile ? showMobileRecent : showHomeColumns
-  const showIssuesColumn = showHomeColumns && !showMobileRecent
+  // GitHub issues need git (#93).
+  const showIssuesColumn = showHomeColumns && !showMobileRecent && !isPlain
   // Nothing on the canvas but the "Start Building" panel, which fills it and
   // supplies its own spacing. With the overview columns up the canvas is never
   // bare, and it keeps its padding.
@@ -3270,7 +3282,7 @@ export function ProjectCanvasView({
 
   // The header pieces. Desktop shows them in the window toolbar
   // (ToolbarContent below); a phone, which has no toolbar, in its own header.
-  const projectBadges = (
+  const projectBadges = isPlain ? null : (
     <>
       <NewIssuesBadge projectPath={project.path} projectId={projectId} />
       <OpenPRsBadge projectPath={project.path} projectId={projectId} />
@@ -3291,15 +3303,17 @@ export function ProjectCanvasView({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuItem
-          onSelect={() => {
-            useProjectsStore.getState().selectProject(projectId)
-            useUIStore.getState().setNewWorktreeModalOpen(true)
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          New Worktree
-        </DropdownMenuItem>
+        {!isPlain && (
+          <DropdownMenuItem
+            onSelect={() => {
+              useProjectsStore.getState().selectProject(projectId)
+              useUIStore.getState().setNewWorktreeModalOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            New Worktree
+          </DropdownMenuItem>
+        )}
 
         <DropdownMenuItem onSelect={() => createBaseSession.mutate(projectId)}>
           <Home className="h-4 w-4" />
@@ -3888,6 +3902,7 @@ export function ProjectCanvasView({
                   {/* Pinned sessions sit above the worktree sections and outside the
               empty-state branch, and stay visible on every filter tab. They are
               hidden during a search, where un-matching rows would be noise. */}
+                  {project && <PlainProjectGitNotice project={project} />}
                   {!searchQuery.trim() && (
                     <PinnedSessionsSection
                       rows={pinnedRows}
@@ -3906,6 +3921,11 @@ export function ProjectCanvasView({
                       <EmptyDashboardTabs
                         projectId={projectId}
                         projectPath={project?.path ?? null}
+                        onStartBaseSession={
+                          isPlain
+                            ? () => createBaseSession.mutate(projectId)
+                            : undefined
+                        }
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -4259,13 +4279,34 @@ function WorktreeColumnFrame({
 function EmptyDashboardTabs({
   projectId,
   projectPath,
+  onStartBaseSession,
 }: {
   projectId: string
   projectPath: string | null
+  /** Set for a plain project (#93): it has a base session, no worktrees */
+  onStartBaseSession?: () => void
 }) {
   const shortcut = formatShortcutDisplay(DEFAULT_KEYBINDINGS.new_worktree)
-  const { data: jeanConfig } = useJeanConfig(projectPath)
+  const { data: jeanConfig } = useJeanConfig(
+    onStartBaseSession ? null : projectPath
+  )
   const { openProjectSettings } = useProjectsStore.getState()
+
+  if (onStartBaseSession) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Button
+          variant="outline"
+          size="lg"
+          className="gap-2"
+          onClick={onStartBaseSession}
+        >
+          <Home className="h-4 w-4" />
+          Start a session
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full items-center justify-center">

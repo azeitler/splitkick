@@ -54,7 +54,11 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
-import { useWorktree, useProjects } from '@/services/projects'
+import {
+  useWorktree,
+  useProjects,
+  useIsPlainProject,
+} from '@/services/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -250,7 +254,30 @@ function formatMagicModalOpencodeLabel(value: string): string {
     : formatted
 }
 
-function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
+/** Options a plain project keeps (#93): everything else needs git */
+const PLAIN_PROJECT_OPTIONS = new Set<MagicOption>([
+  'save-context',
+  'load-context',
+  'inject-session',
+  'linked-projects',
+  'fork-session-in-place',
+  'smoke-test',
+])
+
+/** Drop the git options and the sections left empty, for a plain project */
+function withoutGitOptions(sections: MagicSection[]): MagicSection[] {
+  return sections
+    .map(section => ({
+      ...section,
+      options: section.options.filter(opt => PLAIN_PROJECT_OPTIONS.has(opt.id)),
+    }))
+    .filter(section => section.options.length > 0)
+}
+
+export function buildMagicColumns(
+  hasOpenPr: boolean,
+  isPlainProject = false
+): MagicColumns {
   const left: MagicSection[] = [
     {
       header: 'Context',
@@ -402,6 +429,15 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
     },
   ]
 
+  if (isPlainProject) {
+    const plainLeft = withoutGitOptions(left)
+    const plainRight = withoutGitOptions(right)
+    return {
+      left: plainLeft,
+      right: plainRight,
+      all: [...plainLeft, ...plainRight],
+    }
+  }
   return { left, right, all: [...left, ...right] }
 }
 
@@ -531,7 +567,12 @@ export function MagicModal() {
   const { data: modelCatalog } = useModelCatalog()
 
   // Build columns dynamically based on PR state
-  const magicColumns = useMemo(() => buildMagicColumns(hasOpenPr), [hasOpenPr])
+  // Plain project (#93): only the session options, no git.
+  const isPlain = useIsPlainProject(worktree?.project_id)
+  const magicColumns = useMemo(
+    () => buildMagicColumns(hasOpenPr, isPlain),
+    [hasOpenPr, isPlain]
+  )
 
   // Flatten all options for arrow key navigation
   const allOptions = useMemo(
@@ -2390,6 +2431,10 @@ ${resolveInstructions}`
 
       // Check for direct key shortcuts (s, l, c, p, r)
       const mappedOption = KEY_TO_OPTION[key]
+      if (mappedOption && isPlain && !PLAIN_PROJECT_OPTIONS.has(mappedOption)) {
+        e.preventDefault()
+        return
+      }
       if (mappedOption) {
         e.preventDefault()
         executeAction(mappedOption)
@@ -2412,7 +2457,7 @@ ${resolveInstructions}`
         }
       }
     },
-    [executeAction, selectedOption, allOptions]
+    [executeAction, selectedOption, allOptions, isPlain]
   )
 
   const handleInvestigateKeyDown = useCallback(
