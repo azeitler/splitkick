@@ -28,6 +28,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   first commit adds, can make an empty first commit instead, and warns when
   the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive.
 
+### Changed
+
+- **Windows installer: choose "only for me" or "all users".** The installer
+  now asks where to install: `%LOCALAPPDATA%\Splitkick` (the default) or
+  `C:\Program Files\Splitkick`. Updates keep the location of the existing
+  install, also for installs made by 1.5.0. Users with admin rights now see a
+  UAC prompt on every install and update, also for "only for me"; this is how
+  the Tauri installer works in this mode.
+
 ### Fixed
 
 - **The open session is highlighted in Starred and Pinned too** (#92). Its

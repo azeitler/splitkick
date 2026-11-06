@@ -44,6 +44,12 @@
     "publisher": "Planetfall Software",
     "shortDescription": "Splitkick - local-first workbench for AI agents",
     "longDescription": "Splitkick is a local-first, cross-device workbench for AI coding agents: multi-project, multi-worktree, multi-session and multi-agent. Built on Jean by coolLabs.",
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
+    },
     "macOS": {
       "signingIdentity": "-",
       "providerShortName": null
