@@ -54,6 +54,7 @@ import {
   useRepositoryAdvisories,
   useWorkflowRuns,
 } from '@/services/github'
+import { useIsPlainProject } from '@/services/projects'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -111,23 +112,26 @@ export function WorktreeDropdownMenu({
   useGhCliAuth({ enabled: isMobile })
   const authData = queryClient.getQueryData<GhAuthStatus>(ghCliQueryKeys.auth())
   const isGitHubAuthenticated = authData?.authenticated ?? false
-  const { data: issueResult } = useGitHubIssues(projectPath, 'open', {
+  // A plain project (#93) has no git: a null path disables every query.
+  const isPlain = useIsPlainProject(projectId)
+  const gitHubPath = isPlain ? null : projectPath
+  const { data: issueResult } = useGitHubIssues(gitHubPath, 'open', {
     enabled: isGitHubAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
-  const { data: prs } = useGitHubPRs(projectPath, 'open', {
+  const { data: prs } = useGitHubPRs(gitHubPath, 'open', {
     enabled: isGitHubAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
-  const { data: alerts } = useDependabotAlerts(projectPath, 'open', {
+  const { data: alerts } = useDependabotAlerts(gitHubPath, 'open', {
     enabled: isGitHubAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
-  const { data: advisories } = useRepositoryAdvisories(projectPath, undefined, {
+  const { data: advisories } = useRepositoryAdvisories(gitHubPath, undefined, {
     enabled: isGitHubAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
-  const { data: workflowRuns } = useWorkflowRuns(projectPath, undefined, {
+  const { data: workflowRuns } = useWorkflowRuns(gitHubPath, undefined, {
     enabled: isGitHubAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
@@ -151,7 +155,7 @@ export function WorktreeDropdownMenu({
   )
   const hasDiff = uncommittedAdded > 0 || uncommittedRemoved > 0
   const hasBranchDiff = branchDiffAdded > 0 || branchDiffRemoved > 0
-  const showMobileGitHubItems = isMobile
+  const showMobileGitHubItems = isMobile && !isPlain
   const hasGitHubStatusItems =
     showMobileGitHubItems ||
     securityCount > 0 ||
@@ -330,7 +334,7 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {gitClient && (
+          {gitClient && !isPlain && (
             <DropdownMenuItem onClick={handleOpenInGitClient}>
               <GitBranch className="mr-2 h-4 w-4" />
               Open in {getGitClientLabel(gitClient)}

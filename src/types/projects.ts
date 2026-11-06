@@ -101,6 +101,13 @@ export interface Project {
   linked_project_ids?: string[]
   /** Per-project automated issue fixing settings */
   auto_fix_settings?: ProjectAutoFixSettings | null
+  /**
+   * False for a plain project (a folder without git, #93). Missing on
+   * projects saved before #93: those are git projects. Use `isPlainProject`.
+   */
+  is_git?: boolean
+  /** Plain projects only: the folder has a `.git` now (detected on load) */
+  git_detected?: boolean
 }
 
 export interface DirEntry {
@@ -122,6 +129,33 @@ export interface BrowseDirectoryResult {
  */
 export function isFolder(project: Project): boolean {
   return project.is_folder === true
+}
+
+/**
+ * THE gate for git features (#93): true for a plain project, a folder added
+ * without git. It has only its base session; worktrees, git status, diffs,
+ * commits, PRs and GitHub/Linear features are hidden. A missing project
+ * (still loading) is not plain, so git projects render exactly as before.
+ * See docs/developer/plain-projects.md.
+ */
+export function isPlainProject(
+  project: Pick<Project, 'is_folder' | 'is_git'> | null | undefined
+): boolean {
+  return !!project && project.is_folder !== true && project.is_git === false
+}
+
+/** What the "Initialize Git" dialog shows before anything changes on disk */
+export interface GitInitPreview {
+  /** Files the first commit would add (after .gitignore) */
+  file_count: number
+  /** Their total size in bytes */
+  total_bytes: number
+  /** Counting stopped at the limit */
+  truncated: boolean
+  /** The folder already has a .gitignore (kept unchanged) */
+  has_gitignore: boolean
+  /** Cloud-sync service the folder is in, e.g. "iCloud Drive" */
+  sync_provider: string | null
 }
 
 /**

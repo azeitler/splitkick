@@ -44,7 +44,7 @@ export function AddProjectDialog() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select a git repository',
+        title: 'Select a project folder',
       })
 
       if (selected && typeof selected === 'string') {
@@ -67,7 +67,8 @@ export function AddProjectDialog() {
             errorMessage.includes('not a git repository') ||
             errorMessage.includes("ambiguous argument 'HEAD'")
           ) {
-            // Open the git init modal instead of showing toast
+            // Open the git init modal instead of showing toast: it offers
+            // "Add without git" (plain project) and "Initialize Git" (#93).
             // This handles both: folder without git, and git repo without commits
             const { openGitInitModal } = useProjectsStore.getState()
             openGitInitModal(selected)
@@ -110,7 +111,7 @@ export function AddProjectDialog() {
           if (!identity.name || !identity.email) {
             // Identity not configured - route through GitInitModal which handles identity setup
             const { openGitInitModal } = useProjectsStore.getState()
-            openGitInitModal(selected)
+            openGitInitModal(selected, 'git')
             return
           }
         } catch {
@@ -174,7 +175,7 @@ export function AddProjectDialog() {
           }>('check_git_identity')
           if (!identity.name || !identity.email) {
             const { openGitInitModal } = useProjectsStore.getState()
-            openGitInitModal(selected)
+            openGitInitModal(selected, 'git')
             setBrowserMode(null)
             return
           }
@@ -248,7 +249,7 @@ export function AddProjectDialog() {
           <DialogHeader>
             <DialogTitle>New Project</DialogTitle>
             <DialogDescription>
-              Add an existing git repository or create a new one.
+              Add an existing folder or git repository, or create a new one.
             </DialogDescription>
           </DialogHeader>
 
@@ -267,7 +268,7 @@ export function AddProjectDialog() {
                   Add Existing Project
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Select a git repository from your computer
+                  Select a git repository or any folder from your computer
                 </p>
               </div>
               <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">A</Kbd>

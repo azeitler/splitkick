@@ -14,7 +14,7 @@ import { sidebarRowId } from '@/lib/navigate-to-session'
 import { SessionSortMenu } from './SessionSortMenu'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import type { Project } from '@/types/projects'
-import { isBaseSession } from '@/types/projects'
+import { isBaseSession, isPlainProject } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -110,8 +110,11 @@ export function ProjectTreeItem({
         ? convertProjectFileSrc(project.default_avatar_path)
         : null
 
+  // A plain project (#93) has no git: no status, badges or new worktrees.
+  const isPlain = isPlainProject(project)
+
   // Fetch git status for all worktrees when project is expanded
-  useFetchWorktreesStatus(project.id, showWorktrees)
+  useFetchWorktreesStatus(project.id, showWorktrees && !isPlain)
 
   // Check if base session exists
   const hasBaseSession = worktrees.some(w => isBaseSession(w))
@@ -121,16 +124,18 @@ export function ProjectTreeItem({
   const { data: gitStatus } = useGitStatus(firstWorktree?.id ?? null)
 
   // Only show on project line when no base session
-  const baseBranchBehindCount = !hasBaseSession
-    ? (gitStatus?.base_branch_behind_count ??
-      firstWorktree?.cached_base_branch_behind_count ??
-      0)
-    : 0
-  const baseBranchAheadCount = !hasBaseSession
-    ? (gitStatus?.base_branch_ahead_count ??
-      firstWorktree?.cached_base_branch_ahead_count ??
-      0)
-    : 0
+  const baseBranchBehindCount =
+    !hasBaseSession && !isPlain
+      ? (gitStatus?.base_branch_behind_count ??
+        firstWorktree?.cached_base_branch_behind_count ??
+        0)
+      : 0
+  const baseBranchAheadCount =
+    !hasBaseSession && !isPlain
+      ? (gitStatus?.base_branch_ahead_count ??
+        firstWorktree?.cached_base_branch_ahead_count ??
+        0)
+      : 0
 
   // Get chat store state
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
@@ -145,7 +150,7 @@ export function ProjectTreeItem({
   const showSelection =
     isSelected ||
     (worktrees.length === 1 && selectedWorktreeId === worktrees[0]?.id)
-  const showStatusBadges = !isMobile && (isExpanded || isSelected)
+  const showStatusBadges = !isMobile && !isPlain && (isExpanded || isSelected)
 
   // Inline rename (double-click), matching folder/worktree patterns
   const [isEditing, setIsEditing] = useState(false)
@@ -560,19 +565,21 @@ export function ProjectTreeItem({
             </Tooltip>
 
             {/* Add Worktree */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleAddWorktree}
-                  aria-label="New worktree"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>New worktree</TooltipContent>
-            </Tooltip>
+            {!isPlain && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleAddWorktree}
+                    aria-label="New worktree"
+                    className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>New worktree</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
 

@@ -25,6 +25,7 @@ import {
   type ThinkingLevel,
 } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
+import { useIsPlainProject } from '@/services/projects'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
 import { MobileSettingsMenu } from '@/components/chat/toolbar/MobileSettingsMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
@@ -160,6 +161,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   onRunPackageScript,
   onToggleFavoritePackageScript,
 }: ChatToolbarProps) {
+  // Plain project (#93): the magic menu hides its git sections.
+  const isPlain = useIsPlainProject(projectId)
   const {
     statuses: mcpStatuses,
     isFetching: isHealthChecking,
@@ -534,6 +537,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               handleSyncClick={handleSyncClick}
               handlePullClick={handlePullClick}
               handlePushClick={handlePushClick}
+              isPlainProject={isPlain}
             />
 
             <MobileSettingsMenu

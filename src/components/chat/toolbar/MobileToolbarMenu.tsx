@@ -51,6 +51,8 @@ interface MobileToolbarMenuProps {
   handleSyncClick: () => void
   handlePullClick: () => void
   handlePushClick: () => void
+  /** Plain project (#93): hide worktree fork and every git section */
+  isPlainProject?: boolean
 }
 
 export function MobileToolbarMenu({
@@ -71,6 +73,7 @@ export function MobileToolbarMenu({
   handleSyncClick,
   handlePullClick,
   handlePushClick,
+  isPlainProject = false,
 }: MobileToolbarMenuProps) {
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -190,311 +193,316 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'fork-session' },
-              })
-            )
-          }}
-        >
-          <GitBranchPlus className="h-4 w-4" />
-          Fork Session (new Worktree)
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            W
-          </span>
-        </DropdownMenuItem>
+        {/* Worktree fork and every git section need git (#93). */}
+        {!isPlainProject && (
+          <>
+            <DropdownMenuItem
+              onClick={() => {
+                setMenuOpen(false)
+                window.dispatchEvent(
+                  new CustomEvent('magic-command', {
+                    detail: { command: 'fork-session' },
+                  })
+                )
+              }}
+            >
+              <GitBranchPlus className="h-4 w-4" />
+              Fork Session (new Worktree)
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                W
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Commit
-        </div>
-        <DropdownMenuItem onClick={onCommit}>
-          <GitCommitHorizontal className="h-4 w-4" />
-          Commit
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            C
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCommitAndPush}>
-          <GitCommitHorizontal className="h-4 w-4" />
-          Commit & Push
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            P
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            onRevertLastCommit()
-          }}
-        >
-          <Undo2 className="h-4 w-4" />
-          Revert Commit
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            Z
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Commit
+            </div>
+            <DropdownMenuItem onClick={onCommit}>
+              <GitCommitHorizontal className="h-4 w-4" />
+              Commit
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                C
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCommitAndPush}>
+              <GitCommitHorizontal className="h-4 w-4" />
+              Commit & Push
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                P
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setMenuOpen(false)
+                onRevertLastCommit()
+              }}
+            >
+              <Undo2 className="h-4 w-4" />
+              Revert Commit
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                Z
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Sync
-        </div>
-        <DropdownMenuItem onClick={handleSyncClick}>
-          <ArrowDownUp className="h-4 w-4" />
-          Sync
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            T
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handlePullClick}>
-          <ArrowDownToLine className="h-4 w-4" />
-          Pull
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            D
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handlePushClick}>
-          <ArrowUpToLine className="h-4 w-4" />
-          Push
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            U
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Sync
+            </div>
+            <DropdownMenuItem onClick={handleSyncClick}>
+              <ArrowDownUp className="h-4 w-4" />
+              Sync
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                T
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePullClick}>
+              <ArrowDownToLine className="h-4 w-4" />
+              Pull
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                D
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePushClick}>
+              <ArrowUpToLine className="h-4 w-4" />
+              Push
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                U
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Pull Request
-        </div>
-        <DropdownMenuItem onClick={onOpenPr}>
-          <GitPullRequest className="h-4 w-4" />
-          {hasOpenPr ? 'Open' : 'Create'}
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            O
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onReview}>
-          <Eye className="h-4 w-4" />
-          Review
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            R
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!hasOpenPr}
-          onClick={() => {
-            setMenuOpen(false)
-            useUIStore.getState().setReviewCommentsModalOpen(true)
-          }}
-        >
-          <MessageSquare className="h-4 w-4" />
-          PR Comments
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            V
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!hasOpenPr}
-          onClick={() => {
-            setMenuOpen(false)
-            onMergePr()
-          }}
-        >
-          <GitMerge className="h-4 w-4" />
-          Merge
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            N
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Pull Request
+            </div>
+            <DropdownMenuItem onClick={onOpenPr}>
+              <GitPullRequest className="h-4 w-4" />
+              {hasOpenPr ? 'Open' : 'Create'}
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                O
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onReview}>
+              <Eye className="h-4 w-4" />
+              Review
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                R
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasOpenPr}
+              onClick={() => {
+                setMenuOpen(false)
+                useUIStore.getState().setReviewCommentsModalOpen(true)
+              }}
+            >
+              <MessageSquare className="h-4 w-4" />
+              PR Comments
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                V
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasOpenPr}
+              onClick={() => {
+                setMenuOpen(false)
+                onMergePr()
+              }}
+            >
+              <GitMerge className="h-4 w-4" />
+              Merge
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                N
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Release
-        </div>
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            useUIStore.getState().setReleaseNotesModalOpen(true)
-          }}
-        >
-          <FileText className="h-4 w-4" />
-          Release Notes
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            G
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            useUIStore.getState().setUpdatePrModalOpen(true)
-          }}
-        >
-          <RefreshCw className="h-4 w-4" />
-          PR Description
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            E
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Release
+            </div>
+            <DropdownMenuItem
+              onClick={() => {
+                setMenuOpen(false)
+                useUIStore.getState().setReleaseNotesModalOpen(true)
+              }}
+            >
+              <FileText className="h-4 w-4" />
+              Release Notes
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                G
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setMenuOpen(false)
+                useUIStore.getState().setUpdatePrModalOpen(true)
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
+              PR Description
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                E
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Investigate
-        </div>
-        <DropdownMenuItem
-          disabled={!hasIssueContexts && !hasSentryContexts}
-          onClick={() => {
-            if (!hasIssueContexts && !hasSentryContexts) return
-            setMenuOpen(false)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: {
-                  command: 'investigate',
-                  type: hasIssueContexts ? 'issue' : 'sentry-issue',
-                },
-              })
-            )
-          }}
-        >
-          <Bug className="h-4 w-4" />
-          Issue
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            I
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!hasPrContexts}
-          onClick={() => {
-            if (!hasPrContexts) return
-            setMenuOpen(false)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'investigate', type: 'pr' },
-              })
-            )
-          }}
-        >
-          <GitPullRequestArrow className="h-4 w-4" />
-          PR
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            A
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Investigate
+            </div>
+            <DropdownMenuItem
+              disabled={!hasIssueContexts && !hasSentryContexts}
+              onClick={() => {
+                if (!hasIssueContexts && !hasSentryContexts) return
+                setMenuOpen(false)
+                window.dispatchEvent(
+                  new CustomEvent('magic-command', {
+                    detail: {
+                      command: 'investigate',
+                      type: hasIssueContexts ? 'issue' : 'sentry-issue',
+                    },
+                  })
+                )
+              }}
+            >
+              <Bug className="h-4 w-4" />
+              Issue
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                I
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasPrContexts}
+              onClick={() => {
+                if (!hasPrContexts) return
+                setMenuOpen(false)
+                window.dispatchEvent(
+                  new CustomEvent('magic-command', {
+                    detail: { command: 'investigate', type: 'pr' },
+                  })
+                )
+              }}
+            >
+              <GitPullRequestArrow className="h-4 w-4" />
+              PR
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                A
+              </span>
+            </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Branch
-        </div>
-        <DropdownMenuItem onClick={onMerge}>
-          <GitMerge className="h-4 w-4" />
-          Merge to Base
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            M
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() =>
-            useUIStore.getState().setResolveConflictsDialogOpen(true)
-          }
-        >
-          <GitMerge className="h-4 w-4" />
-          Resolve Conflicts
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            F
-          </span>
-        </DropdownMenuItem>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Branch
+            </div>
+            <DropdownMenuItem onClick={onMerge}>
+              <GitMerge className="h-4 w-4" />
+              Merge to Base
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                M
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                useUIStore.getState().setResolveConflictsDialogOpen(true)
+              }
+            >
+              <GitMerge className="h-4 w-4" />
+              Resolve Conflicts
+              <span
+                className={cn(
+                  'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+                  isMobile && 'hidden'
+                )}
+              >
+                F
+              </span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

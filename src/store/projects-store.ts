@@ -90,6 +90,10 @@ interface ProjectsUIState {
   // Git init modal state
   gitInitModalOpen: boolean
   gitInitModalPath: string | null
+  /** Choice preselected in the git init modal (#93) */
+  gitInitModalChoice: 'plain' | 'git'
+  /** Set when a plain project initializes git: switch it, don't add it */
+  gitInitModalProjectId: string | null
 
   // Clone project modal state
   cloneModalOpen: boolean
@@ -156,7 +160,15 @@ interface ProjectsUIState {
   ) => void
   openProjectSettings: (projectId: string, pane?: string) => void
   closeProjectSettings: () => void
-  openGitInitModal: (path: string) => void
+  /**
+   * `choice` preselects "Add without git" (default) or "Initialize Git".
+   * `projectId`: an existing plain project to switch to git after init.
+   */
+  openGitInitModal: (
+    path: string,
+    choice?: 'plain' | 'git',
+    projectId?: string | null
+  ) => void
   closeGitInitModal: () => void
   openCloneModal: () => void
   closeCloneModal: () => void
@@ -218,6 +230,8 @@ export const useProjectsStore = create<ProjectsUIState>()(
       projectSettingsInitialPane: null,
       gitInitModalOpen: false,
       gitInitModalPath: null,
+      gitInitModalChoice: 'plain',
+      gitInitModalProjectId: null,
       cloneModalOpen: false,
       jeanConfigWizardOpen: false,
       jeanConfigWizardProjectId: null,
@@ -774,16 +788,25 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'closeProjectSettings'
         ),
 
-      openGitInitModal: path =>
+      openGitInitModal: (path, choice = 'plain', projectId = null) =>
         set(
-          { gitInitModalOpen: true, gitInitModalPath: path },
+          {
+            gitInitModalOpen: true,
+            gitInitModalPath: path,
+            gitInitModalChoice: choice,
+            gitInitModalProjectId: projectId,
+          },
           undefined,
           'openGitInitModal'
         ),
 
       closeGitInitModal: () =>
         set(
-          { gitInitModalOpen: false, gitInitModalPath: null },
+          {
+            gitInitModalOpen: false,
+            gitInitModalPath: null,
+            gitInitModalProjectId: null,
+          },
           undefined,
           'closeGitInitModal'
         ),

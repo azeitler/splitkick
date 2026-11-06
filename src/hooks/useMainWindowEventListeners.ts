@@ -11,7 +11,7 @@ import { isHomeActive } from '@/components/home/useIsHomeActive'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
-import { projectsQueryKeys } from '@/services/projects'
+import { isPlainProjectId, projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
 import { schedulesQueryKeys } from '@/services/schedules'
 import { graphsQueryKeys } from '@/services/graphs'
@@ -49,6 +49,11 @@ import {
   installNavigationHistoryRecorder,
 } from '@/lib/navigation-history'
 import { useIsMobile } from '@/hooks/use-mobile'
+
+/** Git shortcuts do nothing in a plain project (#93). */
+function selectedProjectIsPlain(): boolean {
+  return isPlainProjectId(useProjectsStore.getState().selectedProjectId)
+}
 
 const PLAN_DIALOG_APPROVAL_ACTIONS = new Set<KeybindingAction>([
   'approve_plan',
@@ -540,10 +545,12 @@ function executeKeybindingAction(
       break
     case 'open_commit_modal':
       logger.debug('Keybinding: open_commit_modal')
+      if (selectedProjectIsPlain()) break
       commandContext.openCommitModal()
       break
     case 'open_git_diff':
       logger.debug('Keybinding: open_git_diff')
+      if (selectedProjectIsPlain()) break
       window.dispatchEvent(new CustomEvent('open-git-diff'))
       break
     case 'execute_run': {
@@ -756,14 +763,14 @@ function executeKeybindingAction(
     case 'approve_plan_worktree_build': {
       logger.debug('Keybinding: approve_plan_worktree_build')
       const planDialogOpenWtBuild = useUIStore.getState().planDialogOpen
-      if (planDialogOpenWtBuild) break
+      if (planDialogOpenWtBuild || selectedProjectIsPlain()) break
       window.dispatchEvent(new CustomEvent('approve-plan-worktree-build'))
       break
     }
     case 'approve_plan_worktree_yolo': {
       logger.debug('Keybinding: approve_plan_worktree_yolo')
       const planDialogOpenWtYolo = useUIStore.getState().planDialogOpen
-      if (planDialogOpenWtYolo) break
+      if (planDialogOpenWtYolo || selectedProjectIsPlain()) break
       window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
       break
     }

@@ -19,7 +19,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { isBaseSession, type Project } from '@/types/projects'
+import { isBaseSession, isPlainProject, type Project } from '@/types/projects'
 import {
   useCreateBaseSession,
   useMoveItem,
@@ -100,6 +100,9 @@ export function ProjectContextMenu({
     openInGitClient.mutate({ worktreePath: project.path, gitClient })
   }
 
+  // Plain projects (#93) have no git: no worktrees, git client or GitHub.
+  const isPlain = isPlainProject(project)
+
   const handleNewWorktree = () => {
     selectProject(project.id)
     setNewWorktreeModalOpen(true)
@@ -129,10 +132,12 @@ export function ProjectContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-64">
-        <ContextMenuItem onClick={handleNewWorktree}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Worktree
-        </ContextMenuItem>
+        {!isPlain && (
+          <ContextMenuItem onClick={handleNewWorktree}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Worktree
+          </ContextMenuItem>
+        )}
 
         <ContextMenuItem onClick={handleNewBaseSession}>
           <Home className="mr-2 h-4 w-4" />
@@ -163,7 +168,7 @@ export function ProjectContextMenu({
           Open in {getTerminalLabel(preferences?.terminal)}
         </ContextMenuItem>
 
-        {gitClient && (
+        {gitClient && !isPlain && (
           <ContextMenuItem onClick={handleOpenInGitClient}>
             <GitBranch className="mr-2 h-4 w-4" />
             Open in {getGitClientLabel(gitClient)}
@@ -172,15 +177,19 @@ export function ProjectContextMenu({
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem onClick={handleOpenWorktreesFolder}>
-          <Folder className="mr-2 h-4 w-4" />
-          Open Worktrees Folder
-        </ContextMenuItem>
+        {!isPlain && (
+          <>
+            <ContextMenuItem onClick={handleOpenWorktreesFolder}>
+              <Folder className="mr-2 h-4 w-4" />
+              Open Worktrees Folder
+            </ContextMenuItem>
 
-        <ContextMenuItem onClick={handleOpenOnGitHub}>
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Open on GitHub
-        </ContextMenuItem>
+            <ContextMenuItem onClick={handleOpenOnGitHub}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open on GitHub
+            </ContextMenuItem>
+          </>
+        )}
 
         <ContextMenuItem
           onClick={() => copySplitkickLink('project', project.id, project.name)}

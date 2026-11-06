@@ -201,6 +201,7 @@ const CloseWorktreeDialog = lazy(() =>
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
+import { toast } from 'sonner'
 import { BrowserSidePane } from '@/components/browser/BrowserSidePane'
 import { BrowserPanel } from '@/components/browser/BrowserPanel'
 import { useBrowserEvents } from '@/hooks/useBrowserPane'
@@ -232,6 +233,7 @@ import {
   useProjects,
   useCreateWorktreeKeybinding,
   useWorktreeEvents,
+  useIsPlainProject,
 } from '@/services/projects'
 import { isNativeApp } from '@/lib/environment'
 import { useActiveRemoteConnection } from '@/lib/remote-connections'
@@ -239,6 +241,7 @@ import { formatWindowTitle } from '@/lib/window-title'
 import { useWindowTitle } from '@/hooks/use-window-title'
 import { isLinux, isWindows } from '@/lib/platform'
 import { ImportFromJeanDialog } from '@/components/onboarding/ImportFromJeanDialog'
+import { isPlainProject } from '@/types/projects'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
@@ -367,7 +370,8 @@ export function MainWindow() {
   // Must use the worktree's own base_branch (e.g. v4.x), not the project
   // default (next/main), or status shows false behind counts and huge diffs.
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {
-    if (!worktree || !project) return null
+    // A plain project has no git to poll (#93).
+    if (!worktree || !project || isPlainProject(project)) return null
     return {
       worktreeId: worktree.id,
       worktreePath: worktree.path,
@@ -563,7 +567,19 @@ export function MainWindow() {
     resolveConflictsDialogOpen
   )
   const shouldRenderReleaseNotesDialog = useRetainedMount(releaseNotesModalOpen)
-  const shouldRenderNewWorktreeModal = useRetainedMount(newWorktreeModalOpen)
+  // A plain project has no worktrees (#93). Every opener (button, ⌘N,
+  // badge, command palette) ends here, so the modal is gated once.
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const selectedProjectIsPlain = useIsPlainProject(selectedProjectId)
+  useEffect(() => {
+    if (!newWorktreeModalOpen || !selectedProjectIsPlain) return
+    useUIStore.getState().setNewWorktreeModalOpen(false)
+    toast.info('A plain project has no worktrees', {
+      description: 'Initialize Git in Project Settings to use worktrees.',
+    })
+  }, [newWorktreeModalOpen, selectedProjectIsPlain])
+  const shouldRenderNewWorktreeModal =
+    useRetainedMount(newWorktreeModalOpen) && !selectedProjectIsPlain
   const shouldRenderAddProjectDialog = useRetainedMount(addProjectDialogOpen)
   const shouldRenderGitInitModal = useRetainedMount(gitInitModalOpen)
   const shouldRenderCloneProjectModal = useRetainedMount(cloneModalOpen)

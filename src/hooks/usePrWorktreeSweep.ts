@@ -14,6 +14,7 @@ import {
 } from '@/services/git-status'
 import { projectsQueryKeys, isTauri } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
+import { isPlainProject } from '@/types/projects'
 
 /** Resolve the base branch used for git status sweep of one worktree. */
 export function resolveSweepBaseBranch(
@@ -53,7 +54,7 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
       }[] = []
 
       for (const project of projects) {
-        if (project.is_folder) continue
+        if (project.is_folder || isPlainProject(project)) continue
 
         const worktrees = queryClient.getQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(project.id)

@@ -38,7 +38,10 @@ import {
   useAppDataDir,
   useSetProjectAvatar,
   useRemoveProjectAvatar,
+  useSetProjectIsGit,
 } from '@/services/projects'
+import { useProjectsStore } from '@/store/projects-store'
+import { isPlainProject, type Project } from '@/types/projects'
 import { usePreferences } from '@/services/preferences'
 import {
   Select,
@@ -64,6 +67,68 @@ const SettingsSection: React.FC<{
   </div>
 )
 
+/**
+ * Git or plain project (#93). Plain → git runs "Initialize Git" (or just
+ * switches when the folder has a .git now). Git → plain is an explicit
+ * action, refused while the project has worktrees.
+ */
+function ProjectKindField({ project }: { project: Project }) {
+  const setIsGit = useSetProjectIsGit()
+
+  if (!isPlainProject(project)) {
+    return (
+      <InlineField
+        label="Git project"
+        description="Worktrees, diffs, commits, pull requests and GitHub features are on. Converting to a plain project keeps the .git folder; it only turns these features off. Archive the worktrees first."
+      >
+        <Button
+          variant="outline"
+          disabled={setIsGit.isPending}
+          onClick={() =>
+            setIsGit.mutate({ projectId: project.id, isGit: false })
+          }
+        >
+          Convert to plain project
+        </Button>
+      </InlineField>
+    )
+  }
+
+  return (
+    <InlineField
+      label="Plain project (no git)"
+      description={
+        project.git_detected
+          ? 'This folder is a git repository now. Switch to use worktrees, diffs and commits.'
+          : 'Only the base session works in this folder. Initialize Git to use worktrees, diffs, commits and pull requests.'
+      }
+    >
+      {project.git_detected ? (
+        <Button
+          variant="outline"
+          disabled={setIsGit.isPending}
+          onClick={() =>
+            setIsGit.mutate({ projectId: project.id, isGit: true })
+          }
+        >
+          Switch to git project
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          onClick={() =>
+            useProjectsStore
+              .getState()
+              .openGitInitModal(project.path, 'git', project.id)
+          }
+        >
+          Initialize Git...
+        </Button>
+      )}
+    </InlineField>
+  )
+}
+
 const InlineField: React.FC<{
   label: string
   description?: React.ReactNode
@@ -86,12 +151,14 @@ export function GeneralPane({
 }) {
   const { data: projects = [] } = useProjects()
   const project = projects.find(p => p.id === projectId)
+  // Plain project (#93): no branches, no worktrees location.
+  const isPlain = isPlainProject(project)
 
   const {
     data: branches = [],
     isLoading: branchesLoading,
     error: branchesError,
-  } = useProjectBranches(projectId)
+  } = useProjectBranches(isPlain ? null : projectId)
 
   const { data: preferences } = usePreferences()
   const profiles = preferences?.custom_cli_profiles ?? []
@@ -311,79 +378,85 @@ export function GeneralPane({
           </InlineField>
         </SettingsSection>
 
+        <SettingsSection title="Project Kind">
+          {project && <ProjectKindField project={project} />}
+        </SettingsSection>
+
         <SettingsSection title="Defaults">
-          <InlineField
-            label="Default Branch"
-            description="New worktrees will be created from this branch"
-          >
-            {branchesLoading ? (
-              <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Fetching branches...
-              </div>
-            ) : branchesError ? (
-              <div className="py-2 text-sm text-destructive">
-                Failed to load branches
-              </div>
-            ) : branches.length === 0 ? (
-              <div className="py-2 text-sm text-muted-foreground">
-                No branches found
-              </div>
-            ) : (
-              <Popover
-                open={branchPopoverOpen}
-                onOpenChange={setBranchPopoverOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={branchPopoverOpen}
-                    aria-controls="default-branch-selector"
-                    className="w-full justify-between"
-                  >
-                    <span className="flex items-center gap-2 truncate">
-                      <GitBranch className="h-4 w-4 shrink-0" />
-                      {selectedBranch || 'Select a branch'}
-                    </span>
-                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  id="default-branch-selector"
-                  align="start"
-                  className="!w-[var(--radix-popover-trigger-width)] p-0"
+          {!isPlain && (
+            <InlineField
+              label="Default Branch"
+              description="New worktrees will be created from this branch"
+            >
+              {branchesLoading ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Fetching branches...
+                </div>
+              ) : branchesError ? (
+                <div className="py-2 text-sm text-destructive">
+                  Failed to load branches
+                </div>
+              ) : branches.length === 0 ? (
+                <div className="py-2 text-sm text-muted-foreground">
+                  No branches found
+                </div>
+              ) : (
+                <Popover
+                  open={branchPopoverOpen}
+                  onOpenChange={setBranchPopoverOpen}
                 >
-                  <Command>
-                    <CommandInput placeholder="Search branches..." />
-                    <CommandList>
-                      <CommandEmpty>No branch found.</CommandEmpty>
-                      <CommandGroup>
-                        {branches.map(branch => (
-                          <CommandItem
-                            key={branch}
-                            value={branch}
-                            onSelect={handleSelectBranch}
-                          >
-                            <GitBranch className="h-4 w-4" />
-                            {branch}
-                            <Check
-                              className={cn(
-                                'ml-auto h-4 w-4',
-                                selectedBranch === branch
-                                  ? 'opacity-100'
-                                  : 'opacity-0'
-                              )}
-                            />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            )}
-          </InlineField>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={branchPopoverOpen}
+                      aria-controls="default-branch-selector"
+                      className="w-full justify-between"
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <GitBranch className="h-4 w-4 shrink-0" />
+                        {selectedBranch || 'Select a branch'}
+                      </span>
+                      <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    id="default-branch-selector"
+                    align="start"
+                    className="!w-[var(--radix-popover-trigger-width)] p-0"
+                  >
+                    <Command>
+                      <CommandInput placeholder="Search branches..." />
+                      <CommandList>
+                        <CommandEmpty>No branch found.</CommandEmpty>
+                        <CommandGroup>
+                          {branches.map(branch => (
+                            <CommandItem
+                              key={branch}
+                              value={branch}
+                              onSelect={handleSelectBranch}
+                            >
+                              <GitBranch className="h-4 w-4" />
+                              {branch}
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  selectedBranch === branch
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </InlineField>
+          )}
 
           {profiles.length > 0 && (
             <InlineField
@@ -464,59 +537,61 @@ export function GeneralPane({
           </InlineField>
         </SettingsSection>
 
-        <SettingsSection title="Worktrees Location">
-          <InlineField
-            label="Base Directory"
-            description={
-              <>
-                Where new worktrees are created. Defaults to{' '}
-                <code className="text-[11px] bg-muted px-1 py-0.5 rounded">
-                  ~/splitkick
-                </code>
-              </>
-            }
-          >
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="~/splitkick (default)"
-                value={displayedWorktreesDir}
-                onChange={e => setLocalWorktreesDir(e.target.value)}
-                className="flex-1 text-base md:text-sm"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBrowseWorktreesDir}
-              >
-                <FolderOpen className="h-4 w-4" />
-                Browse
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleSaveWorktreesDir}
-                disabled={!worktreesDirChanged || updateSettings.isPending}
-              >
-                {updateSettings.isPending && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                Save
-              </Button>
-              {project?.worktrees_dir && (
+        {!isPlain && (
+          <SettingsSection title="Worktrees Location">
+            <InlineField
+              label="Base Directory"
+              description={
+                <>
+                  Where new worktrees are created. Defaults to{' '}
+                  <code className="text-[11px] bg-muted px-1 py-0.5 rounded">
+                    ~/splitkick
+                  </code>
+                </>
+              }
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="~/splitkick (default)"
+                  value={displayedWorktreesDir}
+                  onChange={e => setLocalWorktreesDir(e.target.value)}
+                  className="flex-1 text-base md:text-sm"
+                />
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={handleResetWorktreesDir}
-                  disabled={updateSettings.isPending}
+                  onClick={handleBrowseWorktreesDir}
                 >
-                  <RotateCcw className="h-4 w-4" />
-                  Reset to default
+                  <FolderOpen className="h-4 w-4" />
+                  Browse
                 </Button>
-              )}
-            </div>
-          </InlineField>
-        </SettingsSection>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveWorktreesDir}
+                  disabled={!worktreesDirChanged || updateSettings.isPending}
+                >
+                  {updateSettings.isPending && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Save
+                </Button>
+                {project?.worktrees_dir && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetWorktreesDir}
+                    disabled={updateSettings.isPending}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset to default
+                  </Button>
+                )}
+              </div>
+            </InlineField>
+          </SettingsSection>
+        )}
 
         <SettingsSection title="System Prompt">
           <InlineField
