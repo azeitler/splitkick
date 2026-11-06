@@ -27,8 +27,13 @@ change within a few seconds.
   (a session that serves the node runs), *blocked* (an open `blocked-by` or an
   unfinished `depends-on`) and progress.
 - **Dependencies** shows the order of the work and the open decisions.
-- Click a node to edit its description, state, properties, relations and
-  attachments, and to see the sessions that serve it.
+- Click a node to open it. You first see the simple view: title, state
+  (Idea, Planned, Done, Dropped), what it waits for, open requests, the
+  description and the sessions on it. **Relationships** opens the relations
+  (edit them there) and the relations of other nodes to it. **Show details**
+  adds the id, properties, attachments, history and **Delete node**. Both
+  choices are remembered for every panel. The file keeps its own state words:
+  `proposed`, `committed`, `done`, `dropped`.
 - **Commit graph** commits only the graph file.
 
 ## Review what agents did
@@ -55,5 +60,8 @@ Start a session from an agent with **Start session…** (in a graph, on a node, 
 Settings → Agents, or in the command palette). The persona and the nodes the
 session serves are added to its system prompt. An edit to the persona reaches
 every session of that agent, also running ones, with its next message. In the
-session, the **Graph** button opens a panel with its node, what comes before
-and after, and its permission.
+session, the **Graph** button opens a panel with one card: its node, what it
+waits for and what comes next (or, for a whole-graph session, the progress,
+requests and new changes). **Change link…** opens **Link to Graph…**;
+**Relationships** shows before and after and the siblings; **Show details**
+adds other sessions, the permission and the links.

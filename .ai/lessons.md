@@ -374,3 +374,9 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - The reverted 1.0.1 merge (`1cf20d58`, reverted in `54d762af`) keeps 173 upstream commits reachable in `git log`, but none of their code is in the tree.
 - A commit-subject match against `git log HEAD` therefore says "fork has it" for reverted work. It did so for ten upstream Windows fixes in the #71 evaluation, and one of them (npm shims, `d499d506`) was a real Windows defect found later in the VM.
 - Check with `git merge-base --is-ancestor <commit> <sha from docs/upstream/last-sync.json>`. A commit after the baseline is missing unless it was cherry-picked after the revert; confirm by reading the code in the tree.
+
+## Ask which screen before a broad UI simplification
+
+- "Make the graph UI simpler" meant the crowded detail panels, not the whole graph UI. I first audited every screen (header, outline, review, dependencies).
+- When a UI request names an area, not a screen, ask which screens hurt most before a full audit, or present the audit as a short list and let the user pick.
+- "Simpler" here meant progressive disclosure: a simple layer by default and an expert layer on demand, not fewer features.

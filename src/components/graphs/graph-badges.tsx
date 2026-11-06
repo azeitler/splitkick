@@ -13,6 +13,18 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { NodeState } from '@/types/graphs'
+import type { WaitingItem } from './graph-utils'
+
+/**
+ * Plain words for the stored states. The file, the MCP tools and the
+ * expert layer keep the file words (proposed, committed, done, dropped).
+ */
+export const STATE_LABELS: Record<NodeState, string> = {
+  proposed: 'Idea',
+  committed: 'Planned',
+  done: 'Done',
+  dropped: 'Dropped',
+}
 
 /** Stored state as a glyph, the leading mark of an outline row. */
 export function NodeStateGlyph({
@@ -28,28 +40,28 @@ export function NodeStateGlyph({
       return (
         <CircleDashed
           className={cn(shared, 'text-muted-foreground')}
-          aria-label="proposed"
+          aria-label={STATE_LABELS.proposed}
         />
       )
     case 'committed':
       return (
         <Circle
           className={cn(shared, 'text-blue-500')}
-          aria-label="committed"
+          aria-label={STATE_LABELS.committed}
         />
       )
     case 'done':
       return (
         <CircleCheck
           className={cn(shared, 'text-green-500')}
-          aria-label="done"
+          aria-label={STATE_LABELS.done}
         />
       )
     case 'dropped':
       return (
         <CircleX
           className={cn(shared, 'text-muted-foreground')}
-          aria-label="dropped"
+          aria-label={STATE_LABELS.dropped}
         />
       )
   }
@@ -62,17 +74,18 @@ const STATE_CHIP: Record<NodeState, string> = {
   dropped: 'border-muted-foreground/40 text-muted-foreground line-through',
 }
 
-/** Stored state as a chip (uppercase, as in the mockup). */
+/** Stored state as a chip (uppercase); the file word is in the tooltip. */
 export function NodeStateChip({ state }: { state: NodeState }) {
   return (
     <span
       data-testid="node-state-chip"
+      title={`state: ${state}`}
       className={cn(
         'inline-flex h-5 shrink-0 items-center rounded-full border px-2 text-[10px] font-medium uppercase tracking-wide',
         STATE_CHIP[state]
       )}
     >
-      {state}
+      {STATE_LABELS[state]}
     </span>
   )
 }
@@ -161,5 +174,49 @@ export function NotFound() {
     >
       not found
     </span>
+  )
+}
+
+/**
+ * Simple layer: what a node waits for, in plain words. Node titles link
+ * when `onOpen` is given. Renders nothing when the node waits for nothing.
+ */
+export function WaitingFor({
+  items,
+  onOpen,
+}: {
+  items: WaitingItem[]
+  onOpen?: (nodeId: string) => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div
+      data-testid="graph-waiting-for"
+      className="flex items-start gap-1.5 rounded-md bg-red-500/10 px-2 py-1.5 text-sm text-red-600 dark:text-red-400"
+    >
+      <Ban className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <div className="min-w-0">
+        <span className="font-medium">Waiting for</span>
+        <ul>
+          {items.map(item => (
+            <li key={`${item.decision}:${item.nodeId ?? item.title}`}>
+              {item.decision ? (
+                <>a decision: {item.title}</>
+              ) : item.nodeId && onOpen ? (
+                <button
+                  type="button"
+                  className="text-left underline underline-offset-2 hover:opacity-80"
+                  onClick={() => onOpen(item.nodeId as string)}
+                >
+                  {item.title}
+                </button>
+              ) : (
+                item.title
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   )
 }

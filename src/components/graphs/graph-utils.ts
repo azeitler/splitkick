@@ -221,3 +221,70 @@ export function parseGraphRef(ref: string): {
 export function graphRef(graphId: string, nodeId: string | null): string {
   return nodeId ? `${graphId}#${nodeId}` : graphId
 }
+
+/** One thing a node waits for, in plain words (the simple layer). */
+export interface WaitingItem {
+  /** Node title, or the question of an open decision. */
+  title: string
+  /** Same-graph node id, so the UI can link to it. */
+  nodeId: string | null
+  /** An open decision (free-text `blocked-by`), not a node. */
+  decision: boolean
+}
+
+const isOpen = (state: string | null | undefined) =>
+  state !== 'done' && state !== 'dropped'
+
+/**
+ * What keeps `node` from starting: unfinished `depends-on` / `blocked-by`
+ * targets and open decisions. Same rules as the Rust `blockers`
+ * (`graphs/derive.rs`), but with ids, so the simple layer can link them.
+ */
+export function waitingFor(
+  detail: GraphDetail,
+  node: GraphNode
+): WaitingItem[] {
+  if (!isOpen(node.state)) return []
+  const items: WaitingItem[] = []
+  for (const rel of node.relations) {
+    if (rel.kind !== 'depends-on' && rel.kind !== 'blocked-by') continue
+    const target = resolveRef(detail, rel.target)
+    if (target.nodeId) {
+      const local = detail.nodes.find(n => n.id === target.nodeId)
+      if (isOpen(local?.state)) {
+        items.push({
+          title: target.title,
+          nodeId: target.nodeId,
+          decision: false,
+        })
+      }
+    } else if (target.freeText) {
+      if (rel.kind === 'blocked-by') {
+        items.push({
+          title: target.title.replace(/^decision:\s*/i, ''),
+          nodeId: null,
+          decision: true,
+        })
+      }
+    } else {
+      const external = detail.external[rel.target]
+      if (
+        external?.found ? isOpen(external.state) : rel.kind === 'blocked-by'
+      ) {
+        const title = target.graphTitle
+          ? `${target.title} (${target.graphTitle})`
+          : target.title
+        items.push({ title, nodeId: null, decision: false })
+      }
+    }
+  }
+  return items
+}
+
+/** Same-graph nodes that wait for `nodeId` (what finishing it unblocks). */
+export function waitingOn(detail: GraphDetail, nodeId: string): GraphNode[] {
+  return (detail.incoming[nodeId] ?? [])
+    .filter(r => r.kind === 'depends-on' || r.kind === 'blocked-by')
+    .map(r => detail.nodes.find(n => n.id === r.source))
+    .filter((n): n is GraphNode => !!n && isOpen(n.state))
+}

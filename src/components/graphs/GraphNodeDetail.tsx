@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Ban, Play, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRight, Ban, Inbox, Play, Plus, Trash2, X } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   AlertDialog,
@@ -27,6 +27,7 @@ import { navigateToSession } from '@/lib/navigate-to-session'
 import { formatRelativeTime } from '@/lib/relative-time'
 import {
   useDeleteGraphNode,
+  useGraphRequests,
   useMarkGraphChangesSeen,
   useUpdateGraphNode,
 } from '@/services/graphs'
@@ -45,12 +46,24 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { AgentBadge } from './AgentBadge'
 import {
-  BlockedBadge,
-  NodeStateChip,
   NodeStateGlyph,
   NotFound,
+  STATE_LABELS,
+  WaitingFor,
 } from './graph-badges'
-import { attachmentUrl, INCOMING_LABELS, resolveRef } from './graph-utils'
+import {
+  GraphDetailsToggle,
+  GraphRelationsToggle,
+  useGraphDetailsShown,
+  useGraphRelationsShown,
+} from './GraphDetailsToggle'
+import {
+  attachmentUrl,
+  INCOMING_LABELS,
+  parentId,
+  resolveRef,
+  waitingFor,
+} from './graph-utils'
 
 export const ATTACHMENT_KINDS = [
   'issue',
@@ -68,13 +81,20 @@ interface GraphNodeDetailProps {
   nodeId: string
   changes: GraphChange[] | undefined
   onClose: () => void
+  /** Select another node of this graph (links in the simple layer). */
+  onSelectNode?: (nodeId: string) => void
+  /** Show the Review tab (the "requests wait for you" line). */
+  onOpenReview?: () => void
 }
 
 /**
- * Node detail, the panel right of a graph tab. Stored fields are editable
- * (the user always has `manage`); derived ones (blocked, serving sessions,
- * incoming relations) are read-only. Mount it with `key={nodeId}` so the
- * local drafts start over per node.
+ * Node detail, the panel right of a graph tab. The simple layer shows what
+ * most people need: title, state, what the node waits for, description and
+ * sessions. Below it, the "Relationships" foldout (relations editor and
+ * incoming relations), then "Show details", the expert layer (id,
+ * properties, attachments, history, delete). Stored fields are editable (the
+ * user always has `manage`). Mount it with `key={nodeId}` so the local
+ * drafts start over per node.
  */
 export function GraphNodeDetail({
   graphId,
@@ -82,16 +102,24 @@ export function GraphNodeDetail({
   nodeId,
   changes,
   onClose,
+  onSelectNode,
+  onOpenReview,
 }: GraphNodeDetailProps) {
   const node = detail.nodes.find(n => n.id === nodeId)
   const derived = detail.derived[nodeId]
   const updateNode = useUpdateGraphNode()
   const markSeen = useMarkGraphChangesSeen()
+  const { data: requests } = useGraphRequests(graphId)
+  const showDetails = useGraphDetailsShown()
+  const showRelations = useGraphRelationsShown()
 
   const nodeChanges = useMemo(
     () => (changes ?? []).filter(c => c.nodeId === nodeId),
     [changes, nodeId]
   )
+  const openRequests = (requests ?? []).filter(
+    r => r.nodeId === nodeId && r.status === 'open'
+  ).length
 
   // Looking at a node is seeing its changes.
   // Joined, so a refetch with the same unseen changes does not send again.
@@ -123,178 +151,277 @@ export function GraphNodeDetail({
     )
   }
 
+  const ids = new Set(detail.nodes.map(n => n.id))
+  const parent = parentId(node, ids)
+  const parentNode = parent ? detail.nodes.find(n => n.id === parent) : null
+
   return (
     <aside
       className="flex w-[400px] shrink-0 flex-col overflow-y-auto border-l"
       data-testid="graph-node-detail"
     >
-      <header className="flex flex-col gap-1 border-b p-4">
-        <div className="flex items-center gap-2">
-          <NodeStateChip state={node.state} />
-          {derived?.blocked && <BlockedBadge blockers={derived.blockers} />}
+      <header className="flex flex-col gap-1 px-4 pt-3">
+        <div className="flex items-start gap-2">
+          <TitleField value={node.title} onSave={title => patch({ title })} />
           <span className="flex-1" />
           <button
             type="button"
             aria-label="Close node detail"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
+            className="mt-1.5 text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
           </button>
         </div>
-        <TitleField value={node.title} onSave={title => patch({ title })} />
-        <p className="font-mono text-xs text-muted-foreground">
-          id {node.id} · {detail.summary.title}
-        </p>
+        {parentNode && (
+          <p className="text-xs text-muted-foreground">
+            in{' '}
+            {onSelectNode ? (
+              <button
+                type="button"
+                className="underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => onSelectNode(parentNode.id)}
+              >
+                {parentNode.title}
+              </button>
+            ) : (
+              parentNode.title
+            )}
+          </p>
+        )}
       </header>
 
-      <Section title="Description">
-        <DescriptionField
+      <div
+        className="flex flex-col gap-4 border-b px-4 py-3"
+        data-testid="graph-node-simple"
+      >
+        <StatePicker state={node.state} onChange={state => patch({ state })} />
+        <WaitingFor items={waitingFor(detail, node)} onOpen={onSelectNode} />
+        {openRequests > 0 && (
+          <button
+            type="button"
+            data-testid="graph-node-requests"
+            onClick={onOpenReview}
+            className="flex items-center gap-1.5 text-left text-sm text-orange-600 hover:underline dark:text-orange-400"
+          >
+            <Inbox className="size-3.5" aria-hidden="true" />
+            {openRequests === 1
+              ? '1 request waits for you'
+              : `${openRequests} requests wait for you`}
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        <DescriptionBlock
           value={node.description}
           onSave={description => patch({ description })}
         />
-      </Section>
-
-      <Section title="State">
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={node.state}
-          onValueChange={value => {
-            if (value && value !== node.state) {
-              patch({ state: value as NodeState })
-            }
-          }}
-          className="w-full"
-          aria-label="Node state"
-        >
-          {NODE_STATES.map(state => (
-            <ToggleGroupItem
-              key={state}
-              value={state}
-              aria-label={state}
-              className="min-w-0 gap-1 px-1.5 text-xs"
+        <div className="flex flex-col gap-1">
+          <h3 className="text-xs font-medium text-muted-foreground">
+            Sessions
+          </h3>
+          {derived && derived.serving.length > 0 ? (
+            <ul
+              className="flex flex-col gap-1"
+              data-testid="graph-node-sessions"
             >
-              <NodeStateGlyph state={state} className="size-3.5" />
-              {state}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        {derived?.blocked && derived.blockers.length > 0 && (
-          <p className="mt-2 flex items-start gap-1 text-xs text-red-500">
-            <Ban className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-            Derived blocked: {derived.blockers.join('; ')}
-          </p>
-        )}
-      </Section>
-
-      <Section title="Properties">
-        <PropertiesEditor
-          properties={node.properties}
-          onChange={properties => patch({ properties })}
-        />
-      </Section>
-
-      <Section title="Relations">
-        <RelationsEditor
-          node={node}
-          detail={detail}
-          onChange={relations => patch({ relations })}
-        />
-        <IncomingList detail={detail} nodeId={node.id} />
-      </Section>
-
-      <Section title="Attachments">
-        <AttachmentsEditor
-          attachments={node.attachments}
-          onChange={attachments => patch({ attachments })}
-        />
-      </Section>
-
-      <Section title="Serving sessions">
-        {derived && derived.serving.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {derived.serving.map(session => (
-              <li key={session.sessionId}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-sm hover:bg-accent/50"
-                  onClick={() =>
-                    navigateToSession({
-                      projectId: session.projectId,
-                      worktreeId: session.worktreeId,
-                      sessionId: session.sessionId,
-                    })
-                  }
-                >
-                  <span className="truncate">{session.sessionName}</span>
-                  <AgentBadge
-                    agentId={session.agentId}
-                    sessionName={session.sessionName}
-                  />
-                  <span className="truncate text-xs text-muted-foreground">
-                    {session.worktreeName} · {session.status}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No session serves this node.
-          </p>
-        )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="mt-1 -ml-2"
-          onClick={() =>
-            useUIStore
-              .getState()
-              .setStartAgentSessionTarget({ serves: `${graphId}#${node.id}` })
-          }
-        >
-          <Play className="size-3.5" aria-hidden="true" />
-          Start session for this node…
-        </Button>
-      </Section>
-
-      <Section title="History">
-        {nodeChanges.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No changes yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-3" data-testid="graph-node-history">
-            {nodeChanges.map(change => (
-              <li key={change.id} className="grid grid-cols-[7rem_1fr] gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {change.actor.kind === 'user'
-                    ? 'You'
-                    : change.actor.sessionName}
-                  <br />
-                  <span title={new Date(change.at).toLocaleString()}>
-                    {formatRelativeTime(change.at)}
-                  </span>
-                </span>
-                <span className="text-sm">
-                  {change.summary}
-                  {change.why && (
-                    <span className="block text-xs text-muted-foreground">
-                      Why: {change.why}
+              {derived.serving.map(session => (
+                <li key={session.sessionId}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-sm hover:bg-accent/50"
+                    onClick={() =>
+                      navigateToSession({
+                        projectId: session.projectId,
+                        worktreeId: session.worktreeId,
+                        sessionId: session.sessionId,
+                      })
+                    }
+                  >
+                    <span className="truncate">{session.sessionName}</span>
+                    <AgentBadge
+                      agentId={session.agentId}
+                      sessionName={session.sessionName}
+                    />
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {session.status}
                     </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      <div className="p-4">
-        <DeleteNodeButton graphId={graphId} node={node} onDeleted={onClose} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No session works on this yet.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-1 w-fit"
+            onClick={() =>
+              useUIStore
+                .getState()
+                .setStartAgentSessionTarget({ serves: `${graphId}#${node.id}` })
+            }
+          >
+            <Play className="size-3.5" aria-hidden="true" />
+            Start session…
+          </Button>
+        </div>
       </div>
+
+      <GraphRelationsToggle
+        count={node.relations.length + (detail.incoming[node.id]?.length ?? 0)}
+      />
+      {showRelations && (
+        <div className="border-b px-4 py-3" data-testid="graph-node-relations">
+          <RelationsEditor
+            node={node}
+            detail={detail}
+            onChange={relations => patch({ relations })}
+          />
+          <IncomingList detail={detail} nodeId={node.id} />
+        </div>
+      )}
+
+      <GraphDetailsToggle />
+
+      {showDetails && (
+        <div data-testid="graph-node-expert">
+          <p className="border-b px-4 py-2 font-mono text-xs text-muted-foreground">
+            id {node.id} · state {node.state} · {detail.summary.title}
+          </p>
+
+          <Section title="Properties">
+            <PropertiesEditor
+              properties={node.properties}
+              onChange={properties => patch({ properties })}
+            />
+          </Section>
+
+          <Section title="Attachments">
+            <AttachmentsEditor
+              attachments={node.attachments}
+              onChange={attachments => patch({ attachments })}
+            />
+          </Section>
+
+          <Section title="History">
+            {nodeChanges.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No changes yet.</p>
+            ) : (
+              <ul
+                className="flex flex-col gap-3"
+                data-testid="graph-node-history"
+              >
+                {nodeChanges.map(change => (
+                  <li
+                    key={change.id}
+                    className="grid grid-cols-[7rem_1fr] gap-2"
+                  >
+                    <span className="text-xs text-muted-foreground">
+                      {change.actor.kind === 'user'
+                        ? 'You'
+                        : change.actor.sessionName}
+                      <br />
+                      <span title={new Date(change.at).toLocaleString()}>
+                        {formatRelativeTime(change.at)}
+                      </span>
+                    </span>
+                    <span className="text-sm">
+                      {change.summary}
+                      {change.why && (
+                        <span className="block text-xs text-muted-foreground">
+                          Why: {change.why}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <div className="p-4">
+            <DeleteNodeButton
+              graphId={graphId}
+              node={node}
+              onDeleted={onClose}
+            />
+          </div>
+        </div>
+      )}
     </aside>
+  )
+}
+
+/** The four states in plain words; the file word is in the tooltip. */
+function StatePicker({
+  state,
+  onChange,
+}: {
+  state: NodeState
+  onChange: (state: NodeState) => void
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      value={state}
+      onValueChange={value => {
+        if (value && value !== state) onChange(value as NodeState)
+      }}
+      className="w-full"
+      aria-label="Node state"
+    >
+      {NODE_STATES.map(option => (
+        <ToggleGroupItem
+          key={option}
+          value={option}
+          aria-label={STATE_LABELS[option]}
+          title={`state: ${option}`}
+          className="min-w-0 gap-1 px-1.5 text-xs"
+        >
+          <NodeStateGlyph state={option} className="size-3.5" />
+          {STATE_LABELS[option]}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/** The description as text; a small link instead of an empty box. */
+function DescriptionBlock({
+  value,
+  onSave,
+}: {
+  value: string
+  onSave: (value: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  if (!editing && !value.trim()) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <Plus className="size-3.5" aria-hidden="true" />
+        Add description
+      </button>
+    )
+  }
+  return (
+    <DescriptionField
+      value={value}
+      autoFocus={editing && !value.trim()}
+      onSave={next => {
+        setEditing(false)
+        if (next !== value) onSave(next)
+      }}
+    />
   )
 }
 
@@ -340,9 +467,11 @@ function TitleField({
 
 function DescriptionField({
   value,
+  autoFocus,
   onSave,
 }: {
   value: string
+  autoFocus?: boolean
   onSave: (value: string) => void
 }) {
   const [draft, setDraft] = useState(value)
@@ -350,11 +479,10 @@ function DescriptionField({
     <Textarea
       aria-label="Description"
       value={draft}
+      autoFocus={autoFocus}
       placeholder="What this node is about"
       onChange={e => setDraft(e.target.value)}
-      onBlur={() => {
-        if (draft !== value) onSave(draft)
-      }}
+      onBlur={() => onSave(draft)}
       onKeyDown={e => {
         if (e.key === 'Escape') setDraft(value)
       }}
