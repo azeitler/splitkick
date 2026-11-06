@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { createSession, readEnv } from '../helpers'
-import { goToSession, openApp, send, shot, uniqueName } from './ui'
+import { chatInput, goToSession, openApp, send, shot, uniqueName } from './ui'
 
 // The stub CLI turns `STUB:` lines into replies and real Splitkick MCP calls
 // made as the sending session (see e2e/local/stub-claude.mjs).
@@ -129,6 +129,38 @@ test('MCP add_artifact fills the Artifacts tab (#107)', async ({ page }) => {
   const popup = page.waitForEvent('popup')
   await list.getByText('E2E preview', { exact: true }).click()
   await expect(await popup).toHaveURL('https://example.com/e2e-preview')
+
+  // A new version (#108): change the page and register it again.
+  writeFileSync(join(out, 'report.html'), '<h1>E2E report page v2</h1>')
+  // Not `send`: it counts reply paragraphs, and the first reply has folded
+  // into its step summary by now. The new version control is the signal.
+  await chatInput(page).fill(
+    'STUB:mcp add_artifact {"title":"E2E report","target":"e2e-out/report.html","change":"New heading"}'
+  )
+  await page.keyboard.press('Enter')
+  const versions = list.getByRole('button', {
+    name: '2 versions of E2E report',
+  })
+  await expect(versions).toBeVisible()
+  await expect(page.getByTestId('artifacts-badge')).toHaveText('3')
+  await versions.click()
+  await expect(list).toContainText('v2 · New heading')
+  // Version 1 kept its own copy, so it still shows the old page.
+  await list.getByRole('button', { name: 'Open v1 of E2E report' }).click()
+  await expect(
+    page
+      .locator('iframe[sandbox]')
+      .contentFrame()
+      .getByRole('heading', { name: 'E2E report page', exact: true })
+  ).toBeVisible()
+  await closeViewer()
+  await list
+    .getByRole('button', { name: 'Compare v2 of E2E report with v1' })
+    .click()
+  const compare = page.getByRole('dialog')
+  await expect(compare).toContainText('E2E report page v2')
+  await shot(page, 'artifact-versions-diff')
+  await compare.getByRole('button', { name: 'Close' }).click()
 
   await list.getByRole('button', { name: 'Remove E2E notes' }).click()
   await expect(page.getByTestId('artifacts-badge')).toHaveText('2')

@@ -1645,13 +1645,36 @@ export interface Artifact {
   /** Absolute path, or an http(s)/file URL */
   target: string
   note?: string
+  /** Unix timestamp in milliseconds of the first registration */
+  created_at: number
+  /** Oldest first (#108); missing on items saved before versions existed */
+  versions?: ArtifactVersion[]
+}
+
+/** One version of an artifact (#108), with a copy of the file. */
+export interface ArtifactVersion {
+  version: number
+  title: string
+  note?: string
+  /** What changed, as the agent wrote it */
+  change?: string
+  /** File name of the copy in the session's artifacts folder; none for URLs */
+  snapshot?: string
+  size?: number
+  sha256?: string
   /** Unix timestamp in milliseconds */
   created_at: number
 }
 
 /** One change to an artifact list, applied atomically by the backend. */
 export type ArtifactOp =
-  | { kind: 'add'; title: string; target: string; note?: string }
+  | {
+      kind: 'add'
+      title: string
+      target: string
+      note?: string
+      change?: string
+    }
   | { kind: 'remove'; id: string }
   | { kind: 'clear' }
 

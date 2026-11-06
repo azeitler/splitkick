@@ -22,6 +22,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   all. Registering the same target again updates it. The list stays with the
   session through fork, move and transfer, and shows in Web Access and on the
   phone (#107).
+- **Artifact versions: history and diff.** When an agent registers an artifact
+  again after changing it, Splitkick keeps a copy of the file as a new version
+  (with an optional note on what changed). The Artifacts tab shows the version
+  count; open the history to open any older version or compare two: a line
+  diff for text, HTML, SVG and Markdown, two images side by side, the sizes for
+  other files. Unchanged content adds no version. The copies stay with the
+  session through fork, move and transfer (#108).
 
 ## [1.5.2] - 2026-11-06
 

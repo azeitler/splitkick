@@ -23,14 +23,31 @@ vi.mock('@/services/chat', async importOriginal => ({
   ...(await importOriginal<object>()),
   useSessions: () => ({ data: { sessions: [mocks.session] } }),
   useEditArtifacts: () => mocks.edit,
+  useArtifactSnapshotDir: () => ({ data: '/data/s1/artifacts' }),
+}))
+vi.mock('./ArtifactDiffModal', () => ({
+  ArtifactDiffModal: (props: {
+    artifact: Artifact
+    initial?: { from: number; to: number }
+  }) => (
+    <div data-testid="diff-modal">
+      {props.artifact.title} {props.initial?.from}→{props.initial?.to}
+    </div>
+  ),
 }))
 vi.mock('./open-artifact', async importOriginal => ({
   ...(await importOriginal<object>()),
   openArtifact: mocks.openArtifact,
 }))
 
+const report: Artifact = {
+  id: 'a',
+  title: 'Report',
+  target: '/w1/report.html',
+  created_at: 1_000,
+}
 const items: Artifact[] = [
-  { id: 'a', title: 'Report', target: '/w1/report.html', created_at: 1_000 },
+  report,
   {
     id: 'b',
     title: 'Preview',
@@ -82,6 +99,56 @@ describe('SessionArtifactsTab (#107)', () => {
     expect(mocks.openArtifact).toHaveBeenCalledWith(items[1], '/w1', {
       system: true,
     })
+  })
+
+  it('shows the version history and opens or compares versions (#108)', () => {
+    mocks.session.artifacts = [
+      {
+        ...report,
+        versions: [
+          {
+            version: 1,
+            title: 'Report',
+            snapshot: 's1.html',
+            created_at: 1_000,
+          },
+          {
+            version: 2,
+            title: 'Report',
+            change: 'Added a table',
+            snapshot: 's2.html',
+            created_at: 5_000,
+          },
+        ],
+      },
+    ]
+    renderTab()
+    expect(screen.getByText(/^Updated /)).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: '2 versions of Report' })
+    expect(toggle).toHaveTextContent('v2')
+    expect(
+      screen.queryByRole('list', { name: 'Versions of Report' })
+    ).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('v2 · Added a table')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open v1 of Report' }))
+    expect(useUIStore.getState().viewingFilePath).toBe(
+      '/data/s1/artifacts/s1.html'
+    )
+    expect(useUIStore.getState().viewingFileLabel).toBe('v1 · report.html')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Compare v2 of Report with v1' })
+    )
+    expect(screen.getByTestId('diff-modal')).toHaveTextContent('Report 1→2')
+  })
+
+  it('shows no history control for an artifact with one version', () => {
+    renderTab()
+    expect(screen.queryByRole('button', { name: /versions of/ })).toBeNull()
   })
 
   it('removes one artifact and clears all', () => {
