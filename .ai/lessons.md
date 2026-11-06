@@ -425,3 +425,15 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
   the wrong place (#93). Build the index blob instead: HEAD text plus your
   own edits, `git hash-object -w`, `git update-index --cacheinfo`, then
   check an export of the commit (`git archive HEAD | tar -x -C tmp/...`).
+
+## Windows CI catches what macOS checks cannot
+
+- 1.5.1 failed on Windows (a test with a Unix-only path, #90) and 1.5.2 failed
+  on Windows clippy (an import used only in a `#[cfg(target_os = "macos")]`
+  function, #97). Local gates on the Mac passed both times.
+- Before a release push, review new Rust code for cfg-gated helpers: imports,
+  functions and test paths used only on one OS need the same `cfg` (or
+  `cfg_attr(..., allow(...))`); tests must not hard-code Unix paths
+  (`/Users/...`), use a temp dir instead.
+- A failed Windows job blocks the publish job (`needs: build`), so nothing
+  ships and the same version can simply be pushed again after the fix.
