@@ -6,15 +6,27 @@ import { queryClient } from './lib/query-client'
 import { installGetComposedRangesCompat } from './lib/selection-compat'
 import { isNativeApp } from './lib/environment'
 import { installNativeContextMenuGuard } from './lib/native-context-menu'
+import { hydrateRemoteConnections } from './lib/remote-connections'
 
 installGetComposedRangesCompat()
 // No WebKit Reload menu in app windows; dev builds keep Inspect Element, and
 // web access keeps the browser's own menu.
 if (isNativeApp() && !import.meta.env.DEV) installNativeContextMenuGuard(window)
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <QueryClientProvider client={queryClient}>
-    <App />
-    {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
-  </QueryClientProvider>
-)
+function render() {
+  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <QueryClientProvider client={queryClient}>
+      <App />
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
+  )
+}
+
+// The desktop shell reads its remote connections from the backend (tokens in
+// the Keychain) before the first render: connection windows and the
+// transport read them synchronously.
+hydrateRemoteConnections()
+  .catch(error => {
+    console.error('Failed to load remote connections', error)
+  })
+  .finally(render)

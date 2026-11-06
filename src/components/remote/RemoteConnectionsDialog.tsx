@@ -342,7 +342,7 @@ export function RemoteConnectionsDialog({
             return
           }
         }
-        const connection = addRemoteConnection(input)
+        const connection = await addRemoteConnection(input)
         await activateConnection(connection.id, reloadApp)
         setOpen(false)
         return
@@ -363,7 +363,7 @@ export function RemoteConnectionsDialog({
               return
             }
           }
-          updateRemoteConnection(editingId, input)
+          await updateRemoteConnection(editingId, input)
           if (native && editingId !== activeId) {
             // Another window shows this connection with the old URL or token.
             // Rebuild it so it picks up the edit.
@@ -376,7 +376,7 @@ export function RemoteConnectionsDialog({
           reloadApp()
           return
         }
-        const updated = updateRemoteConnection(editingId, input)
+        const updated = await updateRemoteConnection(editingId, input)
         // Probe after save so the list shows the new version promptly.
         void refreshVersions(
           connections.map(item => (item.id === editingId ? updated : item))
@@ -445,7 +445,7 @@ export function RemoteConnectionsDialog({
         throw new Error('Remote jean-server did not report ready.')
       }
 
-      const connection = addRemoteConnection({
+      const connection = await addRemoteConnection({
         name: result.name,
         url: result.url,
         token: result.token,
@@ -466,9 +466,16 @@ export function RemoteConnectionsDialog({
     }
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const wasActive = id === activeId
-    removeRemoteConnection(id)
+    try {
+      await removeRemoteConnection(id)
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : String(deleteError)
+      )
+      return
+    }
     if (native) {
       // Close the window the deleted connection had, if any. Its boot guard
       // would close it on the next reload anyway; do it now so no window is
@@ -832,7 +839,7 @@ export function RemoteConnectionsDialog({
                   connecting={connectingId === connection.id}
                   onSelect={() => void switchTo(connection.id)}
                   onEdit={() => beginEdit(connection)}
-                  onDelete={() => handleDelete(connection.id)}
+                  onDelete={() => void handleDelete(connection.id)}
                 />
               )
             })}
