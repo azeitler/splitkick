@@ -228,6 +228,7 @@ import {
   resolveDefaultModelForBackend,
   resolvePiDefaultModel,
 } from '@/lib/session-defaults'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface CleanupResult {
   deleted_worktrees: number
@@ -5073,33 +5074,33 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </div>
           </SettingsSection>
 
-          {isNativeApp() && (
-            <SettingsSection
-              title="Troubleshooting"
-              anchorId="pref-general-section-troubleshooting"
-            >
-              <div className="space-y-4">
-                <InlineField
-                  label="Application logs"
-                  description="Open the log directory for troubleshooting"
+          <SettingsSection
+            title="Troubleshooting"
+            anchorId="pref-general-section-troubleshooting"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Application logs"
+                description="Open the log directory for troubleshooting"
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!isNativeApp()}
+                  onClick={async () => {
+                    try {
+                      await invoke('open_log_directory')
+                    } catch (error) {
+                      toast.error(`Failed to open logs: ${error}`)
+                    }
+                  }}
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await invoke('open_log_directory')
-                      } catch (error) {
-                        toast.error(`Failed to open logs: ${error}`)
-                      }
-                    }}
-                  >
-                    Show Logs
-                  </Button>
-                </InlineField>
-              </div>
-            </SettingsSection>
-          )}
+                  Show Logs
+                  {!isNativeApp() && <HostOnlyHint />}
+                </Button>
+              </InlineField>
+            </div>
+          </SettingsSection>
 
           <SettingsSection
             title="Version"

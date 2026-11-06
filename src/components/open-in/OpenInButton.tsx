@@ -34,6 +34,7 @@ import { getGitClientLabel, getOpenInDefaultLabel } from '@/types/preferences'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
 import { useGitClient } from './use-git-client'
+import { HOST_ONLY_REASON, HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface OpenInButtonProps {
   worktreePath: string
@@ -120,7 +121,12 @@ export function OpenInButton({
     gitClient
   )
 
-  if (!canEditor && !canNative) return null
+  // Nothing opens for this user (Web Access from another machine, no
+  // branch): keep the button, disabled, so the action and its reason show.
+  const defaultUnavailable =
+    (effectiveDefault === 'editor' && !canEditor) ||
+    ((effectiveDefault === 'terminal' || effectiveDefault === 'finder') &&
+      !canNative)
 
   return (
     <div
@@ -128,18 +134,26 @@ export function OpenInButton({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            className="h-7 gap-1.5 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => openAction(effectiveDefault)}
-            aria-label={`Open in ${defaultLabel}`}
-          >
-            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-            {/* The window toolbar hides this when narrow (WindowToolbar). */}
-            <span data-toolbar-label>Open in {defaultLabel}</span>
-          </Button>
+          {/* A span, so the tooltip still shows while the button is disabled. */}
+          <span tabIndex={defaultUnavailable ? 0 : -1}>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1.5 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => openAction(effectiveDefault)}
+              disabled={defaultUnavailable}
+              aria-label={`Open in ${defaultLabel}`}
+            >
+              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+              {/* The window toolbar hides this when narrow (WindowToolbar). */}
+              <span data-toolbar-label>Open in {defaultLabel}</span>
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>Open in {defaultLabel}</TooltipContent>
+        <TooltipContent>
+          {defaultUnavailable
+            ? `Open in ${defaultLabel}: ${HOST_ONLY_REASON}`
+            : `Open in ${defaultLabel}`}
+        </TooltipContent>
       </Tooltip>
       <div className="h-4 w-px bg-border/50" />
       <DropdownMenu>
@@ -153,32 +167,38 @@ export function OpenInButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {canEditor && (
-            <DropdownMenuItem onSelect={() => openAction('editor')}>
-              <Code className="h-4 w-4" />
-              {getOpenInDefaultLabel(
-                'editor',
-                preferences?.editor,
-                preferences?.terminal
-              )}
-            </DropdownMenuItem>
-          )}
-          {canNative && (
-            <DropdownMenuItem onSelect={() => openAction('terminal')}>
-              <Terminal className="h-4 w-4" />
-              {getOpenInDefaultLabel(
-                'terminal',
-                preferences?.editor,
-                preferences?.terminal
-              )}
-            </DropdownMenuItem>
-          )}
-          {canNative && (
-            <DropdownMenuItem onSelect={() => openAction('finder')}>
-              <FolderOpen className="h-4 w-4" />
-              Finder
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem
+            disabled={!canEditor}
+            onSelect={() => openAction('editor')}
+          >
+            <Code className="h-4 w-4" />
+            {getOpenInDefaultLabel(
+              'editor',
+              preferences?.editor,
+              preferences?.terminal
+            )}
+            {!canEditor && <HostOnlyHint />}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canNative}
+            onSelect={() => openAction('terminal')}
+          >
+            <Terminal className="h-4 w-4" />
+            {getOpenInDefaultLabel(
+              'terminal',
+              preferences?.editor,
+              preferences?.terminal
+            )}
+            {!canNative && <HostOnlyHint />}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canNative}
+            onSelect={() => openAction('finder')}
+          >
+            <FolderOpen className="h-4 w-4" />
+            Finder
+            {!canNative && <HostOnlyHint />}
+          </DropdownMenuItem>
           {gitClient && (
             <DropdownMenuItem onSelect={() => openAction('git-client')}>
               <GitBranch className="h-4 w-4" />

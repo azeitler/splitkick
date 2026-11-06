@@ -248,6 +248,9 @@ const LOCAL_SHELL_COMMANDS = new Set([
   // survive client exit, and the remote WS may be down while loading/switching.
   'has_running_sessions',
   'install_remote_jean_server',
+  // Settings → Show Logs opens this app's log folder, like Help → Show Log;
+  // the remote host's folder would open on a screen nobody looks at.
+  'open_log_directory',
   'browser_create',
   'browser_navigate',
   'browser_back',

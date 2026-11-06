@@ -264,6 +264,8 @@ import {
   useHasWindowToolbar,
 } from '@/components/toolbar/toolbar-slots'
 import { ToolbarFilterSearch } from '@/components/toolbar/ToolbarSearchField'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
+import { getFileManagerName } from '@/lib/platform'
 
 interface ProjectCanvasViewProps {
   projectId: string
@@ -3399,61 +3401,55 @@ export function ProjectCanvasView({
           </>
         )}
 
-        {(canOpenEditor || canOpenLocally) && (
-          <>
-            <DropdownMenuSeparator />
+        <DropdownMenuSeparator />
 
-            {canOpenEditor && (
-              <DropdownMenuItem
-                onSelect={() =>
-                  openInEditor.mutate({
-                    worktreePath: project.path,
-                    editor: preferences?.editor,
-                  })
-                }
-              >
-                <Code className="h-4 w-4" />
-                Open in {getEditorLabel(preferences?.editor)}
-              </DropdownMenuItem>
-            )}
+        <DropdownMenuItem
+          disabled={!canOpenEditor}
+          onSelect={() =>
+            openInEditor.mutate({
+              worktreePath: project.path,
+              editor: preferences?.editor,
+            })
+          }
+        >
+          <Code className="h-4 w-4" />
+          Open in {getEditorLabel(preferences?.editor)}
+          {!canOpenEditor && <HostOnlyHint />}
+        </DropdownMenuItem>
 
-            {canOpenLocally && (
-              <DropdownMenuItem
-                onSelect={() => openInFinder.mutate(project.path)}
-              >
-                <FolderOpen className="h-4 w-4" />
-                Open in Finder
-              </DropdownMenuItem>
-            )}
+        <DropdownMenuItem
+          disabled={!canOpenLocally}
+          onSelect={() => openInFinder.mutate(project.path)}
+        >
+          <FolderOpen className="h-4 w-4" />
+          Open in {getFileManagerName()}
+          {!canOpenLocally && <HostOnlyHint />}
+        </DropdownMenuItem>
 
-            {canOpenLocally && (
-              <DropdownMenuItem
-                onSelect={() =>
-                  openInTerminal.mutate({
-                    worktreePath: project.path,
-                    terminal: preferences?.terminal,
-                  })
-                }
-              >
-                <Terminal className="h-4 w-4" />
-                Open in {getTerminalLabel(preferences?.terminal)}
-              </DropdownMenuItem>
-            )}
+        <DropdownMenuItem
+          disabled={!canOpenLocally}
+          onSelect={() =>
+            openInTerminal.mutate({
+              worktreePath: project.path,
+              terminal: preferences?.terminal,
+            })
+          }
+        >
+          <Terminal className="h-4 w-4" />
+          Open in {getTerminalLabel(preferences?.terminal)}
+          {!canOpenLocally && <HostOnlyHint />}
+        </DropdownMenuItem>
 
-            {canOpenLocally && (
-              <>
-                <DropdownMenuSeparator />
+        <DropdownMenuSeparator />
 
-                <DropdownMenuItem
-                  onSelect={() => openWorktreesFolder.mutate(projectId)}
-                >
-                  <Folder className="h-4 w-4" />
-                  Open Worktrees Folder
-                </DropdownMenuItem>
-              </>
-            )}
-          </>
-        )}
+        <DropdownMenuItem
+          disabled={!canOpenLocally}
+          onSelect={() => openWorktreesFolder.mutate(projectId)}
+        >
+          <Folder className="h-4 w-4" />
+          Open Worktrees Folder
+          {!canOpenLocally && <HostOnlyHint />}
+        </DropdownMenuItem>
 
         {!canOpenEditor && !canOpenLocally && <DropdownMenuSeparator />}
 

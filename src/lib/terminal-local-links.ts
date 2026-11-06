@@ -1,4 +1,5 @@
 import type { ILink, ILinkProvider, Terminal } from '@xterm/xterm'
+import { canOpenInEditor } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import type { AppPreferences } from '@/types/preferences'
 
@@ -237,6 +238,12 @@ export class LocalTerminalLinkProvider implements ILinkProvider {
     y: number,
     callback: (links: ILink[] | undefined) => void
   ): void {
+    // A click opens the path in an editor on the backend host; with no editor
+    // this user can see (Web Access, remote without Zed), offer no links.
+    if (!canOpenInEditor()) {
+      callback(undefined)
+      return
+    }
     const { rows, firstY } = getWrappedRows(this.terminal, y)
     if (rows.length === 0) {
       callback(undefined)

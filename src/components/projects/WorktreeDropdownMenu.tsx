@@ -62,6 +62,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-utils'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface WorktreeDropdownMenuProps {
   worktree: Worktree
@@ -309,30 +310,34 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {(canOpenInEditor() || canOpenNativeApps()) && (
-            <DropdownMenuSeparator />
-          )}
+          <DropdownMenuSeparator />
 
-          {canOpenInEditor() && (
-            <DropdownMenuItem onClick={handleOpenInEditor}>
-              <Code className="mr-2 h-4 w-4" />
-              Open in {getEditorLabel(preferences?.editor)}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem
+            disabled={!canOpenInEditor()}
+            onClick={handleOpenInEditor}
+          >
+            <Code className="mr-2 h-4 w-4" />
+            Open in {getEditorLabel(preferences?.editor)}
+            {!canOpenInEditor() && <HostOnlyHint />}
+          </DropdownMenuItem>
 
-          {canOpenNativeApps() && (
-            <DropdownMenuItem onClick={handleOpenInFinder}>
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Open in Finder
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem
+            disabled={!canOpenNativeApps()}
+            onClick={handleOpenInFinder}
+          >
+            <FolderOpen className="mr-2 h-4 w-4" />
+            Open in Finder
+            {!canOpenNativeApps() && <HostOnlyHint />}
+          </DropdownMenuItem>
 
-          {canOpenNativeApps() && (
-            <DropdownMenuItem onClick={handleOpenInTerminal}>
-              <Terminal className="mr-2 h-4 w-4" />
-              Open in {getTerminalLabel(preferences?.terminal)}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem
+            disabled={!canOpenNativeApps()}
+            onClick={handleOpenInTerminal}
+          >
+            <Terminal className="mr-2 h-4 w-4" />
+            Open in {getTerminalLabel(preferences?.terminal)}
+            {!canOpenNativeApps() && <HostOnlyHint />}
+          </DropdownMenuItem>
 
           {gitClient && !isPlain && (
             <DropdownMenuItem onClick={handleOpenInGitClient}>

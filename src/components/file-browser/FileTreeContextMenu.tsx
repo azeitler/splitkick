@@ -18,6 +18,7 @@ import {
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import type { FileTreeNode } from './build-file-tree'
 import type { useFileMenuActions } from './useFileMenuActions'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 interface FileTreeContextMenuProps {
   node: FileTreeNode
@@ -56,7 +57,7 @@ export function FileTreeContextMenu({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-52">
+      <ContextMenuContent className="min-w-52">
         {isBrowsable(node) && (
           <ContextMenuItem onSelect={() => void handleBrowse(node)}>
             <Globe className="mr-2 h-4 w-4" />
@@ -69,28 +70,40 @@ export function FileTreeContextMenu({
             Open
           </ContextMenuItem>
         )}
-        {editorOpen && (
-          <ContextMenuItem onSelect={() => handleOpenInEditor(node)}>
-            <Code className="mr-2 h-4 w-4" />
-            Open in {editorLabel}
-          </ContextMenuItem>
-        )}
-        {isFile && nativeOpen && (
-          <ContextMenuItem onSelect={() => handleOpenInDefaultApp(node)}>
+        <ContextMenuItem
+          disabled={!editorOpen}
+          onSelect={() => handleOpenInEditor(node)}
+        >
+          <Code className="mr-2 h-4 w-4" />
+          Open in {editorLabel}
+          {!editorOpen && <HostOnlyHint />}
+        </ContextMenuItem>
+        {isFile && (
+          <ContextMenuItem
+            disabled={!nativeOpen}
+            onSelect={() => handleOpenInDefaultApp(node)}
+          >
             <ExternalLink className="mr-2 h-4 w-4" />
             Open in Default App
+            {!nativeOpen && <HostOnlyHint />}
           </ContextMenuItem>
         )}
-        {nativeOpen && (
-          <ContextMenuItem onSelect={() => handleReveal(node)}>
-            <FolderOpen className="mr-2 h-4 w-4" />
-            Reveal in {fileManagerName}
-          </ContextMenuItem>
-        )}
-        {node.isDir && nativeOpen && (
-          <ContextMenuItem onSelect={() => void handleOpenInTerminal(node)}>
+        <ContextMenuItem
+          disabled={!nativeOpen}
+          onSelect={() => handleReveal(node)}
+        >
+          <FolderOpen className="mr-2 h-4 w-4" />
+          Reveal in {fileManagerName}
+          {!nativeOpen && <HostOnlyHint />}
+        </ContextMenuItem>
+        {node.isDir && (
+          <ContextMenuItem
+            disabled={!nativeOpen}
+            onSelect={() => void handleOpenInTerminal(node)}
+          >
             <Terminal className="mr-2 h-4 w-4" />
             Open in {terminalLabel}
+            {!nativeOpen && <HostOnlyHint />}
           </ContextMenuItem>
         )}
 

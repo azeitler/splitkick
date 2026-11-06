@@ -387,3 +387,12 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
   files by name (hunks for shared files), leave nothing uncommitted, never
   `git add -A`, isolate real app builds (`SPLITKICK_DATA_DIR=tmp/...`, a
   free port), and name the other sessions working in parallel.
+
+## Disable unavailable actions, do not hide them
+
+- When an action cannot work in the current mode (remote, Web Access, phone),
+  show it disabled with a short reason instead of removing it. Andreas wants
+  to see that the action exists and why it is off (#89).
+- An issue text that says "hide (preferred) or disable" is not the final word:
+  ask, or default to disable, when the user has not chosen.
+- Keep the reason short and visible without hover (phones have no tooltips).

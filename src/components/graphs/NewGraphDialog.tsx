@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { isLocalBackend } from '@/lib/environment'
+import { canPickLocalPaths } from '@/lib/environment'
 import { openGraphView } from '@/lib/graph-view'
 import { cn } from '@/lib/utils'
 import {
@@ -135,7 +135,7 @@ function NewGraphForm({ onDone }: { onDone: () => void }) {
 
   const handleBrowse = useCallback(async () => {
     // Remote backends browse the server's filesystem.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setBrowserOpen(true)
       return
     }
@@ -178,7 +178,7 @@ function NewGraphForm({ onDone }: { onDone: () => void }) {
 
   const handleOpenExisting = useCallback(async () => {
     // Remote backends: no native picker for the server's files, type a path.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setOpenPathInput('')
       return
     }
