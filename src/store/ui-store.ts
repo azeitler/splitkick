@@ -148,6 +148,8 @@ interface UIState {
   transferSessionTarget: TransferSessionTarget | null
   /** Session the "Move to…" dialog is open for (issue #67). */
   moveSessionTarget: TransferSessionTarget | null
+  /** Session the "Session network" dialog is open for (issue #77). */
+  sessionNetworkSessionId: string | null
   loadContextModalOpen: boolean
   linkedProjectsModalOpen: boolean
   magicModalOpen: boolean
@@ -310,6 +312,7 @@ interface UIState {
   closeRemotePicker: () => void
   setTransferSessionTarget: (target: TransferSessionTarget | null) => void
   setMoveSessionTarget: (target: TransferSessionTarget | null) => void
+  setSessionNetworkSessionId: (sessionId: string | null) => void
   setLoadContextModalOpen: (open: boolean) => void
   setLinkedProjectsModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
@@ -459,6 +462,7 @@ export const useUIStore = create<UIState>()(
       remotePickerRepoPath: null,
       transferSessionTarget: null,
       moveSessionTarget: null,
+      sessionNetworkSessionId: null,
       loadContextModalOpen: false,
       linkedProjectsModalOpen: false,
       magicModalOpen: false,
@@ -777,6 +781,16 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'setMoveSessionTarget'
+        ),
+
+      setSessionNetworkSessionId: sessionId =>
+        set(
+          state =>
+            state.sessionNetworkSessionId === sessionId
+              ? state
+              : { sessionNetworkSessionId: sessionId },
+          undefined,
+          'setSessionNetworkSessionId'
         ),
 
       setLoadContextModalOpen: open =>

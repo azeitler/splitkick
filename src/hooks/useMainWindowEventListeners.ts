@@ -13,7 +13,11 @@ import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
-import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
+import {
+  chatQueryKeys,
+  refreshWorktreeSessionsCaches,
+  sessionNetworkQueryKey,
+} from '@/services/chat'
 import { schedulesQueryKeys } from '@/services/schedules'
 import { graphsQueryKeys } from '@/services/graphs'
 import type {
@@ -167,6 +171,7 @@ export function applyCacheInvalidationKeys(
         queryClient.invalidateQueries({
           queryKey: ['all-sessions'],
         })
+        queryClient.invalidateQueries({ queryKey: sessionNetworkQueryKey })
         break
       case 'projects':
         queryClient.invalidateQueries({
@@ -219,6 +224,8 @@ export function applyScopedSessionsInvalidation(
   worktreeIds: Iterable<string>
 ): void {
   queryClient.invalidateQueries({ queryKey: [...chatQueryKeys.all, 'session'] })
+  // A child can live in any worktree, so the open network always refetches.
+  queryClient.invalidateQueries({ queryKey: sessionNetworkQueryKey })
   const allSessions = queryClient.getQueryData<AllSessionsResponse>([
     'all-sessions',
   ])

@@ -111,6 +111,7 @@ import {
   SessionContextMenuItems,
   closeOpenSessionContextMenus,
 } from './SessionContextMenuItems'
+import { SessionNetworkGlyph } from './SessionNetworkIndicator'
 import { useSessionRename } from './hooks/useSessionRename'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
@@ -1509,6 +1510,10 @@ export function SessionChatModal({
                                 </TooltipContent>
                               </Tooltip>
                             )}
+                            <SessionNetworkGlyph
+                              sessionId={session.id}
+                              startedBySessionId={session.started_by_session_id}
+                            />
                             {renamingSessionId !== session.id &&
                               sessionLabel && (
                                 <span

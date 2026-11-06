@@ -6,11 +6,13 @@
 //! own transcript, whose result holds the child id. The chat reads names and
 //! archive state live through `get_session_link`, so renames and archiving show.
 
+use std::collections::{HashMap, HashSet};
+
 use serde::Serialize;
 use tauri::AppHandle;
 
 use super::storage;
-use super::types::SessionMetadata;
+use super::types::{Session, SessionMetadata};
 
 /// MCP `source` value for calls that do not come from a Splitkick session.
 const ANON_SOURCE: &str = "anon";
@@ -86,6 +88,137 @@ pub async fn get_session_link(
     }))
 }
 
+/// One session in a session network (#77), with where it lives.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionNetworkNode {
+    /// Session summary (no messages), same shape as the sidebar lists.
+    pub session: Session,
+    /// Parent within this network. `None` for the root.
+    pub parent_id: Option<String>,
+    pub project_id: String,
+    pub project_name: String,
+    pub worktree_id: String,
+    pub worktree_name: String,
+    pub worktree_path: String,
+    pub worktree_archived: bool,
+}
+
+/// The tree around one session: its root (found through `started_by`) and
+/// every descendant, across worktrees and projects. `nodes` is depth-first,
+/// root first; children follow their parent in creation order.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionNetwork {
+    pub root_id: String,
+    /// The root names a parent that is not on this instance (deleted, or on
+    /// another device). Splitkick cannot show it.
+    pub root_parent_missing: bool,
+    pub nodes: Vec<SessionNetworkNode>,
+}
+
+/// Build the network of `session_id` from every known session. Pure, so it
+/// can be tested without storage. `None` when `session_id` is not in `all`.
+fn build_network(session_id: &str, all: Vec<SessionNetworkNode>) -> Option<SessionNetwork> {
+    let index: HashMap<String, usize> = all
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.session.id.clone(), i))
+        .collect();
+    let mut current = *index.get(session_id)?;
+
+    // Walk up. `seen` stops a cycle in damaged metadata.
+    let mut seen = HashSet::from([current]);
+    let mut root_parent_missing = false;
+    while let Some(parent_id) = all[current].session.started_by_session_id.as_deref() {
+        match index.get(parent_id) {
+            Some(&parent) if seen.insert(parent) => current = parent,
+            Some(_) => break,
+            None => {
+                root_parent_missing = true;
+                break;
+            }
+        }
+    }
+    let root = current;
+
+    let mut children: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, node) in all.iter().enumerate() {
+        if let Some(parent_id) = node.session.started_by_session_id.as_deref() {
+            children.entry(parent_id).or_default().push(i);
+        }
+    }
+    for list in children.values_mut() {
+        list.sort_by_key(|&i| (all[i].session.created_at, all[i].session.order));
+    }
+
+    // Depth-first walk down from the root.
+    let mut order = Vec::new();
+    let mut visited = HashSet::new();
+    let mut stack = vec![root];
+    while let Some(i) = stack.pop() {
+        if !visited.insert(i) {
+            continue;
+        }
+        order.push(i);
+        if let Some(kids) = children.get(all[i].session.id.as_str()) {
+            stack.extend(kids.iter().rev().copied());
+        }
+    }
+
+    let mut slots: Vec<Option<SessionNetworkNode>> = all.into_iter().map(Some).collect();
+    let mut nodes: Vec<_> = order.into_iter().filter_map(|i| slots[i].take()).collect();
+    // Every other node was reached from its parent; only the root can point
+    // outside the tree (missing parent, or a cycle).
+    nodes[0].parent_id = None;
+    Some(SessionNetwork {
+        root_id: nodes[0].session.id.clone(),
+        root_parent_missing,
+        nodes,
+    })
+}
+
+/// The session network around `session_id` (#77). Reads the session index of
+/// every worktree, archived ones too, so archived children still show. Session
+/// summaries come from the mtime cache in `storage`, so a repeat call only
+/// stats the metadata files. `None` when the session is unknown here.
+pub async fn get_session_network(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<SessionNetwork>, String> {
+    let data = crate::projects::storage::load_projects_data(&app)?;
+    let mut all = Vec::new();
+    for worktree in &data.worktrees {
+        // `load_index` writes a default index when none exists; skip those.
+        if !storage::get_index_path(&app, &worktree.id)?.exists() {
+            continue;
+        }
+        let Ok(index) = storage::load_index(&app, &worktree.id) else {
+            continue;
+        };
+        let project_name = data
+            .find_project(&worktree.project_id)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        for entry in &index.sessions {
+            let Ok(Some((session, _))) = storage::load_session_summary(&app, &entry.id) else {
+                continue;
+            };
+            all.push(SessionNetworkNode {
+                parent_id: session.started_by_session_id.clone(),
+                session,
+                project_id: worktree.project_id.clone(),
+                project_name: project_name.clone(),
+                worktree_id: worktree.id.clone(),
+                worktree_name: worktree.name.clone(),
+                worktree_path: worktree.path.clone(),
+                worktree_archived: worktree.archived_at.is_some(),
+            });
+        }
+    }
+    Ok(build_network(&session_id, all))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +289,74 @@ mod tests {
         session.started_by_session_id = None;
         m.update_from_session(&session);
         assert_eq!(m.started_by_session_id.as_deref(), Some("parent"));
+    }
+
+    fn node(id: &str, parent: Option<&str>, created_at: u64) -> SessionNetworkNode {
+        let mut m = SessionMetadata::new(id.into(), "wt".into(), id.into(), 0);
+        m.started_by_session_id = parent.map(Into::into);
+        m.created_at = created_at;
+        SessionNetworkNode {
+            session: m.to_session(),
+            parent_id: parent.map(Into::into),
+            project_id: "p".into(),
+            project_name: "P".into(),
+            worktree_id: "wt".into(),
+            worktree_name: "W".into(),
+            worktree_path: "/w".into(),
+            worktree_archived: false,
+        }
+    }
+
+    fn ids(network: &SessionNetwork) -> Vec<&str> {
+        network
+            .nodes
+            .iter()
+            .map(|n| n.session.id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn network_walks_up_to_the_root_and_down_to_every_descendant() {
+        let all = vec![
+            node("other", None, 0),
+            node("leaf", Some("child-b"), 4),
+            node("child-b", Some("root"), 3),
+            node("root", None, 1),
+            node("child-a", Some("root"), 2),
+        ];
+        let network = build_network("leaf", all).unwrap();
+        assert_eq!(network.root_id, "root");
+        assert!(!network.root_parent_missing);
+        assert_eq!(ids(&network), ["root", "child-a", "child-b", "leaf"]);
+        assert_eq!(network.nodes[0].parent_id, None);
+        assert_eq!(network.nodes[3].parent_id.as_deref(), Some("child-b"));
+    }
+
+    #[test]
+    fn network_of_a_lone_session_is_just_that_session() {
+        let network = build_network("a", vec![node("a", None, 0)]).unwrap();
+        assert_eq!(ids(&network), ["a"]);
+    }
+
+    #[test]
+    fn network_marks_a_parent_that_is_not_here() {
+        let all = vec![node("a", Some("gone"), 0), node("b", Some("a"), 1)];
+        let network = build_network("b", all).unwrap();
+        assert_eq!(network.root_id, "a");
+        assert!(network.root_parent_missing);
+        assert_eq!(network.nodes[0].parent_id, None);
+    }
+
+    #[test]
+    fn network_survives_a_cycle() {
+        let all = vec![node("a", Some("b"), 0), node("b", Some("a"), 1)];
+        let network = build_network("a", all).unwrap();
+        assert_eq!(network.nodes.len(), 2);
+        assert_eq!(network.nodes[0].parent_id, None);
+    }
+
+    #[test]
+    fn network_of_an_unknown_session_is_none() {
+        assert!(build_network("x", vec![node("a", None, 0)]).is_none());
     }
 }
