@@ -223,6 +223,7 @@ import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { openArchivedView } from '@/lib/archived-view'
 import { useProjectsStore } from '@/store/projects-store'
 import { useDockSync } from '@/hooks/useDockSync'
+import { useWebviewRecovery } from '@/hooks/useWebviewRecovery'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
@@ -418,6 +419,9 @@ export function MainWindow() {
 
   // macOS dock badge (unread count) and dock menu (sessions)
   useDockSync()
+
+  // Toast after the shell reloaded an empty window (#97)
+  useWebviewRecovery()
 
   // Subscribe to Rust → React browser events (loading/loaded/title/nav/closed)
   useBrowserEvents()

@@ -176,6 +176,8 @@ function containNativeUnlisten(
 }
 
 const DESKTOP_ONLY_COMMANDS = new Set([
+  'webview_liveness_pong',
+  'take_webview_recovery',
   'set_window_vibrancy',
   'relaunch_app',
   'set_menu_accelerators',
@@ -229,6 +231,9 @@ const DESKTOP_ONLY_COMMANDS = new Set([
 // These commands belong to the local desktop shell even when its application
 // content is connected to a remote Jean backend.
 const LOCAL_SHELL_COMMANDS = new Set([
+  // The window watchdog lives in this desktop shell (#97).
+  'webview_liveness_pong',
+  'take_webview_recovery',
   'set_window_vibrancy',
   // An update installs into this app, so the restart is this app's too.
   'relaunch_app',

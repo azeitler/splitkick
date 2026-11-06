@@ -36,11 +36,14 @@ log = "0.4"
 base64 = "0.22"
 dirs = "5.0"
 once_cell = "1.20"
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 arboard = { version = "3", features = ["wayland-data-control"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# kill(2) for a hung WebKit content process (src/webview_watchdog.rs).
+libc = "0.2"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSColor", "NSResponder", "NSApplication", "NSMenu", "NSMenuItem", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL"] }

@@ -15,6 +15,7 @@ import {
   usesWebSocketBackend,
   type InitialData,
 } from '@/lib/transport'
+import { takeWebviewRecovery } from '@/lib/webview-liveness'
 import {
   isLocalBackend,
   isNativeApp,
@@ -1529,8 +1530,11 @@ function App() {
       if (isNativeApp() && !webBackend && !isConnectionSwitchPending()) {
         // Kill any orphaned terminals from previous native app session/reload.
         // Web access clients must not kill server-owned terminals when their
-        // browser tab reloads, sleeps, or is discarded.
-        invoke<number>('kill_all_terminals')
+        // browser tab reloads, sleeps, or is discarded. Nor does a reload the
+        // shell made to recover an empty window: it would stop the user's
+        // run environments and shells (#97).
+        takeWebviewRecovery()
+          .then(note => (note ? 0 : invoke<number>('kill_all_terminals')))
           .then(killed => {
             if (killed > 0) {
               logger.info(

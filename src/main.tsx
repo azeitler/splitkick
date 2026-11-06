@@ -7,11 +7,14 @@ import { installGetComposedRangesCompat } from './lib/selection-compat'
 import { isNativeApp } from './lib/environment'
 import { installNativeContextMenuGuard } from './lib/native-context-menu'
 import { hydrateRemoteConnections } from './lib/remote-connections'
+import { installWebviewLivenessResponder } from './lib/webview-liveness'
 
 installGetComposedRangesCompat()
 // No WebKit Reload menu in app windows; dev builds keep Inspect Element, and
 // web access keeps the browser's own menu.
 if (isNativeApp() && !import.meta.env.DEV) installNativeContextMenuGuard(window)
+// Lets the desktop shell find an empty or hung window and reload it (#97).
+installWebviewLivenessResponder()
 
 function render() {
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

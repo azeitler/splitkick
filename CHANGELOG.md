@@ -7,6 +7,31 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The window comes back after macOS suspends Splitkick** (#97). When WebKit's
+  content process dies (memory pressure), Splitkick reloads the window itself
+  instead of relying on Tauri's default, which could give up silently. After a
+  wake, a resume from suspend, on window focus and once a minute, Splitkick
+  checks that the window still answers; two missed answers in a row reload it
+  (on macOS by ending the hung content process). A window that answers is never
+  reloaded. You land on the same project, worktree and session, a toast says
+  "Splitkick recovered from a display crash" with Copy details, and running
+  sessions, terminals and run environments keep running.
+- **Memory log and Help → Copy Memory Report** (#97). Every 5 minutes (first
+  one a minute after start) the log gets one line with the memory of the main
+  process and of each WebKit content process, the child process count, and
+  the sizes of in-memory structures that could leak (cached sessions, run-log
+  tailers, CLI runs, terminals, event listeners, WebSocket clients and replay
+  buffers, each page's query cache and DOM size). Above 4 GB the line is a
+  warning. Help → Copy Memory Report copies the same numbers.
+
+### Fixed
+
+- **A page load no longer marks a starting run as crashed** (#97). A reload or
+  another Web Access client opened in the first moments of a run, before its
+  CLI was registered, turned the run "crashed" although it went on running.
+
 ## [1.5.1] - 2026-11-06
 
 Built on Jean 0.1.73.
