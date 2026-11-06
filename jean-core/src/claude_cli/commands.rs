@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 use tokio::sync::Mutex as AsyncMutex;
 
+use super::accounts::{self as accounts, ResolvedClaudeAccount};
 use super::config::{
     ensure_cli_dir, get_cli_binary_path, get_cli_dir, get_wsl_cli_binary_path, get_wsl_cli_dir,
     resolve_cli_binary,
@@ -44,7 +45,6 @@ fn extract_version_number(version_str: &str) -> String {
 const CLAUDE_DIST_BUCKET: &str =
     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases";
 const CLAUDE_CREDENTIALS_FILE: &str = ".claude/.credentials.json";
-const CLAUDE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_USAGE_CACHE_TTL_SECS: u64 = 5 * 60;
 /// Stale cache is still served on 429 / transient API failures (OpenUsage pattern).
@@ -762,9 +762,8 @@ fn parse_credentials_json(raw: &str) -> Option<ClaudeCredentialsFile> {
     serde_json::from_str::<ClaudeCredentialsFile>(&decoded).ok()
 }
 
-fn get_claude_credentials_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "No home directory found".to_string())?;
-    Ok(home.join(CLAUDE_CREDENTIALS_FILE))
+fn get_claude_credentials_path(config_dir: Option<&str>) -> Result<PathBuf, String> {
+    accounts::credentials_file(config_dir).ok_or_else(|| "No home directory found".to_string())
 }
 
 fn wsl_claude_credentials_path(home: &str) -> String {
@@ -844,9 +843,9 @@ fn parse_keychain_account(attributes: &str) -> Option<String> {
 /// that used to pick the stale duplicate, so its result is one candidate among
 /// several rather than the answer.
 #[cfg(target_os = "macos")]
-fn default_keychain_account() -> Option<String> {
+fn default_keychain_account(service: &str) -> Option<String> {
     let output = silent_command("security")
-        .args(["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE])
+        .args(["find-generic-password", "-s", service])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -857,16 +856,9 @@ fn default_keychain_account() -> Option<String> {
 
 /// Read the item for `account`, or `None` when it does not exist.
 #[cfg(target_os = "macos")]
-fn read_keychain_item(account: &str) -> Option<ClaudeCredentialsFile> {
+fn read_keychain_item(service: &str, account: &str) -> Option<ClaudeCredentialsFile> {
     let output = silent_command("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            CLAUDE_KEYCHAIN_SERVICE,
-            "-a",
-            account,
-            "-w",
-        ])
+        .args(["find-generic-password", "-s", service, "-a", account, "-w"])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -904,11 +896,17 @@ fn pick_freshest_credentials(
 /// Returns the account the credentials came from, so the write-back updates that
 /// same item instead of creating another one.
 #[cfg(target_os = "macos")]
-fn load_credentials_from_keychain() -> Option<(String, ClaudeCredentialsFile)> {
+fn load_credentials_from_keychain(
+    config_dir: Option<&str>,
+) -> Option<(String, ClaudeCredentialsFile)> {
+    let service = accounts::keychain_service(config_dir);
     let mut accounts: Vec<String> = Vec::new();
     for account in [
-        Some(CLAUDE_KEYCHAIN_LEGACY_ACCOUNT.to_string()),
-        default_keychain_account(),
+        // Jean's pre-#30 duplicate only ever existed for the root install.
+        config_dir
+            .is_none()
+            .then(|| CLAUDE_KEYCHAIN_LEGACY_ACCOUNT.to_string()),
+        default_keychain_account(&service),
         macos_user_account(),
     ]
     .into_iter()
@@ -921,18 +919,19 @@ fn load_credentials_from_keychain() -> Option<(String, ClaudeCredentialsFile)> {
 
     let candidates = accounts
         .into_iter()
-        .filter_map(|account| read_keychain_item(&account).map(|creds| (account, creds)))
+        .filter_map(|account| read_keychain_item(&service, &account).map(|creds| (account, creds)))
         .collect();
     pick_freshest_credentials(candidates)
 }
 
-/// Reads the signed-in account email from `~/.claude.json`. Claude Code keeps
-/// the OAuth profile there under `oauthAccount`. Returns `None` in WSL mode.
-fn read_claude_account_email() -> Option<String> {
+/// Reads the signed-in account email from `~/.claude.json` (or `<dir>/.claude.json`
+/// for another config folder). Claude Code keeps the OAuth profile there under
+/// `oauthAccount`. Returns `None` in WSL mode.
+fn read_claude_account_email(config_dir: Option<&str>) -> Option<String> {
     if crate::platform::get_wsl_config().enabled {
         return None;
     }
-    let path = dirs::home_dir()?.join(".claude.json");
+    let path = accounts::global_config_file(config_dir)?;
     let raw = std::fs::read_to_string(path).ok()?;
     email_from_claude_config(&serde_json::from_str(&raw).ok()?)
 }
@@ -947,9 +946,12 @@ fn email_from_claude_config(config: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn load_claude_credentials() -> Result<ClaudeCredentialsFile, String> {
+fn load_claude_credentials(config_dir: Option<&str>) -> Result<ClaudeCredentialsFile, String> {
     let wsl = crate::platform::get_wsl_config();
     if wsl.enabled {
+        if config_dir.is_some() {
+            return Err("Extra Claude accounts are not supported in WSL mode yet.".to_string());
+        }
         let home = crate::platform::get_wsl_home_dir(&wsl.distro)?;
         let cred_path = wsl_claude_credentials_path(&home);
         let parsed = read_wsl_claude_credentials(&wsl.distro, &cred_path)?;
@@ -966,13 +968,13 @@ fn load_claude_credentials() -> Result<ClaudeCredentialsFile, String> {
     // over a potentially stale ~/.claude/.credentials.json.
     #[cfg(target_os = "macos")]
     {
-        if let Some((_, parsed)) = load_credentials_from_keychain() {
+        if let Some((_, parsed)) = load_credentials_from_keychain(config_dir) {
             // `pick_freshest_credentials` already dropped items with no access token.
             return Ok(parsed);
         }
     }
 
-    let cred_path = get_claude_credentials_path()?;
+    let cred_path = get_claude_credentials_path(config_dir)?;
     if cred_path.exists() {
         let raw = std::fs::read_to_string(&cred_path)
             .map_err(|e| format!("Failed to read Claude credentials file: {e}"))?;
@@ -1015,12 +1017,15 @@ fn get_usage_cache_dir() -> Option<PathBuf> {
     Some(base.join("jean").join("usage-cache"))
 }
 
-fn get_claude_usage_cache_path() -> Option<PathBuf> {
-    Some(get_usage_cache_dir()?.join("claude.json"))
+fn get_claude_usage_cache_path(config_dir: Option<&str>) -> Option<PathBuf> {
+    Some(get_usage_cache_dir()?.join(accounts::usage_cache_file_name(config_dir)))
 }
 
-fn load_cached_claude_usage(now_secs: u64) -> Option<ClaudeUsageSnapshot> {
-    let path = get_claude_usage_cache_path()?;
+fn load_cached_claude_usage(
+    cache_path: Option<&std::path::Path>,
+    now_secs: u64,
+) -> Option<ClaudeUsageSnapshot> {
+    let path = cache_path?;
     let content = std::fs::read_to_string(path).ok()?;
     let entry: ClaudeUsageCacheEntry = serde_json::from_str(&content).ok()?;
     if now_secs.saturating_sub(entry.cached_at) <= CLAUDE_USAGE_CACHE_TTL_SECS {
@@ -1030,8 +1035,11 @@ fn load_cached_claude_usage(now_secs: u64) -> Option<ClaudeUsageSnapshot> {
 }
 
 /// Serve last-good usage during 429 / transient failures (OpenUsage cooldown pattern).
-fn load_stale_cached_claude_usage(now_secs: u64) -> Option<ClaudeUsageSnapshot> {
-    let path = get_claude_usage_cache_path()?;
+fn load_stale_cached_claude_usage(
+    cache_path: Option<&std::path::Path>,
+    now_secs: u64,
+) -> Option<ClaudeUsageSnapshot> {
+    let path = cache_path?;
     let content = std::fs::read_to_string(path).ok()?;
     let entry: ClaudeUsageCacheEntry = serde_json::from_str(&content).ok()?;
     if now_secs.saturating_sub(entry.cached_at) <= CLAUDE_USAGE_STALE_CACHE_MAX_SECS {
@@ -1040,8 +1048,12 @@ fn load_stale_cached_claude_usage(now_secs: u64) -> Option<ClaudeUsageSnapshot> 
     None
 }
 
-fn save_cached_claude_usage(snapshot: &ClaudeUsageSnapshot, now_secs: u64) {
-    let Some(path) = get_claude_usage_cache_path() else {
+fn save_cached_claude_usage(
+    cache_path: Option<&std::path::Path>,
+    snapshot: &ClaudeUsageSnapshot,
+    now_secs: u64,
+) {
+    let Some(path) = cache_path else {
         return;
     };
     if let Some(parent) = path.parent() {
@@ -1065,19 +1077,30 @@ fn claude_env_api_key_present() -> bool {
 
 /// Fallback auth signals when `claude auth status` is false or unavailable.
 /// Covers keychain/credentials.json OAuth tokens and ANTHROPIC_API_KEY.
-fn claude_credentials_or_env_authenticated() -> bool {
+fn claude_credentials_or_env_authenticated(config_dir: Option<&str>) -> bool {
     if claude_env_api_key_present() {
         return true;
     }
-    match load_claude_credentials() {
+    match load_claude_credentials(config_dir) {
         Ok(creds) => credentials_have_access_token(&creds),
         Err(_) => false,
     }
 }
 
-/// Check if Claude CLI is authenticated by running a simple query
-pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, String> {
+/// Check if Claude CLI is authenticated.
+///
+/// `account_id`: `None` checks the active account (the one new runs use), `"root"`
+/// the root install, any other id that account's config folder.
+pub async fn check_claude_cli_auth(
+    app: AppHandle,
+    account_id: Option<String>,
+) -> Result<ClaudeAuthStatus, String> {
     log::trace!("Checking Claude CLI authentication status");
+    let account = match account_id.as_deref() {
+        Some(id) => accounts::load_account(&app, Some(id)),
+        None => accounts::load_active_account(&app),
+    };
+    let config_dir = account.config_dir.as_deref();
 
     let wsl = crate::platform::get_wsl_config();
     let binary_path = resolve_cli_binary(&app);
@@ -1106,8 +1129,10 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
     log::trace!("Running auth check: {:?}", binary_path);
 
     let binary_str = binary_path.to_string_lossy().to_string();
-    let output = crate::platform::wsl_aware_command(&binary_str, None)
-        .args(["auth", "status"])
+    let mut cmd = crate::platform::wsl_aware_command(&binary_str, None);
+    cmd.args(["auth", "status"]);
+    account.apply_env(&mut cmd);
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to execute Claude CLI: {e}"))?;
 
@@ -1127,7 +1152,7 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
         }
         // `auth status` can false-negative while credentials/API key still work
         // (custom providers, credential store vs CLI status desync). Fall back.
-        if claude_credentials_or_env_authenticated() {
+        if claude_credentials_or_env_authenticated(config_dir) {
             log::trace!(
                 "Claude auth status reported loggedOut; treating as authenticated via credentials/env"
             );
@@ -1147,7 +1172,7 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         log::warn!("Claude CLI auth check failed: {stderr}");
-        if claude_credentials_or_env_authenticated() {
+        if claude_credentials_or_env_authenticated(config_dir) {
             log::trace!(
                 "Claude auth status command failed; treating as authenticated via credentials/env"
             );
@@ -1167,14 +1192,52 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
     }
 }
 
-/// Get current Claude usage for authenticated users.
-pub async fn get_claude_usage() -> Result<ClaudeUsageSnapshot, String> {
-    get_claude_usage_with_source("ui").await
+/// Get current Claude usage of one account. `None` is the root install.
+pub async fn get_claude_usage(
+    app: AppHandle,
+    account_id: Option<String>,
+) -> Result<ClaudeUsageSnapshot, String> {
+    let account = accounts::load_account(&app, account_id.as_deref());
+    get_claude_usage_with_source("ui", &account).await
 }
 
-fn claude_usage_request(client: &reqwest::Client, access_token: &str) -> reqwest::RequestBuilder {
+/// Usage of one Claude account, for the all-accounts list.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeAccountUsage {
+    pub account_id: String,
+    pub label: String,
+    pub active: bool,
+    pub usage: Option<ClaudeUsageSnapshot>,
+    pub error: Option<String>,
+}
+
+/// Usage of every configured Claude account, root first. One account at a time,
+/// each through its own 5-minute cache, so this adds no request storm.
+pub async fn get_claude_accounts_usage(app: AppHandle) -> Result<Vec<ClaudeAccountUsage>, String> {
+    let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
+    let active_id = accounts::active_account(&prefs).id;
+    let mut result = Vec::new();
+    for account in accounts::all_accounts(&prefs) {
+        let fetched = get_claude_usage_with_source("accounts", &account).await;
+        result.push(ClaudeAccountUsage {
+            active: account.id == active_id,
+            account_id: account.id,
+            label: account.label,
+            usage: fetched.as_ref().ok().cloned(),
+            error: fetched.err(),
+        });
+    }
+    Ok(result)
+}
+
+fn claude_usage_request(
+    client: &reqwest::Client,
+    usage_url: &str,
+    access_token: &str,
+) -> reqwest::RequestBuilder {
     client
-        .get(CLAUDE_USAGE_URL)
+        .get(usage_url)
         .bearer_auth(access_token.trim())
         .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
@@ -1184,6 +1247,24 @@ fn claude_usage_request(client: &reqwest::Client, access_token: &str) -> reqwest
 
 pub(crate) async fn get_claude_usage_with_source(
     request_source: &'static str,
+    account: &ResolvedClaudeAccount,
+) -> Result<ClaudeUsageSnapshot, String> {
+    let config_dir = account.config_dir.as_deref();
+    let cache_path = get_claude_usage_cache_path(config_dir);
+    fetch_claude_usage(
+        request_source,
+        config_dir,
+        CLAUDE_USAGE_URL,
+        cache_path.as_deref(),
+    )
+    .await
+}
+
+async fn fetch_claude_usage(
+    request_source: &'static str,
+    config_dir: Option<&str>,
+    usage_url: &str,
+    cache_path: Option<&std::path::Path>,
 ) -> Result<ClaudeUsageSnapshot, String> {
     // Serialize usage fetches so UI + background polls share one request and cache write.
     let _usage_lock = claude_usage_fetch_lock().lock().await;
@@ -1193,12 +1274,12 @@ pub(crate) async fn get_claude_usage_with_source(
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if let Some(cached) = load_cached_claude_usage(now_secs) {
+    if let Some(cached) = load_cached_claude_usage(cache_path, now_secs) {
         log::trace!("Claude usage fetch hit cache (source={request_source})");
         return Ok(cached);
     }
 
-    let credentials = load_claude_credentials()?;
+    let credentials = load_claude_credentials(config_dir)?;
     let usage_client = build_usage_client()?;
 
     let oauth = credentials.claude_ai_oauth.clone().ok_or_else(|| {
@@ -1226,7 +1307,7 @@ pub(crate) async fn get_claude_usage_with_source(
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     if token_is_expired(&oauth, now_ms) {
-        if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+        if let Some(stale) = load_stale_cached_claude_usage(cache_path, now_secs) {
             log::trace!(
                 "Claude access token expired; serving stale cache until Claude refreshes it (source={request_source})"
             );
@@ -1238,14 +1319,14 @@ pub(crate) async fn get_claude_usage_with_source(
         );
     }
 
-    let response = claude_usage_request(&usage_client, &access_token)
+    let response = claude_usage_request(&usage_client, usage_url, &access_token)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch Claude usage: {e}"))?;
 
     // OpenUsage: 429 is common — serve stale cache instead of failing hard / re-login.
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+        if let Some(stale) = load_stale_cached_claude_usage(cache_path, now_secs) {
             log::info!(
                 "Claude usage rate-limited (429); serving stale cache (source={request_source})"
             );
@@ -1259,14 +1340,14 @@ pub(crate) async fn get_claude_usage_with_source(
     if response.status() == reqwest::StatusCode::UNAUTHORIZED
         || response.status() == reqwest::StatusCode::FORBIDDEN
     {
-        if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+        if let Some(stale) = load_stale_cached_claude_usage(cache_path, now_secs) {
             log::warn!("Claude usage auth failed; serving stale cache (source={request_source})");
             return Ok(stale);
         }
         return Err("Claude token expired. Run `claude` to log in again.".to_string());
     }
     if !response.status().is_success() {
-        if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+        if let Some(stale) = load_stale_cached_claude_usage(cache_path, now_secs) {
             log::warn!(
                 "Claude usage HTTP {}; serving stale cache (source={request_source})",
                 response.status()
@@ -1317,7 +1398,7 @@ pub(crate) async fn get_claude_usage_with_source(
             .claude_ai_oauth
             .as_ref()
             .and_then(|o| o.subscription_type.clone()),
-        account_email: read_claude_account_email(),
+        account_email: read_claude_account_email(config_dir),
         session: map_window(usage.five_hour),
         weekly: map_window(usage.seven_day),
         sonnet_weekly: map_window(usage.seven_day_sonnet),
@@ -1326,7 +1407,7 @@ pub(crate) async fn get_claude_usage_with_source(
         fetched_at,
     };
 
-    save_cached_claude_usage(&snapshot, fetched_at);
+    save_cached_claude_usage(cache_path, &snapshot, fetched_at);
     log::trace!("Claude usage fetch success (source={request_source})");
     Ok(snapshot)
 }
@@ -1604,7 +1685,8 @@ mod tests {
     #[test]
     #[ignore = "reads the real login keychain and prompts for access"]
     fn reports_the_real_keychain_item() {
-        let Some((account, creds)) = load_credentials_from_keychain() else {
+        let service = accounts::keychain_service(None);
+        let Some((account, creds)) = load_credentials_from_keychain(None) else {
             panic!("no Claude credentials in the keychain — run `claude` to log in first");
         };
         let picked_expiry = creds
@@ -1617,10 +1699,10 @@ mod tests {
 
         for candidate in [CLAUDE_KEYCHAIN_LEGACY_ACCOUNT.to_string()]
             .into_iter()
-            .chain(default_keychain_account())
+            .chain(default_keychain_account(&service))
             .chain(macos_user_account())
         {
-            let expiry = read_keychain_item(&candidate)
+            let expiry = read_keychain_item(&service, &candidate)
                 .and_then(|c| c.claude_ai_oauth.as_ref().and_then(oauth_expires_at_ms));
             println!("  candidate {candidate:?}: expires_at_ms {expiry:?}");
             if let Some(expiry) = expiry {
@@ -1705,5 +1787,165 @@ attributes:
             ..Default::default()
         };
         assert!(oauth_has_usage_scope(&ok));
+    }
+
+    /// A one-endpoint HTTP server that answers each bearer token with its own
+    /// usage figure and counts the requests it served.
+    fn spawn_usage_server() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/api/oauth/usage", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let used = if request.contains("bearer tok-work") {
+                    80
+                } else {
+                    10
+                };
+                let body = format!(
+                    "{{\"five_hour\":{{\"utilization\":{used},\"resets_at\":null}},\"seven_day\":{{\"utilization\":5}}}}"
+                );
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (url, hits)
+    }
+
+    fn write_account(dir: &std::path::Path, token: &str, email: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 3_600_000;
+        std::fs::write(
+            dir.join(".credentials.json"),
+            serde_json::json!({
+                "claudeAiOauth": {
+                    "accessToken": token,
+                    "expiresAt": expires,
+                    "scopes": ["user:inference", "user:profile"],
+                    "subscriptionType": "max"
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(".claude.json"),
+            serde_json::json!({ "oauthAccount": { "emailAddress": email } }).to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn usage_is_fetched_and_cached_per_account() {
+        let temp = tempfile::tempdir().unwrap();
+        let personal = temp.path().join("claude-personal");
+        let work = temp.path().join("claude-work");
+        write_account(&personal, "tok-personal", "me@example.com");
+        write_account(&work, "tok-work", "me@work.example");
+        let personal_dir = personal.to_string_lossy().to_string();
+        let work_dir = work.to_string_lossy().to_string();
+        let personal_cache = temp
+            .path()
+            .join(accounts::usage_cache_file_name(Some(&personal_dir)));
+        let work_cache = temp
+            .path()
+            .join(accounts::usage_cache_file_name(Some(&work_dir)));
+        assert_ne!(personal_cache, work_cache);
+        let (url, hits) = spawn_usage_server();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let fetch = |dir: &str, cache: &std::path::Path| {
+            runtime
+                .block_on(fetch_claude_usage("test", Some(dir), &url, Some(cache)))
+                .unwrap()
+        };
+
+        let p = fetch(&personal_dir, &personal_cache);
+        let w = fetch(&work_dir, &work_cache);
+        assert_eq!(p.account_email.as_deref(), Some("me@example.com"));
+        assert_eq!(w.account_email.as_deref(), Some("me@work.example"));
+        assert_eq!(p.session.as_ref().unwrap().used_percent, 10.0);
+        assert_eq!(w.session.as_ref().unwrap().used_percent, 80.0);
+        assert_eq!(p.plan_type.as_deref(), Some("max"));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+        // Within five minutes each account is served from its own cache: no new request.
+        let w_again = fetch(&work_dir, &work_cache);
+        let p_again = fetch(&personal_dir, &personal_cache);
+        assert_eq!(w_again.session.unwrap().used_percent, 80.0);
+        assert_eq!(p_again.session.unwrap().used_percent, 10.0);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn usage_of_a_signed_out_account_fails_without_a_request() {
+        let temp = tempfile::tempdir().unwrap();
+        let empty = temp.path().join("claude-empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let (url, hits) = spawn_usage_server();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = runtime.block_on(fetch_claude_usage(
+            "test",
+            Some(&empty.to_string_lossy()),
+            &url,
+            Some(&temp.path().join("cache.json")),
+        ));
+        assert!(result.is_err());
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    /// Real usage of one extra account, read the way the app reads it. Prints no
+    /// token and no email:
+    /// ```text
+    /// JEAN_TEST_CLAUDE_CONFIG_DIR=/abs/folder cargo test --lib \
+    ///   reports_real_usage_of_an_extra_account -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "reads a real login and calls the usage API"]
+    fn reports_real_usage_of_an_extra_account() {
+        let dir = std::env::var("JEAN_TEST_CLAUDE_CONFIG_DIR")
+            .expect("set JEAN_TEST_CLAUDE_CONFIG_DIR to a logged-in config folder");
+        let cache = tempfile::tempdir().unwrap();
+        let cache_path = cache.path().join("usage.json");
+        let snapshot = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fetch_claude_usage(
+                "test",
+                Some(&dir),
+                CLAUDE_USAGE_URL,
+                Some(&cache_path),
+            ))
+            .expect("usage of the extra account");
+        println!(
+            "keychain service {}, plan {:?}, email present {}, session {:?}, weekly {:?}",
+            accounts::keychain_service(Some(&dir)),
+            snapshot.plan_type,
+            snapshot.account_email.is_some(),
+            snapshot.session.map(|w| w.used_percent),
+            snapshot.weekly.map(|w| w.used_percent),
+        );
+        assert!(snapshot.account_email.is_some());
     }
 }

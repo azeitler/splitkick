@@ -2,10 +2,13 @@ import React, { useCallback } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  useClaudeAccountsUsage,
   useClaudeCliAuth,
   useClaudeCliStatus,
-  useClaudeUsage,
 } from '@/services/claude-cli'
+import { usePreferences } from '@/services/preferences'
+import { listClaudeAccounts } from '@/lib/claude-accounts'
+import type { ClaudeUsageSnapshot } from '@/types/claude-cli'
 import {
   useCodexCliAuth,
   useCodexCliStatus,
@@ -242,9 +245,20 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
   })
-  const claudeUsage = useClaudeUsage({
-    enabled: !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated,
-  })
+  // Every Claude account (#90). With only the root install this is one query,
+  // gated on its login as before. With several, each account shows its own
+  // limits, or why it has none.
+  const { data: preferences } = usePreferences()
+  const claudeAccounts = listClaudeAccounts(preferences)
+  const claudeMultiAccount = claudeAccounts.length > 1
+  const claudeUsages = useClaudeAccountsUsage(
+    claudeAccounts.map(account => account.id),
+    {
+      enabled:
+        !!claudeStatus.data?.installed &&
+        (claudeMultiAccount || !!claudeAuth.data?.authenticated),
+    }
+  )
 
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({ enabled: !!codexStatus.data?.installed })
@@ -258,10 +272,6 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
     enabled: !!grokStatus.data?.installed && !!grokAuth.data?.authenticated,
   })
 
-  const claudeErrorMessage = getQueryErrorMessage(
-    claudeUsage.error,
-    'Failed to load Claude usage.'
-  )
   const codexErrorMessage = getQueryErrorMessage(
     codexUsage.error,
     'Failed to load Codex usage.'
@@ -271,7 +281,7 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
     'Failed to load Grok usage.'
   )
   const isRefreshing =
-    claudeUsage.isFetching ||
+    claudeUsages.some(query => query.isFetching) ||
     claudeAuth.isFetching ||
     codexUsage.isFetching ||
     codexAuth.isFetching ||
@@ -282,7 +292,7 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
     void Promise.all([
       claudeStatus.refetch(),
       claudeAuth.refetch(),
-      claudeUsage.refetch(),
+      ...claudeUsages.map(query => query.refetch()),
       codexStatus.refetch(),
       codexAuth.refetch(),
       codexUsage.refetch(),
@@ -293,7 +303,7 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
   }, [
     claudeAuth,
     claudeStatus,
-    claudeUsage,
+    claudeUsages,
     codexAuth,
     codexStatus,
     codexUsage,
@@ -303,7 +313,7 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
   ])
 
   const latestFetchedAt = Math.max(
-    claudeUsage.data?.fetchedAt ?? 0,
+    ...claudeUsages.map(query => query.data?.fetchedAt ?? 0),
     codexUsage.data?.fetchedAt ?? 0,
     grokUsage.data?.fetchedAt ?? 0
   )
@@ -317,11 +327,15 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
     !!grokStatus.data?.installed && !!grokAuth.data?.authenticated
 
   const claudePendingAuth =
-    !!claudeStatus.data?.installed && claudeAuth.isLoading
+    !claudeMultiAccount &&
+    !!claudeStatus.data?.installed &&
+    claudeAuth.isLoading
   const codexPendingAuth = !!codexStatus.data?.installed && codexAuth.isLoading
   const grokPendingAuth = !!grokStatus.data?.installed && grokAuth.isLoading
 
-  const showClaude = claudeReady || claudePendingAuth
+  const showClaude = claudeMultiAccount
+    ? !!claudeStatus.data?.installed
+    : claudeReady || claudePendingAuth
   const showCodex = codexReady || codexPendingAuth
   const showGrok = grokReady || grokPendingAuth
   const hasAnyBackend = showClaude || showCodex || showGrok
@@ -329,17 +343,23 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
   const statusLoading =
     claudeStatus.isLoading || codexStatus.isLoading || grokStatus.isLoading
 
-  const renderClaude = () => {
-    if (claudePendingAuth) {
-      return <LoadingLine label="Checking authentication…" />
-    }
+  const renderClaudeUsage = (claudeUsage: {
+    data?: ClaudeUsageSnapshot
+    error: unknown
+    isLoading: boolean
+    isError: boolean
+    refetch: () => unknown
+  }) => {
     if (claudeUsage.isLoading) {
       return <LoadingLine label="Loading usage…" />
     }
     if (claudeUsage.isError) {
       return (
         <ErrorLine
-          message={claudeErrorMessage}
+          message={getQueryErrorMessage(
+            claudeUsage.error,
+            'Failed to load Claude usage.'
+          )}
           onRetry={() => claudeUsage.refetch()}
         />
       )
@@ -366,6 +386,40 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
           <UsageRow label="Weekly" usage={data.weekly} />
           <UsageRow label="Sonnet" usage={data.sonnetWeekly} />
         </div>
+      </div>
+    )
+  }
+
+  const renderClaude = () => {
+    if (claudePendingAuth) {
+      return <LoadingLine label="Checking authentication…" />
+    }
+    if (!claudeMultiAccount) {
+      const only = claudeUsages[0]
+      return only ? renderClaudeUsage(only) : null
+    }
+    return (
+      <div className="space-y-3">
+        {claudeAccounts.map((account, index) => {
+          const query = claudeUsages[index]
+          return (
+            <div
+              key={account.id}
+              className="space-y-1"
+              data-testid={`claude-usage-account-${account.id}`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <span className="truncate">{account.label}</span>
+                {account.isActive ? (
+                  <span className="rounded bg-muted px-1 text-xs font-normal text-muted-foreground">
+                    active
+                  </span>
+                ) : null}
+              </div>
+              {query ? renderClaudeUsage(query) : null}
+            </div>
+          )
+        })}
       </div>
     )
   }

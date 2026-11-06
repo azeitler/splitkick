@@ -788,12 +788,18 @@ async fn refresh_claude_usage_cache(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let auth = crate::claude_cli::check_claude_cli_auth(app.clone()).await?;
-    if !auth.authenticated {
-        return Ok(());
+    // Every account through its own 5-minute cache, one after the other (#90).
+    // A signed-out account fails fast on its missing credentials; no CLI spawn.
+    for account in crate::claude_cli::accounts::load_all_accounts(app) {
+        if let Err(e) =
+            crate::claude_cli::get_claude_usage_with_source("background", &account).await
+        {
+            log::trace!(
+                "Background usage refresh (Claude {}) failed: {e}",
+                account.id
+            );
+        }
     }
-
-    let _ = crate::claude_cli::get_claude_usage_with_source("background").await?;
     Ok(())
 }
 
