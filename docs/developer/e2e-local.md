@@ -28,6 +28,7 @@ fast check for the UI alone.
 | Follow-up list (#46)            | `sessions.spec.ts`          | MCP `add_follow_up` fills the badge and panel; add, mark done, reload                                                                                                                                                |
 | MCP send keeps the mode (#61)   | `sessions.spec.ts`          | `send_chat_message` with `executionMode: "yolo"` runs in Yolo and keeps it after reload                                                                                                                              |
 | Parent/child inserts (#62)      | `sessions.spec.ts`          | "Sent to session …" and "Started session …" in the parent, "Started by …" in the child                                                                                                                               |
+| Remote MCP (#94)                | `remote-mcp.spec.ts`        | Connection list and file hold no token, no Keychain item; `list_instances` → `remote_tool` `create_session`/`send_chat_message`/`read_session_messages` on B, B's UI shows it; unknown instance, bad token, graph write and loop refused, route without token 401 |
 | Auto-archive (#50)              | `auto-archive.spec.ts`      | API level: a merged PR archives a clean worktree                                                                                                                                                                     |
 | Copy image (#68)                | `images.spec.ts`            | Copy image puts a PNG on the clipboard; the viewer shows Open in browser + Copy image, no Reveal                                                                                                                     |
 | Graph layer (#79)               | `graphs.spec.ts`            | New graph (folder + in-repo), outline/detail/dependencies write the YAML, outside edit shows, agent MCP writes → Review (revert, accept), read-only refused, session graph panel, Commit graph commits only the file |
@@ -38,7 +39,8 @@ fast check for the UI alone.
 ## Sealing
 
 Each instance gets its own root under `/tmp/sk-e2e-<name>-XXXX/` (short on
-purpose: macOS limits socket paths to 104 bytes):
+purpose: macOS limits socket paths to 104 bytes; `E2E_ROOT_BASE` moves it, for
+example to the repo's `tmp/`):
 
 - `home/` is `HOME`. Every home path in jean-core goes through `dirs`, which
   reads `$HOME`, so worktrees (`~/splitkick`), skill sync, agent configs and
@@ -47,6 +49,8 @@ purpose: macOS limits socket paths to 104 bytes):
   start: token, `auto_update_ai_backends: false`, first-run dialogs off.
 - `repos/` holds the fixture git repos.
 - `SPLITKICK_IMPORT_SOURCE` points to a missing folder: no Jean import.
+- `SPLITKICK_REMOTE_TOKEN_STORE=file`: remote connection tokens go to a file in
+  `data/`, never to the login Keychain.
 - Each instance allows only the other's origin (`JEAN_ALLOWED_ORIGINS`).
 
 Teardown fails the run when it finds a trace of the run in the real home
