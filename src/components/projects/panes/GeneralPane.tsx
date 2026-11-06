@@ -9,7 +9,7 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react'
-import { isLocalBackend } from '@/lib/environment'
+import { canPickLocalPaths } from '@/lib/environment'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
 import { Button } from '@/components/ui/button'
@@ -211,7 +211,7 @@ export function GeneralPane({
   const handleBrowseWorktreesDir = useCallback(async () => {
     // Remote backends must browse the server filesystem — the native OS
     // picker only sees the local machine.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setWorktreesBrowserOpen(true)
       return
     }

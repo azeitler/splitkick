@@ -42,7 +42,7 @@ import {
 } from '@/types/preferences'
 import { useGitClient } from '@/components/open-in/use-git-client'
 import { getFileManagerName } from '@/lib/platform'
-import { isNativeApp } from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { copySplitkickLink } from '@/lib/splitkick-links'
 
 interface ProjectContextMenuProps {
@@ -100,6 +100,9 @@ export function ProjectContextMenu({
     openInGitClient.mutate({ worktreePath: project.path, gitClient })
   }
 
+  const canEditor = canOpenInEditor()
+  const canNative = canOpenNativeApps()
+
   const handleNewWorktree = () => {
     selectProject(project.id)
     setNewWorktreeModalOpen(true)
@@ -144,26 +147,30 @@ export function ProjectContextMenu({
           Project Settings
         </ContextMenuItem>
 
-        <ContextMenuSeparator />
+        {(canEditor || canNative) && <ContextMenuSeparator />}
 
-        <ContextMenuItem onClick={handleOpenInEditor}>
-          <Code className="mr-2 h-4 w-4" />
-          Open in {getEditorLabel(preferences?.editor)}
-        </ContextMenuItem>
+        {canEditor && (
+          <ContextMenuItem onClick={handleOpenInEditor}>
+            <Code className="mr-2 h-4 w-4" />
+            Open in {getEditorLabel(preferences?.editor)}
+          </ContextMenuItem>
+        )}
 
-        {isNativeApp() && (
+        {canNative && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
             Open in {getFileManagerName()}
           </ContextMenuItem>
         )}
 
-        <ContextMenuItem onClick={handleOpenInTerminal}>
-          <Terminal className="mr-2 h-4 w-4" />
-          Open in {getTerminalLabel(preferences?.terminal)}
-        </ContextMenuItem>
+        {canNative && (
+          <ContextMenuItem onClick={handleOpenInTerminal}>
+            <Terminal className="mr-2 h-4 w-4" />
+            Open in {getTerminalLabel(preferences?.terminal)}
+          </ContextMenuItem>
+        )}
 
-        {gitClient && (
+        {canNative && gitClient && (
           <ContextMenuItem onClick={handleOpenInGitClient}>
             <GitBranch className="mr-2 h-4 w-4" />
             Open in {getGitClientLabel(gitClient)}
@@ -172,10 +179,12 @@ export function ProjectContextMenu({
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem onClick={handleOpenWorktreesFolder}>
-          <Folder className="mr-2 h-4 w-4" />
-          Open Worktrees Folder
-        </ContextMenuItem>
+        {canNative && (
+          <ContextMenuItem onClick={handleOpenWorktreesFolder}>
+            <Folder className="mr-2 h-4 w-4" />
+            Open Worktrees Folder
+          </ContextMenuItem>
+        )}
 
         <ContextMenuItem onClick={handleOpenOnGitHub}>
           <ExternalLink className="mr-2 h-4 w-4" />

@@ -11,8 +11,9 @@ import { getActiveRemoteConnection } from './remote-connections'
  * Service queries should guard with hasBackendTransport(); mutations that
  * must run immediately should guard with hasBackend().
  * UI should use isNativeApp() for local shell features, isLocalBackend() for
- * "this machine's desktop shell", and canOpenNativeApps() for Finder/editor/
- * terminal open actions (local desktop, WSL headless, or --allow-native-open).
+ * "this machine's desktop shell", canOpenNativeApps() / canOpenInEditor() for
+ * Finder/editor/terminal open actions and canPickLocalPaths() for native
+ * pickers. The full action table is in docs/developer/remote-capabilities.md.
  */
 
 /** Running inside the native Tauri desktop app with usable IPC.
@@ -28,9 +29,38 @@ export const isLocalBackend = (): boolean =>
   isNativeApp() && getActiveRemoteConnection() === null
 
 /**
- * Whether the connected Jean backend can open host apps (editor/finder/terminal).
- * Set from `/api/init` (`nativeOpenAllowed`) for web/remote clients. Local
- * desktop shells always can.
+ * Whether this client runs on the same machine as the backend: the local
+ * desktop backend, or a backend reached by a loopback address (Web Access
+ * opened on `localhost`, a remote connection to `127.0.0.1`). A backend
+ * behind a tunnel, LAN address or DNS name is on another machine, even when
+ * the tunnel daemon itself talks to the server over loopback.
+ */
+export const isBackendOnThisMachine = (): boolean => {
+  if (isLocalBackend()) return true
+  if (typeof window === 'undefined') return false
+  const remote = getActiveRemoteConnection()
+  try {
+    const host = remote
+      ? new URL(remote.url).hostname
+      : window.location.hostname
+    return isLoopbackHost(host)
+  } catch {
+    return false
+  }
+}
+
+const isLoopbackHost = (host: string): boolean =>
+  host === 'localhost' ||
+  host.endsWith('.localhost') ||
+  host === '[::1]' ||
+  host === '::1' ||
+  /^127\.\d+\.\d+\.\d+$/.test(host)
+
+/**
+ * The backend host may launch apps (`nativeOpenAllowed` from `/api/init`):
+ * the desktop app hosting Web Access, `--allow-native-open`, or WSL.
+ * Kept separate from the user-facing check: a Finder window that opens on
+ * the host only helps a user who sits at the host.
  */
 let _nativeOpenAllowed = false
 
@@ -38,15 +68,24 @@ export const setNativeOpenAllowed = (allowed: boolean): void => {
   _nativeOpenAllowed = allowed
 }
 
-export const isNativeOpenAllowed = (): boolean => _nativeOpenAllowed
+/**
+ * Native open actions run on the remote host and the user sees them: the
+ * host allows them AND this client is on that machine (see
+ * `docs/developer/remote-capabilities.md`).
+ */
+export const isNativeOpenAllowed = (): boolean =>
+  _nativeOpenAllowed && isBackendOnThisMachine()
 
-/** Show Open in editor/finder/terminal when the backend host can launch them. */
+/**
+ * Show Reveal/Open in Finder, terminal, default app and git client for a
+ * backend path: local desktop, or a remote host this client sits at.
+ */
 export const canOpenNativeApps = (): boolean =>
-  isLocalBackend() || _nativeOpenAllowed
+  isLocalBackend() || isNativeOpenAllowed()
 
 /**
  * Native desktop shell connected to a remote Jean can open remote paths in the
- * local Zed CLI via `ssh://` when the remote cannot open apps itself
+ * local Zed CLI via `ssh://` when the remote cannot open apps for this user
  * (see `prepareRemoteEditorOpenArgs` and transport invoke routing).
  */
 export const canOpenRemoteEditorLocally = (): boolean =>
@@ -60,6 +99,13 @@ export const canOpenRemoteEditorLocally = (): boolean =>
  */
 export const canOpenInEditor = (): boolean =>
   canOpenNativeApps() || canOpenRemoteEditorLocally()
+
+/**
+ * Use the native file/folder picker (Browse…). The dialog lists this
+ * machine's disk, so it only fits the local backend; remote clients type
+ * the path or use the backend's directory browser.
+ */
+export const canPickLocalPaths = (): boolean => isLocalBackend()
 
 /** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {
