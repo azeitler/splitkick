@@ -39,8 +39,7 @@ fast check for the UI alone.
 ## Sealing
 
 Each instance gets its own root under `/tmp/sk-e2e-<name>-XXXX/` (short on
-purpose: macOS limits socket paths to 104 bytes; `E2E_ROOT_BASE` moves it, for
-example to the repo's `tmp/`):
+purpose: macOS limits socket paths to 104 bytes):
 
 - `home/` is `HOME`. Every home path in jean-core goes through `dirs`, which
   reads `$HOME`, so worktrees (`~/splitkick`), skill sync, agent configs and
