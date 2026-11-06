@@ -1633,6 +1633,52 @@ mod tests {
     use crate::chat::types::PendingFork;
     use crate::runtime::RuntimeContext;
 
+    fn start_test_run(app: &RuntimeContext, session_id: &str) {
+        start_run(
+            app,
+            session_id,
+            "worktree-1",
+            "Starting",
+            0,
+            "user-1",
+            "go",
+            None,
+            None,
+            None,
+            None,
+            Some(Backend::Claude),
+            None,
+        )
+        .unwrap();
+    }
+
+    fn run_status(app: &RuntimeContext, session_id: &str) -> RunStatus {
+        load_metadata(app, session_id).unwrap().unwrap().runs[0]
+            .status
+            .clone()
+    }
+
+    /// A page load (reload, another client) calls `check_resumable_sessions`
+    /// while a send is still starting its CLI: the run is `Running` with no
+    /// pid. It must stay running (#97).
+    #[test]
+    fn recovery_leaves_a_run_whose_send_is_still_starting() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let session_id = "session-97-starting";
+        start_test_run(&app, session_id);
+
+        let claim = crate::chat::commands::SendClaim::try_acquire(session_id).unwrap();
+        let recovered = recover_incomplete_runs(&app).unwrap();
+        assert!(recovered.iter().all(|run| run.session_id != session_id));
+        assert_eq!(run_status(&app, session_id), RunStatus::Running);
+
+        // Once nothing owns the run any more, it is a crash.
+        drop(claim);
+        recover_incomplete_runs(&app).unwrap();
+        assert_eq!(run_status(&app, session_id), RunStatus::Crashed);
+    }
+
     /// A fork's marker must survive the *start* of its first turn and only go
     /// when that turn finishes. Cleared at the start, a cancelled first turn
     /// would lose `--fork-session` while the source's resume id is still on the
@@ -2592,7 +2638,10 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
     let actively_managed = super::registry::get_actively_managed_sessions();
 
     for session_id in session_ids {
-        if actively_managed.contains(&session_id) {
+        // A send that is still starting its CLI has a `Running` run without a
+        // pid or registry entry yet. Without this, a page loaded in that
+        // window (a reload, another Web Access client) marked it Crashed (#97).
+        if actively_managed.contains(&session_id) || super::commands::has_active_send(&session_id) {
             continue;
         }
         let mut metadata = match load_metadata(app, &session_id)? {
