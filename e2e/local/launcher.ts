@@ -50,7 +50,11 @@ export function freePort(): Promise<number> {
 
 /** Create the sealed folders, preferences and stub CLI. Does not start. */
 export function prepareInstance(name: string, port: number): Instance {
-  const root = mkdtempSync(`/tmp/sk-e2e-${name}-`)
+  // E2E_ROOT_BASE moves the roots (default /tmp). Keep it short: macOS
+  // limits socket paths to 104 bytes.
+  const base = process.env.E2E_ROOT_BASE ?? '/tmp'
+  mkdirSync(base, { recursive: true })
+  const root = mkdtempSync(join(base, `sk-e2e-${name}-`))
   const home = join(root, 'home')
   const data = join(root, 'data')
   const repos = join(root, 'repos')
@@ -132,6 +136,8 @@ export async function startInstance(
       JEAN_HOST: '127.0.0.1',
       JEAN_PORT: String(instance.port),
       JEAN_ALLOWED_ORIGINS: allowedOrigins.join(','),
+      // Remote connection tokens in a file, never in the login Keychain.
+      SPLITKICK_REMOTE_TOKEN_STORE: 'file',
       // Debug builds overflow the default stack on MCP calls.
       RUST_MIN_STACK: '33554432',
       RUST_LOG: 'info',

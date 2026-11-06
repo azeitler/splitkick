@@ -1147,13 +1147,17 @@ export function ProjectCanvasView({
 
   const canvasFilterTabs = useMemo<CanvasFilterTabItem[]>(
     () => [
-      ...CANVAS_FILTER_TABS,
+      // A plain project (#93) has only its base session: no worktree kinds,
+      // issues, PRs, security or Mr. Robot to filter by.
+      ...(isPlain
+        ? CANVAS_FILTER_TABS.filter(tab => tab.value === 'all')
+        : CANVAS_FILTER_TABS),
       ...pinnedLabelTabs.map(tab => ({
         ...tab,
         icon: Tag,
       })),
     ],
-    [pinnedLabelTabs]
+    [pinnedLabelTabs, isPlain]
   )
 
   useEffect(() => {
