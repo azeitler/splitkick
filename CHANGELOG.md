@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Plain projects without git** (#93). Adding a folder without git now
+  offers "Add without git": a plain project with only its base session, for
+  documents, notes and shared folders. Worktrees, git status, diffs, commits,
+  pull requests and GitHub/Linear features are hidden for it; MCP git tools
+  return a clear error and `list_projects` shows the kind. When the folder
+  gets a `.git` later, Splitkick offers to switch it to a git project.
+- **Safer "Initialize Git"** (#93). It writes a `.gitignore` (OS junk, temp
+  files, an optional section for large binaries), shows how many files the
+  first commit adds, can make an empty first commit instead, and warns when
+  the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive.
+
 ### Fixed
 
 - **The open session is highlighted in Starred and Pinned too** (#92). Its
