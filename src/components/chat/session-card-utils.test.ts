@@ -251,6 +251,23 @@ describe('computeSessionCardData', () => {
     }
   }
 
+  it('exposes the last run error until a new run starts', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      last_run_status: 'crashed',
+      last_run_error: { kind: 'crashed', message: '' },
+    }
+
+    const idle = computeSessionCardData(session, createBaseStoreState())
+    expect(idle.runError).toEqual({ kind: 'crashed', message: '' })
+
+    const resumed = computeSessionCardData(
+      session,
+      createBaseStoreState({ sendingSessionIds: { 'session-1': true } })
+    )
+    expect(resumed.runError).toBeNull()
+  })
+
   it('exposes a Claude usage-limit stop until a new run starts', () => {
     const session: Session = {
       ...createBaseSession(),

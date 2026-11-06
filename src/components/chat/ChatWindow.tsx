@@ -164,6 +164,8 @@ import {
 } from '@/lib/backend-auto-steer'
 import { ErrorBanner } from './ErrorBanner'
 import { LimitHitBanner } from './LimitHitBanner'
+import { RunErrorBanner } from './RunErrorBanner'
+import { openBackendLoginModal } from '@/lib/cli-auth'
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -2895,7 +2897,7 @@ export function ChatWindow({
       DEFAULT_KEYBINDINGS.add_follow_up) as string
   )
 
-  const handleResumeAfterLimit = useCallback(
+  const handleResumeWithContinue = useCallback(
     () => sendTextMessage('continue'),
     [sendTextMessage]
   )
@@ -2903,6 +2905,20 @@ export function ChatWindow({
     () => inputRef.current?.focus(),
     []
   )
+  const handleRetryAbortedSend = useCallback(
+    (message: string) => {
+      // The failed send was restored into the composer; drop that copy.
+      const { inputDrafts, setInputDraft } = useChatStore.getState()
+      if (activeSessionId && inputDrafts[activeSessionId] === message) {
+        setInputDraft(activeSessionId, '')
+      }
+      sendTextMessage(message)
+    },
+    [activeSessionId, sendTextMessage]
+  )
+  const handleRunErrorLogin = useCallback(() => {
+    void openBackendLoginModal(resolvedBackend)
+  }, [resolvedBackend])
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
@@ -3676,13 +3692,25 @@ export function ChatWindow({
                     {session?.last_run_limit_hit && !isSending && (
                       <LimitHitBanner
                         limit={session.last_run_limit_hit}
-                        onResume={handleResumeAfterLimit}
+                        onResume={handleResumeWithContinue}
                         onResumeWithMessage={handleResumeWithMessage}
                       />
                     )}
 
-                    {/* Error banner - shows when request fails */}
-                    {currentError && (
+                    {/* The last run ended with an error; offers a retry */}
+                    {session?.last_run_error && !isSending && (
+                      <RunErrorBanner
+                        error={session.last_run_error}
+                        onResume={handleResumeWithContinue}
+                        onResumeWithMessage={handleResumeWithMessage}
+                        onRetry={handleRetryAbortedSend}
+                        onLogin={handleRunErrorLogin}
+                      />
+                    )}
+
+                    {/* Error banner - shows when request fails (until the
+                        persisted run error above takes over) */}
+                    {currentError && !session?.last_run_error && (
                       <ErrorBanner
                         error={currentError}
                         onDismiss={() =>

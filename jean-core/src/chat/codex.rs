@@ -38,6 +38,8 @@ pub struct CodexResponse {
     pub cancelled: bool,
     /// Whether a chat:error event was emitted during execution
     pub error_emitted: bool,
+    /// The error text sent with that chat:error event
+    pub error_message: Option<String>,
     /// Token usage for this response
     pub usage: Option<UsageData>,
 }
@@ -1626,6 +1628,13 @@ pub fn resume_codex_after_crash(
                 if let Ok(mut writer) = RunLogWriter::resume(app, session_id, run_id) {
                     let assistant_message_id = uuid::Uuid::new_v4().to_string();
                     if response.error_emitted {
+                        if let Some(message) = response.error_message.clone() {
+                            let _ = writer.set_run_error(super::types::RunError {
+                                kind: super::types::RunErrorKind::Crashed,
+                                message,
+                                retry_message: None,
+                            });
+                        }
                         if let Err(e) = writer.crash() {
                             log::error!(
                                 "Failed to mark Codex run crashed after recovery error: {e}"
@@ -1908,7 +1917,7 @@ fn process_turn_events(
     let mut completed = false;
     let mut cancelled = false;
     let mut server_interrupted = false;
-    let mut error_emitted = false;
+    let mut error_emitted: Option<String> = None;
     let mut usage: Option<UsageData> = None;
     let mut received_completed_agent_message = false;
 
@@ -1998,16 +2007,20 @@ fn process_turn_events(
                                                 .unwrap_or_else(|| {
                                                     "Unknown Codex error".to_string()
                                                 });
+                                            let user_error = format_codex_user_error(&raw_error);
                                             let _ = app.emit_all(
                                                 "chat:error",
                                                 &ErrorEvent {
                                                     session_id: session_id.to_string(),
                                                     worktree_id: worktree_id.to_string(),
-                                                    error: format_codex_user_error(&raw_error),
+                                                    error: user_error.clone(),
                                                 },
                                             );
+                                            error_emitted = Some(user_error);
                                         }
-                                        error_emitted = true;
+                                        if error_emitted.is_none() {
+                                            error_emitted = Some("Codex turn failed".to_string());
+                                        }
                                         break 'outer;
                                     }
                                     CodexResumeDisposition::Interrupted => {
@@ -2154,17 +2167,18 @@ fn process_turn_events(
                     &mut chunk_coalescer,
                     &mut thinking_coalescer,
                 );
-                if !error_emitted {
+                if error_emitted.is_none() {
+                    let error =
+                        "Codex server connection lost. Try sending your message again.".to_string();
                     let _ = app.emit_all(
                         "chat:error",
                         &ErrorEvent {
                             session_id: session_id.to_string(),
                             worktree_id: worktree_id.to_string(),
-                            error: "Codex server connection lost. Try sending your message again."
-                                .to_string(),
+                            error: error.clone(),
                         },
                     );
-                    error_emitted = true;
+                    error_emitted = Some(error);
                 }
                 cancelled = true;
                 break 'outer;
@@ -2191,7 +2205,9 @@ fn process_turn_events(
     // Codex never emitted a completed agent_message item. If one was already
     // written to history, appending another synthetic completion duplicates the
     // final assistant text on reload and after query invalidation.
-    if (cancelled || error_emitted) && !full_content.is_empty() && !received_completed_agent_message
+    if (cancelled || error_emitted.is_some())
+        && !full_content.is_empty()
+        && !received_completed_agent_message
     {
         if let Some(ref mut writer) = output_writer {
             let synthetic = serde_json::json!({
@@ -2211,7 +2227,7 @@ fn process_turn_events(
 
     let has_executed_tools = tool_calls.iter().any(|tc| tc.name != CODEX_PLAN_TOOL_NAME);
     let detected_plain_text_plan =
-        if !cancelled && !error_emitted && is_plan_mode && !has_executed_tools {
+        if !cancelled && error_emitted.is_none() && is_plan_mode && !has_executed_tools {
             ensure_plain_text_codex_plan_tool(&mut tool_calls, &mut content_blocks, &full_content)
         } else {
             false
@@ -2219,12 +2235,12 @@ fn process_turn_events(
 
     // Collapse split CodexPlan tools and promote richer assistant text when the
     // plan body is only a thin checklist / status explanation.
-    if !cancelled && !error_emitted && is_plan_mode {
+    if !cancelled && error_emitted.is_none() && is_plan_mode {
         enrich_thin_codex_plan(&mut tool_calls, &mut content_blocks, &full_content);
     }
 
     // Emit chat:done unless error was emitted
-    if !cancelled && !error_emitted {
+    if !cancelled && error_emitted.is_none() {
         let has_plan_tool = has_codex_plan_tool(&tool_calls);
 
         // Write result marker for crash-recovery compatibility
@@ -2241,7 +2257,7 @@ fn process_turn_events(
                 waiting_for_plan: is_plan_mode && (has_plan_tool || detected_plain_text_plan),
             },
         );
-    } else if server_interrupted && !error_emitted {
+    } else if server_interrupted && error_emitted.is_none() {
         // Server-initiated interruption (e.g., Codex ended the turn while an
         // approval request was still pending). User-initiated cancellation is
         // handled by registry::cancel_process() which emits chat:cancelled
@@ -2270,7 +2286,8 @@ fn process_turn_events(
         tool_calls,
         content_blocks,
         cancelled,
-        error_emitted,
+        error_emitted: error_emitted.is_some(),
+        error_message: error_emitted,
         usage,
     }
 }
@@ -2397,7 +2414,7 @@ fn process_server_notification(
     cancelled: &mut bool,
     server_interrupted: &mut bool,
     usage: &mut Option<UsageData>,
-    error_emitted: &mut bool,
+    error_emitted: &mut Option<String>,
     received_completed_agent_message: &mut bool,
     is_plan_mode: bool,
     chunk_coalescer: &mut ChunkCoalescer,
@@ -2691,10 +2708,10 @@ fn process_server_notification(
                         &ErrorEvent {
                             session_id: session_id.to_string(),
                             worktree_id: worktree_id.to_string(),
-                            error: user_error,
+                            error: user_error.clone(),
                         },
                     );
-                    *error_emitted = true;
+                    *error_emitted = Some(user_error);
                 } else if status == "interrupted" {
                     // Turn was interrupted — either by user cancel (registry already
                     // emitted chat:cancelled) or by server (e.g., pending approval
@@ -2776,10 +2793,10 @@ fn process_server_notification(
                 &ErrorEvent {
                     session_id: session_id.to_string(),
                     worktree_id: worktree_id.to_string(),
-                    error: user_error,
+                    error: user_error.clone(),
                 },
             );
-            *error_emitted = true;
+            *error_emitted = Some(user_error);
             *completed = true;
         }
         _ => {
@@ -3547,7 +3564,7 @@ fn process_codex_event(
     pending_tool_ids: &mut HashMap<String, String>,
     completed: &mut bool,
     usage: &mut Option<UsageData>,
-    error_emitted: &mut bool,
+    error_emitted: &mut Option<String>,
 ) {
     match event_type {
         "thread.started" => {
@@ -4264,11 +4281,11 @@ fn process_codex_event(
                 &ErrorEvent {
                     session_id: session_id.to_string(),
                     worktree_id: worktree_id.to_string(),
-                    error: user_error,
+                    error: user_error.clone(),
                 },
             );
             *completed = true;
-            *error_emitted = true;
+            *error_emitted = Some(user_error);
             log::error!("Codex turn failed for session {session_id}: {error_msg}");
         }
         _ => {
@@ -4283,11 +4300,11 @@ fn process_codex_event(
                     &ErrorEvent {
                         session_id: session_id.to_string(),
                         worktree_id: worktree_id.to_string(),
-                        error: user_error,
+                        error: user_error.clone(),
                     },
                 );
                 *completed = true;
-                *error_emitted = true;
+                *error_emitted = Some(user_error);
             } else {
                 log::trace!("Unknown Codex event type: {event_type}");
             }
@@ -6101,6 +6118,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6161,6 +6179,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6218,6 +6237,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6280,6 +6300,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6344,6 +6365,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6418,6 +6440,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6540,6 +6563,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6600,6 +6624,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6665,6 +6690,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6711,6 +6737,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6871,6 +6898,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
