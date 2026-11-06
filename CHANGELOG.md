@@ -53,18 +53,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   has a new "Project Preset" select. Non-coding projects get the global
   system prompt without the GitHub issue search rule. Automatic is the
   default: git projects are Coding, plain projects are Non-coding.
-- **Archived page: last archived first** (#96). Sessions and worktrees show
-  in one list, newest first, in sections Today, Yesterday, This week, This
-  month and Older. Sort by name or project instead (remembered). Each row
-  shows project › worktree, backend, message count, the last prompt, why it
-  was archived (PR merged, folder missing, closed with base session) and the
-  time as "2h ago (full date)". Filter by sessions/worktrees, project and
-  backend; the search also finds message text. Select several rows to
-  restore, copy links or delete them at once. "Restore & open" per row; on
-  the desktop app the arrows, Space, Enter and Delete work too.
-- **Custom magic prompts are marked.** Settings → Magic Prompts shows a
-  "Custom" badge on each prompt that differs from its default. This also
-  marks a saved copy of an older default, which no longer gets updates.
 - **Mention in chat for images.** Right-click an image in the chat thread and
   pick "Mention in chat" to attach it to the composer of the same session,
   like a pasted image.
