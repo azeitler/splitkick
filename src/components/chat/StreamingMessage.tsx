@@ -189,6 +189,7 @@ export const StreamingMessage = memo(function StreamingMessage({
       onCopyMessage={
         streamingResponseText ? handleCopyStreamingResponse : undefined
       }
+      sessionId={sessionId}
     >
       <div className="text-foreground/90">
         {/* Render streaming content blocks inline if available */}
