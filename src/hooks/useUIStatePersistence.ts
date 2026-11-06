@@ -246,6 +246,12 @@ export function useUIStatePersistence() {
         expandedPinnedProjectIds: new Set(expandedPinnedProjectIds),
       })
     }
+    const expandedGraphsProjectIds = uiState.expanded_graphs_project_ids ?? []
+    if (expandedGraphsProjectIds.length > 0) {
+      useProjectsStore.setState({
+        expandedGraphsProjectIds: new Set(expandedGraphsProjectIds),
+      })
+    }
 
     // Restore left sidebar size (must be at least 150px to be valid)
     if (uiState.left_sidebar_size != null && uiState.left_sidebar_size >= 150) {
@@ -1010,6 +1016,8 @@ export function useUIStatePersistence() {
     let prevProjectRailHidden = useProjectsStore.getState().projectRailHidden
     let prevExpandedPinnedProjectIds =
       useProjectsStore.getState().expandedPinnedProjectIds
+    let prevExpandedGraphsProjectIds =
+      useProjectsStore.getState().expandedGraphsProjectIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1087,7 +1095,8 @@ export function useUIStatePersistence() {
       const projectRailChanged =
         state.projectRailHidden !== prevProjectRailHidden
       const pinnedProjectIdsChanged =
-        state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds
+        state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds ||
+        state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1119,6 +1128,7 @@ export function useUIStatePersistence() {
         prevExpandedFolderIds = state.expandedFolderIds
         prevExpandedWorktreeIds = state.expandedWorktreeIds
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
+        prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevGraphsSectionCollapsed = state.graphsSectionCollapsed

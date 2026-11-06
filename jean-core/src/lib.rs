@@ -3013,6 +3013,10 @@ pub struct UIState {
     #[serde(default)]
     pub expanded_pinned_project_ids: Vec<String>,
 
+    /// Project IDs whose Graphs row is expanded in the sidebar (#99)
+    #[serde(default)]
+    pub expanded_graphs_project_ids: Vec<String>,
+
     /// Left sidebar width in pixels, defaults to 250
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
@@ -3341,6 +3345,7 @@ impl Default for UIState {
             expanded_folder_ids: Vec::new(),
             expanded_worktree_ids: Vec::new(),
             expanded_pinned_project_ids: Vec::new(),
+            expanded_graphs_project_ids: Vec::new(),
             left_sidebar_size: None,
             left_sidebar_visible: None,
             file_browser_size: None,

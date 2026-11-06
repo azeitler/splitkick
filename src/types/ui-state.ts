@@ -126,6 +126,8 @@ export interface UIState {
   expanded_worktree_ids?: string[]
   /** Project IDs whose pinned-sessions row is expanded in the sidebar */
   expanded_pinned_project_ids?: string[]
+  /** Project IDs whose Graphs row is expanded in the sidebar (#99) */
+  expanded_graphs_project_ids?: string[]
   /** Starred sessions across every project, in star order */
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
@@ -254,6 +256,7 @@ export const defaultUIState: UIState = {
   expanded_folder_ids: [],
   expanded_worktree_ids: [],
   expanded_pinned_project_ids: [],
+  expanded_graphs_project_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
   graphs_section_collapsed: false,
