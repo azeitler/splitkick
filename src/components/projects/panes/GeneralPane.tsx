@@ -41,7 +41,12 @@ import {
   useSetProjectIsGit,
 } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import { isPlainProject, type Project } from '@/types/projects'
+import {
+  isCodingProject,
+  isPlainProject,
+  type Project,
+  type ProjectPreset,
+} from '@/types/projects'
 import { usePreferences } from '@/services/preferences'
 import {
   Select,
@@ -228,6 +233,16 @@ export function GeneralPane({
     [projectId, updateSettings]
   )
 
+  const handlePresetChange = useCallback(
+    (value: string) => {
+      updateSettings.mutate({
+        projectId,
+        preset: value === 'automatic' ? null : (value as ProjectPreset),
+      })
+    },
+    [projectId, updateSettings]
+  )
+
   const handleBackendChange = useCallback(
     (value: string) => {
       updateSettings.mutate({
@@ -380,6 +395,30 @@ export function GeneralPane({
 
         <SettingsSection title="Project Kind">
           {project && <ProjectKindField project={project} />}
+          <InlineField
+            label="Project Preset"
+            description="Non-coding projects skip coding-only prompt rules, such as the GitHub issue search after changes"
+          >
+            <Select
+              value={project?.preset ?? 'automatic'}
+              onValueChange={handlePresetChange}
+            >
+              <SelectTrigger className="w-full" aria-label="Project preset">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="automatic">
+                  Automatic (
+                  {isCodingProject({ is_git: project?.is_git })
+                    ? 'Coding'
+                    : 'Non-coding'}
+                  )
+                </SelectItem>
+                <SelectItem value="coding">Coding</SelectItem>
+                <SelectItem value="non_coding">Non-coding</SelectItem>
+              </SelectContent>
+            </Select>
+          </InlineField>
         </SettingsSection>
 
         <SettingsSection title="Defaults">

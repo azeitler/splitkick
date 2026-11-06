@@ -190,6 +190,19 @@ pub struct Project {
     /// every load (never trusted from disk), so the UI can offer the switch.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub git_detected: bool,
+    /// Coding or non-coding. None = automatic: Coding for git projects,
+    /// Non-coding for plain projects. See [`Project::is_coding`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<ProjectPreset>,
+}
+
+/// What a project is for. Non-coding projects (notes, docs, plain folders)
+/// skip coding-only prompt sections such as GitHub issue discovery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectPreset {
+    Coding,
+    NonCoding,
 }
 
 fn default_is_git() -> bool {
@@ -211,6 +224,15 @@ impl Project {
     /// Sidebar folders (`is_folder`) are not plain projects.
     pub fn is_plain(&self) -> bool {
         !self.is_folder && !self.is_git
+    }
+
+    /// True when the project uses the Coding preset, set by hand or by
+    /// default (git projects are Coding, plain projects are Non-coding).
+    pub fn is_coding(&self) -> bool {
+        match self.preset {
+            Some(preset) => preset == ProjectPreset::Coding,
+            None => self.is_git,
+        }
     }
 
     /// "folder" (sidebar group), "plain" (no git) or "git". Shown by MCP.
@@ -998,5 +1020,39 @@ mod label_tests {
             serde_json::to_value(branch_event).unwrap()["origin"],
             serde_json::json!("auto_fix")
         );
+    }
+}
+
+#[cfg(test)]
+mod preset_tests {
+    use super::*;
+
+    fn project(extra: serde_json::Value) -> Project {
+        let mut json = serde_json::json!({
+            "id": "p", "name": "n", "path": "/tmp", "default_branch": "main",
+            "added_at": 1, "order": 0
+        });
+        json.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(json).expect("project")
+    }
+
+    #[test]
+    fn automatic_preset_follows_git() {
+        assert!(project(serde_json::json!({})).is_coding());
+        assert!(!project(serde_json::json!({ "is_git": false })).is_coding());
+    }
+
+    #[test]
+    fn explicit_preset_wins_over_git() {
+        assert!(!project(serde_json::json!({ "preset": "non_coding" })).is_coding());
+        assert!(project(serde_json::json!({ "is_git": false, "preset": "coding" })).is_coding());
+    }
+
+    #[test]
+    fn automatic_preset_is_not_written_to_disk() {
+        let json = serde_json::to_value(project(serde_json::json!({}))).unwrap();
+        assert!(json.get("preset").is_none());
     }
 }

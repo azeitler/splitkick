@@ -538,7 +538,11 @@ fn build_kimi_system_prompt(
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            parts.push(prompt.to_string());
+            parts.push(super::project_preset::global_prompt_for_worktree(
+                app,
+                worktree_id,
+                prompt,
+            ));
         }
     }
     if let Some(prompt) = parallel_prompt
@@ -4043,9 +4047,13 @@ pub async fn send_chat_message(
                             serde_json::from_str::<crate::AppPreferences>(&contents).ok()
                         })
                         .and_then(|prefs| prefs.magic_prompts.global_system_prompt);
-                    system_prompt_parts.push(resolve_codex_global_system_prompt(
-                        preferences_global_prompt.as_deref(),
-                        thread_execution_mode.as_deref(),
+                    system_prompt_parts.push(super::project_preset::global_prompt_for_worktree(
+                        &thread_app,
+                        &thread_worktree_id,
+                        &resolve_codex_global_system_prompt(
+                            preferences_global_prompt.as_deref(),
+                            thread_execution_mode.as_deref(),
+                        ),
                     ));
 
                     // Parallel execution prompt
@@ -4462,7 +4470,13 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    system_prompt_parts.push(prompt.to_string());
+                                    system_prompt_parts.push(
+                                        super::project_preset::global_prompt_for_worktree(
+                                            &thread_app,
+                                            &thread_worktree_id,
+                                            prompt,
+                                        ),
+                                    );
                                 }
                             }
                         }
@@ -4823,7 +4837,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }
@@ -5009,7 +5027,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }
@@ -5159,7 +5181,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }

@@ -760,6 +760,7 @@ fn project_from_pending_auto_yolo(entry: &PendingAutoYolo) -> Project {
         auto_fix_settings: None,
         is_git: true,
         git_detected: false,
+        preset: None,
     }
 }
 
@@ -1008,6 +1009,7 @@ mod tests {
             auto_fix_settings,
             is_git: true,
             git_detected: false,
+            preset: None,
         }
     }
 

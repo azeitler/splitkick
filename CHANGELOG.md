@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Project preset: Coding or Non-coding** (#95). Project Settings → General
+  has a new "Project Preset" select. Non-coding projects get the global
+  system prompt without the GitHub issue search rule. Automatic is the
+  default: git projects are Coding, plain projects are Non-coding.
 - **Custom magic prompts are marked.** Settings → Magic Prompts shows a
   "Custom" badge on each prompt that differs from its default. This also
   marks a saved copy of an older default, which no longer gets updates.
