@@ -565,6 +565,13 @@ mod tests {
                 run("r2", RunStatus::Completed, "second"),
                 run("r3", RunStatus::Running, "in flight"),
             ];
+            m.artifacts = vec![super::super::types::Artifact {
+                id: "art-1".to_string(),
+                title: "Preview".to_string(),
+                target: "https://preview.example.dev".to_string(),
+                note: None,
+                created_at: 1,
+            }];
             Ok(())
         })
         .unwrap();
@@ -675,6 +682,15 @@ mod tests {
         assert_eq!(metadata.claude_account_id, None);
         assert_eq!(metadata.worktree_id, "wt-target");
         assert_eq!(metadata.runs.len(), 2);
+        assert_eq!(
+            metadata
+                .artifacts
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["art-1"],
+            "the artifact list travels with the session"
+        );
         assert!(metadata
             .runs
             .iter()

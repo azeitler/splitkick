@@ -915,6 +915,32 @@ mod tests {
     }
 
     #[test]
+    fn a_fork_keeps_the_artifact_list() {
+        let mut source = metadata_with_every_resume_id(Backend::Codex);
+        source.artifacts = vec![super::super::types::Artifact {
+            id: "art-1".to_string(),
+            title: "Report".to_string(),
+            target: "https://preview.example.dev".to_string(),
+            note: Some("v1".to_string()),
+            created_at: 1,
+        }];
+        let forked_session =
+            prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Handoff);
+        assert_eq!(forked_session.artifacts, source.artifacts);
+
+        let metadata = prepare_forked_metadata(
+            Some(source.clone()),
+            &forked_session,
+            "source-session",
+            "target-worktree",
+            three_runs(),
+            PendingFork::Handoff,
+        );
+
+        assert_eq!(metadata.artifacts, source.artifacts);
+    }
+
+    #[test]
     fn prepare_forked_metadata_stores_the_truncated_run_list() {
         let source = metadata_with_every_resume_id(Backend::Claude);
         let forked_session =

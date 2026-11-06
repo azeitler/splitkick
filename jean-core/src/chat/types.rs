@@ -35,6 +35,20 @@ pub struct FollowUp {
     pub created_at: u64,
 }
 
+/// A file or URL the agent registered as an output of the session.
+/// Added through the `add_artifact` MCP tool, shown in the Artifacts panel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Artifact {
+    pub id: String,
+    pub title: String,
+    /// Absolute path, or an http(s)/file URL.
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Unix timestamp in milliseconds
+    pub created_at: u64,
+}
+
 /// Deserializes label from either a plain string (old format) or a LabelData object (new format).
 fn deserialize_label_compat<'de, D>(deserializer: D) -> Result<Option<LabelData>, D::Error>
 where
@@ -979,6 +993,9 @@ pub struct Session {
     /// Follow-up notes for future turns (#46). Never sent automatically.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follow_ups: Vec<FollowUp>,
+    /// Files and URLs the agent registered as outputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<Artifact>,
 
     // ========================================================================
     // Pagination metadata (populated by get_session)
@@ -1105,6 +1122,7 @@ impl Session {
             label: None,
             queued_messages: vec![],
             follow_ups: vec![],
+            artifacts: vec![],
             total_runs: 0,
             loaded_run_start_index: 0,
             scheduled_wakeup: None,
@@ -1342,6 +1360,7 @@ impl SessionMetadata {
             label: self.label.clone(),
             queued_messages: self.queued_messages.clone(),
             follow_ups: self.follow_ups.clone(),
+            artifacts: self.artifacts.clone(),
             total_runs: self.runs.len(),
             loaded_run_start_index: self.runs.len(),
             // Schedules live in `schedules.json`; the metadata field only
@@ -1931,6 +1950,11 @@ pub struct SessionMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follow_ups: Vec<FollowUp>,
 
+    /// Files and URLs the agent registered as outputs. Changed only through
+    /// `edit_session_artifacts`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<Artifact>,
+
     /// Unix timestamp when session was last opened/viewed by the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<u64>,
@@ -2104,6 +2128,7 @@ impl SessionMetadata {
             label: None,
             queued_messages: vec![],
             follow_ups: vec![],
+            artifacts: vec![],
             last_opened_at: None,
             primary_surface: None,
             terminal_command: None,

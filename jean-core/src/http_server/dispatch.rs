@@ -3496,6 +3496,21 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "edit_session_artifacts" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let op: crate::chat::artifacts::ArtifactOp = from_field(&args, "op")?;
+            let result = crate::chat::edit_session_artifacts(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                op,
+            )
+            .await?;
+            to_value(result)
+        }
         "dequeue_message" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

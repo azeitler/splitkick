@@ -1,4 +1,5 @@
 pub(crate) mod antigravity;
+pub mod artifacts;
 pub(crate) mod claude;
 pub mod claude_dialog;
 pub(crate) mod claude_dialog_tool;
@@ -35,6 +36,7 @@ pub mod tail;
 pub mod transfer;
 pub mod types;
 
+pub use artifacts::edit_session_artifacts;
 pub use commands::*;
 pub use follow_ups::edit_session_follow_ups;
 pub use fork::fork_session_in_place;
