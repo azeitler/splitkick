@@ -326,6 +326,7 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - Before writing a spec from approved mockups, list every visible difference between mockup and current UI, and mark each one in scope or out of scope in the spec. Ask about each one that is unclear.
 
 ## 2026-10-15 — GitHub posts on own repos need no approval
+
 - User changed the global rule: issues, PRs, comments, labels, reviews on repos owned by `azeitler` or their orgs are posted directly, then reported with a link.
 - Still ask for: other owners' repos (upstream `coollabsio/jean`), `git push`, releases, publishing, deploys.
 - Fork is now `azeitler/splitkick` (renamed from `azeitler/jean`); use `--repo azeitler/splitkick`.
@@ -374,3 +375,12 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - The reverted 1.0.1 merge (`1cf20d58`, reverted in `54d762af`) keeps 173 upstream commits reachable in `git log`, but none of their code is in the tree.
 - A commit-subject match against `git log HEAD` therefore says "fork has it" for reverted work. It did so for ten upstream Windows fixes in the #71 evaluation, and one of them (npm shims, `d499d506`) was a real Windows defect found later in the VM.
 - Check with `git merge-base --is-ancestor <commit> <sha from docs/upstream/last-sync.json>`. A commit after the baseline is missing unless it was cherry-picked after the revert; confirm by reading the code in the tree.
+
+## Disable unavailable actions, do not hide them
+
+- When an action cannot work in the current mode (remote, Web Access, phone),
+  show it disabled with a short reason instead of removing it. Andreas wants
+  to see that the action exists and why it is off (#89).
+- An issue text that says "hide (preferred) or disable" is not the final word:
+  ask, or default to disable, when the user has not chosen.
+- Keep the reason short and visible without hover (phones have no tooltips).

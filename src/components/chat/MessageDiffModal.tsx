@@ -36,6 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { canOpenInEditor } from '@/lib/environment'
+import { HOST_ONLY_REASON } from '@/components/ui/host-only-hint'
 
 function DiffBlock({
   fileName,
@@ -333,11 +334,17 @@ export function MessageDiffModal({
           </DialogTitle>
 
           <div className="absolute right-4 top-4 flex items-center gap-1 sm:right-5">
-            {!isMobile && canOpenInEditor() && (
+            {!isMobile && (
               <button
                 type="button"
                 onClick={handleOpenExternal}
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                disabled={!canOpenInEditor()}
+                title={
+                  canOpenInEditor()
+                    ? 'Open in Editor'
+                    : `Open in Editor: ${HOST_ONLY_REASON}`
+                }
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               >
                 <ExternalLink className="h-4 w-4" />
                 <span className="sr-only">Open in Editor</span>

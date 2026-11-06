@@ -13,8 +13,9 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * Web Access: Finder/terminal actions run on the backend host, so they show
- * only when the browser sits at that host (#89). The mock app is Web Access on
+ * Web Access: Finder/terminal actions run on the backend host, so they are
+ * enabled only when the browser sits at that host, else disabled with
+ * "Host only" (#89). The mock app is Web Access on
  * `localhost`. Set REMOTE_WEB_URL (a non-loopback URL that serves the same
  * e2e dev server) to also check a browser on another machine.
  */
@@ -57,25 +58,28 @@ async function shot(page: Page, name: string) {
 }
 
 test.describe('Remote capabilities (#89)', () => {
-  test('Web Access on the host itself keeps Open in Finder', async ({
+  const hostItems = [
+    /Open in (Finder|Explorer|Files)/,
+    /Open in .*Terminal/,
+    /Open Worktrees Folder/,
+  ]
+
+  test('Web Access on the host itself keeps Open in Finder enabled', async ({
     mockPage,
   }) => {
     await hostAllowsNativeOpen(mockPage)
     const menu = await openProjectMenu(mockPage)
 
-    await expect(
-      menu.getByRole('menuitem', { name: /Open in (Finder|Explorer|Files)/ })
-    ).toBeVisible()
-    await expect(
-      menu.getByRole('menuitem', { name: /Open in .*Terminal/ })
-    ).toBeVisible()
-    await expect(
-      menu.getByRole('menuitem', { name: 'Open Worktrees Folder' })
-    ).toBeVisible()
+    for (const name of hostItems) {
+      const item = menu.getByRole('menuitem', { name })
+      await expect(item).toBeVisible()
+      await expect(item).not.toHaveAttribute('aria-disabled', 'true')
+    }
+    await expect(menu.getByText('Host only')).toHaveCount(0)
     await shot(mockPage, 'web-access-localhost')
   })
 
-  test('Web Access from another machine hides Open in Finder', async ({
+  test('Web Access from another machine disables Open in Finder', async ({
     mockPage,
   }) => {
     const remoteUrl = process.env.REMOTE_WEB_URL
@@ -85,15 +89,12 @@ test.describe('Remote capabilities (#89)', () => {
     await hostAllowsNativeOpen(mockPage)
     const menu = await openProjectMenu(mockPage)
 
-    await expect(
-      menu.getByRole('menuitem', { name: /Open in (Finder|Explorer|Files)/ })
-    ).toHaveCount(0)
-    await expect(
-      menu.getByRole('menuitem', { name: /Open in .*Terminal/ })
-    ).toHaveCount(0)
-    await expect(
-      menu.getByRole('menuitem', { name: 'Open Worktrees Folder' })
-    ).toHaveCount(0)
+    for (const name of hostItems) {
+      const item = menu.getByRole('menuitem', { name })
+      await expect(item).toBeVisible()
+      await expect(item).toHaveAttribute('aria-disabled', 'true')
+      await expect(item).toContainText('Host only')
+    }
     await shot(mockPage, 'web-access-remote')
   })
 })

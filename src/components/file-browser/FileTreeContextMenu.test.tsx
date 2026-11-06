@@ -117,7 +117,7 @@ describe('FileTreeContextMenu', () => {
     expect(actions.handleOpenInTerminal).toHaveBeenCalledWith(dirNode)
   })
 
-  it('keeps copy and chat items when the host cannot open native apps', async () => {
+  it('disables open items and keeps copy and chat items when the host cannot open native apps', async () => {
     mocks.canOpenNativeApps.mockReturnValue(false)
     mocks.canOpenInEditor.mockReturnValue(false)
     const user = userEvent.setup()
@@ -126,10 +126,11 @@ describe('FileTreeContextMenu', () => {
     const copyRelative = await screen.findByRole('menuitem', {
       name: /copy relative path/i,
     })
-    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBe(null)
-    expect(screen.queryByRole('menuitem', { name: /open in vs code/i })).toBe(
-      null
-    )
+    for (const name of [/reveal in/i, /open in vs code/i, /default app/i]) {
+      const item = screen.getByRole('menuitem', { name })
+      expect(item).toHaveAttribute('aria-disabled', 'true')
+      expect(item).toHaveTextContent('Host only')
+    }
     expect(screen.getByRole('menuitem', { name: /add to chat/i })).toBeTruthy()
 
     await user.click(copyRelative)

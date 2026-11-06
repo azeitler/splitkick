@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 /**
  * An image you can zoom and pan: pinch, wheel, or double-click to toggle. It
@@ -84,7 +85,7 @@ export function ImagePreviewDialog({
 }: ImagePreviewDialogProps) {
   const revealPath = useRevealPathInFileManager()
   const local = isLocalBackend()
-  const canReveal = Boolean(path) && canOpenNativeApps()
+  const canReveal = canOpenNativeApps()
   const canOpenInBrowser = !local && !INLINE_IMAGE_SRC_RE.test(src)
 
   return (
@@ -107,14 +108,16 @@ export function ImagePreviewDialog({
           />
         </div>
         <div className="flex shrink-0 justify-center gap-1">
-          {canReveal && path && (
+          {path && (
             <Button
               variant="ghost"
               size="sm"
+              disabled={!canReveal}
               onClick={() => revealPath.mutate(path)}
             >
               <FolderOpen className="h-4 w-4" />
               Reveal in {getFileManagerName()}
+              {!canReveal && <HostOnlyHint />}
             </Button>
           )}
           {canOpenInBrowser && (

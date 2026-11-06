@@ -486,12 +486,14 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
   })
 
-  it('offers no reveal when the file is on another machine', async () => {
+  it('disables reveal when the file is on another machine', async () => {
     mocks.isLocalBackend.mockReturnValue(false)
     openMenuOn('notes', 'docs/notes.md')
 
     await screen.findByRole('menuitem', { name: /copy message/i })
-    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+    const reveal = screen.getByRole('menuitem', { name: /reveal in/i })
+    expect(reveal).toHaveAttribute('aria-disabled', 'true')
+    expect(reveal).toHaveTextContent('Host only')
   })
 
   it('reveals a chat image by its local path', async () => {
@@ -518,7 +520,7 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     )
   })
 
-  it('offers no image reveal when the file is on another machine', async () => {
+  it('disables image reveal when the file is on another machine', async () => {
     mocks.isLocalBackend.mockReturnValue(false)
     render(
       <MessageThreadContextMenu messageText="Full message body">
@@ -530,7 +532,9 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     fireEvent.contextMenu(screen.getByAltText('shot'))
 
     await screen.findByRole('menuitem', { name: /copy message/i })
-    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+    const reveal = screen.getByRole('menuitem', { name: /reveal in/i })
+    expect(reveal).toHaveAttribute('aria-disabled', 'true')
+    expect(reveal).toHaveTextContent('Host only')
   })
 
   it('falls back to the plain join while the resolution is in flight', async () => {
