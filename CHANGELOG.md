@@ -49,6 +49,37 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   Keybindings). For a session that does not serve a graph node yet, the command
   explains how to link it instead of opening an empty panel. The panel stays
   desktop-only.
+- **Project preset: Coding or Non-coding** (#95). Project Settings → General
+  has a new "Project Preset" select. Non-coding projects get the global
+  system prompt without the GitHub issue search rule. Automatic is the
+  default: git projects are Coding, plain projects are Non-coding.
+- **Agents can use your other Splitkick instances** (#94). Two new MCP tools:
+  `list_instances` shows the connected instances (reachable, version) and
+  `remote_tool` runs one MCP tool on one of them, for example "send a message
+  to project X on mb16". Each instance answers a token-protected
+  `POST /api/mcp/call`. One hop only; graph writes are refused across
+  instances. Remote connections now live in the backend, their tokens in the
+  macOS Keychain; the old browser-storage list moves there once at the first
+  start.
+- **Plain projects without git** (#93). Adding a folder without git now
+  offers "Add without git": a plain project with only its base session, for
+  documents, notes and shared folders. Worktrees, git status, diffs, commits,
+  pull requests and GitHub/Linear features are hidden for it; MCP git tools
+  return a clear error and `list_projects` shows the kind. When the folder
+  gets a `.git` later, Splitkick offers to switch it to a git project.
+- **Failed sessions are marked.** When a run fails, the session gets a red
+  alert icon in the sidebar and the chat shows what went wrong, with a way
+  to go on: **Resume** and **Resume with message** after an API error
+  (for example "API Error: 500") or a crash, **Retry** and **Edit message**
+  when the message was not sent, and **Log in** when the login expired.
+  Before, an API error looked like a normal finished run. The icon and the
+  banner go away when the next run starts.
+- **Windows installer: choose "only for me" or "all users".** The installer
+  now asks where to install: `%LOCALAPPDATA%\Splitkick` (the default) or
+  `C:\Program Files\Splitkick`. Updates keep the location of the existing
+  install, also for installs made by 1.5.0. Users with admin rights now see a
+  UAC prompt on every install and update, also for "only for me"; this is how
+  the Tauri installer works in this mode.
 
 ### Changed
 
@@ -69,10 +100,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   permission, links); both choices are remembered. States show as Idea, Planned, Done and Dropped; the
   file and the MCP tools keep proposed, committed, done and dropped. "Change
   link…" in the session panel opens "Link to Graph…".
-- **Project preset: Coding or Non-coding** (#95). Project Settings → General
-  has a new "Project Preset" select. Non-coding projects get the global
-  system prompt without the GitHub issue search rule. Automatic is the
-  default: git projects are Coding, plain projects are Non-coding.
 - **Archived page: last archived first** (#96). Sessions and worktrees show
   in one list, newest first, in sections Today, Yesterday, This week, This
   month and Older. Sort by name or project instead (remembered). Each row
@@ -85,40 +112,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Custom magic prompts are marked.** Settings → Magic Prompts shows a
   "Custom" badge on each prompt that differs from its default. This also
   marks a saved copy of an older default, which no longer gets updates.
-- **Agents can use your other Splitkick instances** (#94). Two new MCP tools:
-  `list_instances` shows the connected instances (reachable, version) and
-  `remote_tool` runs one MCP tool on one of them, for example "send a message
-  to project X on mb16". Each instance answers a token-protected
-  `POST /api/mcp/call`. One hop only; graph writes are refused across
-  instances. Remote connections now live in the backend, their tokens in the
-  macOS Keychain; the old browser-storage list moves there once at the first
-  start.
-- **Plain projects without git** (#93). Adding a folder without git now
-  offers "Add without git": a plain project with only its base session, for
-  documents, notes and shared folders. Worktrees, git status, diffs, commits,
-  pull requests and GitHub/Linear features are hidden for it; MCP git tools
-  return a clear error and `list_projects` shows the kind. When the folder
-  gets a `.git` later, Splitkick offers to switch it to a git project.
 - **Safer "Initialize Git"** (#93). It writes a `.gitignore` (OS junk, temp
   files, an optional section for large binaries), shows how many files the
   first commit adds, can make an empty first commit instead, and warns when
   the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive.
-- **Failed sessions are marked.** When a run fails, the session gets a red
-  alert icon in the sidebar and the chat shows what went wrong, with a way
-  to go on: **Resume** and **Resume with message** after an API error
-  (for example "API Error: 500") or a crash, **Retry** and **Edit message**
-  when the message was not sent, and **Log in** when the login expired.
-  Before, an API error looked like a normal finished run. The icon and the
-  banner go away when the next run starts.
-
-### Changed
-
-- **Windows installer: choose "only for me" or "all users".** The installer
-  now asks where to install: `%LOCALAPPDATA%\Splitkick` (the default) or
-  `C:\Program Files\Splitkick`. Updates keep the location of the existing
-  install, also for installs made by 1.5.0. Users with admin rights now see a
-  UAC prompt on every install and update, also for "only for me"; this is how
-  the Tauri installer works in this mode.
 
 ### Fixed
 
