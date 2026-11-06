@@ -89,6 +89,7 @@ static AUTO_FIX_ENABLED_CACHE: AtomicU8 = AtomicU8::new(AUTO_FIX_CACHE_UNKNOWN);
 fn any_project_has_auto_fix_enabled(projects: &[Project]) -> bool {
     projects.iter().any(|project| {
         !project.is_folder
+            && !project.is_plain()
             && project
                 .auto_fix_settings
                 .as_ref()
@@ -245,7 +246,11 @@ async fn run_auto_fix_scan(app: &AppHandle) {
         }
     };
 
-    for project in data.projects.iter().filter(|project| !project.is_folder) {
+    for project in data
+        .projects
+        .iter()
+        .filter(|project| !project.is_folder && !project.is_plain())
+    {
         let Some(settings) = project.auto_fix_settings.clone() else {
             continue;
         };
@@ -753,6 +758,8 @@ fn project_from_pending_auto_yolo(entry: &PendingAutoYolo) -> Project {
         sentry_project_slug: None,
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
+        is_git: true,
+        git_detected: false,
     }
 }
 
@@ -1000,6 +1007,8 @@ mod tests {
             linked_project_ids: Vec::new(),
             auto_fix_settings,
         }
+            is_git: true,
+            git_detected: false,
     }
 
     fn test_worktree(

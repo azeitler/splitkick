@@ -496,6 +496,9 @@ pub fn create_checkpoint(
     app: &AppHandle,
     args: CreateCheckpointArgs,
 ) -> Result<AiCheckpoint, String> {
+    // A plain folder inside a parent repo would write refs into that repo.
+    super::storage::load_projects_data(app)?.ensure_git_worktree(&args.worktree_id)?;
+
     let id = Uuid::new_v4().to_string();
     let preview = truncate_preview(&args.user_message);
     let message = format!("jean-checkpoint:{id}");

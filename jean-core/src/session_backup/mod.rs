@@ -574,7 +574,12 @@ fn project_digest(app: &AppHandle) -> Result<Vec<BackupProject>, String> {
         .map(|project| BackupProject {
             project_id: project.id.clone(),
             name: project.name.clone(),
-            git_remote: project_git_remote(&project.path),
+            // A plain folder inside a parent repo would report that repo's remote.
+            git_remote: if project.is_plain() {
+                None
+            } else {
+                project_git_remote(&project.path)
+            },
             worktrees: data
                 .worktrees_for_project(&project.id)
                 .into_iter()

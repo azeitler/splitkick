@@ -19,6 +19,8 @@ struct WorktreeStatusContext {
     pr_push_remote: Option<String>,
     pr_push_branch: Option<String>,
     base_remote: Option<String>,
+    /// The worktree is the base session of a plain project: never polled.
+    plain: bool,
 }
 
 fn lookup_status_context(app: &AppHandle, worktree_id: &str) -> WorktreeStatusContext {
@@ -31,6 +33,7 @@ fn lookup_status_context(app: &AppHandle, worktree_id: &str) -> WorktreeStatusCo
                 pr_push_remote: w.pr_push_remote.clone(),
                 pr_push_branch: w.pr_push_branch.clone(),
                 base_remote: w.base_remote.clone(),
+                plain: data.is_plain_project(&w.project_id),
             })
             .unwrap_or_default(),
         Err(_) => WorktreeStatusContext::default(),
@@ -42,14 +45,15 @@ fn load_status_contexts(app: &AppHandle) -> HashMap<String, WorktreeStatusContex
     match load_projects_data(app) {
         Ok(data) => data
             .worktrees
-            .into_iter()
+            .iter()
             .map(|w| {
                 (
-                    w.id,
+                    w.id.clone(),
                     WorktreeStatusContext {
-                        pr_push_remote: w.pr_push_remote,
-                        pr_push_branch: w.pr_push_branch,
-                        base_remote: w.base_remote,
+                        pr_push_remote: w.pr_push_remote.clone(),
+                        pr_push_branch: w.pr_push_branch.clone(),
+                        base_remote: w.base_remote.clone(),
+                        plain: data.is_plain_project(&w.project_id),
                     },
                 )
             })
@@ -85,6 +89,11 @@ pub fn set_active_worktree_for_polling(
     let info = match (worktree_id, worktree_path, base_branch) {
         (Some(id), Some(path), Some(branch)) => {
             let context = lookup_status_context(&app, &id);
+            // A plain project has no git: selecting it stops the polling.
+            if context.plain {
+                state.set_active_worktree(None);
+                return Ok(());
+            }
             Some(ActiveWorktreeInfo {
                 worktree_id: id,
                 worktree_path: path,
@@ -191,6 +200,7 @@ pub fn set_pr_worktrees_for_polling(
     let contexts = load_status_contexts(&app);
     let infos: Vec<ActiveWorktreeInfo> = worktrees
         .into_iter()
+        .filter(|w| !contexts.get(&w.worktree_id).is_some_and(|c| c.plain))
         .map(|w| {
             let context = contexts.get(&w.worktree_id).cloned().unwrap_or_default();
             ActiveWorktreeInfo {
@@ -230,6 +240,7 @@ pub fn set_all_worktrees_for_polling(
     let contexts = load_status_contexts(&app);
     let infos: Vec<ActiveWorktreeInfo> = worktrees
         .into_iter()
+        .filter(|w| !contexts.get(&w.worktree_id).is_some_and(|c| c.plain))
         .map(|w| {
             let context = contexts.get(&w.worktree_id).cloned().unwrap_or_default();
             ActiveWorktreeInfo {

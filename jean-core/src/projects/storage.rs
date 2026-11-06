@@ -179,6 +179,7 @@ fn load_projects_data_internal(app: &AppHandle) -> Result<ProjectsData, String> 
         .unwrap_or_default()
         .as_secs();
     let changed_count = archive_missing_worktrees(&mut data.worktrees, now_ts);
+    data.detect_git_in_plain_projects();
 
     // Save if any worktree was archived or restored
     if changed_count > 0 {
