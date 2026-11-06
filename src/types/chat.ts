@@ -475,6 +475,8 @@ export interface ArchivedSessionEntry {
   worktree_path: string
   project_id: string
   project_name: string
+  /** First line of the session's last prompt, cut to 200 characters */
+  last_message_preview?: string
 }
 
 /**
