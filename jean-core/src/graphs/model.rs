@@ -471,7 +471,7 @@ pub struct GraphChange {
     pub node_id: Option<String>,
     pub at: u64,
     pub actor: GraphActor,
-    /// node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | revert
+    /// node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | session.serves | revert
     pub action: String,
     pub summary: String,
     pub why: Option<String>,
@@ -482,6 +482,22 @@ pub struct GraphChange {
     /// Computed on read; the stored value is ignored.
     #[serde(default)]
     pub seen: bool,
+    /// Set for `session.serves`: a manager linked another session to this
+    /// graph or unlinked it (#88). Only the refs of this graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serves: Option<ServesChange>,
+}
+
+/// Which refs a `session.serves` change added to and removed from a session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ServesChange {
+    pub session_id: String,
+    pub session_name: String,
+    #[serde(default)]
+    pub added: Vec<String>,
+    #[serde(default)]
+    pub removed: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

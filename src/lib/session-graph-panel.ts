@@ -10,7 +10,7 @@ import { sessionHasGraphPanel } from '@/components/graphs/SessionGraphPanel'
 import { isMobileViewport } from '@/hooks/use-mobile'
 import { chatQueryKeys } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
+import { openLinkToGraph } from '@/lib/link-to-graph'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { getActiveSessionTarget } from './session-transfer'
 
@@ -45,10 +45,10 @@ export function toggleActiveSessionGraphPanel(queryClient: QueryClient): void {
   if (!sessionHasGraphPanel(session)) {
     toast.info('This session does not serve a graph node yet.', {
       description:
-        'Start a session from an agent, or let the session link itself with the set_serves MCP tool.',
+        'Link it with "Link to Graph…" (session menu or command palette), or let the session link itself with the set_serves MCP tool.',
       action: {
-        label: 'Start from Agent…',
-        onClick: () => useUIStore.getState().setStartAgentSessionTarget({}),
+        label: 'Link to Graph…',
+        onClick: () => openLinkToGraph(session),
       },
     })
     return

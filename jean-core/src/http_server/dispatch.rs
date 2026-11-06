@@ -1347,6 +1347,20 @@ pub async fn dispatch_command(
             crate::graphs::set_session_serves(app.clone(), session_id, serves).await?;
             Ok(Value::Null)
         }
+        "change_session_serves" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let add: Option<Vec<String>> = from_field_opt(&args, "add")?;
+            let remove: Option<Vec<String>> = from_field_opt(&args, "remove")?;
+            to_value(
+                crate::graphs::change_session_serves(
+                    app.clone(),
+                    session_id,
+                    add.unwrap_or_default(),
+                    remove.unwrap_or_default(),
+                )
+                .await?,
+            )
+        }
         "set_session_agent" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let agent_id: Option<String> = field_opt(&args, "agentId", "agent_id")?;

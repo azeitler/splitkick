@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use uuid::Uuid;
 
-use super::model::{GraphActor, GraphChange, GraphNode, NodeFile};
+use super::commands::{edit_session_serves, ServesEdit};
+use super::model::{GraphActor, GraphChange, GraphNode, NodeFile, ServesChange};
 use super::store::{
     self, graphs_dir, read_json, safe_name, write_atomic, write_json, APP_DATA_LOCK,
 };
@@ -74,6 +75,7 @@ pub fn new_change(
         after,
         reverted_by: None,
         seen: false,
+        serves: None,
     }
 }
 
@@ -142,8 +144,9 @@ pub fn mark_seen(
     write_json(&path, &seen)
 }
 
-/// Undo one node change. Refuses when the node no longer matches the change's
-/// `after`. The revert is itself a change (`action: "revert"`).
+/// Undo one change: a node change (refuses when the node no longer matches the
+/// change's `after`) or a `session.serves` change. The revert is itself a
+/// change (`action: "revert"`).
 pub fn revert_change(app: &AppHandle, graph_id: &str, change_id: &str) -> Result<(), String> {
     let changes = list_changes(app, graph_id)?;
     let change = changes
@@ -154,6 +157,63 @@ pub fn revert_change(app: &AppHandle, graph_id: &str, change_id: &str) -> Result
     if change.reverted_by.is_some() {
         return Err("This change was already reverted".to_string());
     }
+    let revert = match &change.serves {
+        Some(serves) => revert_serves(app, &change, serves)?,
+        None => revert_node(app, graph_id, &change)?,
+    };
+    append_change(app, &revert)?;
+
+    let _guard = APP_DATA_LOCK.lock().unwrap();
+    let path = changes_path(app, graph_id)?;
+    let mut all = read_changes(&path)?;
+    for c in &mut all {
+        if c.id == change_id {
+            c.reverted_by = Some(revert.id.clone());
+        }
+    }
+    write_changes(&path, &all)?;
+    drop(_guard);
+    // Reverting is acting on the change: it no longer waits in "unseen".
+    mark_seen(app, graph_id, Some(vec![change_id.to_string()]))
+}
+
+/// Undo a `session.serves` change: remove what it added, add back what it
+/// removed. Refs the session changed since then stay as they are.
+fn revert_serves(
+    app: &AppHandle,
+    change: &GraphChange,
+    serves: &ServesChange,
+) -> Result<GraphChange, String> {
+    let edit = ServesEdit::Change {
+        add: serves.removed.clone(),
+        remove: serves.added.clone(),
+    };
+    edit_session_serves(app, &serves.session_id, &edit)?;
+    let mut revert = new_change(
+        &change.graph_id,
+        change.node_id.as_deref(),
+        &GraphActor::User,
+        "revert",
+        format!("Reverted: {}", change.summary),
+        None,
+        None,
+        None,
+    );
+    revert.serves = Some(ServesChange {
+        session_id: serves.session_id.clone(),
+        session_name: serves.session_name.clone(),
+        added: serves.removed.clone(),
+        removed: serves.added.clone(),
+    });
+    Ok(revert)
+}
+
+/// Undo a node change. Refuses when the node no longer matches its `after`.
+fn revert_node(
+    app: &AppHandle,
+    graph_id: &str,
+    change: &GraphChange,
+) -> Result<GraphChange, String> {
     let node_id = change
         .node_id
         .clone()
@@ -184,7 +244,7 @@ pub fn revert_change(app: &AppHandle, graph_id: &str, change_id: &str) -> Result
         .or(current.as_ref())
         .map(|n| n.title.clone())
         .unwrap_or_default();
-    let revert = new_change(
+    Ok(new_change(
         graph_id,
         Some(&node_id),
         &GraphActor::User,
@@ -193,19 +253,5 @@ pub fn revert_change(app: &AppHandle, graph_id: &str, change_id: &str) -> Result
         None,
         current,
         target,
-    );
-    append_change(app, &revert)?;
-
-    let _guard = APP_DATA_LOCK.lock().unwrap();
-    let path = changes_path(app, graph_id)?;
-    let mut all = read_changes(&path)?;
-    for c in &mut all {
-        if c.id == change_id {
-            c.reverted_by = Some(revert.id.clone());
-        }
-    }
-    write_changes(&path, &all)?;
-    drop(_guard);
-    // Reverting is acting on the change: it no longer waits in "unseen".
-    mark_seen(app, graph_id, Some(vec![change_id.to_string()]))
+    ))
 }

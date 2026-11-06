@@ -408,10 +408,12 @@ function ChangeRow({
 }) {
   const revert = useRevertGraphChange()
   const reverted = change.revertedBy !== null
-  // Only node changes carry snapshots; graph-level ones (create, rename,
-  // send-back) cannot be reverted, so they get no button.
+  // Node changes carry snapshots and serves changes their refs; other
+  // graph-level ones (create, rename, send-back) cannot be reverted.
   const revertable =
-    change.nodeId !== null && (change.before !== null || change.after !== null)
+    !!change.serves ||
+    (change.nodeId !== null &&
+      (change.before !== null || change.after !== null))
   return (
     <li className="flex gap-2 px-3 py-2" data-testid="graph-change">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">

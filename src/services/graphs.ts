@@ -202,7 +202,9 @@ export const useMarkGraphChangesSeen = () =>
 export const useRevertGraphChange = () =>
   useGraphCommand<{ graphId: string; changeId: string }, null>(
     'revert_graph_change',
-    'Could not revert the change'
+    'Could not revert the change',
+    // Reverting a session.serves change edits the session.
+    true
   )
 
 export const useAnswerGraphRequest = () =>
@@ -228,6 +230,13 @@ export const useSetSessionServes = () =>
     'Could not change what the session serves',
     true
   )
+
+/** Add and/or remove refs; resolves with the resulting list (#88). */
+export const useChangeSessionServes = () =>
+  useGraphCommand<
+    { sessionId: string; add?: string[]; remove?: string[] },
+    string[]
+  >('change_session_serves', 'Could not change the graph links', true)
 
 export const useSetSessionAgent = () =>
   useGraphCommand<

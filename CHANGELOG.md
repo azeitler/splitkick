@@ -9,6 +9,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Sessions read and change their graph links; managers link others** (#88).
+  "Link to Graph…" in the session context menu (sidebar, canvas tabs,
+  Starred/Pinned rows; long press on mobile) and in the command palette opens
+  a picker for every session: it shows the current links and adds or removes a
+  node or a whole graph. The graph panel's "Serves" section uses the same
+  editor, and "Toggle Graph Panel" on an unlinked session now offers "Link to
+  Graph…". Over MCP, `get_current_context` also returns `serves` (with graph
+  and node titles), `agentId` and the effective `graphPermission`;
+  `set_serves` takes `add`/`remove` besides `serves` (removing a missing ref is
+  a no-op) and returns the resulting list. With another session's `sessionId`
+  it needs graph permission `manage` and a `reason`; the change goes into the
+  graph's change log ("Changes since you last looked"), where it can be
+  reverted.
 - **Session network: see which session started which** (#77). A dialog shows
   the tree around a session: its root and every session started from there,
   across worktrees and projects. Each row shows the name, project › worktree,

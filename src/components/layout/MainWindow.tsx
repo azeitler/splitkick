@@ -114,6 +114,11 @@ const MoveSessionDialog = lazy(() =>
     default: mod.MoveSessionDialog,
   }))
 )
+const LinkToGraphDialog = lazy(() =>
+  import('@/components/graphs/LinkToGraphDialog').then(mod => ({
+    default: mod.LinkToGraphDialog,
+  }))
+)
 const SessionNetworkDialog = lazy(() =>
   import('@/components/chat/SessionNetworkDialog').then(mod => ({
     default: mod.SessionNetworkDialog,
@@ -297,6 +302,7 @@ export function MainWindow() {
   const sessionNetworkOpen = useUIStore(
     state => state.sessionNetworkSessionId !== null
   )
+  const linkToGraphOpen = useUIStore(state => state.linkToGraphTarget !== null)
   const startAgentSessionOpen = useUIStore(
     state => state.startAgentSessionTarget !== null
   )
@@ -556,6 +562,7 @@ export function MainWindow() {
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
   const shouldRenderSessionNetworkDialog = useRetainedMount(sessionNetworkOpen)
+  const shouldRenderLinkToGraphDialog = useRetainedMount(linkToGraphOpen)
   const shouldRenderStartAgentSessionDialog = useRetainedMount(
     startAgentSessionOpen
   )
@@ -853,6 +860,11 @@ export function MainWindow() {
       {shouldRenderSessionNetworkDialog && (
         <Suspense fallback={null}>
           <SessionNetworkDialog />
+        </Suspense>
+      )}
+      {shouldRenderLinkToGraphDialog && (
+        <Suspense fallback={null}>
+          <LinkToGraphDialog />
         </Suspense>
       )}
       {shouldRenderStartAgentSessionDialog && (

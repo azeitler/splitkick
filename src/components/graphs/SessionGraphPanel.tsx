@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Check, ExternalLink, Plus, Workflow, X } from 'lucide-react'
+import { Check, ExternalLink, Workflow, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { openGraphView } from '@/lib/graph-view'
@@ -41,7 +41,7 @@ import {
   resolveRef,
   type OutlineItem,
 } from './graph-utils'
-import { ServesPicker } from './ServesPicker'
+import { ServesEditor } from './ServesEditor'
 
 type PanelSession = Pick<
   Session,
@@ -602,76 +602,9 @@ function PermissionSection({ session }: { session: PanelSession }) {
 }
 
 function ServesSection({ session }: { session: PanelSession }) {
-  const setServes = useSetSessionServes()
-  const { data: graphs } = useGraphs()
-  const [adding, setAdding] = useState<string | null>(null)
-  const serves = session.serves ?? []
-
-  const save = (next: string[]) =>
-    setServes.mutate({ sessionId: session.id, serves: next })
-  const label = (ref: string) => {
-    const { graphId, nodeId } = parseGraphRef(ref)
-    const title = graphs?.find(g => g.id === graphId)?.title ?? graphId
-    return nodeId ? `${title} › ${nodeId}` : `${title} (whole graph)`
-  }
-
   return (
     <Section title="Serves">
-      <ul className="mb-2 flex flex-wrap gap-1.5">
-        {serves.map(ref => (
-          <li
-            key={ref}
-            className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-          >
-            {label(ref)}
-            <button
-              type="button"
-              aria-label={`Stop serving ${label(ref)}`}
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => save(serves.filter(r => r !== ref))}
-            >
-              <X className="size-3" aria-hidden="true" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      {adding === null ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="-ml-2"
-          onClick={() => setAdding('')}
-        >
-          <Plus className="size-3.5" aria-hidden="true" />
-          Add
-        </Button>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <ServesPicker value={adding} onChange={setAdding} />
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={!adding || serves.includes(adding)}
-              onClick={() => {
-                if (adding) save([...serves, adding])
-                setAdding(null)
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setAdding(null)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+      <ServesEditor sessionId={session.id} serves={session.serves ?? []} />
     </Section>
   )
 }
