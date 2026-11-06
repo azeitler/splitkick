@@ -111,6 +111,7 @@ export function getCurrentUIState(): UIState {
     leftSidebarVisible,
     fileBrowserSize,
     fileBrowserVisible,
+    contextPanelTab,
     zenMode,
     sessionTerminalIds,
     sessionPrimarySurface,
@@ -189,6 +190,7 @@ export function getCurrentUIState(): UIState {
     file_browser_visible: isMobileViewport()
       ? hostFileBrowserVisible
       : fileBrowserVisible,
+    context_panel_tab: contextPanelTab,
     zen_mode: zenMode,
     active_session_ids: activeSessionIds,
     input_drafts: inputDrafts,

@@ -98,9 +98,6 @@ interface ChatUIState {
   // Whether the review sidebar is visible (global toggle)
   reviewSidebarVisible: boolean
 
-  // Whether the session graph panel is visible (global toggle, not persisted)
-  graphPanelVisible: boolean
-
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
@@ -319,8 +316,6 @@ interface ChatUIState {
   clearReviewResults: (sessionId: string) => void
   setReviewSidebarVisible: (visible: boolean) => void
   toggleReviewSidebar: () => void
-  setGraphPanelVisible: (visible: boolean) => void
-  toggleGraphPanel: () => void
 
   // Actions - AI Review fixed findings (session-scoped)
   markReviewFindingFixed: (sessionId: string, findingKey: string) => void
@@ -753,7 +748,6 @@ export const useChatStore = create<ChatUIState>()(
       activeSessionIds: {},
       reviewResults: {},
       reviewSidebarVisible: false,
-      graphPanelVisible: false,
       fixedReviewFindings: {},
       tableCheckedRows: {},
       worktreePaths: {},
@@ -896,23 +890,6 @@ export const useChatStore = create<ChatUIState>()(
           state => ({ reviewSidebarVisible: !state.reviewSidebarVisible }),
           undefined,
           'toggleReviewSidebar'
-        ),
-
-      setGraphPanelVisible: visible =>
-        set(
-          state =>
-            state.graphPanelVisible === visible
-              ? state
-              : { graphPanelVisible: visible },
-          undefined,
-          'setGraphPanelVisible'
-        ),
-
-      toggleGraphPanel: () =>
-        set(
-          state => ({ graphPanelVisible: !state.graphPanelVisible }),
-          undefined,
-          'toggleGraphPanel'
         ),
 
       // AI Review fixed findings (session-scoped)

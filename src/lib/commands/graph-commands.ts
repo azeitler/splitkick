@@ -1,4 +1,4 @@
-import { Bot, Link2, PanelRight, Play, Workflow } from 'lucide-react'
+import { Bot, Link2, PanelLeft, Play, Workflow } from 'lucide-react'
 import { toast } from 'sonner'
 import { openLinkToGraph } from '@/lib/link-to-graph'
 import {
@@ -33,13 +33,12 @@ export const graphCommands: AppCommand[] = [
     },
   },
   {
-    // Visible for every session: one without a graph link gets an
-    // explanation instead of an empty panel (#84).
+    // Visible for every session: one without a graph link gets the tab's
+    // explanation and "Link to Graph…" (#84, #98).
     id: 'graphs.toggle-session-panel',
     label: 'Toggle Graph Panel',
-    description:
-      "Show or hide the session's graph panel (desktop only; needs a graph link)",
-    icon: PanelRight,
+    description: "Show or hide the session's graph in the left panel",
+    icon: PanelLeft,
     group: 'sessions',
     keywords: ['graph', 'panel', 'node', 'serves', 'agent', 'toggle'],
     isAvailable: context => context.hasActiveSession(),

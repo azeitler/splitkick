@@ -74,15 +74,27 @@ describe('UIStore', () => {
     expect(useUIStore.getState().leftSidebarVisible).toBe(true)
   })
 
-  it('toggles file browser visibility', () => {
-    useUIStore.setState({ fileBrowserVisible: false })
-    const { toggleFileBrowser } = useUIStore.getState()
+  it('toggles the context panel per tab (#98)', () => {
+    useUIStore.setState({
+      fileBrowserVisible: false,
+      contextPanelTab: 'files',
+      sessionNetworkSessionId: null,
+    })
+    const { toggleContextPanel } = useUIStore.getState()
 
-    toggleFileBrowser()
+    toggleContextPanel('files')
     expect(useUIStore.getState().fileBrowserVisible).toBe(true)
 
-    toggleFileBrowser()
+    // Another tab switches the open panel instead of closing it.
+    toggleContextPanel('graph')
+    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
+    expect(useUIStore.getState().contextPanelTab).toBe('graph')
+
+    useUIStore.setState({ sessionNetworkSessionId: 's1' })
+    toggleContextPanel('graph')
     expect(useUIStore.getState().fileBrowserVisible).toBe(false)
+    // Closing the panel drops the pinned network session.
+    expect(useUIStore.getState().sessionNetworkSessionId).toBeNull()
   })
 
   it('toggles zen mode and restores sidebars', () => {

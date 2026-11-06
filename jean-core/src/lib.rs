@@ -3029,6 +3029,10 @@ pub struct UIState {
     #[serde(default)]
     pub file_browser_visible: Option<bool>,
 
+    /// Active tab of the left context panel ("files", "network", "graph"), #98
+    #[serde(default)]
+    pub context_panel_tab: Option<String>,
+
     /// Whether the session chat is using the reduced-chrome zen layout
     #[serde(default)]
     pub zen_mode: Option<bool>,
@@ -3341,6 +3345,7 @@ impl Default for UIState {
             left_sidebar_visible: None,
             file_browser_size: None,
             file_browser_visible: None,
+            context_panel_tab: None,
             zen_mode: None,
             active_session_ids: std::collections::HashMap::new(),
             input_drafts: std::collections::HashMap::new(),

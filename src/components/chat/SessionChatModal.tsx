@@ -1324,8 +1324,8 @@ export function SessionChatModal({
                   {sessionChips}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {/* The phone title bar is only a title, so the file
-                      browser opens from the session it browses. */}
+                  {/* The phone title bar is only a title, so the side
+                      panel (Files tab first, #98) opens from the session. */}
                   {isMobile && (
                     <Button
                       variant="ghost"
@@ -1334,7 +1334,7 @@ export function SessionChatModal({
                       aria-label="Show file browser"
                       data-testid="session-modal-file-browser"
                       onClick={() =>
-                        useUIStore.getState().setFileBrowserVisible(true)
+                        useUIStore.getState().openContextPanel('files')
                       }
                     >
                       <FolderTree className="size-4" />

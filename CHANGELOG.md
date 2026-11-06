@@ -26,6 +26,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   buffers, each page's query cache and DOM size). Above 4 GB the line is a
   warning. Help → Copy Memory Report copies the same numbers.
 
+### Changed
+
+- **Files, session network and graph share one side panel** (#98). The file
+  tree area left of the chat now has tabs: **Files**, **Network** and
+  **Graph**. Network shows which session started which, for the session on
+  screen, and updates live; click a row to open that session. Graph shows
+  the session's graph card, or "Link to Graph…" for a session without a
+  link. The Files button and Cmd+Shift+B open the Files tab; the Graph
+  button, ⌘K "Toggle Graph Panel" and Cmd+Shift+G open the Graph tab; "Show
+  Session Network", the "Started by" banner and the Network links in chat
+  open the Network tab. The panel keeps its width and remembers the last
+  tab. Tabs without a session stay visible but disabled, with the reason.
+  The phone drawer has the same tabs, so the graph card now works on a
+  phone. The session network dialog and the graph panel on the right are
+  gone.
+
 ### Fixed
 
 - **A page load no longer marks a starting run as crashed** (#97). A reload or

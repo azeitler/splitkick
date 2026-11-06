@@ -10,7 +10,8 @@ import {
 /**
  * #77: the session network. An orchestrating session started sessions in
  * other projects; one of those started another. The sidebar marks linked
- * sessions, and the context menu opens the tree.
+ * sessions, and the context menu opens the tree in the left panel's Network
+ * tab (#98).
  */
 
 const orchestrator = createProject({ name: 'release-train', order: 0 })
@@ -184,8 +185,12 @@ test.describe('Session network (#77)', () => {
       .getByRole('menuitem', { name: 'Show Session Network' })
       .click()
 
-    const dialog = mockPage.getByRole('dialog', { name: 'Session network' })
+    const dialog = mockPage.getByTestId('context-panel')
     await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('tab', { name: 'Network' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
     const rows = dialog.getByRole('list', { name: 'Session network' })
     await expect(rows.getByRole('listitem')).toHaveCount(5)
     await expect(dialog).toContainText('api-service › fix-login')
@@ -194,11 +199,13 @@ test.describe('Session network (#77)', () => {
     await expect(
       dialog.getByRole('button', { name: /Old caching spike/ })
     ).toBeDisabled()
-    await shot(dialog, 'session-network-dialog')
+    await shot(dialog, 'session-network-panel')
 
-    // A click opens the session and closes the dialog.
+    // A click opens the session; the panel stays and marks it.
     await dialog.getByRole('button', { name: /Fix login timeout/ }).click()
-    await expect(dialog).toBeHidden()
+    await expect(
+      dialog.getByRole('button', { name: /Fix login timeout/ })
+    ).toContainText('This session')
 
     // The child's chat names its parent and links back to the network.
     const banner = mockPage.getByText('Started by ‘').first()
@@ -218,16 +225,27 @@ test.describe('Session network (#77)', () => {
         })
       }
     }
+    // From another tab, the banner's Network link goes back to the tree.
+    await dialog.getByRole('tab', { name: 'Files' }).click()
     await bannerRow.getByRole('button', { name: 'Network' }).click()
-    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('tab', { name: 'Network' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await expect(rows.getByRole('listitem')).toHaveCount(5)
   })
 
   test('works on a phone', async ({ mockPage }) => {
     await mockPage.setViewportSize({ width: 390, height: 844 })
     // Phones have no right-click: open it through the store.
     await setUIStore(mockPage, 'setSessionNetworkSessionId', root.id)
-    const dialog = mockPage.getByRole('dialog', { name: 'Session network' })
+    await setUIStore(mockPage, 'openContextPanel', 'network')
+    const dialog = mockPage.getByTestId('mobile-file-browser')
     await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('tab', { name: 'Network' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
     await expect(dialog).toContainText('Plan release 1.5')
     await shot(mockPage, 'session-network-mobile')
   })

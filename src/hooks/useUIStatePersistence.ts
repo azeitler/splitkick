@@ -3,7 +3,7 @@ import { useUIState, useSaveUIState } from '@/services/ui-state'
 import { useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
+import { CONTEXT_PANEL_TABS, useUIStore } from '@/store/ui-store'
 import {
   isPanelTerminal,
   useTerminalStore,
@@ -283,6 +283,12 @@ export function useUIStatePersistence() {
           .getState()
           .setFileBrowserVisible(uiState.file_browser_visible)
       }
+    }
+
+    // Older state has no tab; the panel then opens on Files, as before (#98).
+    const contextPanelTab = uiState.context_panel_tab
+    if (contextPanelTab && CONTEXT_PANEL_TABS.includes(contextPanelTab)) {
+      useUIStore.getState().setContextPanelTab(contextPanelTab)
     }
 
     if (uiState.zen_mode !== undefined) {
@@ -1017,6 +1023,7 @@ export function useUIStatePersistence() {
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevFileBrowserSize = useUIStore.getState().fileBrowserSize
     let prevFileBrowserVisible = useUIStore.getState().fileBrowserVisible
+    let prevContextPanelTab = useUIStore.getState().contextPanelTab
     let prevZenMode = useUIStore.getState().zenMode
     let prevMobileActiveTab = useUIStore.getState().mobileActiveTab
     let prevSidebarTab = useUIStore.getState().sidebarTab
@@ -1141,6 +1148,8 @@ export function useUIStatePersistence() {
         state.fileBrowserSize !== prevFileBrowserSize
       const fileBrowserVisibilityChanged =
         state.fileBrowserVisible !== prevFileBrowserVisible
+      const contextPanelTabChanged =
+        state.contextPanelTab !== prevContextPanelTab
       const zenModeChanged = state.zenMode !== prevZenMode
       const mobileActiveTabChanged =
         state.mobileActiveTab !== prevMobileActiveTab
@@ -1158,6 +1167,7 @@ export function useUIStatePersistence() {
         visibilityChanged ||
         fileBrowserSizeChanged ||
         fileBrowserVisibilityChanged ||
+        contextPanelTabChanged ||
         zenModeChanged ||
         mobileActiveTabChanged ||
         sidebarTabChanged ||
@@ -1170,6 +1180,7 @@ export function useUIStatePersistence() {
         prevLeftSidebarVisible = state.leftSidebarVisible
         prevFileBrowserSize = state.fileBrowserSize
         prevFileBrowserVisible = state.fileBrowserVisible
+        prevContextPanelTab = state.contextPanelTab
         prevZenMode = state.zenMode
         prevMobileActiveTab = state.mobileActiveTab
         prevSidebarTab = state.sidebarTab

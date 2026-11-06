@@ -126,11 +126,17 @@ describe('SessionLinkInsert', () => {
     expect(screen.queryByRole('button', { name: /Network/ })).toBeNull()
   })
 
-  it('opens the session network of the current chat (#77)', () => {
-    useUIStore.getState().setSessionNetworkSessionId(null)
+  it('opens the Network tab on the network of the current chat (#77, #98)', () => {
+    useUIStore.setState({
+      sessionNetworkSessionId: null,
+      fileBrowserVisible: false,
+      contextPanelTab: 'files',
+    })
     renderInsert('create_session')
     fireEvent.click(screen.getByRole('button', { name: /Network/ }))
     expect(useUIStore.getState().sessionNetworkSessionId).toBe('parent')
+    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
+    expect(useUIStore.getState().contextPanelTab).toBe('network')
   })
 
   it('marks an archived session and offers no View', () => {

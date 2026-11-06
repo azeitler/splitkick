@@ -1,16 +1,12 @@
 /**
- * Toggle the session graph panel from the command palette and the
- * `toggle_session_graph` shortcut (issue #84). The header button uses the
- * store directly: it only shows when the session has a panel.
+ * Toggle the Graph tab of the left context panel from the command palette,
+ * the `toggle_session_graph` shortcut and the header button (#84, #98).
  */
 
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { sessionHasGraphPanel } from '@/components/graphs/SessionGraphPanel'
-import { isMobileViewport } from '@/hooks/use-mobile'
 import { chatQueryKeys } from '@/services/chat'
-import { useChatStore } from '@/store/chat-store'
-import { openLinkToGraph } from '@/lib/link-to-graph'
+import { useUIStore } from '@/store/ui-store'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { getActiveSessionTarget } from './session-transfer'
 
@@ -32,30 +28,18 @@ export function getActiveSessionFromCache(
 }
 
 /**
- * Show or hide the graph panel of the active session. A session without a
- * graph link gets an explanation instead of an empty panel; a phone gets a
- * note that the panel is desktop-only.
+ * Open or close the left panel on its Graph tab (#84, #98). A session
+ * without a graph link still opens the tab: it explains the link and offers
+ * "Link to Graph…". Without a session there is nothing to show.
  */
 export function toggleActiveSessionGraphPanel(queryClient: QueryClient): void {
-  const session = getActiveSessionFromCache(queryClient)
-  if (!session) {
-    toast.info('Open a session to see its graph panel.')
+  const { fileBrowserVisible, contextPanelTab, toggleContextPanel } =
+    useUIStore.getState()
+  // Closing needs no session: the panel may show a stale tab.
+  const closing = fileBrowserVisible && contextPanelTab === 'graph'
+  if (!closing && !getActiveSessionFromCache(queryClient)) {
+    toast.info('Open a session to see its graph.')
     return
   }
-  if (!sessionHasGraphPanel(session)) {
-    toast.info('This session does not serve a graph node yet.', {
-      description:
-        'Link it with "Link to Graph…" (session menu or command palette), or let the session link itself with the set_serves MCP tool.',
-      action: {
-        label: 'Link to Graph…',
-        onClick: () => openLinkToGraph(session),
-      },
-    })
-    return
-  }
-  if (isMobileViewport()) {
-    toast.info('The graph panel is only available on desktop.')
-    return
-  }
-  useChatStore.getState().toggleGraphPanel()
+  toggleContextPanel('graph')
 }

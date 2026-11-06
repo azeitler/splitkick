@@ -3,7 +3,8 @@ import { defaultResponses } from '../fixtures/invoke-handlers'
 import { createSession, mockUIState } from '../fixtures/mock-data'
 
 // Issue #84: the session graph panel opens from the session window, the full
-// chat view, the command palette (⌘K) and Mod+Shift+G.
+// chat view, the command palette (⌘K) and Mod+Shift+G. Since #98 it is the
+// Graph tab of the left context panel.
 const fuzzyTiger = (
   defaultResponses.list_worktrees as Record<string, unknown>[]
 )[0]
@@ -100,6 +101,11 @@ test.describe('Session graph panel entry points', () => {
       const toolbar = mockPage.getByTestId('window-toolbar')
       await toolbar.getByRole('button', { name: 'Toggle graph panel' }).click()
       await expect(panel(mockPage)).toBeVisible()
+      await expect(
+        mockPage
+          .getByTestId('context-panel')
+          .getByRole('tab', { name: 'Graph' })
+      ).toHaveAttribute('aria-selected', 'true')
     })
 
     test('command palette toggles the panel', async ({ mockPage }) => {
@@ -153,7 +159,7 @@ test.describe('Session graph panel entry points', () => {
   test.describe('unlinked session', () => {
     test.use({ responseOverrides: overrides([plain]) })
 
-    test('has no button; the command explains the link', async ({
+    test('has no button; the command opens the tab with the link', async ({
       mockPage,
     }) => {
       await activateWorktree(mockPage, 'fuzzy-tiger')
@@ -165,10 +171,12 @@ test.describe('Session graph panel entry points', () => {
       await mockPage.locator('[cmdk-input]').fill('Toggle Graph Panel')
       await mockPage.keyboard.press('Enter')
 
+      await expect(panel(mockPage)).toContainText(
+        'This session is not linked to a graph.'
+      )
       await expect(
-        mockPage.getByText('This session does not serve a graph node yet.')
+        panel(mockPage).getByRole('button', { name: 'Link to Graph…' })
       ).toBeVisible()
-      await expect(panel(mockPage)).toHaveCount(0)
     })
   })
 })

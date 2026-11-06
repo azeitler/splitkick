@@ -64,6 +64,26 @@ export function getActiveSessionTarget(): TransferSessionTarget | null {
   return sessionId ? { worktreeId, sessionId } : null
 }
 
+/**
+ * `getActiveSessionTarget` as a hook, for the left context panel (#98): the
+ * session the Network and Graph tabs show.
+ */
+export function useActiveSessionTarget(): TransferSessionTarget | null {
+  const modalWorktreeId = useUIStore(state =>
+    state.sessionChatModalOpen ? state.sessionChatModalWorktreeId : null
+  )
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const worktreeId = modalWorktreeId ?? activeWorktreeId ?? selectedWorktreeId
+  const sessionId = useChatStore(state =>
+    worktreeId ? state.activeSessionIds[worktreeId] : undefined
+  )
+  return useMemo(
+    () => (worktreeId && sessionId ? { worktreeId, sessionId } : null),
+    [worktreeId, sessionId]
+  )
+}
+
 /** Copy a session to `targetWorktreeId` on `connection`. Returns the new remote session. */
 export async function transferSession({
   worktreeId,

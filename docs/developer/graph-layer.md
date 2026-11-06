@@ -239,14 +239,17 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   other selection, like the Archived view). Tabs: Outline, Dependencies, Review.
   Node detail panel on the right. Navigation history kind `graph`.
 - New graph dialog (three locations) and "Open existing graph file…".
-- Session graph panel in `ChatWindow` (a second collapsible right panel,
-  `chat-store.graphPanelVisible`, desktop only). Entry points (#84): the
-  shared `SessionGraphToggle` button in the window toolbar (session window and
-  full chat view; hidden for a session without a panel), the ⌘K command
-  "Toggle Graph Panel" and the `toggle_session_graph` shortcut (`Mod+Shift+G`).
-  The command and the shortcut go through `toggleActiveSessionGraphPanel`
-  (`src/lib/session-graph-panel.ts`): an unlinked session gets a toast that
-  explains the link and offers "Link to Graph…"; a phone gets a desktop-only note.
+- Session graph panel: the **Graph tab of the left context panel** (#98, see
+  `context-panel.md`; before that a right panel in `ChatWindow`). It shows the
+  session on screen (`useActiveSessionTarget`), on desktop and in the phone
+  drawer. Entry points (#84): the shared `SessionGraphToggle` button in the
+  window toolbar (session window and full chat view; hidden for a session
+  without a graph link), the ⌘K command "Toggle Graph Panel" and the
+  `toggle_session_graph` shortcut (`Mod+Shift+G`). All call
+  `toggleContextPanel('graph')`; the command and the shortcut go through
+  `toggleActiveSessionGraphPanel` (`src/lib/session-graph-panel.ts`), which
+  only toasts when no session is open. An unlinked session gets the tab with
+  "This session is not linked to a graph." and "Link to Graph…".
 - **Link to Graph…** (#88) for every session: session context menu (sidebar,
   canvas tabs, Starred/Pinned rows; long press on mobile) and ⌘K. Opens
   `LinkToGraphDialog` (`ui-store.linkToGraphTarget`), which shows the current
@@ -296,8 +299,9 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   "Splitkick graph" block (served nodes with refs, state, file path, permission,
   "use the graph tools, give a why"). It is added once per backend, right after
   the project custom prompt.
-- **UI:** `openGraphView(graphId, nodeId?)`; `chat-store.graphPanelVisible` is not
-  persisted; opening a node's detail marks its unseen changes as seen. On the
+- **UI:** `openGraphView(graphId, nodeId?)`; the side panel's tab
+  (`ui-store.contextPanelTab`) is persisted as `context_panel_tab`; opening
+  a node's detail marks its unseen changes as seen. On the
   phone (no sidebar) Home → Projects lists the graphs; an open graph replaces
   the tab shell and has a Back button. A failed refetch (file deleted or
   broken) shows the error instead of the last good data. The header type chip
@@ -342,7 +346,7 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
     set any level, also above the profile's.
   - A request whose session was deleted still shows its session name;
     answering it skips the follow-up.
-  - `chat-store.graphPanelVisible` is one switch for all sessions: it stays
-    on across session switches and is ignored by sessions without a panel.
+  - The Graph tab is one switch for all sessions: it stays open across
+    session switches and follows the session on screen.
 - **E2E:** `e2e/local/tests/graphs.spec.ts`, `graphs-files.spec.ts`,
   `graphs-nodes.spec.ts` and `graphs-agents.spec.ts` (see `e2e-local.md`).

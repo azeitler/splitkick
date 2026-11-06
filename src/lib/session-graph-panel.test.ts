@@ -26,64 +26,61 @@ function seed(session: Partial<Session>): QueryClient {
   return queryClient
 }
 
-describe('toggleActiveSessionGraphPanel (#84)', () => {
-  beforeEach(() => {
-    toastInfo.mockReset()
-    window.innerWidth = 1280
-    useUIStore.setState({ sessionChatModalOpen: false })
-    useChatStore.setState({
-      activeWorktreeId: 'w1',
-      activeSessionIds: { w1: 's1' },
-      graphPanelVisible: false,
-    })
-  })
+const panel = () => {
+  const { fileBrowserVisible, contextPanelTab } = useUIStore.getState()
+  return fileBrowserVisible ? contextPanelTab : null
+}
 
-  it('toggles the panel of a session that serves a node', () => {
+function reset() {
+  toastInfo.mockReset()
+  useUIStore.setState({
+    sessionChatModalOpen: false,
+    fileBrowserVisible: false,
+    contextPanelTab: 'files',
+  })
+  useChatStore.setState({
+    activeWorktreeId: 'w1',
+    activeSessionIds: { w1: 's1' },
+  })
+}
+
+describe('toggleActiveSessionGraphPanel (#84, #98)', () => {
+  beforeEach(reset)
+
+  it('opens and closes the Graph tab of the left panel', () => {
     const queryClient = seed({ serves: ['g1#n1'] })
 
     toggleActiveSessionGraphPanel(queryClient)
-    expect(useChatStore.getState().graphPanelVisible).toBe(true)
+    expect(panel()).toBe('graph')
     toggleActiveSessionGraphPanel(queryClient)
-    expect(useChatStore.getState().graphPanelVisible).toBe(false)
+    expect(panel()).toBeNull()
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
-  it('toggles the panel of a session started from an agent', () => {
+  it('switches an open Files panel to the Graph tab', () => {
+    useUIStore.setState({ fileBrowserVisible: true, contextPanelTab: 'files' })
     toggleActiveSessionGraphPanel(seed({ agent_id: 'a1' }))
-    expect(useChatStore.getState().graphPanelVisible).toBe(true)
+    expect(panel()).toBe('graph')
   })
 
-  it('explains how to link instead of opening an empty panel', () => {
+  it('opens the tab for an unlinked session: the tab offers the link', () => {
     toggleActiveSessionGraphPanel(seed({ serves: [] }))
-
-    expect(useChatStore.getState().graphPanelVisible).toBe(false)
-    expect(toastInfo).toHaveBeenCalledWith(
-      'This session does not serve a graph node yet.',
-      expect.objectContaining({
-        description: expect.stringContaining('Link to Graph…'),
-        action: expect.objectContaining({ label: 'Link to Graph…' }),
-      })
-    )
-
-    const action = toastInfo.mock.calls[0]?.[1]?.action as {
-      onClick: () => void
-    }
-    action.onClick()
-    expect(useUIStore.getState().linkToGraphTarget).toEqual({
-      sessionId: 's1',
-      sessionName: 'One',
-      serves: [],
-    })
+    expect(panel()).toBe('graph')
+    expect(toastInfo).not.toHaveBeenCalled()
   })
 
-  it('says the panel is desktop-only on a phone', () => {
+  it('opens on a phone too: the drawer has the same tabs', () => {
     window.innerWidth = 390
     toggleActiveSessionGraphPanel(seed({ serves: ['g1#n1'] }))
+    expect(panel()).toBe('graph')
+    window.innerWidth = 1280
+  })
 
-    expect(useChatStore.getState().graphPanelVisible).toBe(false)
-    expect(toastInfo).toHaveBeenCalledWith(
-      'The graph panel is only available on desktop.'
-    )
+  it('explains itself without a session', () => {
+    useChatStore.setState({ activeSessionIds: {} })
+    toggleActiveSessionGraphPanel(new QueryClient())
+    expect(panel()).toBeNull()
+    expect(toastInfo).toHaveBeenCalledWith('Open a session to see its graph.')
   })
 
   it('uses the session of the open session window', () => {
@@ -94,11 +91,11 @@ describe('toggleActiveSessionGraphPanel (#84)', () => {
     useChatStore.setState({ activeWorktreeId: null })
 
     toggleActiveSessionGraphPanel(seed({ serves: ['g1'] }))
-    expect(useChatStore.getState().graphPanelVisible).toBe(true)
+    expect(panel()).toBe('graph')
   })
 })
 
-describe('Toggle Graph Panel palette command (#84)', () => {
+describe('Toggle Graph Panel palette command (#84, #98)', () => {
   const context = (
     hasActiveSession: boolean,
     queryClient = new QueryClient()
@@ -108,32 +105,15 @@ describe('Toggle Graph Panel palette command (#84)', () => {
       queryClient,
     }) as unknown as CommandContext
 
-  beforeEach(() => {
-    toastInfo.mockReset()
-    window.innerWidth = 1280
-    useChatStore.setState({
-      activeWorktreeId: 'w1',
-      activeSessionIds: { w1: 's1' },
-      graphPanelVisible: false,
-    })
-  })
+  beforeEach(reset)
 
   it('is listed only when a session is open', () => {
     expect(command.isAvailable?.(context(true))).toBe(true)
     expect(command.isAvailable?.(context(false))).toBe(false)
   })
 
-  it('opens the panel of a linked session', async () => {
+  it('opens the Graph tab', async () => {
     await command.execute(context(true, seed({ serves: ['g1#n1'] })))
-    expect(useChatStore.getState().graphPanelVisible).toBe(true)
-  })
-
-  it('explains the missing link for an unlinked session', async () => {
-    await command.execute(context(true, seed({})))
-    expect(useChatStore.getState().graphPanelVisible).toBe(false)
-    expect(toastInfo).toHaveBeenCalledWith(
-      'This session does not serve a graph node yet.',
-      expect.anything()
-    )
+    expect(panel()).toBe('graph')
   })
 })

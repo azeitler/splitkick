@@ -2,16 +2,16 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
-import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { SessionGraphToggle } from './SessionGraphToggle'
 
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: undefined }),
 }))
 
-describe('SessionGraphToggle (#84)', () => {
+describe('SessionGraphToggle (#84, #98)', () => {
   beforeEach(() => {
-    useChatStore.setState({ graphPanelVisible: false })
+    useUIStore.setState({ fileBrowserVisible: false, contextPanelTab: 'files' })
   })
 
   it('is hidden for a session without a graph link', () => {
@@ -19,7 +19,7 @@ describe('SessionGraphToggle (#84)', () => {
     expect(screen.queryByTestId('session-graph-toggle')).toBeNull()
   })
 
-  it('toggles the shared graph panel state', async () => {
+  it('opens and closes the left panel on its Graph tab', async () => {
     const user = userEvent.setup()
     render(<SessionGraphToggle session={{ serves: ['g1#n1'] }} />)
 
@@ -27,8 +27,20 @@ describe('SessionGraphToggle (#84)', () => {
     expect(button).toHaveAttribute('aria-pressed', 'false')
 
     await user.click(button)
-    expect(useChatStore.getState().graphPanelVisible).toBe(true)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
+    expect(useUIStore.getState().contextPanelTab).toBe('graph')
     expect(button).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(button)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
+  })
+
+  it('is not pressed while the panel shows another tab', () => {
+    useUIStore.setState({ fileBrowserVisible: true, contextPanelTab: 'files' })
+    render(<SessionGraphToggle session={{ serves: ['g1#n1'] }} />)
+    expect(
+      screen.getByRole('button', { name: 'Toggle graph panel' })
+    ).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('shows for a session started from an agent', () => {

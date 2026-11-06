@@ -27,6 +27,7 @@ import {
 } from '@/types/keybindings'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
+import { useContextPanelShown } from '@/components/layout/use-context-panel-shown'
 import { LinuxWindowControls } from '@/components/titlebar/LinuxWindowControls'
 import { useToolbarHasTitle, useToolbarSlotRef } from './toolbar-slots'
 
@@ -78,19 +79,20 @@ export function SidebarToggleButton() {
   )
 }
 
-/** The file browser panel belongs to the window, not to one view. Home has
- * nothing to browse and hides it, so the toggle is disabled there rather than
- * showing "pressed" over an empty space. */
+/** Opens or closes the left panel on its Files tab (#98). The panel belongs
+ * to the window, not to one view. Home has nothing to browse and hides it, so
+ * the toggle is disabled there rather than showing "pressed" over an empty
+ * space. */
 function FileBrowserToggle() {
   const isHomeActive = useIsHomeActive()
+  const panelShown = useContextPanelShown()
   const fileBrowserVisible =
-    useUIStore(state => state.fileBrowserVisible) && !isHomeActive
-  const toggleFileBrowser = useUIStore(state => state.toggleFileBrowser)
+    useUIStore(state => state.contextPanelTab === 'files') && panelShown
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          onClick={toggleFileBrowser}
+          onClick={() => useUIStore.getState().toggleContextPanel('files')}
           disabled={isHomeActive}
           variant="ghost"
           size="icon"

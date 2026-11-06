@@ -528,9 +528,7 @@ function executeKeybindingAction(
       // shortcut would flip the saved preference with nothing to show for it,
       // and the next project would open with the panel unexpectedly changed.
       if (isHomeActive()) break
-      const { fileBrowserVisible, setFileBrowserVisible } =
-        useUIStore.getState()
-      setFileBrowserVisible(!fileBrowserVisible)
+      useUIStore.getState().toggleContextPanel('files')
       break
     }
     case 'toggle_zen_mode': {

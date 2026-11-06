@@ -34,9 +34,9 @@ const LeftSideBar = lazy(() =>
     default: mod.LeftSideBar,
   }))
 )
-const FileBrowserSidebar = lazy(() =>
-  import('@/components/file-browser').then(mod => ({
-    default: mod.FileBrowserSidebar,
+const ContextPanel = lazy(() =>
+  import('./ContextPanel').then(mod => ({
+    default: mod.ContextPanel,
   }))
 )
 const MobileFileBrowser = lazy(() =>
@@ -117,11 +117,6 @@ const MoveSessionDialog = lazy(() =>
 const LinkToGraphDialog = lazy(() =>
   import('@/components/graphs/LinkToGraphDialog').then(mod => ({
     default: mod.LinkToGraphDialog,
-  }))
-)
-const SessionNetworkDialog = lazy(() =>
-  import('@/components/chat/SessionNetworkDialog').then(mod => ({
-    default: mod.SessionNetworkDialog,
   }))
 )
 const StartAgentSessionDialog = lazy(() =>
@@ -219,7 +214,7 @@ import { useToasterOffset } from '@/hooks/useToasterOffset'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useUIStore } from '@/store/ui-store'
-import { useIsHomeActive } from '@/components/home/useIsHomeActive'
+import { useContextPanelShown } from './use-context-panel-shown'
 import { openArchivedView } from '@/lib/archived-view'
 import { useProjectsStore } from '@/store/projects-store'
 import { useDockSync } from '@/hooks/useDockSync'
@@ -281,11 +276,9 @@ export function MainWindow() {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
-  // Home has no project or worktree to browse, so the file browser stays out
-  // of the way there without touching the persisted visibility preference.
-  const isHomeActive = useIsHomeActive()
-  const fileBrowserVisible =
-    useUIStore(state => state.fileBrowserVisible) && !isHomeActive
+  // The left context panel (Files | Network | Graph, #98). Home hides it
+  // without touching the persisted visibility preference.
+  const fileBrowserVisible = useContextPanelShown()
   const fileBrowserSize = useUIStore(state => state.fileBrowserSize)
   const setFileBrowserSize = useUIStore(state => state.setFileBrowserSize)
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
@@ -303,9 +296,6 @@ export function MainWindow() {
     state => state.transferSessionTarget !== null
   )
   const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
-  const sessionNetworkOpen = useUIStore(
-    state => state.sessionNetworkSessionId !== null
-  )
   const linkToGraphOpen = useUIStore(state => state.linkToGraphTarget !== null)
   const startAgentSessionOpen = useUIStore(
     state => state.startAgentSessionTarget !== null
@@ -569,7 +559,6 @@ export function MainWindow() {
   const shouldRenderTransferSessionDialog =
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
-  const shouldRenderSessionNetworkDialog = useRetainedMount(sessionNetworkOpen)
   const shouldRenderLinkToGraphDialog = useRetainedMount(linkToGraphOpen)
   const shouldRenderStartAgentSessionDialog = useRetainedMount(
     startAgentSessionOpen
@@ -619,7 +608,7 @@ export function MainWindow() {
   // File browser, main column and browser pane: the same on phone and desktop.
   const contentRow = (
     <>
-      {/* Desktop: file browser sidebar */}
+      {/* Desktop: left context panel (Files | Network | Graph, #98) */}
       {!isMobile && fileBrowserVisible && isInitialized && (
         <div
           ref={fileBrowserRef}
@@ -627,7 +616,7 @@ export function MainWindow() {
           style={{ width: fileBrowserSize }}
         >
           <Suspense fallback={null}>
-            <FileBrowserSidebar />
+            <ContextPanel />
           </Suspense>
         </div>
       )}
@@ -638,7 +627,7 @@ export function MainWindow() {
           role="separator"
           tabIndex={-1}
           aria-orientation="vertical"
-          aria-label="Resize file browser"
+          aria-label="Resize side panel"
           className="relative h-full w-px bg-border"
           onMouseDown={handleFileBrowserResizeStart}
         >
@@ -875,11 +864,6 @@ export function MainWindow() {
       {shouldRenderMoveSessionDialog && (
         <Suspense fallback={null}>
           <MoveSessionDialog />
-        </Suspense>
-      )}
-      {shouldRenderSessionNetworkDialog && (
-        <Suspense fallback={null}>
-          <SessionNetworkDialog />
         </Suspense>
       )}
       {shouldRenderLinkToGraphDialog && (

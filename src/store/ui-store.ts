@@ -125,13 +125,24 @@ export type CliLoginModalType =
   | 'coderabbit'
   | null
 
+/** Tabs of the left context panel (#98): file tree, session network, graph. */
+export type ContextPanelTab = 'files' | 'network' | 'graph'
+
+export const CONTEXT_PANEL_TABS: readonly ContextPanelTab[] = [
+  'files',
+  'network',
+  'graph',
+]
+
 interface UIState {
   leftSidebarVisible: boolean
   leftSidebarSize: number // Width in pixels, persisted across sessions
-  /** File browser (worktree explorer) visibility */
+  /** Left context panel visibility (Files | Network | Graph, #98) */
   fileBrowserVisible: boolean
-  /** File browser width in pixels, persisted across sessions */
+  /** Left context panel width in pixels, persisted across sessions */
   fileBrowserSize: number
+  /** Active tab of the left context panel, persisted across sessions */
+  contextPanelTab: ContextPanelTab
   /** Absolute path of file open in the global FileContentModal (null = closed) */
   viewingFilePath: string | null
   /**
@@ -156,7 +167,11 @@ interface UIState {
   transferSessionTarget: TransferSessionTarget | null
   /** Session the "Move to…" dialog is open for (issue #67). */
   moveSessionTarget: TransferSessionTarget | null
-  /** Session the "Session network" dialog is open for (issue #77). */
+  /**
+   * Session the Network tab shows instead of the current session (#77, #98),
+   * set by "Show Session Network" on another session. Cleared when the panel
+   * closes.
+   */
   sessionNetworkSessionId: string | null
   /** Session the "Link to Graph…" dialog is open for (issue #88). */
   linkToGraphTarget: LinkToGraphTarget | null
@@ -301,7 +316,11 @@ interface UIState {
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
   setLeftSidebarSize: (size: number) => void
-  toggleFileBrowser: () => void
+  setContextPanelTab: (tab: ContextPanelTab) => void
+  /** Open the panel on `tab`. */
+  openContextPanel: (tab: ContextPanelTab) => void
+  /** Open the panel on `tab`, or close it when it already shows `tab`. */
+  toggleContextPanel: (tab: ContextPanelTab) => void
   setFileBrowserVisible: (visible: boolean) => void
   setFileBrowserSize: (size: number) => void
   setViewingFilePath: (path: string | null, label?: string | null) => void
@@ -460,6 +479,7 @@ export const useUIStore = create<UIState>()(
       leftSidebarSize: 250, // Default width in pixels
       fileBrowserVisible: false,
       fileBrowserSize: 280,
+      contextPanelTab: 'files',
       viewingFilePath: null,
       viewingFileLabel: null,
       rightSidebarVisible: false,
@@ -610,11 +630,32 @@ export const useUIStore = create<UIState>()(
           'setLeftSidebarSize'
         ),
 
-      toggleFileBrowser: () =>
+      setContextPanelTab: tab =>
         set(
-          state => ({ fileBrowserVisible: !state.fileBrowserVisible }),
+          state =>
+            state.contextPanelTab === tab ? state : { contextPanelTab: tab },
           undefined,
-          'toggleFileBrowser'
+          'setContextPanelTab'
+        ),
+
+      openContextPanel: tab =>
+        set(
+          state =>
+            state.fileBrowserVisible && state.contextPanelTab === tab
+              ? state
+              : { fileBrowserVisible: true, contextPanelTab: tab },
+          undefined,
+          'openContextPanel'
+        ),
+
+      toggleContextPanel: tab =>
+        set(
+          state =>
+            state.fileBrowserVisible && state.contextPanelTab === tab
+              ? { fileBrowserVisible: false, sessionNetworkSessionId: null }
+              : { fileBrowserVisible: true, contextPanelTab: tab },
+          undefined,
+          'toggleContextPanel'
         ),
 
       setFileBrowserVisible: visible =>
@@ -622,7 +663,9 @@ export const useUIStore = create<UIState>()(
           state =>
             state.fileBrowserVisible === visible
               ? state
-              : { fileBrowserVisible: visible },
+              : visible
+                ? { fileBrowserVisible: true }
+                : { fileBrowserVisible: false, sessionNetworkSessionId: null },
           undefined,
           'setFileBrowserVisible'
         ),
