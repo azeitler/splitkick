@@ -48,6 +48,18 @@ pub struct SessionBundle {
     /// The source's pasted-file directories, so the target can rewrite the paths
     /// inside the run logs and user messages.
     pub source_dirs: BundleDirs,
+    /// Copies of the artifact versions (#108), by their file name in the
+    /// session's `artifacts/` folder. Absent in bundles from older versions.
+    #[serde(default)]
+    pub artifact_snapshots: Vec<BundleSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleSnapshot {
+    pub file_name: String,
+    /// File bytes, base64 (standard alphabet).
+    pub base64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -155,6 +167,7 @@ pub async fn export_session_bundle(
     let contexts = read_attached_contexts(&app, &session_id)?;
     let source_dirs = local_dirs(&app)?;
     let attachments = read_attachments(&runs, &source_dirs)?;
+    let artifact_snapshots = read_artifact_snapshots(&app, &session_id, metadata.as_ref())?;
 
     log::info!(
         "Exported session {session_id} for transfer (runs={}, contexts={}, attachments={})",
@@ -171,7 +184,38 @@ pub async fn export_session_bundle(
         contexts,
         attachments,
         source_dirs,
+        artifact_snapshots,
     })
+}
+
+/// The copies the session's artifact versions refer to. A copy that is gone is
+/// left out; its version then has nothing to open on the target either.
+fn read_artifact_snapshots(
+    app: &AppHandle,
+    session_id: &str,
+    metadata: Option<&SessionMetadata>,
+) -> Result<Vec<BundleSnapshot>, String> {
+    let Some(metadata) = metadata else {
+        return Ok(vec![]);
+    };
+    let dir = super::artifacts::snapshot_dir(app, session_id)?;
+    let mut out = vec![];
+    for name in metadata
+        .artifacts
+        .iter()
+        .flat_map(|a| a.versions.iter().filter_map(|v| v.snapshot.clone()))
+    {
+        if !is_plain_file_name(&name) {
+            continue;
+        }
+        if let Ok(bytes) = fs::read(dir.join(&name)) {
+            out.push(BundleSnapshot {
+                file_name: name,
+                base64: STANDARD.encode(bytes),
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// Read `{run_id}.jsonl` for each run. `{run_id}.input.jsonl` is a consumed stdin
@@ -320,6 +364,18 @@ pub async fn import_session_bundle(
         fs::write(session_dir.join(&log.name), content)
             .map_err(|e| format!("Failed to write run log {}: {e}", log.name))?;
     }
+    if !bundle.artifact_snapshots.is_empty() {
+        let dir = session_dir.join(super::artifacts::SNAPSHOT_DIR);
+        fs::create_dir_all(&dir).map_err(|e| format!("Failed to create {}: {e}", dir.display()))?;
+        for snapshot in &bundle.artifact_snapshots {
+            let bytes = STANDARD
+                .decode(&snapshot.base64)
+                .map_err(|e| format!("Invalid artifact copy {}: {e}", snapshot.file_name))?;
+            fs::write(dir.join(&snapshot.file_name), bytes).map_err(|e| {
+                format!("Failed to write artifact copy {}: {e}", snapshot.file_name)
+            })?;
+        }
+    }
 
     let mut metadata = prepare_forked_metadata(
         bundle.metadata.clone(),
@@ -394,6 +450,14 @@ fn validate_bundle_names(bundle: &SessionBundle) -> Result<(), String> {
             return Err(format!(
                 "Invalid attachment name in bundle: {}",
                 attachment.file_name
+            ));
+        }
+    }
+    for snapshot in &bundle.artifact_snapshots {
+        if !is_plain_file_name(&snapshot.file_name) {
+            return Err(format!(
+                "Invalid artifact copy name in bundle: {}",
+                snapshot.file_name
             ));
         }
     }
@@ -571,12 +635,25 @@ mod tests {
                 target: "https://preview.example.dev".to_string(),
                 note: None,
                 created_at: 1,
+                versions: vec![super::super::types::ArtifactVersion {
+                    version: 1,
+                    title: "Preview".to_string(),
+                    note: None,
+                    change: None,
+                    snapshot: Some("snap-1.html".to_string()),
+                    size: Some(9),
+                    sha256: None,
+                    created_at: 1,
+                }],
             }];
             Ok(())
         })
         .unwrap();
 
         let session_dir = storage::get_session_dir(app, &session_id).unwrap();
+        let snapshots = session_dir.join(super::super::artifacts::SNAPSHOT_DIR);
+        fs::create_dir_all(&snapshots).unwrap();
+        fs::write(snapshots.join("snap-1.html"), b"<h1>v1</h1>").unwrap();
         let image_json = serde_json::to_string(&image.display().to_string()).unwrap();
         fs::write(
             session_dir.join("r1.jsonl"),
@@ -630,6 +707,8 @@ mod tests {
         assert_eq!(bundle.attachments.len(), 1);
         assert_eq!(bundle.attachments[0].dir, AttachmentDir::PastedImages);
         assert_eq!(bundle.attachments[0].file_name, "image-1.png");
+        assert_eq!(bundle.artifact_snapshots.len(), 1);
+        assert_eq!(bundle.artifact_snapshots[0].file_name, "snap-1.html");
         assert_eq!(
             STANDARD.decode(&bundle.attachments[0].base64).unwrap(),
             b"png-bytes"
@@ -691,6 +770,15 @@ mod tests {
             vec!["art-1"],
             "the artifact list travels with the session"
         );
+        let copy = storage::get_session_dir(&target, &imported.id)
+            .unwrap()
+            .join(super::super::artifacts::SNAPSHOT_DIR)
+            .join("snap-1.html");
+        assert_eq!(
+            fs::read(copy).unwrap(),
+            b"<h1>v1</h1>",
+            "the copies of the artifact versions travel too (#108)"
+        );
         assert!(metadata
             .runs
             .iter()
@@ -741,6 +829,7 @@ mod tests {
             contexts: vec![],
             attachments: vec![],
             source_dirs: BundleDirs::default(),
+            artifact_snapshots: vec![],
         };
 
         let imported = block_on(import_session_bundle(
@@ -763,6 +852,7 @@ mod tests {
             contexts: vec![],
             attachments: vec![],
             source_dirs: BundleDirs::default(),
+            artifact_snapshots: vec![],
         }
     }
 

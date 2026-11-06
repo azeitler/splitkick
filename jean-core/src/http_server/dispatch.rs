@@ -3511,6 +3511,12 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "get_artifact_snapshot_dir" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result =
+                crate::chat::artifacts::get_artifact_snapshot_dir(app.clone(), session_id).await?;
+            to_value(result)
+        }
         "dequeue_message" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

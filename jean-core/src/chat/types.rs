@@ -36,7 +36,7 @@ pub struct FollowUp {
 }
 
 /// A file or URL the agent registered as an output of the session.
-/// Added through the `add_artifact` MCP tool, shown in the Artifacts panel.
+/// Added through the `add_artifact` MCP tool, shown in the Artifacts tab.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Artifact {
     pub id: String,
@@ -45,6 +45,34 @@ pub struct Artifact {
     pub target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Unix timestamp in milliseconds of the first registration
+    pub created_at: u64,
+    /// Oldest first (#108). Empty for an item saved before versions existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<ArtifactVersion>,
+}
+
+/// One version of an artifact (#108): a copy of the file at the time the agent
+/// registered it, so the history survives when the file changes or is deleted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArtifactVersion {
+    /// 1, 2, 3 …
+    pub version: u32,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// What changed in this version, as the agent wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<String>,
+    /// File name of the copy in the session's `artifacts/` folder. None for a
+    /// URL or a file that could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    /// Hex SHA-256 of the copy; equal content adds no version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
     /// Unix timestamp in milliseconds
     pub created_at: u64,
 }
