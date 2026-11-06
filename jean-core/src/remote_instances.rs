@@ -12,7 +12,6 @@
 //!
 //! Contract: `docs/developer/remote-mcp.md`.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,12 +26,11 @@ const TOKEN_FILE: &str = "remote-connection-tokens.json";
 
 /// `file` keeps tokens in the `0600` token file even on macOS. The sealed e2e
 /// instances set it, so a test run never writes to the login Keychain.
-pub const TOKEN_STORE_ENV: &str = "SPLITKICK_REMOTE_TOKEN_STORE";
+pub use crate::secret_store::TOKEN_STORE_ENV;
 
 /// Keychain service of the token items. Each item's account is
 /// `<data dir>/<connection id>`, so the installed app, the dev build and any
 /// isolated profile never share an item.
-#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "Splitkick remote connection token";
 
 /// MCP `source` prefix of a tool call that came from another instance.
@@ -144,27 +142,7 @@ fn write_connections(dir: &Path, connections: &[RemoteConnection]) -> Result<(),
         connections: connections.to_vec(),
     })
     .map_err(|e| format!("Failed to serialize remote connections: {e}"))?;
-    write_private(&dir.join(CONNECTIONS_FILE), body.as_bytes())
-}
-
-/// Write via a temp file and rename, readable by the owner only.
-fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-    let tmp = path.with_extension("json.tmp");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(&tmp)
-        .map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
-    file.write_all(bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("Failed to write {}: {e}", path.display()))
+    crate::secret_store::write_private(&dir.join(CONNECTIONS_FILE), body.as_bytes())
 }
 
 fn clean(value: Option<String>) -> Option<String> {
@@ -209,108 +187,11 @@ fn connection_from_input(input: &RemoteConnectionInput) -> Result<RemoteConnecti
 }
 
 /// The token store for this instance.
-enum TokenStore {
-    #[cfg(target_os = "macos")]
-    Keychain {
-        account_prefix: String,
-    },
-    File(PathBuf),
+type TokenStore = crate::secret_store::SecretStore;
+
+fn token_store(dir: &Path) -> TokenStore {
+    TokenStore::for_dir(dir, KEYCHAIN_SERVICE, TOKEN_FILE)
 }
-
-impl TokenStore {
-    fn for_dir(dir: &Path) -> Self {
-        #[cfg(target_os = "macos")]
-        {
-            let forced_file = std::env::var(TOKEN_STORE_ENV).is_ok_and(|v| v == "file");
-            if !forced_file {
-                return Self::Keychain {
-                    account_prefix: dir.display().to_string(),
-                };
-            }
-        }
-        Self::File(dir.join(TOKEN_FILE))
-    }
-
-    fn read_file(path: &Path) -> Result<BTreeMap<String, String>, String> {
-        match std::fs::read_to_string(path) {
-            Ok(raw) => serde_json::from_str(&raw)
-                .map_err(|e| format!("Failed to parse {}: {e}", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
-            Err(e) => Err(format!("Failed to read {}: {e}", path.display())),
-        }
-    }
-
-    fn write_file(path: &Path, tokens: &BTreeMap<String, String>) -> Result<(), String> {
-        let body = serde_json::to_vec_pretty(tokens)
-            .map_err(|e| format!("Failed to serialize tokens: {e}"))?;
-        write_private(path, &body)
-    }
-
-    fn get(&self, id: &str) -> Result<Option<String>, String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::Keychain { account_prefix } => {
-                let account = format!("{account_prefix}/{id}");
-                match security_framework::passwords::get_generic_password(
-                    KEYCHAIN_SERVICE,
-                    &account,
-                ) {
-                    Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
-                    Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
-                    Err(e) => Err(format!("Keychain read failed: {e}")),
-                }
-            }
-            Self::File(path) => Ok(Self::read_file(path)?.remove(id)),
-        }
-    }
-
-    fn set(&self, id: &str, token: &str) -> Result<(), String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::Keychain { account_prefix } => {
-                let account = format!("{account_prefix}/{id}");
-                security_framework::passwords::set_generic_password(
-                    KEYCHAIN_SERVICE,
-                    &account,
-                    token.as_bytes(),
-                )
-                .map_err(|e| format!("Keychain write failed: {e}"))
-            }
-            Self::File(path) => {
-                let mut tokens = Self::read_file(path)?;
-                tokens.insert(id.to_string(), token.to_string());
-                Self::write_file(path, &tokens)
-            }
-        }
-    }
-
-    fn delete(&self, id: &str) -> Result<(), String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::Keychain { account_prefix } => {
-                let account = format!("{account_prefix}/{id}");
-                match security_framework::passwords::delete_generic_password(
-                    KEYCHAIN_SERVICE,
-                    &account,
-                ) {
-                    Ok(()) => Ok(()),
-                    Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
-                    Err(e) => Err(format!("Keychain delete failed: {e}")),
-                }
-            }
-            Self::File(path) => {
-                let mut tokens = Self::read_file(path)?;
-                if tokens.remove(id).is_some() {
-                    Self::write_file(path, &tokens)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 fn save_in(
     dir: &Path,
@@ -387,7 +268,7 @@ fn import_in(
 /// Every connection without its token.
 pub fn list_remote_connections(app: &AppHandle) -> Result<Vec<RemoteConnectionView>, String> {
     let dir = data_dir(app)?;
-    list_in(&dir, &TokenStore::for_dir(&dir))
+    list_in(&dir, &token_store(&dir))
 }
 
 /// Add or update one connection. Never returns the token.
@@ -396,13 +277,13 @@ pub fn save_remote_connection(
     input: RemoteConnectionInput,
 ) -> Result<RemoteConnectionView, String> {
     let dir = data_dir(app)?;
-    save_in(&dir, &TokenStore::for_dir(&dir), input)
+    save_in(&dir, &token_store(&dir), input)
 }
 
 /// Remove one connection and its token.
 pub fn remove_remote_connection(app: &AppHandle, id: &str) -> Result<(), String> {
     let dir = data_dir(app)?;
-    remove_in(&dir, &TokenStore::for_dir(&dir), id)
+    remove_in(&dir, &token_store(&dir), id)
 }
 
 /// One-time migration of the frontend's localStorage list.
@@ -411,14 +292,14 @@ pub fn import_remote_connections(
     inputs: Vec<RemoteConnectionInput>,
 ) -> Result<Vec<RemoteConnectionView>, String> {
     let dir = data_dir(app)?;
-    import_in(&dir, &TokenStore::for_dir(&dir), inputs)
+    import_in(&dir, &token_store(&dir), inputs)
 }
 
 /// Every connection with its token. For the desktop shell only: it is not in
 /// the WebSocket dispatch, so Web Access cannot call it.
 pub fn remote_connection_secrets(app: &AppHandle) -> Result<Vec<RemoteConnectionSecret>, String> {
     let dir = data_dir(app)?;
-    secrets_in(&dir, &TokenStore::for_dir(&dir))
+    secrets_in(&dir, &token_store(&dir))
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +526,7 @@ pub async fn remote_tool(
     let dir = data_dir(app).map_err(ToolError::internal)?;
     let connections = read_connections(&dir).map_err(ToolError::internal)?;
     let connection = find_instance(&connections, instance)?.clone();
-    let token = TokenStore::for_dir(&dir)
+    let token = token_store(&dir)
         .get(&connection.id)
         .map_err(ToolError::internal)?
         .unwrap_or_default();
@@ -714,7 +595,7 @@ pub async fn list_instances(app: &AppHandle, source: &str) -> Result<Value, Tool
         return Err(loop_refused());
     }
     let dir = data_dir(app).map_err(ToolError::internal)?;
-    let store = TokenStore::for_dir(&dir);
+    let store = token_store(&dir);
     let connections = read_connections(&dir).map_err(ToolError::internal)?;
     let mut probes = Vec::with_capacity(connections.len());
     for connection in connections {
@@ -1215,6 +1096,7 @@ mod tests {
     #[ignore]
     fn keychain_roundtrip() {
         let store = TokenStore::Keychain {
+            service: KEYCHAIN_SERVICE,
             account_prefix: format!("/tmp/splitkick-keychain-test-{}", uuid::Uuid::new_v4()),
         };
         assert_eq!(store.get("x").unwrap(), None);

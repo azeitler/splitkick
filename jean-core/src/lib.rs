@@ -69,6 +69,7 @@ mod platform;
 mod prerequisites;
 mod projects;
 pub mod remote_instances;
+mod secret_store;
 mod server_update;
 pub mod session_backup;
 mod terminal;
