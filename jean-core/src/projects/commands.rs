@@ -823,9 +823,9 @@ pub async fn init_project(
         sentry_project_slug: None,
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
-    };
         is_git: true,
         git_detected: false,
+    };
 
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
@@ -883,10 +883,10 @@ pub async fn clone_project(
         sentry_project_slug: None,
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
-    };
-
         is_git: true,
         git_detected: false,
+    };
+
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
     allow_project_in_asset_scope(&app, &project.path);
@@ -1188,10 +1188,10 @@ fn resolve_worktree_and_project_default(
     let project = data
         .find_project(&worktree.project_id)
         .ok_or_else(|| format!("Worktree {worktree_id} has no parent project"))?;
+    project.ensure_git()?;
     Ok((worktree, project.default_branch.clone()))
 }
 
-    project.ensure_git()?;
 fn git_output(repo_path: &str, args: &[&str]) -> Result<String, String> {
     let output = silent_command("git")
         .args(args)
@@ -1368,10 +1368,10 @@ pub async fn create_worktree(
         .find_project(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?
         .clone();
+    project.ensure_git()?;
 
     // Use provided base branch, the PR's target branch when opening a PR, or the
     // project's default. A base may be remote-qualified ("fork/main") to start
-    project.ensure_git()?;
     // from another remote than origin. The git start point uses the qualified
     // ref; the worktree stores the short branch name plus base_remote so
     // status/diff/pull compare against the same remote later.
@@ -2619,10 +2619,10 @@ pub async fn create_worktree_from_existing_branch(
         .find_project(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?
         .clone();
+    project.ensure_git()?;
 
     // Use the branch name as the worktree name
     let name = branch_name.clone();
-    project.ensure_git()?;
 
     // Build worktree path: <base>/<project-name>/<folder-name>
     // Use sanitized name for folder path (branch name may contain slashes)
@@ -3200,10 +3200,10 @@ pub async fn checkout_pr(
         .find_project(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?
         .clone();
+    project.ensure_git()?;
 
     // Check if there's an archived worktree for this PR — restore it instead of creating a new one
     if let Some(archived_wt) = data.worktrees.iter().find(|w| {
-    project.ensure_git()?;
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
@@ -3991,9 +3991,6 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
     Ok(())
 }
 
-/// Create or reopen a base branch session for a project
-/// Base sessions use the project's base directory directly (no git worktree creation)
-/// If a preserved sessions file exists from a previous close, it will be restored
 /// Base session name: the branch, or the folder name for a plain project
 /// (it has no branch).
 fn base_session_name(project: &Project) -> String {
@@ -4075,6 +4072,9 @@ pub async fn set_project_is_git(
     Ok(project)
 }
 
+/// Create or reopen a base branch session for a project
+/// Base sessions use the project's base directory directly (no git worktree creation)
+/// If a preserved sessions file exists from a previous close, it will be restored
 pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<Worktree, String> {
     log::trace!("Creating base session for project: {project_id}");
 
@@ -12959,6 +12959,8 @@ pub async fn create_folder(
         sentry_project_slug: None,
         linked_project_ids: Vec::new(),
         auto_fix_settings: None,
+        is_git: true,
+        git_detected: false,
     };
 
     data.add_project(folder.clone());
@@ -12968,8 +12970,6 @@ pub async fn create_folder(
     Ok(folder)
 }
 
-        is_git: true,
-        git_detected: false,
 /// Rename a folder
 pub async fn rename_folder(
     app: AppHandle,
@@ -15550,6 +15550,8 @@ mod tests {
             sentry_project_slug: None,
             linked_project_ids: Vec::new(),
             auto_fix_settings: None,
+            is_git: true,
+            git_detected: false,
         };
 
         attach_default_avatar(&mut project);
@@ -15560,8 +15562,6 @@ mod tests {
     #[test]
     fn test_parse_command_content_with_allowed_tools_list() {
         let content = r#"---
-            is_git: true,
-            git_detected: false,
 allowed-tools: [Read, "Bash(git status:*)"]
 description: Test command
 ---

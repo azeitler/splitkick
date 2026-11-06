@@ -557,6 +557,7 @@ async fn run_tool(
     args: Value,
     source: &str,
 ) -> Result<Value, ToolError> {
+    ensure_mcp_git_tool(app, name, &args)?;
     match name {
         "list_projects" => {
             let mut projects = dispatch_command(app, "list_projects", json!({}))
@@ -574,6 +575,9 @@ async fn run_tool(
             if let Some(parent_id) = parent_id {
                 payload.insert("parentId".to_string(), Value::String(parent_id));
             }
+            if let Some(plain) = args.get("plain").and_then(Value::as_bool) {
+                payload.insert("plain".to_string(), Value::Bool(plain));
+            }
             dispatch_command(app, "add_project", Value::Object(payload))
                 .await
                 .map_err(ToolError::internal)
@@ -581,7 +585,6 @@ async fn run_tool(
         "clone_project" => {
             let url = require_nonempty_str(&args, "url")?;
             let path = require_nonempty_str(&args, "path")?;
-    ensure_mcp_git_tool(app, name, &args)?;
             let parent_id =
                 optional_str(&args, "parentId").or_else(|| optional_str(&args, "parent_id"));
             let mut payload = serde_json::Map::new();
@@ -595,9 +598,6 @@ async fn run_tool(
                 .map_err(ToolError::internal)
         }
         "init_project" => {
-            if let Some(plain) = args.get("plain").and_then(Value::as_bool) {
-                payload.insert("plain".to_string(), Value::Bool(plain));
-            }
             let path = require_nonempty_str(&args, "path")?;
             let parent_id =
                 optional_str(&args, "parentId").or_else(|| optional_str(&args, "parent_id"));
@@ -1948,6 +1948,7 @@ fn get_project_context(app: &AppHandle, project_id: &str) -> Result<Value, ToolE
         "id": project.id,
         "name": project.name,
         "path": project.path,
+        "kind": project.kind(),
         "defaultBranch": project.default_branch,
         "defaultBackend": project.default_backend,
         "defaultProvider": project.default_provider,
@@ -1969,7 +1970,6 @@ enum MessageRoleFilter {
     User,
     Assistant,
     All,
-        "kind": project.kind(),
 }
 
 fn parse_message_role_arg(args: &Value) -> Result<MessageRoleFilter, ToolError> {
@@ -3961,27 +3961,6 @@ fn require_value_str(value: &Value, key: &str) -> Result<String, ToolError> {
         .ok_or_else(|| ToolError::internal(format!("missing string field '{key}' in result")))
 }
 
-fn resolve_project_path(app: &AppHandle, project_id: &str) -> Result<String, ToolError> {
-    let data = crate::projects::storage::load_projects_data(app)
-        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
-    data.find_project(project_id)
-        .map(|p| p.path.clone())
-        .ok_or_else(|| ToolError::invalid_params(format!("Unknown projectId: {project_id}")))
-}
-
-fn resolve_worktree_path(app: &AppHandle, worktree_id: &str) -> Result<String, ToolError> {
-    let data = crate::projects::storage::load_projects_data(app)
-        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
-    data.find_worktree(worktree_id)
-        .map(|w| w.path.clone())
-        .ok_or_else(|| ToolError::invalid_params(format!("Unknown worktreeId: {worktree_id}")))
-}
-
-fn resolve_worktree_project(
-    app: &AppHandle,
-    worktree_id: &str,
-) -> Result<(String, String, String), ToolError> {
-    let data = crate::projects::storage::load_projects_data(app)
 /// MCP tools that need a git project, keyed by `projectId`.
 const GIT_PROJECT_TOOLS: &[&str] = &[
     "list_github_issues",
@@ -4051,6 +4030,27 @@ fn add_project_kinds(projects: &mut Value) {
     }
 }
 
+fn resolve_project_path(app: &AppHandle, project_id: &str) -> Result<String, ToolError> {
+    let data = crate::projects::storage::load_projects_data(app)
+        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+    data.find_project(project_id)
+        .map(|p| p.path.clone())
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown projectId: {project_id}")))
+}
+
+fn resolve_worktree_path(app: &AppHandle, worktree_id: &str) -> Result<String, ToolError> {
+    let data = crate::projects::storage::load_projects_data(app)
+        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+    data.find_worktree(worktree_id)
+        .map(|w| w.path.clone())
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown worktreeId: {worktree_id}")))
+}
+
+fn resolve_worktree_project(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(String, String, String), ToolError> {
+    let data = crate::projects::storage::load_projects_data(app)
         .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
     let wt = data
         .find_worktree(worktree_id)
@@ -6849,7 +6849,6 @@ mod tests {
 
         assert_eq!(error.code, -32602);
     }
-}
 
     /// A plain project and a git project side by side (#93).
     fn plain_project_fixture() -> (tempfile::TempDir, AppHandle) {
@@ -6950,3 +6949,4 @@ mod tests {
         let context = get_project_context(&app, "plain-p").unwrap();
         assert_eq!(context["kind"], "plain");
     }
+}

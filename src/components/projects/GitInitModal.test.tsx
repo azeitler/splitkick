@@ -124,7 +124,10 @@ describe('GitInitModal (#93)', () => {
   })
 
   it('warns when the folder is in a cloud-sync folder', () => {
-    mocks.preview = { ...mocks.preview!, sync_provider: 'iCloud Drive' }
+    mocks.preview = {
+      ...(mocks.preview as GitInitPreview),
+      sync_provider: 'iCloud Drive',
+    }
     openModal()
     render(<GitInitModal />)
 
