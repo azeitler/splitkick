@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Rename in the worktree right-click menu.** Rename was only on
+  double-click and in the command palette. The menu item opens the same
+  inline name field, also for the base worktree (#106).
+
 ## [1.5.2] - 2026-11-06
 
 Built on Jean 0.1.73.

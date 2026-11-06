@@ -88,8 +88,19 @@ vi.mock('./useWorktreeMenuActions', () => ({
   }),
 }))
 vi.mock('./WorktreeContextMenu', () => ({
-  WorktreeContextMenu: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
+  WorktreeContextMenu: ({
+    children,
+    onRename,
+  }: {
+    children: React.ReactNode
+    onRename: () => void
+  }) => (
+    <>
+      <button type="button" onClick={onRename}>
+        Menu Rename
+      </button>
+      {children}
+    </>
   ),
 }))
 vi.mock('@/components/chat/hooks/useSessionArchive', () => ({
@@ -993,5 +1004,22 @@ describe('WorktreeItem active session across sections', () => {
       expect(button.className).toContain(SIDEBAR_ROW_SELECTED)
       expect(button).toHaveClass('font-medium')
     }
+  })
+})
+
+describe('WorktreeItem rename from the context menu', () => {
+  beforeEach(() => {
+    mocks.sessions = []
+  })
+
+  it('opens the inline name input, focused, with the current name', async () => {
+    const user = userEvent.setup()
+    renderItem({})
+
+    await user.click(screen.getByRole('button', { name: 'Menu Rename' }))
+
+    const input = screen.getByRole('textbox', { name: 'Worktree name' })
+    expect(input).toHaveValue(worktree.name)
+    expect(input).toHaveFocus()
   })
 })
