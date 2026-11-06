@@ -209,6 +209,12 @@ export function useUIStatePersistence() {
     if (uiState.graphs_section_collapsed) {
       useProjectsStore.getState().setGraphsSectionCollapsed(true)
     }
+    if (uiState.graph_details_shown) {
+      useProjectsStore.getState().setGraphDetailsShown(true)
+    }
+    if (uiState.graph_relations_shown) {
+      useProjectsStore.getState().setGraphRelationsShown(true)
+    }
     if (uiState.folders_section_collapsed) {
       useProjectsStore.getState().setFoldersSectionCollapsed(true)
     }
@@ -980,6 +986,9 @@ export function useUIStatePersistence() {
       useProjectsStore.getState().starredSectionCollapsed
     let prevGraphsSectionCollapsed =
       useProjectsStore.getState().graphsSectionCollapsed
+    let prevGraphDetailsShown = useProjectsStore.getState().graphDetailsShown
+    let prevGraphRelationsShown =
+      useProjectsStore.getState().graphRelationsShown
     let prevFoldersSectionCollapsed =
       useProjectsStore.getState().foldersSectionCollapsed
     let prevProjectsSectionCollapsed =
@@ -1055,6 +1064,8 @@ export function useUIStatePersistence() {
         state.starredSectionCollapsed !== prevStarredSectionCollapsed
       const sectionsCollapsedChanged =
         state.graphsSectionCollapsed !== prevGraphsSectionCollapsed ||
+        state.graphDetailsShown !== prevGraphDetailsShown ||
+        state.graphRelationsShown !== prevGraphRelationsShown ||
         state.foldersSectionCollapsed !== prevFoldersSectionCollapsed ||
         state.projectsSectionCollapsed !== prevProjectsSectionCollapsed
       const projectRailChanged =
@@ -1095,6 +1106,8 @@ export function useUIStatePersistence() {
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevGraphsSectionCollapsed = state.graphsSectionCollapsed
+        prevGraphDetailsShown = state.graphDetailsShown
+        prevGraphRelationsShown = state.graphRelationsShown
         prevFoldersSectionCollapsed = state.foldersSectionCollapsed
         prevProjectsSectionCollapsed = state.projectsSectionCollapsed
         prevProjectRailHidden = state.projectRailHidden

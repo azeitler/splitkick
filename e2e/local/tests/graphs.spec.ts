@@ -227,6 +227,8 @@ test('Outline, node detail and dependencies edit the YAML file', async ({
   await nodeRow(page, 'Build').click()
   const detail = page.getByTestId('graph-node-detail')
   await expect(detail).toBeVisible()
+  // Relations are in the Relationships foldout.
+  await detail.getByTestId('graph-relations-toggle').click()
   await detail.getByLabel('Relation kind').selectOption('depends-on')
   await detail.getByLabel('Relation target').selectOption({ label: 'Design' })
   await detail.getByRole('button', { name: 'Add relation' }).click()
@@ -238,15 +240,17 @@ test('Outline, node detail and dependencies edit the YAML file', async ({
   await expect(
     nodeRow(page, 'Build').getByTestId('node-blocked-badge')
   ).toBeVisible()
-  await expect(detail).toContainText('Derived blocked: depends-on Design')
+  await expect(detail.getByTestId('graph-waiting-for')).toContainText(
+    'Waiting forDesign'
+  )
 
   // State change on Design in the detail panel.
   await nodeRow(page, 'Design').click()
   await expect(detail.getByLabel('Node title')).toHaveValue('Design')
-  await detail.getByRole('radio', { name: 'committed' }).click()
+  await detail.getByRole('radio', { name: 'Planned' }).click()
   await expect(
     nodeRow(page, 'Design').getByTestId('node-state-chip')
-  ).toHaveText(/committed/)
+  ).toHaveText(/Planned/)
   await shot(page, 'node-detail')
 
   // The file on disk has all of it.

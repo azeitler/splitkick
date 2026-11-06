@@ -176,6 +176,8 @@ export function GraphView({ graphId }: { graphId: string }) {
             nodeId={selectedNodeId}
             changes={changes}
             onClose={() => setSelectedNodeId(null)}
+            onSelectNode={setSelectedNodeId}
+            onOpenReview={() => setTab('review')}
           />
         )}
       </div>

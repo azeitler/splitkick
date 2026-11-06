@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
+import { useProjectsStore } from '@/store/projects-store'
 import { SessionGraphPanel, sessionHasGraphPanel } from './SessionGraphPanel'
 import { derived, detail, node } from './graph-test-fixtures'
 
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   changeServes: vi.fn(),
   setPermission: vi.fn(),
   openGraphView: vi.fn(),
+  openLinkToGraph: vi.fn(),
 }))
 
 const serving = (sessionId: string, sessionName: string) => ({
@@ -73,6 +75,9 @@ vi.mock('@/services/preferences', () => ({
 }))
 vi.mock('@/lib/graph-view', () => ({ openGraphView: mocks.openGraphView }))
 vi.mock('@/lib/navigate-to-session', () => ({ navigateToSession: vi.fn() }))
+vi.mock('@/lib/link-to-graph', () => ({
+  openLinkToGraph: mocks.openLinkToGraph,
+}))
 
 const worker = {
   id: 'me',
@@ -88,6 +93,9 @@ describe('SessionGraphPanel', () => {
     mocks.changeServes.mockClear()
     mocks.setPermission.mockClear()
     mocks.openGraphView.mockClear()
+    mocks.openLinkToGraph.mockClear()
+    useProjectsStore.getState().setGraphDetailsShown(false)
+    useProjectsStore.getState().setGraphRelationsShown(false)
   })
 
   it('is only for sessions that serve something or have an agent', () => {
@@ -99,65 +107,120 @@ describe('SessionGraphPanel', () => {
     expect(sessionHasGraphPanel(null)).toBe(false)
   })
 
+  it('shows only the node card until "Show details"', async () => {
+    render(<SessionGraphPanel session={worker} />)
+    expect(screen.queryByTestId('session-graph-expert')).toBeNull()
+    expect(screen.queryByText('Before and after')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(screen.getByTestId('session-graph-expert')).toBeInTheDocument()
+    expect(screen.getByText('Other sessions on this node')).toBeInTheDocument()
+    // Relationships are their own foldout, not part of the details.
+    expect(screen.queryByText('Before and after')).toBeNull()
+  })
+
+  it('opens the Relationships foldout with before, after and siblings', async () => {
+    render(<SessionGraphPanel session={worker} />)
+    const toggle = screen.getByTestId('graph-relations-toggle')
+    // depends on 1, needed by 1, siblings 2
+    expect(toggle).toHaveTextContent('Relationships(4)')
+    await userEvent.click(toggle)
+    expect(screen.getByText('Before and after')).toBeInTheDocument()
+    expect(screen.getByTestId('graph-siblings')).toBeInTheDocument()
+    expect(screen.queryByTestId('session-graph-expert')).toBeNull()
+  })
+
+  it('has no Relationships foldout for a whole-graph session', () => {
+    render(<SessionGraphPanel session={{ ...worker, serves: ['g1'] }} />)
+    expect(screen.queryByTestId('graph-relations-toggle')).toBeNull()
+  })
+
   it('shows the node card of a worker and opens it in the graph', async () => {
     render(<SessionGraphPanel session={worker} />)
     const card = screen.getByTestId('session-graph-node-card')
+    expect(card).toHaveTextContent('Splitkick roadmap')
     expect(card).toHaveTextContent('Session network view')
-    expect(card).toHaveTextContent('#77')
+    expect(card).toHaveTextContent('Planned')
     expect(within(card).getByTestId('node-active-badge')).toBeInTheDocument()
+    expect(within(card).getByTestId('graph-next')).toHaveTextContent(
+      'Next: Graph support v1'
+    )
     await userEvent.click(screen.getByRole('button', { name: /Open in graph/ }))
     expect(mocks.openGraphView).toHaveBeenCalledWith('g1', 'n77')
   })
 
-  it('lists before/after and the siblings with this session marked', () => {
+  it('changes the link through the Link to Graph dialog', async () => {
     render(<SessionGraphPanel session={worker} />)
-    expect(screen.getByText('depends on')).toBeInTheDocument()
-    expect(screen.getByText('needed by')).toBeInTheDocument()
-    const siblings = screen.getByTestId('graph-siblings')
-    const rows = within(siblings).getAllByRole('listitem')
-    expect(rows.map(r => r.textContent)).toEqual([
-      'Parent/child sessions',
-      'Session network viewthis session',
-      'Graph support v1',
-    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Change link…' }))
+    expect(mocks.openLinkToGraph).toHaveBeenCalledWith(worker)
   })
 
-  it('lists other sessions on the node, not itself', () => {
-    render(<SessionGraphPanel session={worker} />)
-    expect(screen.getByText('Other one')).toBeInTheDocument()
-    expect(screen.queryByText('Network view')).toBeNull()
-  })
-
-  it('removes a link in the Serves section without replacing the list', async () => {
-    render(<SessionGraphPanel session={worker} />)
+  it('offers Link to Graph… when the session is not linked', async () => {
+    const agentOnly = { ...worker, serves: [], agent_id: 'a1' }
+    render(<SessionGraphPanel session={agentOnly} />)
+    expect(
+      screen.getByText('This session is not linked to a graph.')
+    ).toBeInTheDocument()
     await userEvent.click(
-      screen.getByRole('button', {
-        name: 'Stop serving Splitkick roadmap › Session network view',
-      })
+      screen.getByRole('button', { name: 'Link to Graph…' })
     )
-    expect(mocks.changeServes).toHaveBeenCalledWith(
-      { sessionId: 'me', remove: ['g1#n77'] },
-      expect.anything()
-    )
+    expect(mocks.openLinkToGraph).toHaveBeenCalledWith(agentOnly)
   })
 
-  it('changes the node and the permission', async () => {
-    render(<SessionGraphPanel session={worker} />)
-    await userEvent.selectOptions(
-      screen.getByLabelText('Change node'),
-      'Graph support v1'
-    )
-    expect(mocks.setServes).toHaveBeenCalledWith({
-      sessionId: 'me',
-      serves: ['g1#gs1'],
+  it('shows progress, requests and changes for a whole-graph session', () => {
+    render(<SessionGraphPanel session={{ ...worker, serves: ['g1'] }} />)
+    const card = screen.getByTestId('session-graph-manager-card')
+    expect(card).toHaveTextContent('1/4 done')
+    expect(screen.queryByTestId('panel-requests')).toBeNull()
+  })
+
+  describe('expert layer and relationships', () => {
+    beforeEach(() => {
+      useProjectsStore.getState().setGraphDetailsShown(true)
+      useProjectsStore.getState().setGraphRelationsShown(true)
     })
-    await userEvent.selectOptions(
-      screen.getByLabelText('Graph permission'),
-      'write'
-    )
-    expect(mocks.setPermission).toHaveBeenCalledWith({
-      sessionId: 'me',
-      permission: 'write',
+
+    it('lists before/after and the siblings with this session marked', () => {
+      render(<SessionGraphPanel session={worker} />)
+      expect(screen.getByText('depends on')).toBeInTheDocument()
+      expect(screen.getByText('needed by')).toBeInTheDocument()
+      const siblings = screen.getByTestId('graph-siblings')
+      const rows = within(siblings).getAllByRole('listitem')
+      expect(rows.map(r => r.textContent)).toEqual([
+        'Parent/child sessions',
+        'Session network viewthis session',
+        'Graph support v1',
+      ])
+    })
+
+    it('lists other sessions on the node, not itself', () => {
+      render(<SessionGraphPanel session={worker} />)
+      expect(screen.getByText('Other one')).toBeInTheDocument()
+      expect(screen.queryByText('Network view')).toBeNull()
+    })
+
+    it('removes a link in the Serves section without replacing the list', async () => {
+      render(<SessionGraphPanel session={worker} />)
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Stop serving Splitkick roadmap › Session network view',
+        })
+      )
+      expect(mocks.changeServes).toHaveBeenCalledWith(
+        { sessionId: 'me', remove: ['g1#n77'] },
+        expect.anything()
+      )
+    })
+
+    it('changes the permission', async () => {
+      render(<SessionGraphPanel session={worker} />)
+      await userEvent.selectOptions(
+        screen.getByLabelText('Graph permission'),
+        'write'
+      )
+      expect(mocks.setPermission).toHaveBeenCalledWith({
+        sessionId: 'me',
+        permission: 'write',
+      })
     })
   })
 })

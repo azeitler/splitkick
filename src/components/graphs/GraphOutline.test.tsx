@@ -122,7 +122,7 @@ describe('GraphOutline', () => {
     expect(within(gs1).getByTestId('node-blocked-badge')).toBeInTheDocument()
     expect(within(gs1).getByTestId('node-unseen-dot')).toBeInTheDocument()
     expect(within(gs1).getByTestId('node-state-chip')).toHaveTextContent(
-      'committed'
+      'Planned'
     )
 
     expect(
