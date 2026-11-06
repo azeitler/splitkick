@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   copyImageToClipboard: vi.fn(async () => undefined),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  toastInfo: vi.fn(),
   openChatLink: vi.fn(),
   isLocalBackend: vi.fn(() => true),
   invoke: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('sonner', () => ({
   toast: {
     success: mocks.toastSuccess,
     error: mocks.toastError,
+    info: mocks.toastInfo,
   },
 }))
 
@@ -616,5 +618,65 @@ describe('MessageThreadContextMenu — Copy image', () => {
 
     await screen.findByRole('menuitem', { name: /copy message/i })
     expect(screen.queryByRole('menuitem', { name: 'Copy image' })).toBeNull()
+  })
+})
+
+describe('MessageThreadContextMenu — Mention in chat', () => {
+  beforeEach(() => {
+    useChatStore.setState({ pendingImages: {} })
+    mocks.toastInfo.mockReset()
+  })
+
+  const renderImage = (sessionId?: string) => {
+    render(
+      <MessageThreadContextMenu
+        messageText="Full message body"
+        sessionId={sessionId}
+      >
+        <p>
+          <button type="button" data-local-path="/tmp/shot.png">
+            <img alt="shot" src="/x.png" />
+          </button>
+          <span>plain text</span>
+        </p>
+      </MessageThreadContextMenu>
+    )
+  }
+
+  it('attaches the image to the session composer', async () => {
+    const user = userEvent.setup()
+    renderImage('s1')
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Mention in chat' })
+    )
+
+    expect(useChatStore.getState().pendingImages.s1).toEqual([
+      expect.objectContaining({ path: '/tmp/shot.png', filename: 'shot.png' }),
+    ])
+  })
+
+  it('does not attach the same image twice', async () => {
+    const user = userEvent.setup()
+    renderImage('s1')
+    for (let i = 0; i < 2; i++) {
+      fireEvent.contextMenu(screen.getByAltText('shot'))
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Mention in chat' })
+      )
+    }
+
+    expect(useChatStore.getState().pendingImages.s1).toHaveLength(1)
+    expect(mocks.toastInfo).toHaveBeenCalledWith('Image is already attached')
+  })
+
+  it('offers no Mention in chat without a session or away from an image', async () => {
+    renderImage(undefined)
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+    await screen.findByRole('menuitem', { name: /copy message/i })
+    expect(
+      screen.queryByRole('menuitem', { name: 'Mention in chat' })
+    ).toBeNull()
   })
 })
