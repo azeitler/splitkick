@@ -91,6 +91,10 @@ const FAVICON_CANDIDATES: &[&str] = &[
     "public/favicon.ico",
     "public/favicon.png",
     "public/apple-touch-icon.png",
+    "docs/public/favicon.svg",
+    "docs/public/favicon.ico",
+    "docs/public/favicon.png",
+    "docs/public/apple-touch-icon.png",
     "app/favicon.ico",
     "app/favicon.png",
     "app/icon.svg",
@@ -15448,6 +15452,19 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let icon = dir.path().join("public/favicon.svg");
         std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create public");
+        std::fs::write(&icon, "<svg />").expect("write icon");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            Some(icon.display().to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_docs_public_candidate() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let icon = dir.path().join("docs/public/favicon.svg");
+        std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create docs/public");
         std::fs::write(&icon, "<svg />").expect("write icon");
 
         assert_eq!(
