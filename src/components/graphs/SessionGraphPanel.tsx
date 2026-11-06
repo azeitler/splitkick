@@ -50,7 +50,7 @@ type PanelSession = Pick<
 
 /** Whether a session gets the graph panel (serves something or has an agent). */
 export function sessionHasGraphPanel(
-  session: PanelSession | null | undefined
+  session: Pick<Session, 'serves' | 'agent_id'> | null | undefined
 ): boolean {
   return !!session && ((session.serves?.length ?? 0) > 0 || !!session.agent_id)
 }
