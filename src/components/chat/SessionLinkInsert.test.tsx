@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ChatService from '@/services/chat'
 import { render } from '@/test/test-utils'
+import { useUIStore } from '@/store/ui-store'
 import type { SessionLink } from '@/types/chat'
 import { CurrentSessionContext } from './CurrentSessionContext'
 import {
@@ -122,6 +123,14 @@ describe('SessionLinkInsert', () => {
   it('shows Sent to session for a later send from another chat', () => {
     renderInsert('send_chat_message', 'someone-else')
     expect(screen.getByText(/Sent to session/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Network/ })).toBeNull()
+  })
+
+  it('opens the session network of the current chat (#77)', () => {
+    useUIStore.getState().setSessionNetworkSessionId(null)
+    renderInsert('create_session')
+    fireEvent.click(screen.getByRole('button', { name: /Network/ }))
+    expect(useUIStore.getState().sessionNetworkSessionId).toBe('parent')
   })
 
   it('marks an archived session and offers no View', () => {

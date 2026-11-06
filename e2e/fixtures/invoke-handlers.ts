@@ -65,6 +65,9 @@ export const defaultResponses: Record<string, unknown> = {
   },
   // Matches the Rust AllSessionsResponse: { entries: AllSessionsEntry[] }.
   list_all_sessions: { entries: [] },
+  list_graphs: [],
+  list_graph_changes: [],
+  list_graph_requests: [],
   create_session: {
     id: 'session-new',
     name: 'New Session',

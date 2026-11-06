@@ -1894,3 +1894,26 @@ export interface SessionLink {
   archived: boolean
   startedBySessionId?: string | null
 }
+
+/** One session in a session network (#77), with where it lives. */
+export interface SessionNetworkNode {
+  /** Session summary, without messages */
+  session: Session
+  /** Parent within this network; null for the root */
+  parentId: string | null
+  projectId: string
+  projectName: string
+  worktreeId: string
+  worktreeName: string
+  worktreePath: string
+  worktreeArchived: boolean
+}
+
+/** Response of `get_session_network`: the tree around one session (#77). */
+export interface SessionNetwork {
+  rootId: string
+  /** The root names a parent that is not on this device */
+  rootParentMissing: boolean
+  /** Depth-first, root first */
+  nodes: SessionNetworkNode[]
+}

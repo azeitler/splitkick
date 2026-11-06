@@ -23,6 +23,7 @@ import type {
   LoadedMessages,
   PlanHandoff,
   SessionLink,
+  SessionNetwork,
   Session,
   WorktreeSessions,
   Question,
@@ -651,28 +652,81 @@ export function useSessionLink(sessionId: string | null | undefined) {
   })
 }
 
-export function useAllSessions(enabled = true) {
+/**
+ * The tree around a session: its root via `started_by` and all descendants,
+ * across worktrees and projects, archived ones included (#77). Refetched with
+ * every `sessions` cache invalidation (see `applyCacheInvalidationKeys`).
+ */
+export const sessionNetworkQueryKey = ['session-network'] as const
+
+export function useSessionNetwork(sessionId: string | null | undefined) {
   return useQuery({
-    queryKey: ['all-sessions'],
-    queryFn: async (): Promise<AllSessionsResponse> => {
-      try {
-        logger.debug('Loading all sessions')
-        const response = await invoke<AllSessionsResponse>('list_all_sessions')
-        mergePersistedSessionLabels(response)
-        logger.info('All sessions loaded', {
-          entryCount: response.entries.length,
-        })
-        return response
-      } catch (error) {
-        logger.error('Failed to load all sessions', { error })
-        // An empty list here would read as "no sessions" for five minutes.
-        return preserveQueryCacheOnError(error)
-      }
-    },
-    enabled,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 5,
+    queryKey: [...sessionNetworkQueryKey, sessionId],
+    queryFn: () =>
+      invoke<SessionNetwork | null>('get_session_network', { sessionId }),
+    enabled: !!sessionId,
+    staleTime: 10 * 1000,
   })
+}
+
+const linkedIdsCache = new WeakMap<AllSessionsResponse, Set<string>>()
+
+/** Ids of sessions that have a parent or at least one child. */
+export function linkedSessionIds(data: AllSessionsResponse): Set<string> {
+  const cached = linkedIdsCache.get(data)
+  if (cached) return cached
+  const ids = new Set<string>()
+  for (const entry of data.entries) {
+    for (const session of entry.sessions) {
+      if (!session.started_by_session_id) continue
+      ids.add(session.id)
+      ids.add(session.started_by_session_id)
+    }
+  }
+  linkedIdsCache.set(data, ids)
+  return ids
+}
+
+const allSessionsQueryOptions = {
+  queryKey: ['all-sessions'],
+  queryFn: async (): Promise<AllSessionsResponse> => {
+    try {
+      logger.debug('Loading all sessions')
+      const response = await invoke<AllSessionsResponse>('list_all_sessions')
+      mergePersistedSessionLabels(response)
+      logger.info('All sessions loaded', {
+        entryCount: response.entries.length,
+      })
+      return response
+    } catch (error) {
+      logger.error('Failed to load all sessions', { error })
+      // An empty list here would read as "no sessions" for five minutes.
+      return preserveQueryCacheOnError(error)
+    }
+  },
+  staleTime: 1000 * 60 * 5, // 5 minutes
+  gcTime: 1000 * 60 * 5,
+}
+
+/**
+ * Is this session part of a session network (has a parent or a child)? Reads
+ * the cross-project session list that the sidebar already keeps, so all rows
+ * share one cached query. Re-renders only when the answer changes.
+ */
+export function useIsSessionLinked(
+  sessionId: string,
+  startedBySessionId?: string | null
+): boolean {
+  const { data } = useQuery({
+    ...allSessionsQueryOptions,
+    select: (response: AllSessionsResponse) =>
+      linkedSessionIds(response).has(sessionId),
+  })
+  return !!startedBySessionId || !!data
+}
+
+export function useAllSessions(enabled = true) {
+  return useQuery({ ...allSessionsQueryOptions, enabled })
 }
 
 /** Shortest query the backend will scan for — matches MIN_QUERY_LEN in search.rs */
