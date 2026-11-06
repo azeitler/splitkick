@@ -12,8 +12,16 @@ const {
   invoke,
   isNativeApp,
   listenLocal,
+  removeRemoteConnection,
+  connections,
 } = vi.hoisted(() => ({
-  addRemoteConnection: vi.fn(() => ({ id: 'remote-1' })),
+  addRemoteConnection: vi.fn(
+    async (): Promise<{ id: string }> => ({ id: 'remote-1' })
+  ),
+  removeRemoteConnection: vi.fn(async () => undefined),
+  connections: {
+    list: [] as { id: string; name: string; url: string; token: string }[],
+  },
   selectConnection: vi.fn(),
   fetchRemoteServerInfo: vi.fn(async () => ({
     ok: true,
@@ -34,7 +42,7 @@ vi.mock('@/lib/remote-connections', () => ({
   LOCAL_CONNECTION_ID: 'local',
   addRemoteConnection,
   getActiveConnectionId: () => 'local',
-  removeRemoteConnection: vi.fn(),
+  removeRemoteConnection,
   markConnectionSwitch: vi.fn(),
   parseOptionalSshPort: (raw: string) => {
     const trimmed = raw.trim()
@@ -57,7 +65,7 @@ vi.mock('@/lib/remote-connections', () => ({
   },
   selectConnection,
   updateRemoteConnection: vi.fn(),
-  useRemoteConnections: () => [],
+  useRemoteConnections: () => connections.list,
 }))
 
 vi.mock('@/lib/remote-version', () => ({
@@ -95,6 +103,7 @@ describe('RemoteConnectionsDialog', () => {
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(false)
+    connections.list = []
   })
 
   it('uses the title bar tooltip instead of the native browser tooltip', async () => {
@@ -159,6 +168,47 @@ describe('RemoteConnectionsDialog', () => {
       expect(selectConnection).toHaveBeenCalledWith('remote-1')
       expect(reloadApp).toHaveBeenCalled()
     })
+  })
+
+  // The desktop shell saves to its backend and the Keychain (#94); a failed
+  // save must show, not leave a connection that only exists in memory.
+  it('shows a failed save and does not connect', async () => {
+    addRemoteConnection.mockRejectedValueOnce(
+      new Error('Keychain write failed: denied')
+    )
+    const reloadApp = vi.fn()
+    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
+    fireEvent.change(screen.getByLabelText('Web Access URL'), {
+      target: { value: 'https://jean.example.com/?token=secret' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Connect' }))
+
+    expect(
+      await screen.findByText('Keychain write failed: denied')
+    ).toBeInTheDocument()
+    expect(selectConnection).not.toHaveBeenCalled()
+    expect(reloadApp).not.toHaveBeenCalled()
+  })
+
+  it('shows a failed delete', async () => {
+    connections.list = [
+      { id: 'remote-1', name: 'mb16', url: 'http://mb16:3460', token: 't' },
+    ]
+    removeRemoteConnection.mockRejectedValueOnce(
+      new Error('Keychain delete failed')
+    )
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete mb16' }))
+
+    expect(
+      await screen.findByText('Keychain delete failed')
+    ).toBeInTheDocument()
+    expect(removeRemoteConnection).toHaveBeenCalledWith('remote-1')
   })
 
   it('shows local version and still connects when remote mismatches', async () => {

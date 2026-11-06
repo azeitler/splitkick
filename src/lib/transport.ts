@@ -206,6 +206,7 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'start_http_server',
   'stop_http_server',
   'install_remote_jean_server',
+  'get_remote_connection_secrets',
   'browser_create',
   'browser_navigate',
   'browser_back',

@@ -59,9 +59,7 @@ export const CONNECTION_WINDOW_LABEL_PREFIX = 'remote-'
 function readWindowConnection(): string | null {
   if (typeof window === 'undefined') return null
   const search = window.location?.search
-  const fromUrl = search
-    ? new URLSearchParams(search).get('connection')
-    : null
+  const fromUrl = search ? new URLSearchParams(search).get('connection') : null
   if (fromUrl) return fromUrl
   const label = (
     window as unknown as {
@@ -77,7 +75,12 @@ function readWindowConnection(): string | null {
 }
 
 const subscribers = new Set<() => void>()
-let connectionsSnapshot: RemoteConnection[] = readConnections()
+// The desktop shell keeps the list in its backend, tokens in the Keychain
+// (issue #94); `hydrateRemoteConnections()` loads it before the first render.
+// Web Access keeps its own list in this browser's localStorage.
+let connectionsSnapshot: RemoteConnection[] = isNativeShell()
+  ? []
+  : readConnections()
 const windowConnection = readWindowConnection()
 
 /** Whether this window was opened for one remote connection. */
@@ -191,10 +194,88 @@ function sshFieldsFromInput(input: RemoteConnectionInput): {
   return fields
 }
 
-function writeConnections(connections: RemoteConnection[]): void {
+function setSnapshot(connections: RemoteConnection[]): void {
   connectionsSnapshot = connections
-  storage()?.setItem(CONNECTIONS_KEY, JSON.stringify(connections))
   for (const subscriber of subscribers) subscriber()
+}
+
+function writeConnections(connections: RemoteConnection[]): void {
+  storage()?.setItem(CONNECTIONS_KEY, JSON.stringify(connections))
+  setSnapshot(connections)
+}
+
+/** Desktop-only command: the list with tokens. Not in the WebSocket dispatch. */
+const SECRETS_COMMAND = 'get_remote_connection_secrets'
+
+/**
+ * A core command on this desktop shell's own backend.
+ *
+ * Not `invoke` from `transport.ts`: in a connection window that one talks to
+ * the remote, and the connections belong to this machine.
+ */
+async function invokeShell<T>(
+  command: string,
+  args: Record<string, unknown> = {}
+): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  if (command === SECRETS_COMMAND) return invoke<T>(command)
+  return invoke<T>('dispatch_core_command', { command, args })
+}
+
+function toBackendInput(connection: RemoteConnection) {
+  return {
+    id: connection.id,
+    name: connection.name,
+    url: connection.url,
+    token: connection.token,
+    sshUser: connection.sshUser ?? null,
+    sshHost: connection.sshHost ?? null,
+    sshPort: connection.sshPort ?? null,
+  }
+}
+
+async function saveConnection(
+  connection: RemoteConnection,
+  next: RemoteConnection[]
+): Promise<void> {
+  if (isNativeShell()) {
+    await invokeShell('save_remote_connection', {
+      connection: toBackendInput(connection),
+    })
+    setSnapshot(next)
+    return
+  }
+  writeConnections(next)
+}
+
+/**
+ * Load the desktop shell's connections before the first render.
+ *
+ * Once: moves a list left in localStorage by an older version into the
+ * backend, then removes it from localStorage, so no token stays there. On a
+ * failed move the old list stays and is used for this run.
+ */
+export async function hydrateRemoteConnections(): Promise<void> {
+  if (!isNativeShell()) return
+  const legacy = readConnections()
+  if (legacy.length > 0) {
+    try {
+      await invokeShell('import_remote_connections', {
+        connections: legacy.map(toBackendInput),
+      })
+      storage()?.removeItem(CONNECTIONS_KEY)
+    } catch (error) {
+      console.warn('Could not move remote connections to the backend', error)
+      setSnapshot(legacy)
+      return
+    }
+  }
+  const stored = await invokeShell<unknown[]>(SECRETS_COMMAND)
+  setSnapshot(
+    stored
+      .map(normalizeConnection)
+      .filter((item): item is RemoteConnection => item !== null)
+  )
 }
 
 export function parseRemoteConnectionInput(
@@ -225,9 +306,9 @@ export function getRemoteConnections(): RemoteConnection[] {
   return connectionsSnapshot
 }
 
-export function addRemoteConnection(
+export async function addRemoteConnection(
   input: RemoteConnectionInput
-): RemoteConnection {
+): Promise<RemoteConnection> {
   const normalized = parseRemoteConnectionInput(input.url, input.token)
   const connection: RemoteConnection = {
     id: generateId(),
@@ -235,14 +316,14 @@ export function addRemoteConnection(
     ...normalized,
     ...sshFieldsFromInput(input),
   }
-  writeConnections([...getRemoteConnections(), connection])
+  await saveConnection(connection, [...getRemoteConnections(), connection])
   return connection
 }
 
-export function updateRemoteConnection(
+export async function updateRemoteConnection(
   id: string,
   input: RemoteConnectionInput
-): RemoteConnection {
+): Promise<RemoteConnection> {
   const normalized = parseRemoteConnectionInput(input.url, input.token)
   const updated: RemoteConnection = {
     id,
@@ -254,16 +335,23 @@ export function updateRemoteConnection(
   if (!connections.some(connection => connection.id === id)) {
     throw new Error('Remote connection not found.')
   }
-  writeConnections(
+  await saveConnection(
+    updated,
     connections.map(connection => (connection.id === id ? updated : connection))
   )
   return updated
 }
 
-export function removeRemoteConnection(id: string): void {
-  writeConnections(
-    getRemoteConnections().filter(connection => connection.id !== id)
+export async function removeRemoteConnection(id: string): Promise<void> {
+  const remaining = getRemoteConnections().filter(
+    connection => connection.id !== id
   )
+  if (isNativeShell()) {
+    await invokeShell('remove_remote_connection', { id })
+    setSnapshot(remaining)
+  } else {
+    writeConnections(remaining)
+  }
   if (getActiveConnectionId() === id) selectConnection(LOCAL_CONNECTION_ID)
 }
 
