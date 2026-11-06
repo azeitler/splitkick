@@ -18,10 +18,12 @@ import {
   type UsageSeverity,
 } from '@/components/preferences/panes/UsagePane'
 import {
+  useClaudeAccountsUsage,
   useClaudeCliAuth,
   useClaudeCliStatus,
-  useClaudeUsage,
 } from '@/services/claude-cli'
+import { usePreferences } from '@/services/preferences'
+import { listClaudeAccounts } from '@/lib/claude-accounts'
 import {
   useCodexCliAuth,
   useCodexCliStatus,
@@ -68,9 +70,17 @@ export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
   })
+  // Every Claude account (#90); same query keys as the Usage pane.
+  const { data: preferences } = usePreferences()
+  const claudeAccounts = listClaudeAccounts(preferences)
+  const claudeMultiAccount = claudeAccounts.length > 1
   const claudeReady =
-    !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated
-  const claudeUsage = useClaudeUsage({ enabled: claudeReady && fetchEnabled })
+    !!claudeStatus.data?.installed &&
+    (claudeMultiAccount || !!claudeAuth.data?.authenticated)
+  const claudeUsages = useClaudeAccountsUsage(
+    claudeAccounts.map(account => account.id),
+    { enabled: claudeReady && fetchEnabled }
+  )
 
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({ enabled: !!codexStatus.data?.installed })
@@ -84,13 +94,21 @@ export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
     !!grokStatus.data?.installed && !!grokAuth.data?.authenticated
   const grokUsage = useGrokUsage({ enabled: grokReady && fetchEnabled })
 
-  const claude = claudeReady ? claudeUsage.data : undefined
+  const claudeWindows = claudeReady
+    ? claudeAccounts.flatMap((account, index) => {
+        const usage = claudeUsages[index]?.data
+        const prefix = claudeMultiAccount ? `Claude ${account.label}` : 'Claude'
+        return [
+          { label: `${prefix} · Session`, usage: usage?.session },
+          { label: `${prefix} · Weekly`, usage: usage?.weekly },
+        ]
+      })
+    : []
   const codex = codexReady ? codexUsage.data : undefined
   const grok = grokReady ? grokUsage.data : undefined
 
   return findPeakUsage([
-    { label: 'Claude · Session', usage: claude?.session },
-    { label: 'Claude · Weekly', usage: claude?.weekly },
+    ...claudeWindows,
     { label: 'Codex · Session', usage: codex?.session },
     { label: 'Codex · Weekly', usage: codex?.weekly },
     { label: 'Grok · Build', usage: grok?.session },

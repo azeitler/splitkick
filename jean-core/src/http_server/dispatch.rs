@@ -2803,7 +2803,8 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "check_claude_cli_auth" => {
-            let result = crate::claude_cli::check_claude_cli_auth(app.clone()).await?;
+            let account_id: Option<String> = field_opt(&args, "accountId", "account_id")?;
+            let result = crate::claude_cli::check_claude_cli_auth(app.clone(), account_id).await?;
             to_value(result)
         }
         "detect_claude_in_path" => {
@@ -2811,7 +2812,12 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "get_claude_usage" => {
-            let result = crate::claude_cli::get_claude_usage().await?;
+            let account_id: Option<String> = field_opt(&args, "accountId", "account_id")?;
+            let result = crate::claude_cli::get_claude_usage(app.clone(), account_id).await?;
+            to_value(result)
+        }
+        "get_claude_accounts_usage" => {
+            let result = crate::claude_cli::get_claude_accounts_usage(app.clone()).await?;
             to_value(result)
         }
         "get_available_cli_versions" => {

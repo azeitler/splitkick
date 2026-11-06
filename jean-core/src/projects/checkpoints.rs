@@ -1815,6 +1815,7 @@ fn generate_checkpoint_restore_json(
     }
 
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
+    crate::claude_cli::accounts::load_active_account(app).apply_env(&mut cmd);
     cmd.args([
         "--print",
         "--verbose",

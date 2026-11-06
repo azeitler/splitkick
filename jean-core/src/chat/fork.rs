@@ -575,6 +575,7 @@ mod tests {
     fn session_with_every_resume_id(backend: Backend) -> Session {
         let mut source = Session::new("Build auth".to_string(), 3, backend);
         source.claude_session_id = Some("claude-1".to_string());
+        source.claude_account_id = Some("acc-work".to_string());
         source.codex_thread_id = Some("codex-1".to_string());
         source.codex_goal = Some("ship the feature".to_string());
         source.opencode_session_id = Some("opencode-1".to_string());
@@ -635,6 +636,11 @@ mod tests {
             forked.claude_session_id.as_deref(),
             Some("claude-1"),
             "the native strategy resumes the source transcript with --fork-session"
+        );
+        assert_eq!(
+            forked.claude_account_id.as_deref(),
+            Some("acc-work"),
+            "--fork-session reads the source transcript, which only the source account has"
         );
         assert_eq!(forked.codex_thread_id, None);
         assert_eq!(forked.antigravity_session_id, None);
@@ -792,6 +798,7 @@ mod tests {
         );
         metadata.backend = backend;
         metadata.claude_session_id = Some("claude-1".to_string());
+        metadata.claude_account_id = Some("acc-work".to_string());
         metadata.codex_thread_id = Some("codex-1".to_string());
         metadata.opencode_session_id = Some("opencode-1".to_string());
         metadata.cursor_chat_id = Some("cursor-1".to_string());
@@ -880,6 +887,7 @@ mod tests {
         );
 
         assert_eq!(metadata.claude_session_id.as_deref(), Some("claude-1"));
+        assert_eq!(metadata.claude_account_id.as_deref(), Some("acc-work"));
         assert_eq!(metadata.pending_fork, Some(PendingFork::Native));
         assert_eq!(metadata.antigravity_session_id, None);
     }

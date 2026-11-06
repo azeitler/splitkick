@@ -291,6 +291,7 @@ mod tests {
         storage::with_metadata_mut(&app, &session.id, "wt-a", "Build auth", 0, |m| {
             m.backend = Backend::Claude;
             m.claude_session_id = Some("claude-1".to_string());
+            m.claude_account_id = Some("acc-work".to_string());
             m.codex_thread_id = Some("codex-1".to_string());
             Ok(())
         })
@@ -321,6 +322,11 @@ mod tests {
         let metadata = load_session_metadata(&app, &session_id).unwrap();
         assert_eq!(metadata.worktree_id, "wt-b");
         assert_eq!(metadata.claude_session_id.as_deref(), Some("claude-1"));
+        assert_eq!(
+            metadata.claude_account_id.as_deref(),
+            Some("acc-work"),
+            "a moved session resumes in the account folder that has its transcript"
+        );
         assert_eq!(metadata.codex_thread_id, None);
         let from_path = temp.path().join("worktrees").join("wt-a");
         assert_eq!(

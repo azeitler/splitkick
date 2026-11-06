@@ -1273,6 +1273,12 @@ export interface AppPreferences {
   /** @deprecated Client-local only (issue #622). Kept for one-time seed/migration. */
   sync_zoom_levels?: boolean // Keep desktop and mobile zoom levels in sync (default true)
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
+  /** Label of the root Claude install (`~/.claude`), e.g. "Personal". Null = "Default". */
+  claude_root_label?: string | null
+  /** Extra Claude accounts, one `CLAUDE_CONFIG_DIR` each (#90). */
+  claude_accounts?: ClaudeAccount[]
+  /** Account id every new Claude run uses. Null = the root install. */
+  claude_active_account?: string | null
   default_provider: string | null // Default Claude provider profile name (null = Anthropic direct)
   /** Codex custom model_provider profiles (OpenRouter, OpenAI-compatible, etc.) */
   custom_codex_providers: CodexProviderProfile[]
@@ -1360,6 +1366,14 @@ export const terminalBackgroundOptions: {
   { value: 'dark', label: 'Dark' },
   { value: 'custom', label: 'Custom color' },
 ]
+
+/** An extra Claude account: its own Claude config folder (`CLAUDE_CONFIG_DIR`). */
+export interface ClaudeAccount {
+  id: string
+  label: string
+  /** Absolute folder, e.g. `/Users/me/.claude-work`. Normalized by the backend on save. */
+  config_dir: string
+}
 
 export interface CustomCliProfile {
   name: string // Display name, e.g. "OpenRouter"
@@ -2500,6 +2514,9 @@ export const defaultPreferences: AppPreferences = {
   mobile_zoom_level: ZOOM_LEVEL_DEFAULT,
   sync_zoom_levels: true,
   custom_cli_profiles: [],
+  claude_root_label: null,
+  claude_accounts: [],
+  claude_active_account: null,
   default_provider: null,
   custom_codex_providers: [],
   default_codex_provider: null,

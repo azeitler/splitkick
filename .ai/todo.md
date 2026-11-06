@@ -899,3 +899,13 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 
 - Live (headless server of this worktree, port 3467, own data dir in `tmp/live67`, 3 test repos): Claude session shop → blog answered its code word natively (same Claude id, move note in its transcript); Codex session blog → docs answered from the replay (new thread id).
 - Found live and fixed: the target's cached session list made ChatWindow open the first tab, so a message went to the wrong session. `moveSession` now refetches the target list first.
+
+# #90 Several Claude accounts (proof of concept)
+
+- [x] Verify CLI: per-folder login, Keychain name `sha256(CLAUDE_CONFIG_DIR)[:8]`, `<dir>/.claude.json`, resume per folder (docs/developer/claude-accounts.md)
+- [x] Preferences + Settings → Claude → Accounts (root label, add/remove, active, login per account)
+- [x] `CLAUDE_CONFIG_DIR` in the process env of chat, one-shots, auth, MCP list, plugin install, login
+- [x] Session records its account; fork/move keep it, transfer clears it
+- [x] Usage per account (Keychain/files/cache per folder), Usage pane + title bar badge, MCP `get_usage.claude_accounts`
+- [x] Tests (Rust + TS + e2e), gates, CHANGELOG
+- Result: all gates green; a real second login is still to be checked end to end by Andreas.

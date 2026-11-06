@@ -6,7 +6,12 @@
  */
 
 import { getUsageRefetchInterval, getUsageStaleTime } from '@/lib/usage-timing'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useQueries,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { invoke, useWsConnectionStatus } from '@/lib/transport'
 import { listen } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -21,6 +26,8 @@ import type {
 } from '@/types/claude-cli'
 
 import { hasBackendTransport } from '@/lib/environment'
+import { activeClaudeAccountId } from '@/lib/claude-accounts'
+import { usePreferences } from '@/services/preferences'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
@@ -29,8 +36,14 @@ const isTauri = hasBackendTransport
 export const claudeCliQueryKeys = {
   all: ['claude-cli'] as const,
   status: () => [...claudeCliQueryKeys.all, 'status'] as const,
+  /** Auth of the active account (the one new runs use). */
   auth: () => [...claudeCliQueryKeys.all, 'auth'] as const,
+  /** Auth of one account; under `auth()` so its invalidation reaches it. */
+  accountAuth: (accountId: string) =>
+    [...claudeCliQueryKeys.auth(), 'account', accountId] as const,
   usage: () => [...claudeCliQueryKeys.all, 'usage'] as const,
+  accountUsage: (accountId: string) =>
+    [...claudeCliQueryKeys.usage(), accountId] as const,
   versions: () => [...claudeCliQueryKeys.all, 'versions'] as const,
 }
 
@@ -148,21 +161,70 @@ export function useClaudeCliAuth(options?: { enabled?: boolean }) {
 }
 
 /**
- * Hook to fetch current Claude usage.
+ * Auth status of one Claude account (`root` or an account id).
  */
-export function useClaudeUsage(options?: { enabled?: boolean }) {
+export function useClaudeAccountAuth(
+  accountId: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
-    queryKey: claudeCliQueryKeys.usage(),
+    queryKey: claudeCliQueryKeys.accountAuth(accountId),
+    queryFn: async (): Promise<ClaudeAuthStatus> => {
+      if (!isTauri()) {
+        return { authenticated: false, error: 'Not in Tauri context' }
+      }
+      return invoke<ClaudeAuthStatus>('check_claude_cli_auth', { accountId })
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+  })
+}
+
+/**
+ * Usage query of one account. Every account polls on the usage-timing rules
+ * (5 minutes, stale backoff) under its own key, so accounts do not share or
+ * multiply a request.
+ */
+function claudeUsageQuery(accountId: string, enabled: boolean) {
+  return {
+    queryKey: claudeCliQueryKeys.accountUsage(accountId),
     queryFn: async (): Promise<ClaudeUsageSnapshot> => {
       if (!isTauri()) {
         throw new Error('Claude usage is only available in Tauri context')
       }
-      return invoke<ClaudeUsageSnapshot>('get_claude_usage')
+      return invoke<ClaudeUsageSnapshot>('get_claude_usage', { accountId })
     },
-    enabled: options?.enabled ?? true,
-    staleTime: query => getUsageStaleTime(query.state.data),
+    enabled,
+    staleTime: (query: { state: { data?: ClaudeUsageSnapshot } }) =>
+      getUsageStaleTime(query.state.data),
     gcTime: 1000 * 60 * 10,
-    refetchInterval: query => getUsageRefetchInterval(query.state.data),
+    refetchInterval: (query: { state: { data?: ClaudeUsageSnapshot } }) =>
+      getUsageRefetchInterval(query.state.data),
+  }
+}
+
+/**
+ * Hook to fetch current Claude usage. Without `accountId` it follows the
+ * active account, the one new Claude runs use.
+ */
+export function useClaudeUsage(options?: {
+  enabled?: boolean
+  accountId?: string
+}) {
+  const { data: preferences } = usePreferences()
+  const accountId = options?.accountId ?? activeClaudeAccountId(preferences)
+  return useQuery(claudeUsageQuery(accountId, options?.enabled ?? true))
+}
+
+/** Usage of several accounts at once, one query per account. */
+export function useClaudeAccountsUsage(
+  accountIds: string[],
+  options?: { enabled?: boolean }
+) {
+  const enabled = options?.enabled ?? true
+  return useQueries({
+    queries: accountIds.map(id => claudeUsageQuery(id, enabled)),
   })
 }
 
