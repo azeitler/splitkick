@@ -1006,9 +1006,9 @@ mod tests {
             sentry_project_slug: None,
             linked_project_ids: Vec::new(),
             auto_fix_settings,
-        }
             is_git: true,
             git_detected: false,
+        }
     }
 
     fn test_worktree(
