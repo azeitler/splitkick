@@ -4,6 +4,7 @@ import {
   Ellipsis,
   Github,
   Globe,
+  RefreshCw,
   Settings,
   Tag,
 } from 'lucide-react'
@@ -29,6 +30,8 @@ import { useCommandContext } from '@/lib/commands'
 import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
+import { checkForUpdatesManually } from '@/lib/app-update'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { UsagePopover } from '@/components/titlebar/UsagePopover'
@@ -95,6 +98,10 @@ export function UpdatesButton() {
 
 function MoreMenu() {
   const version = useAppVersion()
+  // Native desktop only (all OSes: Windows and Linux have no menu bar). Web
+  // Access and mobile use the host's update flow.
+  const isMobile = useIsMobile()
+  const canCheckForUpdates = isNativeApp() && !isMobile
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -109,9 +116,7 @@ function MoreMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end">
-        <DropdownMenuItem
-          onSelect={() => openExternal(REPO_URL)}
-        >
+        <DropdownMenuItem onSelect={() => openExternal(REPO_URL)}>
           <Github />
           GitHub
         </DropdownMenuItem>
@@ -131,6 +136,12 @@ function MoreMenu() {
             v{version}
           </span>
         </DropdownMenuItem>
+        {canCheckForUpdates && (
+          <DropdownMenuItem onSelect={() => void checkForUpdatesManually()}>
+            <RefreshCw />
+            Check for Updates…
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
