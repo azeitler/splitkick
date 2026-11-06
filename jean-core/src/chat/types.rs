@@ -780,6 +780,11 @@ pub struct Session {
     /// Claude CLI session ID for resuming conversations
     #[serde(default)]
     pub claude_session_id: Option<String>,
+    /// Claude account (`claude_cli::accounts`) this session's Claude runs use.
+    /// Set on the first Claude run; `None` with a `claude_session_id` is a
+    /// session from before accounts existed and runs on the root install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_account_id: Option<String>,
     /// Codex CLI thread ID for resuming conversations
     #[serde(default)]
     pub codex_thread_id: Option<String>,
@@ -1038,6 +1043,7 @@ impl Session {
             message_count: None,
             backend,
             claude_session_id: None,
+            claude_account_id: None,
             codex_thread_id: None,
             codex_goal: None,
             opencode_session_id: None,
@@ -1267,6 +1273,7 @@ impl SessionMetadata {
             message_count: Some(self.to_index_entry().message_count),
             backend: self.backend.clone(),
             claude_session_id: self.claude_session_id.clone(),
+            claude_account_id: self.claude_account_id.clone(),
             codex_thread_id: self.codex_thread_id.clone(),
             codex_goal: self.codex_goal.clone(),
             opencode_session_id: self.opencode_session_id.clone(),
@@ -1345,6 +1352,7 @@ impl SessionMetadata {
         self.order = session.order;
         self.backend = session.backend.clone();
         self.claude_session_id = session.claude_session_id.clone();
+        self.claude_account_id = session.claude_account_id.clone();
         self.codex_thread_id = session.codex_thread_id.clone();
         self.codex_goal = session.codex_goal.clone();
         self.opencode_session_id = session.opencode_session_id.clone();
@@ -1740,6 +1748,9 @@ pub struct SessionMetadata {
     /// Claude CLI session ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
+    /// Claude account its Claude runs use. See [`Session::claude_account_id`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_account_id: Option<String>,
     /// Codex CLI thread ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_thread_id: Option<String>,
@@ -2007,6 +2018,7 @@ impl SessionMetadata {
                 .as_secs(),
             backend: Backend::default(),
             claude_session_id: None,
+            claude_account_id: None,
             codex_thread_id: None,
             codex_goal: None,
             opencode_session_id: None,

@@ -419,6 +419,7 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         request.custom_profile_name.as_deref(),
     );
     crate::chat::claude::apply_custom_profile_env(&mut cmd, request.custom_profile_name.as_deref());
+    crate::claude_cli::accounts::load_active_account(app).apply_env(&mut cmd);
     cmd.args([
         "--print",
         "--input-format",

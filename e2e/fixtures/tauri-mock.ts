@@ -194,6 +194,17 @@ export const test = base.extend<TauriMockFixtures>({
           // the same in-memory data during tests.
           if (cmd === 'list_worktrees' || cmd === 'reorder_worktrees') {
             handlers[cmd] = dynamicHandlers[cmd]
+          } else if (
+            data &&
+            typeof data === 'object' &&
+            '__byAccountId' in (data as Record<string, unknown>)
+          ) {
+            // Per Claude account responses (#90): `{ __byAccountId: { root, <id> } }`
+            const byAccount = (
+              data as { __byAccountId: Record<string, unknown> }
+            ).__byAccountId
+            handlers[cmd] = args =>
+              structuredClone(byAccount[args?.accountId ?? 'root'] ?? null)
           } else if (overrideSet.has(cmd)) {
             // If explicitly overridden, use static response (override wins over dynamic)
             handlers[cmd] = () => structuredClone(data)

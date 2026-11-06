@@ -7,6 +7,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Several Claude accounts, proof of concept** (#90). Settings → Claude →
+  Accounts lists the root install (`~/.claude`, which can now get a label such
+  as "Personal") and more accounts, each with its own Claude config folder
+  (e.g. `~/.claude-work`). One account is active: every new Claude run, magic
+  prompt and auth check uses it, through `CLAUDE_CONFIG_DIR` in the process
+  environment. Each account has its own Login button and status. A session
+  remembers the account of its first run, and resume, forks and moves keep
+  it, because the Claude transcript only exists in that folder; older
+  sessions stay on the root install. Usage shows the limits of every account
+  with its label and email, and the MCP `get_usage` tool returns them as
+  `claude_accounts`. MCP servers, plugins and skills are separate per folder.
+  No per-session or per-project choice yet.
+
 ## [1.5.0] - 2026-11-04
 
 Built on Jean 0.1.73.

@@ -309,6 +309,9 @@ pub async fn import_session_bundle(
     // A transfer is the same conversation on another machine, not a "Fork of".
     session.name = bundle.session.name.clone();
     session.message_count = Some(rendered_message_count(&runs));
+    // Claude account ids are local to the source machine, and a handoff needs no
+    // transcript: the first send here records this machine's active account.
+    session.claude_account_id = None;
     let new_id = session.id.clone();
 
     let session_dir = storage::get_session_dir(&app, &new_id)?;
@@ -328,6 +331,7 @@ pub async fn import_session_bundle(
     );
     // The source session id does not exist on this machine.
     metadata.forked_from_session_id = None;
+    metadata.claude_account_id = None;
 
     // Same write order as `fork_session_in_place`: metadata first, so
     // `with_sessions_mut` never sees a run-less metadata file.
@@ -543,6 +547,7 @@ mod tests {
         let session = storage::with_sessions_mut(app, "", &worktree_id, |sessions| {
             let mut session = Session::new("Build auth".to_string(), 0, Backend::Claude);
             session.claude_session_id = Some("claude-1".to_string());
+            session.claude_account_id = Some("acc-work".to_string());
             session.codex_thread_id = Some("codex-1".to_string());
             sessions.sessions.push(session.clone());
             Ok(session)
@@ -553,6 +558,7 @@ mod tests {
         storage::with_metadata_mut(app, &session_id, &worktree_id, "Build auth", 0, |m| {
             m.backend = Backend::Claude;
             m.claude_session_id = Some("claude-1".to_string());
+            m.claude_account_id = Some("acc-work".to_string());
             m.runs = vec![
                 run("r1", RunStatus::Completed, &image_ref),
                 run("r2", RunStatus::Completed, "second"),
@@ -653,6 +659,10 @@ mod tests {
             "even Claude must not resume"
         );
         assert_eq!(imported.codex_thread_id, None);
+        assert_eq!(
+            imported.claude_account_id, None,
+            "account ids are local to the source machine"
+        );
         assert_eq!(imported.message_count, Some(4));
 
         let metadata = storage::load_metadata(&target, &imported.id)
@@ -661,6 +671,7 @@ mod tests {
         assert_eq!(metadata.pending_fork, Some(PendingFork::Handoff));
         assert_eq!(metadata.forked_from_session_id, None);
         assert_eq!(metadata.claude_session_id, None);
+        assert_eq!(metadata.claude_account_id, None);
         assert_eq!(metadata.worktree_id, "wt-target");
         assert_eq!(metadata.runs.len(), 2);
         assert!(metadata

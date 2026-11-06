@@ -8,6 +8,8 @@ import React, {
 } from 'react'
 import { invoke } from '@/lib/transport'
 import { loginArgsForBackend } from '@/lib/cli-auth'
+import { activeClaudeAccount, claudeLoginCommand } from '@/lib/claude-accounts'
+import { ClaudeAccountsSection } from './ClaudeAccountsSection'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, Check, ChevronsUpDown, Play } from 'lucide-react'
@@ -1550,13 +1552,19 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       setCheckingClaudeAuth(false)
     }
 
-    // Not authenticated, open login modal
+    // Not authenticated, open login modal (for the active account)
     const args = cliStatus.supports_auth_command ? ['auth', 'login'] : ['login']
-    openCliLoginModal('claude', cliStatus.path, args)
+    const login = claudeLoginCommand(
+      cliStatus.path,
+      args,
+      activeClaudeAccount(preferences).configDir
+    )
+    openCliLoginModal('claude', login.command, login.args)
   }, [
     cliStatus?.path,
     cliStatus?.supports_auth_command,
     openCliLoginModal,
+    preferences,
     queryClient,
   ])
 
@@ -1657,8 +1665,18 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const handleClaudeRelogin = useCallback(() => {
     if (!cliStatus?.path) return
     const args = cliStatus.supports_auth_command ? ['auth', 'login'] : ['login']
-    openCliLoginModal('claude', cliStatus.path, args)
-  }, [cliStatus?.path, cliStatus?.supports_auth_command, openCliLoginModal])
+    const login = claudeLoginCommand(
+      cliStatus.path,
+      args,
+      activeClaudeAccount(preferences).configDir
+    )
+    openCliLoginModal('claude', login.command, login.args)
+  }, [
+    cliStatus?.path,
+    cliStatus?.supports_auth_command,
+    openCliLoginModal,
+    preferences,
+  ])
 
   const handleGhRelogin = useCallback(() => {
     if (!ghStatus?.path) return
@@ -3036,6 +3054,8 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
           patchPreferences={patchPreferences}
         />
       )}
+
+      {hasBackend() && scope === 'claude' && <ClaudeAccountsSection />}
 
       {scope === 'claude' && (
         <SettingsSection

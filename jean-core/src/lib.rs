@@ -320,6 +320,12 @@ pub struct AppPreferences {
     #[serde(default)]
     pub custom_cli_profiles: Vec<CustomCliProfile>, // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
     #[serde(default)]
+    pub claude_root_label: Option<String>, // Label of the root Claude install (~/.claude), e.g. "Personal"
+    #[serde(default)]
+    pub claude_accounts: Vec<claude_cli::ClaudeAccount>, // Extra Claude accounts, one CLAUDE_CONFIG_DIR each (#90)
+    #[serde(default)]
+    pub claude_active_account: Option<String>, // Account id every new Claude run uses (None = root install)
+    #[serde(default)]
     pub default_provider: Option<String>, // Default Claude provider profile name (None = Anthropic direct)
     #[serde(default)]
     pub custom_codex_providers: Vec<CodexProviderProfile>, // Codex custom model_provider profiles
@@ -2891,6 +2897,9 @@ impl Default for AppPreferences {
             mobile_zoom_level: default_zoom_level(),
             sync_zoom_levels: default_sync_zoom_levels(),
             custom_cli_profiles: Vec::new(),
+            claude_root_label: None,
+            claude_accounts: Vec::new(),
+            claude_active_account: None,
             default_provider: None,
             custom_codex_providers: Vec::new(),
             default_codex_provider: None,
@@ -3516,6 +3525,7 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
 async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result<(), String> {
     let mut preferences = preferences;
     normalize_parallel_execution_preferences(&mut preferences);
+    claude_cli::normalize_accounts(&mut preferences, dirs::home_dir().as_deref());
 
     // Validate theme value
     validate_theme(&preferences.theme)?;

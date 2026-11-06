@@ -10,7 +10,10 @@ import { PRODUCT_NAME } from '@/lib/build-info'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
-import type { CliBackend } from '@/types/preferences'
+import type { AppPreferences, CliBackend } from '@/types/preferences'
+import { queryClient } from '@/lib/query-client'
+import { preferencesQueryKeys } from '@/services/preferences'
+import { activeClaudeAccount, claudeLoginCommand } from '@/lib/claude-accounts'
 import { getBackendPlainLabel } from '@/components/ui/backend-label'
 
 /** True when a backend error indicates the user needs to re-authenticate. */
@@ -180,6 +183,21 @@ export async function openBackendLoginModal(
     if (!loginType) {
       toast.error(`Login is not supported for ${backend}`)
       return false
+    }
+    if (backend === 'claude') {
+      // Log in to the active account (Settings → Claude → Accounts).
+      const preferences = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
+      const login = claudeLoginCommand(
+        path,
+        args,
+        activeClaudeAccount(preferences).configDir
+      )
+      useUIStore
+        .getState()
+        .openCliLoginModal(loginType, login.command, login.args, 'login')
+      return true
     }
     useUIStore.getState().openCliLoginModal(loginType, path, args, 'login')
     return true
