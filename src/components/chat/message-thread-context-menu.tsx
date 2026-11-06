@@ -29,6 +29,7 @@ import { getFileManagerName } from '@/lib/platform'
 import { splitFileRefSuffix } from '@/lib/path-utils'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { copyImage } from './ImageLightbox'
+import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
 /** Read the current window selection as trimmed plain text. */
 export function getTrimmedSelectionText(): string {
@@ -165,13 +166,13 @@ export function MessageThreadContextMenu({
   // The fallback join covers the resolving state, not a verdict: on `missing`
   // the backend has looked and found nothing, so offering Reveal would only
   // produce an error toast.
-  const revealTarget = !canOpenNativeApps()
-    ? null
-    : imagePath ||
-      (isLocalFileLink && reference.status !== 'missing'
-        ? (reference.path ??
-          resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
-        : null)
+  const revealTarget =
+    imagePath ||
+    (isLocalFileLink && reference.status !== 'missing'
+      ? (reference.path ??
+        resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
+      : null)
+  const canReveal = canOpenNativeApps()
   const revealPath = useRevealPathInFileManager()
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0
@@ -190,7 +191,7 @@ export function MessageThreadContextMenu({
       <ContextMenuTrigger asChild onContextMenu={handleContextMenu}>
         {children}
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
+      <ContextMenuContent className="min-w-48">
         {canOpenInDefaultBrowser && (
           <ContextMenuItem onSelect={handleOpenInDefaultBrowser}>
             <ExternalLink className="h-4 w-4" />
@@ -198,9 +199,13 @@ export function MessageThreadContextMenu({
           </ContextMenuItem>
         )}
         {revealTarget && (
-          <ContextMenuItem onSelect={() => revealPath.mutate(revealTarget)}>
+          <ContextMenuItem
+            disabled={!canReveal}
+            onSelect={() => revealPath.mutate(revealTarget)}
+          >
             <FolderOpen className="h-4 w-4" />
             Reveal in {getFileManagerName()}
+            {!canReveal && <HostOnlyHint />}
           </ContextMenuItem>
         )}
         {imageSrc && (

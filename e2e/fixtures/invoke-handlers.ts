@@ -48,6 +48,9 @@ export const defaultResponses: Record<string, unknown> = {
   list_projects: [project],
   list_worktrees: [worktree1, worktree2],
   add_project: project,
+  // An array: SidebarGraphsSection reads `.length`; the unmocked null sent
+  // every sidebar render into the error boundary.
+  list_graphs: [],
   // An array: WorktreeContextMenu reads `.length`, and null crashed every
   // sidebar render into the error boundary.
   get_run_scripts: [],

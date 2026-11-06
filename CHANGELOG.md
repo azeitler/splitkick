@@ -11,6 +11,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **The open session is highlighted in Starred and Pinned too** (#92). Its
   rows there now get the same selection style as its row in the project tree.
+- **Actions that open on the host are disabled in remote windows and Web
+  Access** (#89). A phone or a remote window could click "Reveal in Finder",
+  "Open in Terminal" and similar items, and a window opened on the host Mac,
+  where nobody looked. These items now show disabled with "Host only" unless
+  the user sits at the host (local app, or Web Access on `localhost`). Native
+  remote windows keep "Open in editor" through the local Zed. This covers the
+  worktree, project, canvas, file tree and message menus, the Open In modal
+  and button, the file viewer, the diff view, the image viewer and Settings →
+  Show Logs. File paths in the embedded terminal are no longer links in Web
+  Access; Settings → Show Logs in a remote window opens this app's logs; in
+  the Open In modal, Enter no longer runs an option that is not available.
+  The full table is in `docs/developer/remote-capabilities.md`.
 
 ## [1.5.0] - 2026-11-04
 

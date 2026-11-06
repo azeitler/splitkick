@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(async () => '/shared'),
 }))
 
-vi.mock('@/lib/environment', () => ({ isLocalBackend: () => true }))
+vi.mock('@/lib/environment', () => ({ canPickLocalPaths: () => true }))
 
 vi.mock('@/components/projects/DirectoryBrowser', () => ({
   DirectoryBrowser: () => null,

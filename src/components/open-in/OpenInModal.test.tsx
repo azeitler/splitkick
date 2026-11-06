@@ -16,7 +16,23 @@ const mocks = vi.hoisted(() => ({
   openRemotePicker: vi.fn(),
   openExternal: vi.fn(),
   openInGitClient: vi.fn(),
+  openInFinder: vi.fn(),
+  openInTerminal: vi.fn(),
+  openInEditor: vi.fn(),
 }))
+
+/** The option row (a button) and whether it is disabled with the hint. */
+function expectHostOnly(label: string) {
+  const row = screen.getByRole('button', { name: new RegExp(label) })
+  expect(row).toBeDisabled()
+  expect(row).toHaveTextContent('Host only')
+}
+
+function expectEnabled(label: string) {
+  const row = screen.getByRole('button', { name: new RegExp(label) })
+  expect(row).toBeEnabled()
+  expect(row).not.toHaveTextContent('Host only')
+}
 
 interface UiStoreMock {
   openInModalOpen: boolean
@@ -84,8 +100,7 @@ vi.mock('@/services/preferences', () => ({
 
 vi.mock('@/lib/environment', () => ({
   isLocalBackend: () => localBackendState.value,
-  isNativeApp: () =>
-    localBackendState.value || remoteEditorLocallyState.value,
+  isNativeApp: () => localBackendState.value || remoteEditorLocallyState.value,
   canOpenNativeApps: () =>
     localBackendState.value || nativeOpenAllowedState.value,
   canOpenRemoteEditorLocally: () => remoteEditorLocallyState.value,
@@ -131,9 +146,9 @@ vi.mock('@/services/projects', () => ({
   useProjects: () => ({
     data: [{ id: 'project-1', path: '/repo', name: 'app' }],
   }),
-  useOpenWorktreeInFinder: () => ({ mutate: vi.fn() }),
-  useOpenWorktreeInTerminal: () => ({ mutate: vi.fn() }),
-  useOpenWorktreeInEditor: () => ({ mutate: vi.fn() }),
+  useOpenWorktreeInFinder: () => ({ mutate: mocks.openInFinder }),
+  useOpenWorktreeInTerminal: () => ({ mutate: mocks.openInTerminal }),
+  useOpenWorktreeInEditor: () => ({ mutate: mocks.openInEditor }),
   useOpenWorktreeInGitClient: () => ({ mutate: mocks.openInGitClient }),
   useInstalledApps: () => ({ data: installedAppsState.value }),
   usePorts: () => ({ data: [] }),
@@ -182,7 +197,7 @@ describe('OpenInModal', () => {
     installedAppsState.value = null
   })
 
-  it('hides Finder/editor/terminal in browser/headless mode without native open', async () => {
+  it('disables Finder/editor/terminal in browser/headless mode without native open', async () => {
     localBackendState.value = false
     nativeOpenAllowedState.value = false
     remoteEditorLocallyState.value = false
@@ -190,9 +205,49 @@ describe('OpenInModal', () => {
     render(<OpenInModal />)
 
     expect(await screen.findByText('GitHub')).toBeInTheDocument()
-    expect(screen.queryByText('Finder')).not.toBeInTheDocument()
-    expect(screen.queryByText('Zed')).not.toBeInTheDocument()
-    expect(screen.queryByText('Ghostty')).not.toBeInTheDocument()
+    expectHostOnly('Finder')
+    expectHostOnly('Zed')
+    expectHostOnly('Ghostty')
+    expectEnabled('GitHub')
+  })
+
+  it('skips disabled options with the arrow keys and ignores their shortcuts', async () => {
+    localBackendState.value = false
+    nativeOpenAllowedState.value = false
+    remoteEditorLocallyState.value = false
+    const user = userEvent.setup()
+
+    render(<OpenInModal />)
+    await screen.findByRole('button', { name: /GitHub/ })
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowUp}')
+    for (const label of ['Zed', 'Ghostty', 'Finder']) {
+      expect(
+        screen.getByRole('button', { name: new RegExp(label) })
+      ).not.toHaveClass('bg-accent')
+    }
+
+    await user.keyboard('ftE')
+    expect(mocks.openInFinder).not.toHaveBeenCalled()
+    expect(mocks.openInTerminal).not.toHaveBeenCalled()
+    expect(mocks.openInEditor).not.toHaveBeenCalled()
+    expect(mocks.setOpenInModalOpen).not.toHaveBeenCalled()
+  })
+
+  it('starts on the first enabled option, so Enter never runs a disabled one', async () => {
+    localBackendState.value = false
+    nativeOpenAllowedState.value = false
+    remoteEditorLocallyState.value = false
+    const user = userEvent.setup()
+
+    render(<OpenInModal />)
+    const github = await screen.findByRole('button', { name: /GitHub/ })
+    expect(github).toHaveClass('bg-accent')
+
+    await user.keyboard('{Enter}')
+    expect(mocks.openInEditor).not.toHaveBeenCalled()
+    expect(mocks.openInTerminal).not.toHaveBeenCalled()
+    expect(mocks.openInFinder).not.toHaveBeenCalled()
   })
 
   it('shows Finder/editor/terminal when the backend allows native open', async () => {
@@ -219,11 +274,12 @@ describe('OpenInModal', () => {
     expect(await screen.findByText('Zed')).toBeInTheDocument()
     expect(screen.getByText('E')).toBeInTheDocument()
     expect(screen.getByText('GitHub')).toBeInTheDocument()
-    expect(screen.queryByText('Finder')).not.toBeInTheDocument()
-    expect(screen.queryByText('Ghostty')).not.toBeInTheDocument()
+    expectEnabled('Zed')
+    expectHostOnly('Finder')
+    expectHostOnly('Ghostty')
   })
 
-  it('hides Finder/terminal on remote connections without native open or local editor', async () => {
+  it('disables Finder/terminal/editor on remote connections without native open or local editor', async () => {
     // Pure browser/web remote without --allow-native-open.
     localBackendState.value = false
     nativeOpenAllowedState.value = false
@@ -232,15 +288,18 @@ describe('OpenInModal', () => {
     render(<OpenInModal />)
 
     expect(await screen.findByText('GitHub')).toBeInTheDocument()
-    expect(screen.queryByText('Finder')).not.toBeInTheDocument()
-    expect(screen.queryByText(/zed|editor/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/ghostty|terminal/i)).not.toBeInTheDocument()
+    expectHostOnly('Finder')
+    expectHostOnly('Zed')
+    expectHostOnly('Ghostty')
   })
 
   it('shows local open targets when connected to the local backend', async () => {
     render(<OpenInModal />)
 
     expect(await screen.findByText('Zed')).toBeInTheDocument()
+    expectEnabled('Zed')
+    expectEnabled('Finder')
+    expect(screen.queryByText('Host only')).not.toBeInTheDocument()
     expect(screen.getByText('Ghostty')).toBeInTheDocument()
     expect(screen.getByText('Finder')).toBeInTheDocument()
     expect(screen.getByText('GitHub')).toBeInTheDocument()

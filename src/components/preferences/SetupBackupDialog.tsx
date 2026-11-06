@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
-import { isLocalBackend } from '@/lib/environment'
+import { canPickLocalPaths } from '@/lib/environment'
 import { usePatchPreferences } from '@/services/preferences'
 import {
   cancelSessionBackup,
@@ -120,7 +120,7 @@ export const SetupBackupDialog: FC<{
   const handleBrowse = async () => {
     // A remote backend backs up its own disk, so browse the server's folders;
     // the native picker only sees this machine.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setBrowserOpen(true)
       return
     }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { isLocalBackend } from '@/lib/environment'
+import { canPickLocalPaths } from '@/lib/environment'
 import { Loader2, Globe, FolderOpen, AlertCircle } from 'lucide-react'
 import {
   Dialog,
@@ -64,7 +64,7 @@ export function CloneProjectModal() {
   const handleBrowse = useCallback(async () => {
     // Remote backends (and pure web) must browse the server filesystem via
     // DirectoryBrowser — the native OS picker only sees the local machine.
-    if (!isLocalBackend()) {
+    if (!canPickLocalPaths()) {
       setBrowserOpen(true)
       return
     }

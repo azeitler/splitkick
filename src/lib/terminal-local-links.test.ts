@@ -1,5 +1,11 @@
 import type { ILink } from '@xterm/xterm'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const editorState = vi.hoisted(() => ({ value: true }))
+vi.mock('@/lib/environment', () => ({
+  canOpenInEditor: () => editorState.value,
+}))
+
 import {
   computeLocalTerminalLinksForRows,
   findLocalTerminalLinks,
@@ -8,6 +14,10 @@ import {
 } from './terminal-local-links'
 
 describe('terminal local links', () => {
+  beforeEach(() => {
+    editorState.value = true
+  })
+
   it('detects absolute file paths with line and column suffixes', () => {
     const links = findLocalTerminalLinks(
       'see /Users/me/app/src/main.ts:12:3 now'
@@ -123,5 +133,27 @@ describe('terminal local links', () => {
         column: 3,
       },
     ])
+  })
+
+  it('offers no links when no editor can open the path (Web Access)', () => {
+    editorState.value = false
+    const provider = new LocalTerminalLinkProvider(
+      {
+        buffer: {
+          active: {
+            getLine: (index: number) =>
+              index === 0
+                ? { isWrapped: false, translateToString: () => 'src/main.ts' }
+                : undefined,
+          },
+        },
+      } as never,
+      '/Users/me/app'
+    )
+    let providedLinks: ILink[] | undefined = []
+    provider.provideLinks(1, links => {
+      providedLinks = links
+    })
+    expect(providedLinks).toBeUndefined()
   })
 })
