@@ -7,26 +7,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed
-
-- **The open session is highlighted in Starred and Pinned too** (#92). Its
-  rows there now get the same selection style as its row in the project tree.
-- **Actions that open on the host are disabled in remote windows and Web
-  Access** (#89). A phone or a remote window could click "Reveal in Finder",
-  "Open in Terminal" and similar items, and a window opened on the host Mac,
-  where nobody looked. These items now show disabled with "Host only" unless
-  the user sits at the host (local app, or Web Access on `localhost`). Native
-  remote windows keep "Open in editor" through the local Zed. This covers the
-  worktree, project, canvas, file tree and message menus, the Open In modal
-  and button, the file viewer, the diff view, the image viewer and Settings →
-  Show Logs. File paths in the embedded terminal are no longer links in Web
-  Access; Settings → Show Logs in a remote window opens this app's logs; in
-  the Open In modal, Enter no longer runs an option that is not available.
-  The full table is in `docs/developer/remote-capabilities.md`.
-- **Project icons in `docs/public/`** (#91). The project icon detection now also
-  finds `favicon.svg`, `favicon.ico`, `favicon.png` and
-  `apple-touch-icon.png` in `docs/public/`, where VitePress sites keep them.
-  It checks the project root first, then `public/`, then `docs/public/`.
 ### Added
 
 - **Several Claude accounts, proof of concept** (#90). Settings → Claude →
@@ -41,8 +21,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   with its label and email, and the MCP `get_usage` tool returns them as
   `claude_accounts`. MCP servers, plugins and skills are separate per folder.
   No per-session or per-project choice yet.
-### Added
-
 - **Sessions read and change their graph links; managers link others** (#88).
   "Link to Graph…" in the session context menu (sidebar, canvas tabs,
   Starred/Pinned rows; long press on mobile) and in the command palette opens
@@ -81,6 +59,27 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   by an earlier `create_session`, the call takes it over (name, backend, model,
   agent, `serves`, started-by) and returns its id. Otherwise it adds a new
   session as before. Worktrees created in the UI keep their "Session 1".
+
+### Fixed
+
+- **The open session is highlighted in Starred and Pinned too** (#92). Its
+  rows there now get the same selection style as its row in the project tree.
+- **Actions that open on the host are disabled in remote windows and Web
+  Access** (#89). A phone or a remote window could click "Reveal in Finder",
+  "Open in Terminal" and similar items, and a window opened on the host Mac,
+  where nobody looked. These items now show disabled with "Host only" unless
+  the user sits at the host (local app, or Web Access on `localhost`). Native
+  remote windows keep "Open in editor" through the local Zed. This covers the
+  worktree, project, canvas, file tree and message menus, the Open In modal
+  and button, the file viewer, the diff view, the image viewer and Settings →
+  Show Logs. File paths in the embedded terminal are no longer links in Web
+  Access; Settings → Show Logs in a remote window opens this app's logs; in
+  the Open In modal, Enter no longer runs an option that is not available.
+  The full table is in `docs/developer/remote-capabilities.md`.
+- **Project icons in `docs/public/`** (#91). The project icon detection now also
+  finds `favicon.svg`, `favicon.ico`, `favicon.png` and
+  `apple-touch-icon.png` in `docs/public/`, where VitePress sites keep them.
+  It checks the project root first, then `public/`, then `docs/public/`.
 
 ## [1.5.0] - 2026-11-04
 
