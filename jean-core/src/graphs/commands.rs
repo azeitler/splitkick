@@ -675,24 +675,79 @@ fn emit_session_change(app: &AppHandle, worktree_id: &str) {
     crate::chat::emit_worktree_sessions_cache_invalidation(app, worktree_id);
 }
 
+/// How to change a session's serves list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ServesEdit {
+    /// Replace the whole list.
+    Replace(Vec<String>),
+    /// Add and remove refs; removing a ref that is not there is a no-op.
+    Change {
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
+}
+
+impl ServesEdit {
+    /// The new list: trimmed, without blanks and duplicates, order kept.
+    pub fn apply(&self, current: &[String]) -> Vec<String> {
+        let next: Vec<String> = match self {
+            ServesEdit::Replace(list) => list.clone(),
+            ServesEdit::Change { add, remove } => {
+                let remove: Vec<&str> = remove.iter().map(|r| r.trim()).collect();
+                current
+                    .iter()
+                    .filter(|r| !remove.contains(&r.trim()))
+                    .chain(add.iter())
+                    .cloned()
+                    .collect()
+            }
+        };
+        let mut clean: Vec<String> = Vec::new();
+        for s in next {
+            let s = s.trim().to_string();
+            if !s.is_empty() && !clean.contains(&s) {
+                clean.push(s);
+            }
+        }
+        clean
+    }
+}
+
+/// Apply `edit` to a session's serves in one metadata write.
+/// Returns the list before and after.
+pub fn edit_session_serves(
+    app: &AppHandle,
+    session_id: &str,
+    edit: &ServesEdit,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let (before, after, worktree_id) =
+        crate::chat::storage::with_existing_metadata_mut(app, session_id, |m| {
+            let before = m.serves.clone();
+            m.serves = edit.apply(&before);
+            (before, m.serves.clone(), m.worktree_id.clone())
+        })?;
+    emit_session_change(app, &worktree_id);
+    Ok((before, after))
+}
+
 pub async fn set_session_serves(
     app: AppHandle,
     session_id: String,
     serves: Vec<String>,
 ) -> Result<(), String> {
-    let mut clean: Vec<String> = Vec::new();
-    for s in serves {
-        let s = s.trim().to_string();
-        if !s.is_empty() && !clean.contains(&s) {
-            clean.push(s);
-        }
-    }
-    let worktree_id = crate::chat::storage::with_existing_metadata_mut(&app, &session_id, |m| {
-        m.serves = clean;
-        m.worktree_id.clone()
-    })?;
-    emit_session_change(&app, &worktree_id);
-    Ok(())
+    edit_session_serves(&app, &session_id, &ServesEdit::Replace(serves)).map(|_| ())
+}
+
+/// UI command: add and/or remove refs (no read-modify-write race with an
+/// agent that changes the same list). Returns the resulting list.
+pub async fn change_session_serves(
+    app: AppHandle,
+    session_id: String,
+    add: Vec<String>,
+    remove: Vec<String>,
+) -> Result<Vec<String>, String> {
+    edit_session_serves(&app, &session_id, &ServesEdit::Change { add, remove })
+        .map(|(_, after)| after)
 }
 
 pub async fn set_session_agent(

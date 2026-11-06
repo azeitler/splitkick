@@ -8,6 +8,13 @@ import type {
 } from '@/types/ui-state'
 import type { CliType } from '@/lib/cli-update'
 import type { TransferSessionTarget } from '@/lib/session-transfer'
+
+/** The session "Link to Graph…" edits, with its refs when the dialog opened. */
+export interface LinkToGraphTarget {
+  sessionId: string
+  sessionName: string
+  serves: string[]
+}
 import { mergeSeenFailedWorkflowRunIds } from '@/components/shared/workflow-run-utils'
 
 export type PreferencePane =
@@ -150,6 +157,8 @@ interface UIState {
   moveSessionTarget: TransferSessionTarget | null
   /** Session the "Session network" dialog is open for (issue #77). */
   sessionNetworkSessionId: string | null
+  /** Session the "Link to Graph…" dialog is open for (issue #88). */
+  linkToGraphTarget: LinkToGraphTarget | null
   loadContextModalOpen: boolean
   linkedProjectsModalOpen: boolean
   magicModalOpen: boolean
@@ -313,6 +322,7 @@ interface UIState {
   setTransferSessionTarget: (target: TransferSessionTarget | null) => void
   setMoveSessionTarget: (target: TransferSessionTarget | null) => void
   setSessionNetworkSessionId: (sessionId: string | null) => void
+  setLinkToGraphTarget: (target: LinkToGraphTarget | null) => void
   setLoadContextModalOpen: (open: boolean) => void
   setLinkedProjectsModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
@@ -463,6 +473,7 @@ export const useUIStore = create<UIState>()(
       transferSessionTarget: null,
       moveSessionTarget: null,
       sessionNetworkSessionId: null,
+      linkToGraphTarget: null,
       loadContextModalOpen: false,
       linkedProjectsModalOpen: false,
       magicModalOpen: false,
@@ -791,6 +802,16 @@ export const useUIStore = create<UIState>()(
               : { sessionNetworkSessionId: sessionId },
           undefined,
           'setSessionNetworkSessionId'
+        ),
+
+      setLinkToGraphTarget: target =>
+        set(
+          state =>
+            state.linkToGraphTarget === target
+              ? state
+              : { linkToGraphTarget: target },
+          undefined,
+          'setLinkToGraphTarget'
         ),
 
       setLoadContextModalOpen: open =>

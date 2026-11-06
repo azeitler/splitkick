@@ -60,8 +60,8 @@ describe('toggleActiveSessionGraphPanel (#84)', () => {
     expect(toastInfo).toHaveBeenCalledWith(
       'This session does not serve a graph node yet.',
       expect.objectContaining({
-        description: expect.stringContaining('set_serves'),
-        action: expect.objectContaining({ label: 'Start from Agent…' }),
+        description: expect.stringContaining('Link to Graph…'),
+        action: expect.objectContaining({ label: 'Link to Graph…' }),
       })
     )
 
@@ -69,7 +69,11 @@ describe('toggleActiveSessionGraphPanel (#84)', () => {
       onClick: () => void
     }
     action.onClick()
-    expect(useUIStore.getState().startAgentSessionTarget).toEqual({})
+    expect(useUIStore.getState().linkToGraphTarget).toEqual({
+      sessionId: 's1',
+      sessionName: 'One',
+      serves: [],
+    })
   })
 
   it('says the panel is desktop-only on a phone', () => {

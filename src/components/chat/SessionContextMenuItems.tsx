@@ -16,6 +16,7 @@ import {
   Star,
   StarOff,
   Trash2,
+  Workflow,
 } from 'lucide-react'
 import { useRef } from 'react'
 import { toast } from 'sonner'
@@ -28,6 +29,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { copyToClipboard } from '@/lib/clipboard'
+import { openLinkToGraph } from '@/lib/link-to-graph'
 import { copySplitkickLink } from '@/lib/splitkick-links'
 import { useTransferTargets } from '@/lib/session-transfer'
 import { useUIStore } from '@/store/ui-store'
@@ -228,6 +230,10 @@ export function SessionContextMenuItems({
           Show Session Network
         </ContextMenuItem>
       )}
+      <ContextMenuItem onSelect={() => openLinkToGraph(session)}>
+        <Workflow className="mr-2 h-4 w-4" />
+        Link to Graph…
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
         onSelect={() => {
