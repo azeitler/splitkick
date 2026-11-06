@@ -98,7 +98,12 @@ function corpus(text) {
 function mcpServer() {
   const index = argv.indexOf('--mcp-config')
   if (index < 0) return null
-  const servers = JSON.parse(argv[index + 1]).mcpServers ?? {}
+  // Inline JSON, or (since #102) the path of a private config file.
+  const value = argv[index + 1]
+  const config = value.trimStart().startsWith('{')
+    ? value
+    : readFileSync(value, 'utf8')
+  const servers = JSON.parse(config).mcpServers ?? {}
   for (const [name, server] of Object.entries(servers)) {
     if (!name.includes('dialog') && server.env?.JEAN_MCP_SOCKET) {
       return { name, env: server.env }
