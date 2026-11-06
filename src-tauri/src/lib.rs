@@ -445,6 +445,7 @@ pub fn run() {
             browser::browser_set_bounds,
             browser::browser_set_visible,
             browser::browser_set_focus,
+            browser::browser_pause_media,
             browser::browser_get_url,
             browser::browser_close,
             browser::browser_report_title,

@@ -52,6 +52,7 @@ import { StarGlyph } from '@/components/chat/StarGlyph'
 import { PinGlyph } from '@/components/chat/PinGlyph'
 import { DraftGlyph } from '@/components/chat/DraftGlyph'
 import { LimitGlyph } from '@/components/chat/limit-hit'
+import { RunErrorGlyph } from '@/components/chat/run-error'
 import { middleClickClose } from '@/lib/middle-click'
 import {
   decideWorktreeMiddleClose,
@@ -1103,6 +1104,9 @@ export function WorktreeItem({
                               card.session.started_by_session_id
                             }
                           />
+                          {card.runError && (
+                            <RunErrorGlyph error={card.runError} />
+                          )}
                           {starredIds.has(card.session.id) && <StarGlyph />}
                           {pinnedIds.has(card.session.id) && <PinGlyph />}
                           {/* Issue the workspace was created from. Dropped on a

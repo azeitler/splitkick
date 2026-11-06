@@ -11,6 +11,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import type { Session } from '@/types/chat'
 import { DraftGlyph } from './DraftGlyph'
 import { LimitGlyph } from './limit-hit'
+import { RunErrorGlyph } from './run-error'
 import { LabelModal } from './LabelModal'
 import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
@@ -194,6 +195,7 @@ export function SessionShortcutRows({
               startedBySessionId={session.started_by_session_id}
             />
             {card.limitHit && <LimitGlyph limit={card.limitHit} />}
+            {card.runError && <RunErrorGlyph error={card.runError} />}
             {showStarGlyph && starredIds.has(shortcut.sessionId) && (
               <StarGlyph />
             )}

@@ -462,6 +462,49 @@ pub async fn browser_set_visible(
     }
 }
 
+/// Pauses all audio and video in the tab. The frontend calls this when the
+/// browser pane closes: a hidden webview stays alive and keeps playing.
+#[tauri::command]
+pub async fn browser_pause_media(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = get_label(&tab_id).ok_or_else(|| format!("tab '{tab_id}' not found"))?;
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview '{label}' not found"))?;
+    // Reaches media in the page and in same-origin frames only.
+    webview
+        .eval(PAUSE_MEDIA_SCRIPT.to_string())
+        .map_err(|e| e.to_string())?;
+    // WebKit's own pause also reaches cross-origin frames (YouTube embeds).
+    #[cfg(target_os = "macos")]
+    webview
+        .with_webview(|platform| unsafe {
+            use objc2::runtime::AnyObject;
+            use objc2::sel;
+            use objc2_web_kit::WKWebView;
+            let view: &WKWebView = &*platform.inner().cast::<WKWebView>();
+            let object: &AnyObject = view.as_ref();
+            // macOS 12+. On older systems the JS pause above must do.
+            if object
+                .class()
+                .responds_to(sel!(pauseAllMediaPlaybackWithCompletionHandler:))
+            {
+                view.pauseAllMediaPlaybackWithCompletionHandler(None);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+const PAUSE_MEDIA_SCRIPT: &str = r#"(function () {
+  function pauseIn(doc) {
+    doc.querySelectorAll('video, audio').forEach(function (m) { m.pause(); });
+    doc.querySelectorAll('iframe').forEach(function (f) {
+      try { if (f.contentDocument) pauseIn(f.contentDocument); } catch (e) {}
+    });
+  }
+  pauseIn(document);
+})();"#;
+
 #[tauri::command]
 pub async fn browser_set_focus(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = get_label(&tab_id).ok_or_else(|| format!("tab '{tab_id}' not found"))?;

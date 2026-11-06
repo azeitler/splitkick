@@ -1,7 +1,10 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@/test/test-utils'
-import { defaultPreferences } from '@/types/preferences'
+import {
+  DEFAULT_GLOBAL_SYSTEM_PROMPT,
+  defaultPreferences,
+} from '@/types/preferences'
 import { MagicPromptsPane } from './MagicPromptsPane'
 
 const mutateMock = vi.fn()
@@ -126,7 +129,9 @@ describe('MagicPromptsPane', () => {
     expect(
       (screen.getByRole('textbox') as HTMLTextAreaElement).value
     ).toContain('start the development server')
-    expect(screen.getByRole('combobox', { name: 'Backend' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('combobox', { name: 'Backend' })
+    ).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Model' })).toBeInTheDocument()
     expect(
       screen.getByRole('combobox', { name: 'Default mode' })
@@ -157,6 +162,50 @@ describe('MagicPromptsPane', () => {
     ).toBeInTheDocument()
     expect(screen.getByTestId('magic-prompts-sidebar')).toHaveClass('hidden')
     expect(screen.getByTestId('magic-prompts-sidebar')).toHaveClass('md:block')
+  })
+
+  it('marks a prompt as custom only when it differs from the default', async () => {
+    const user = userEvent.setup()
+    preferencesMock = {
+      ...defaultPreferences,
+      magic_prompts: {
+        ...defaultPreferences.magic_prompts,
+        global_system_prompt: `${DEFAULT_GLOBAL_SYSTEM_PROMPT}\n- extra rule`,
+        parallel_execution: null,
+      },
+    }
+    render(<MagicPromptsPane />)
+
+    const sidebar = screen.getByTestId('magic-prompts-sidebar')
+    const globalButton = within(sidebar).getByRole('button', {
+      name: /Global System Prompt/,
+    })
+    expect(within(globalButton).getByText('Custom')).toBeInTheDocument()
+    expect(
+      within(
+        within(sidebar).getByRole('button', { name: 'Parallel Execution' })
+      ).queryByText('Custom')
+    ).toBeNull()
+
+    await user.click(globalButton)
+    expect(
+      screen.getByTitle(/do not reach it until you reset it/)
+    ).toBeInTheDocument()
+  })
+
+  it('does not mark a saved copy that equals the default as custom', () => {
+    preferencesMock = {
+      ...defaultPreferences,
+      magic_prompts: {
+        ...defaultPreferences.magic_prompts,
+        global_system_prompt: DEFAULT_GLOBAL_SYSTEM_PROMPT,
+      },
+    }
+    render(<MagicPromptsPane />)
+
+    expect(
+      within(screen.getByTestId('magic-prompts-sidebar')).queryByText('Custom')
+    ).toBeNull()
   })
 
   it('does not include release post as an editable magic prompt', () => {

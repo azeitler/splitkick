@@ -630,6 +630,10 @@ export const browserBackend = {
     if (!isNativeApp()) return
     await invoke('browser_set_visible', { tabId, visible })
   },
+  async pauseMedia(tabId: string): Promise<void> {
+    if (!isNativeApp()) return
+    await invoke('browser_pause_media', { tabId })
+  },
   async hasActive(tabId: string): Promise<boolean> {
     if (!isNativeApp()) return false
     try {

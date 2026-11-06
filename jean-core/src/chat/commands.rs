@@ -538,7 +538,11 @@ fn build_kimi_system_prompt(
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            parts.push(prompt.to_string());
+            parts.push(super::project_preset::global_prompt_for_worktree(
+                app,
+                worktree_id,
+                prompt,
+            ));
         }
     }
     if let Some(prompt) = parallel_prompt
@@ -2483,6 +2487,29 @@ pub struct ArchivedSessionEntry {
     pub worktree_path: String,
     pub project_id: String,
     pub project_name: String,
+    /// First line of the last prompt, for the Archived page (#96)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_message_preview: Option<String>,
+}
+
+/// Longest preview the Archived page shows on one line.
+const ARCHIVED_PREVIEW_MAX_CHARS: usize = 200;
+
+/// First non-empty line of the last run's prompt, cut to
+/// `ARCHIVED_PREVIEW_MAX_CHARS`. The prompt lives in the metadata file, so
+/// this needs no run log read.
+fn last_prompt_preview(metadata: &super::types::SessionMetadata) -> Option<String> {
+    let line = metadata.runs.iter().rev().find_map(|run| {
+        run.user_message
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+    })?;
+    let mut preview: String = line.chars().take(ARCHIVED_PREVIEW_MAX_CHARS).collect();
+    if line.chars().count() > ARCHIVED_PREVIEW_MAX_CHARS {
+        preview.push('…');
+    }
+    Some(preview)
 }
 
 /// List all archived sessions across all worktrees (including archived worktrees)
@@ -2507,6 +2534,11 @@ pub async fn list_all_archived_sessions(
                     // Filter to archived sessions only
                     for session in sessions_data.sessions {
                         if session.archived_at.is_some() {
+                            let last_message_preview = load_metadata(&app, &session.id)
+                                .ok()
+                                .flatten()
+                                .as_ref()
+                                .and_then(last_prompt_preview);
                             entries.push(ArchivedSessionEntry {
                                 session,
                                 worktree_id: worktree.id.clone(),
@@ -2514,6 +2546,7 @@ pub async fn list_all_archived_sessions(
                                 worktree_path: worktree.path.clone(),
                                 project_id: project.id.clone(),
                                 project_name: project.name.clone(),
+                                last_message_preview,
                             });
                         }
                     }
@@ -2537,8 +2570,10 @@ pub async fn list_all_archived_sessions(
                         for entry in &index.sessions {
                             if entry.archived_at.is_some() {
                                 // Load full session metadata
+                                let mut last_message_preview = None;
                                 let session =
                                     if let Ok(Some(metadata)) = load_metadata(&app, &entry.id) {
+                                        last_message_preview = last_prompt_preview(&metadata);
                                         let mut s = metadata.to_session();
                                         // Ensure archived_at from index is preserved
                                         if s.archived_at.is_none() {
@@ -2565,6 +2600,7 @@ pub async fn list_all_archived_sessions(
                                     worktree_path: project.path.clone(),
                                     project_id: project.id.clone(),
                                     project_name: project.name.clone(),
+                                    last_message_preview,
                                 });
                             }
                         }
@@ -3666,6 +3702,8 @@ pub async fn send_chat_message(
         backend: Backend,
         /// Claude stopped the run at the usage limit
         limit_hit: Option<super::types::LimitHit>,
+        /// The run ended with an error (Claude API error, aborted Codex send)
+        run_error: Option<super::types::RunError>,
     }
 
     // Execute CLI in detached mode on a dedicated OS thread.
@@ -3894,6 +3932,7 @@ pub async fn send_chat_message(
                                     usage: response.usage,
                                     backend: Backend::Claude,
                                     limit_hit: response.limit_hit,
+                                    run_error: response.run_error,
                                 },
                             ));
                         }
@@ -4041,9 +4080,13 @@ pub async fn send_chat_message(
                             serde_json::from_str::<crate::AppPreferences>(&contents).ok()
                         })
                         .and_then(|prefs| prefs.magic_prompts.global_system_prompt);
-                    system_prompt_parts.push(resolve_codex_global_system_prompt(
-                        preferences_global_prompt.as_deref(),
-                        thread_execution_mode.as_deref(),
+                    system_prompt_parts.push(super::project_preset::global_prompt_for_worktree(
+                        &thread_app,
+                        &thread_worktree_id,
+                        &resolve_codex_global_system_prompt(
+                            preferences_global_prompt.as_deref(),
+                            thread_execution_mode.as_deref(),
+                        ),
                     ));
 
                     // Parallel execution prompt
@@ -4383,6 +4426,13 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Codex,
                             limit_hit: None,
+                            run_error: response.error_message.map(|message| {
+                                super::types::RunError {
+                                    kind: super::types::RunErrorKind::Aborted,
+                                    message,
+                                    retry_message: None,
+                                }
+                            }),
                         },
                     )),
                     Err(e) => {
@@ -4460,7 +4510,13 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    system_prompt_parts.push(prompt.to_string());
+                                    system_prompt_parts.push(
+                                        super::project_preset::global_prompt_for_worktree(
+                                            &thread_app,
+                                            &thread_worktree_id,
+                                            prompt,
+                                        ),
+                                    );
                                 }
                             }
                         }
@@ -4769,6 +4825,7 @@ pub async fn send_chat_message(
                                 usage: response.usage,
                                 backend: Backend::Opencode,
                                 limit_hit: None,
+                                run_error: None,
                             },
                         ))
                     }
@@ -4821,7 +4878,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }
@@ -4932,6 +4993,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Cursor,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -4974,6 +5036,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Commandcode,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5007,7 +5070,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }
@@ -5124,6 +5191,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Pi,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5157,7 +5225,11 @@ pub async fn send_chat_message(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                 {
-                                    parts.push(prompt.to_string());
+                                    parts.push(super::project_preset::global_prompt_for_worktree(
+                                        &thread_app,
+                                        &thread_worktree_id,
+                                        prompt,
+                                    ));
                                 }
                             }
                         }
@@ -5291,6 +5363,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Grok,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(e) => {
@@ -5338,6 +5411,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Kimi,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5384,6 +5458,7 @@ pub async fn send_chat_message(
                             usage: response.usage,
                             backend: Backend::Antigravity,
                             limit_hit: None,
+                            run_error: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5409,6 +5484,11 @@ pub async fn send_chat_message(
             if let Some(ref flag) = opencode_cancel_flag {
                 if !flag.load(std::sync::atomic::Ordering::SeqCst) {
                     // Mark run as crashed so it doesn't stay in Running forever
+                    let _ = run_log_writer.set_run_error(super::types::RunError {
+                        kind: super::types::RunErrorKind::Crashed,
+                        message: e.clone(),
+                        retry_message: None,
+                    });
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark OpenCode run as crashed: {mark_err}");
                     }
@@ -5449,6 +5529,11 @@ pub async fn send_chat_message(
                     }
                     emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
                 } else {
+                    let _ = run_log_writer.set_run_error(super::types::RunError {
+                        kind: super::types::RunErrorKind::Crashed,
+                        message: e.clone(),
+                        retry_message: None,
+                    });
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
                     }
@@ -5675,6 +5760,11 @@ pub async fn send_chat_message(
     // Handle error_emitted: backend emitted chat:error during execution (e.g., Codex usage limit).
     // Treat like undo_send so the user message doesn't persist in history.
     if unified_response.error_emitted {
+        if let Some(error) = unified_response.run_error.clone() {
+            if let Err(e) = run_log_writer.set_run_error(error) {
+                log::warn!("Failed to record run error: {e}");
+            }
+        }
         if let Err(e) = run_log_writer.cancel(None, None) {
             log::warn!("Failed to cancel run log after error: {e}");
         }
@@ -5881,6 +5971,11 @@ pub async fn send_chat_message(
             &resume_id_for_log,
             has_resume_worthy_payload,
         );
+        if let Some(error) = unified_response.run_error.clone() {
+            if let Err(e) = run_log_writer.set_run_error(error) {
+                log::warn!("Failed to record run error: {e}");
+            }
+        }
         if let Err(e) = run_log_writer.complete(
             &assistant_msg_id,
             resume_sid,
@@ -6590,6 +6685,52 @@ mod plan_handoff_tests {
         json.as_object_mut().unwrap().remove("plan_handoffs");
         let parsed: SessionMetadata = serde_json::from_value(json).unwrap();
         assert!(parsed.plan_handoffs.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod archived_preview_tests {
+    use super::{last_prompt_preview, ARCHIVED_PREVIEW_MAX_CHARS};
+    use crate::chat::types::{RunStatus, SessionMetadata};
+
+    fn metadata_with_prompts(prompts: &[&str]) -> SessionMetadata {
+        let metadata =
+            SessionMetadata::new("s1".to_string(), "wt".to_string(), "Session".to_string(), 0);
+        let mut json = serde_json::to_value(&metadata).unwrap();
+        let status = serde_json::to_value(RunStatus::Completed).unwrap();
+        json["runs"] = prompts
+            .iter()
+            .enumerate()
+            .map(|(i, prompt)| {
+                serde_json::json!({
+                    "run_id": format!("run-{i}"),
+                    "user_message_id": format!("msg-{i}"),
+                    "user_message": prompt,
+                    "started_at": i,
+                    "status": status,
+                })
+            })
+            .collect();
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn preview_is_the_first_line_of_the_last_prompt() {
+        let metadata = metadata_with_prompts(&["first", "\n  fix the login  \nmore"]);
+        assert_eq!(
+            last_prompt_preview(&metadata).as_deref(),
+            Some("fix the login")
+        );
+    }
+
+    #[test]
+    fn preview_skips_empty_prompts_and_cuts_long_ones() {
+        let long = "x".repeat(ARCHIVED_PREVIEW_MAX_CHARS + 10);
+        let metadata = metadata_with_prompts(&[&long, "   "]);
+        let preview = last_prompt_preview(&metadata).unwrap();
+        assert_eq!(preview.chars().count(), ARCHIVED_PREVIEW_MAX_CHARS + 1);
+        assert!(preview.ends_with('…'));
+        assert!(last_prompt_preview(&metadata_with_prompts(&[])).is_none());
     }
 }
 
@@ -9353,7 +9494,7 @@ pub async fn resume_session(
             };
 
             // Tail the output file — Claude backend only (Codex handled above)
-            let (resume_id, usage, cancelled, limit_hit) = {
+            let (resume_id, usage, cancelled, limit_hit, run_error) = {
                 match super::claude::tail_claude_output(
                     &app_clone,
                     &session_id_clone,
@@ -9368,6 +9509,7 @@ pub async fn resume_session(
                         response.usage,
                         response.cancelled,
                         response.limit_hit,
+                        response.run_error,
                     ),
                     Err(e) => {
                         log::error!(
@@ -9412,6 +9554,11 @@ pub async fn resume_session(
                     } else {
                         Some(resume_id.as_str())
                     };
+                    if let Some(error) = run_error {
+                        if let Err(e) = writer.set_run_error(error) {
+                            log::error!("Failed to record run error: {e}");
+                        }
+                    }
                     if let Err(e) =
                         writer.complete(&assistant_message_id, resume_sid, usage.clone(), limit_hit)
                     {

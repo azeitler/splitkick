@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const CONVERTED = [
   'src/components/chat/QueuedPromptsPanel.tsx',
   'src/components/chat/LabelModal.tsx',
-  'src/components/archive/ArchivedModal.tsx',
+  'src/components/archive/ArchivedRow.tsx',
   'src/components/chat/CommitsTabView.tsx',
   'src/components/magic/LoadContextItems.tsx',
   'src/components/magic/LinearItemsTab.tsx',

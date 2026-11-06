@@ -20,7 +20,7 @@ describe('ProjectCanvasView home columns', () => {
 
   it('reads overview, then worktrees, then issues', () => {
     const overview = source.indexOf('<ProjectOverviewColumn projectId=')
-    const worktrees = source.indexOf('<WorktreeColumnFrame labelled=')
+    const worktrees = source.indexOf('<WorktreeColumnFrame')
     const issues = source.indexOf('<ProjectIssuesColumn')
 
     expect(overview).toBeGreaterThan(-1)
@@ -33,8 +33,12 @@ describe('ProjectCanvasView home columns', () => {
   })
 
   it('heads the worktree column like the two beside it', () => {
-    expect(source).toContain('<WorktreeColumnFrame labelled={showHomeColumns}>')
-    expect(source).toContain('<HomeSection title="Worktrees"')
+    expect(source).toMatch(
+      /<WorktreeColumnFrame\s+labelled=\{showHomeColumns\}/
+    )
+    // "Worktrees" by default, "Base session" for a plain project (#93).
+    expect(source).toContain("title = 'Worktrees'")
+    expect(source).toContain('<HomeSection title={title}')
   })
 
   it('drops the heading when the worktree list is the whole canvas', () => {

@@ -108,6 +108,21 @@ export interface Project {
   is_git?: boolean
   /** Plain projects only: the folder has a `.git` now (detected on load) */
   git_detected?: boolean
+  /**
+   * Coding or non-coding (#95). Missing/null = automatic: Coding for git
+   * projects, Non-coding for plain projects. Use `isCodingProject`.
+   */
+  preset?: ProjectPreset | null
+}
+
+export type ProjectPreset = 'coding' | 'non_coding'
+
+/** Mirrors Rust `Project::is_coding`. */
+export function isCodingProject(
+  project: Pick<Project, 'is_git' | 'preset'> | null | undefined
+): boolean {
+  if (project?.preset) return project.preset === 'coding'
+  return project?.is_git !== false
 }
 
 export interface DirEntry {

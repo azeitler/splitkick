@@ -953,6 +953,9 @@ pub struct Session {
     /// Usage limit hit by the last run (Claude only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_limit_hit: Option<LimitHit>,
+    /// Error the last run ended with (crashed runs always have one)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_error: Option<RunError>,
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
@@ -1096,6 +1099,7 @@ impl Session {
             table_checked_rows: HashMap::new(),
             last_run_status: None,
             last_run_limit_hit: None,
+            last_run_error: None,
             last_run_execution_mode: None,
             last_run_started_at: None,
             label: None,
@@ -1332,6 +1336,7 @@ impl SessionMetadata {
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_limit_hit: last_run.and_then(|r| r.limit_hit.clone()),
+            last_run_error: last_run.and_then(RunEntry::effective_error),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
             last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
@@ -1656,6 +1661,33 @@ pub struct RunEntry {
     /// (session) limit. The sidebar and chat show a resume affordance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit_hit: Option<LimitHit>,
+    /// Set when the run ended with an error (API error, aborted send, crash).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_error: Option<RunError>,
+}
+
+/// How a run failed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RunErrorKind {
+    /// The backend answered with an error (e.g. Claude "API Error: 500")
+    ApiError,
+    /// The backend refused the send before it ran; the message was undone
+    Aborted,
+    /// The run's process died or the run thread failed
+    Crashed,
+}
+
+/// A run that ended with an error. The sidebar and chat offer a retry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RunError {
+    pub kind: RunErrorKind,
+    /// Error text from the backend; empty when none is known
+    #[serde(default)]
+    pub message: String,
+    /// For aborted sends: the user message to send again
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_message: Option<String>,
 }
 
 /// Claude stopped a run because the account hit its usage limit.
@@ -1667,6 +1699,17 @@ pub struct LimitHit {
 }
 
 impl RunEntry {
+    /// The run's error; a crashed run without a stored error still counts.
+    pub fn effective_error(&self) -> Option<RunError> {
+        self.run_error.clone().or_else(|| {
+            (self.status == RunStatus::Crashed).then(|| RunError {
+                kind: RunErrorKind::Crashed,
+                message: String::new(),
+                retry_message: None,
+            })
+        })
+    }
+
     /// Whether this run should appear as user/assistant messages in the visible chat timeline.
     ///
     /// Cancelled runs remain in metadata and JSONL for diagnostics. Instant
@@ -2116,6 +2159,35 @@ impl SessionMetadata {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn crashed_runs_report_an_error_even_without_one_stored() {
+        let mut run: RunEntry = serde_json::from_value(serde_json::json!({
+            "run_id": "r1",
+            "user_message_id": "u1",
+            "user_message": "hi",
+            "started_at": 1,
+            "status": "crashed"
+        }))
+        .unwrap();
+        assert_eq!(
+            run.effective_error().map(|e| e.kind),
+            Some(RunErrorKind::Crashed)
+        );
+
+        run.status = RunStatus::Completed;
+        assert_eq!(run.effective_error(), None);
+
+        run.run_error = Some(RunError {
+            kind: RunErrorKind::ApiError,
+            message: "API Error: 529 Overloaded".to_string(),
+            retry_message: None,
+        });
+        assert_eq!(
+            run.effective_error().map(|e| e.message),
+            Some("API Error: 529 Overloaded".to_string())
+        );
+    }
+
     use super::*;
 
     // ========================================================================
@@ -2625,6 +2697,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
 
         let restored = metadata.to_session();
@@ -2673,6 +2746,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
 
         assert!(metadata.find_run("run-1").is_some());
@@ -2708,6 +2782,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         // Cancelled-with-content now renders user + partial assistant (incl tool calls).
@@ -2764,6 +2839,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
         metadata.runs.push(RunEntry {
             run_id: "run-completed".to_string(),
@@ -2792,6 +2868,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
 
         // Cancelled partial turn (user + assistant) + completed turn (user + assistant) = 4.
@@ -2838,6 +2915,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
 
         assert!(metadata.latest_claude_session_id().is_none());
@@ -2870,6 +2948,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         });
 
         assert_eq!(metadata.latest_claude_session_id(), Some("claude-sess-abc"));
