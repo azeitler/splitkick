@@ -1,3 +1,14 @@
+# Errored sessions: icon + banner (like the session limit)
+
+Kinds: Claude API error (result is_error, not 429), aborted send (Codex chat:error, run undone),
+crashed run (thread error or dead process). Login errors (isCliAuthError) get a Log in button.
+
+- [x] Rust: `RunError { kind, message, retry_message }` on `RunEntry`; `Session.last_run_error` (crashed fallback)
+- [x] Rust: `RunLogWriter::set_run_error`; Claude `run_error_from_line`; Codex keeps error text; wire live, resume-tail, thread-error and recovery paths; tests
+- [x] TS: types, `SessionCardData.runError`, red `RunErrorGlyph` in sidebar rows, `RunErrorBanner` (Resume / Resume with message; Retry / Edit for aborted; Log in for auth)
+- [x] Tests, screenshots
+- [ ] Changelog, commit (waiting for the user)
+
 # Graph layer: exhaustive e2e (all branches and states)
 
 - [x] A `graphs-files.spec.ts`: locations, open/remove/missing/invalid, outside edits, unknown fields, branches, commit, sidebar, navigation, phone.

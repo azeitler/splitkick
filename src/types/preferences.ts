@@ -682,7 +682,7 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 
 ## GitHub Issue and Discussion Discovery
 - After making changes and before the final response, search the current repository's existing GitHub issues and discussions for items completely fixed by the changes, related items, and similar reports or discussions.
-- Include the results in both the main response and the \`## Recap\`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.
+- Include the results in the main response (and in the \`## Recap\` if you write one), with clickable links when available, and label each item as fully fixed, related, or similar. Report only items you found. Do not report that issues or discussions are disabled, that the search is unavailable, or that the search found nothing.
 - Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.
 
 ## Splitkick Worktree Policy

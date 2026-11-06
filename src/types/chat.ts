@@ -362,6 +362,8 @@ export interface Session {
   last_run_status?: RunStatus
   /** Set when Claude stopped the last run at the usage (session) limit */
   last_run_limit_hit?: LimitHit
+  /** Error the last run ended with (API error, aborted send, crash) */
+  last_run_error?: RunError
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
   /** Unix timestamp when the last run started */
@@ -475,6 +477,8 @@ export interface ArchivedSessionEntry {
   worktree_path: string
   project_id: string
   project_name: string
+  /** First line of the session's last prompt, cut to 200 characters */
+  last_message_preview?: string
 }
 
 /**
@@ -1875,6 +1879,18 @@ export interface SessionDebugInfo {
 export interface LimitHit {
   /** Unix timestamp (seconds) when the limit resets, if known */
   resets_at?: number
+}
+
+/** How a run failed. */
+export type RunErrorKind = 'api_error' | 'aborted' | 'crashed'
+
+/** A run that ended with an error. */
+export interface RunError {
+  kind: RunErrorKind
+  /** Error text from the backend; empty when none is known */
+  message: string
+  /** For aborted sends: the user message to send again */
+  retry_message?: string
 }
 
 export interface LabelData {

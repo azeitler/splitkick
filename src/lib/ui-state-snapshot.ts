@@ -117,6 +117,7 @@ export function getCurrentUIState(): UIState {
     seenFailedWorkflowRunIds,
     mobileActiveTab,
     sidebarTab,
+    archivedSort,
   } = useUIStore.getState()
   const {
     terminals,
@@ -181,6 +182,7 @@ export function getCurrentUIState(): UIState {
     project_rail_hidden: projectRailHidden,
     mobile_active_tab: mobileActiveTab,
     sidebar_tab: sidebarTab,
+    archived_sort: archivedSort,
     left_sidebar_size: leftSidebarSize,
     left_sidebar_visible: leftSidebarVisible,
     file_browser_size: fileBrowserSize,

@@ -499,6 +499,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: Some("checkpoint".to_string()),
             limit_hit: None,
+            run_error: None,
         }
     }
 

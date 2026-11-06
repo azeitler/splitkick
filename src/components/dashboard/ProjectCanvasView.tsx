@@ -3520,7 +3520,9 @@ export function ProjectCanvasView({
   )
   const projectSummaryLine = (
     <p className="text-xs text-muted-foreground whitespace-nowrap">
-      {projectSummary.totalReady > 0 ? (
+      {isPlain ? (
+        'Plain project (no git)'
+      ) : projectSummary.totalReady > 0 ? (
         <>
           {projectSummary.totalReady} worktrees
           {projectSummary.reviewCount > 0 &&
@@ -3898,7 +3900,10 @@ export function ProjectCanvasView({
 
             {!showMobileRecent && (
               <div className="flex min-w-0 flex-col">
-                <WorktreeColumnFrame labelled={showHomeColumns}>
+                <WorktreeColumnFrame
+                  labelled={showHomeColumns}
+                  title={isPlain ? 'Base session' : undefined}
+                >
                   {/* Pinned sessions sit above the worktree sections and outside the
               empty-state branch, and stay visible on every filter tab. They are
               hidden during a search, where un-matching rows would be noise. */}
@@ -4261,16 +4266,19 @@ export function ProjectCanvasView({
  */
 function WorktreeColumnFrame({
   labelled,
+  title = 'Worktrees',
   children,
 }: {
   labelled: boolean
+  /** "Base session" for a plain project (#93): it has no worktrees */
+  title?: string
   children: React.ReactNode
 }) {
   if (!labelled)
     return <div className="flex min-h-0 flex-1 flex-col">{children}</div>
 
   return (
-    <HomeSection title="Worktrees" className="min-h-0 flex-1">
+    <HomeSection title={title} className="min-h-0 flex-1">
       {children}
     </HomeSection>
   )

@@ -251,8 +251,12 @@ describe('model option helpers', () => {
       "search the current repository's existing GitHub issues and discussions"
     )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'Include the results in both the main response and the `## Recap`'
+      'Include the results in the main response (and in the `## Recap` if you write one)'
     )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'or that the search found nothing.'
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).not.toContain('say so explicitly')
   })
 })
 

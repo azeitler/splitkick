@@ -163,6 +163,13 @@ export const defaultResponses: Record<string, unknown> = {
   send_chat_message: null,
   cancel_chat_message: false,
 
+  // Graphs — an array: SidebarGraphsSection reads `.length`, and null
+  // crashed the sidebar into the error boundary (Ctrl+B, sidebar specs).
+  list_graphs: [],
+
+  // Wake-ups — useStreamingEvents iterates the result.
+  list_pending_wakeups: [],
+
   // Misc
   save_emergency_data: null,
   load_emergency_data: null,

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type {
+  ArchivedSort,
   MobileHomeSegment,
   MobileProjectSegment,
   MobileTab,
@@ -242,6 +243,8 @@ interface UIState {
   /** The desktop sidebar's tab below Home: the project tree or recent
    *  sessions. Persisted. */
   sidebarTab: SidebarTab
+  /** The Archived page's sort. Persisted. */
+  archivedSort: ArchivedSort
   /** Which list the phone's Home tab shows below Continue. Not persisted:
    *  kept while switching tabs, which unmount, and reset on reload. */
   mobileHomeSegment: MobileHomeSegment
@@ -395,6 +398,7 @@ interface UIState {
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setMobileActiveTab: (tab: MobileTab) => void
   setSidebarTab: (tab: SidebarTab) => void
+  setArchivedSort: (sort: ArchivedSort) => void
   setMobileHomeSegment: (segment: MobileHomeSegment) => void
   setMobileProjectSegment: (segment: MobileProjectSegment) => void
   setSessionPrimarySurface: (
@@ -515,6 +519,7 @@ export const useUIStore = create<UIState>()(
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
       sidebarTab: 'projects',
+      archivedSort: 'archived',
       mobileHomeSegment: 'sessions',
       mobileProjectSegment: 'worktrees',
       sessionChatModalWorktreeId: null,
@@ -1356,6 +1361,14 @@ export const useUIStore = create<UIState>()(
           state => (state.sidebarTab === tab ? state : { sidebarTab: tab }),
           undefined,
           'setSidebarTab'
+        ),
+
+      setArchivedSort: (sort: ArchivedSort) =>
+        set(
+          state =>
+            state.archivedSort === sort ? state : { archivedSort: sort },
+          undefined,
+          'setArchivedSort'
         ),
 
       setMobileHomeSegment: (segment: MobileHomeSegment) =>

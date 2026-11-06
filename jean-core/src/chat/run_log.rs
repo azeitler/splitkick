@@ -17,7 +17,7 @@ use super::storage::{
 };
 use super::types::{
     is_claude_compaction_summary_text, Backend, ChatMessage, ContentBlock, LimitHit,
-    LoadedMessages, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
+    LoadedMessages, MessageRole, RunEntry, RunError, RunErrorKind, RunStatus, ToolCall, UsageData,
 };
 
 // ============================================================================
@@ -221,6 +221,28 @@ impl RunLogWriter {
 
         log::trace!("Run marked as crashed: {}", self.run_id);
         Ok(())
+    }
+
+    /// Record the error this run ended with. An aborted send keeps the user
+    /// message so the UI can send it again.
+    pub fn set_run_error(&mut self, mut error: RunError) -> Result<(), String> {
+        let run_id = self.run_id.clone();
+        with_metadata_mut(
+            &self.app,
+            &self.session_id,
+            &self.worktree_id,
+            &self.session_name,
+            self.order,
+            |metadata| {
+                if let Some(run) = metadata.find_run_mut(&run_id) {
+                    if error.kind == RunErrorKind::Aborted && error.retry_message.is_none() {
+                        error.retry_message = Some(run.user_message.clone());
+                    }
+                    run.run_error = Some(error.clone());
+                }
+                Ok(())
+            },
+        )
     }
 
     /// Set the PID of the detached Claude CLI process
@@ -472,6 +494,7 @@ pub fn start_run(
         antigravity_session_id: None,
         checkpoint_id: None,
         limit_hit: None,
+        run_error: None,
     };
 
     with_metadata_mut(
@@ -1713,6 +1736,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         }
     }
 
@@ -2238,6 +2262,7 @@ Move services between instances without downtime.
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         };
 
         let lines = vec![
@@ -2611,7 +2636,8 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                     if completed {
                         run.status = RunStatus::Completed;
                         if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude {
-                            run.limit_hit = jsonl_limit_hit(app, &session_id, &run.run_id);
+                            (run.limit_hit, run.run_error) =
+                                jsonl_claude_outcome(app, &session_id, &run.run_id);
                         }
                         metadata.is_reviewing = false;
                         if metadata.status_override.as_deref() == Some("review") {
@@ -2701,29 +2727,39 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
     Ok(recovered)
 }
 
-/// Check if a run's JSONL file contains a "type":"result" line,
-/// indicating the CLI process completed successfully (vs crashing).
-/// Read Claude's usage-limit stop from the end of a run's JSONL (the limit
-/// assistant message and the result are the last lines).
-fn jsonl_limit_hit(app: &tauri::AppHandle, session_id: &str, run_id: &str) -> Option<LimitHit> {
+/// Read Claude's usage-limit stop and API error from the end of a run's
+/// JSONL (the limit/error message and the result are the last lines).
+fn jsonl_claude_outcome(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    run_id: &str,
+) -> (Option<LimitHit>, Option<RunError>) {
     use std::io::{Seek, SeekFrom};
-    let jsonl_path = get_session_dir(app, session_id)
-        .ok()?
-        .join(format!("{run_id}.jsonl"));
-    let mut file = File::open(&jsonl_path).ok()?;
-    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
-    if file_len > 32768 {
-        file.seek(SeekFrom::End(-32768)).ok()?;
-    }
     let mut limit_hit = None;
+    let mut run_error = None;
+    let Some(mut file) = get_session_dir(app, session_id)
+        .ok()
+        .and_then(|dir| File::open(dir.join(format!("{run_id}.jsonl"))).ok())
+    else {
+        return (None, None);
+    };
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    if file_len > 32768 && file.seek(SeekFrom::End(-32768)).is_err() {
+        return (None, None);
+    }
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) {
             super::claude::merge_limit_hit(&mut limit_hit, &msg);
+            if let Some(error) = super::claude::run_error_from_line(&msg) {
+                run_error = Some(error);
+            }
         }
     }
-    limit_hit
+    (limit_hit, run_error)
 }
 
+/// Check if a run's JSONL file contains a "type":"result" line,
+/// indicating the CLI process completed successfully (vs crashing).
 pub fn jsonl_has_result_line(app: &tauri::AppHandle, session_id: &str, run_id: &str) -> bool {
     let session_dir = match get_session_dir(app, session_id) {
         Ok(d) => d,

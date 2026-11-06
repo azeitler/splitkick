@@ -2,7 +2,8 @@ use super::coalesce::ChunkCoalescer;
 use super::run_log::tool_result_content_to_string;
 use super::types::{
     is_claude_compaction_summary_text, CompactMetadata, ContentBlock, EffortLevel, LimitHit,
-    PermissionDenial, PermissionDeniedEvent, ThinkingLevel, ToolCall, UsageData,
+    PermissionDenial, PermissionDeniedEvent, RunError, RunErrorKind, ThinkingLevel, ToolCall,
+    UsageData,
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
@@ -87,7 +88,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 \n\
 ## GitHub Issue and Discussion Discovery\n\
 - After making changes and before the final response, search the current repository's existing GitHub issues and discussions for items completely fixed by the changes, related items, and similar reports or discussions.\n\
-- Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.\n\
+- Include the results in the main response (and in the `## Recap` if you write one), with clickable links when available, and label each item as fully fixed, related, or similar. Report only items you found. Do not report that issues or discussions are disabled, that the search is unavailable, or that the search found nothing.\n\
 - Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.\n\
 \n\
 ## Splitkick Worktree Policy\n\
@@ -146,6 +147,8 @@ pub struct ClaudeResponse {
     pub usage: Option<UsageData>,
     /// Set when Claude stopped the run because the usage limit was hit
     pub limit_hit: Option<LimitHit>,
+    /// Set when the run ended with an API error or unparseable CLI output
+    pub run_error: Option<RunError>,
 }
 
 /// Payload for text chunk events sent to frontend
@@ -873,7 +876,11 @@ fn build_claude_args(
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
                     .unwrap_or(DEFAULT_GLOBAL_SYSTEM_PROMPT);
-                system_prompt_parts.push(prompt.to_string());
+                system_prompt_parts.push(super::project_preset::global_prompt_for_worktree(
+                    app,
+                    worktree_id,
+                    prompt,
+                ));
             }
         }
     }
@@ -1539,6 +1546,7 @@ pub fn execute_claude_detached(
                 cancelled: true,
                 usage: None,
                 limit_hit: None,
+                run_error: None,
             },
         ));
     }
@@ -1698,6 +1706,7 @@ pub fn tail_claude_output(
     let mut startup_failed = false; // True when Claude produced no output before the startup timeout / died starting up
     let mut usage: Option<UsageData> = None;
     let mut limit_hit: Option<LimitHit> = None;
+    let mut run_error: Option<RunError> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
     // Track Monitor tool_use_ids that are currently armed along with their
@@ -1818,6 +1827,9 @@ pub fn tail_claude_output(
             }
 
             merge_limit_hit(&mut limit_hit, &msg);
+            if let Some(error) = run_error_from_line(&msg) {
+                run_error = Some(error);
+            }
 
             match msg_type {
                 "assistant" => {
@@ -2140,6 +2152,7 @@ pub fn tail_claude_output(
                                                 cancelled: false,
                                                 usage: None, // No usage for partial responses
                                                 limit_hit,
+                                                run_error,
                                             });
                                         }
                                     }
@@ -2727,6 +2740,11 @@ pub fn tail_claude_output(
     let cli_error = cli_error_message(&full_content, &error_lines);
     if let Some(error) = &cli_error {
         log::warn!("CLI error output for session {session_id}: {error}");
+        run_error = Some(RunError {
+            kind: RunErrorKind::ApiError,
+            message: error.clone(),
+            retry_message: None,
+        });
         let _ = app.emit_all(
             "chat:error",
             &ErrorEvent {
@@ -2769,6 +2787,7 @@ pub fn tail_claude_output(
         cancelled,
         usage,
         limit_hit,
+        run_error,
     })
 }
 
@@ -2801,6 +2820,39 @@ pub fn limit_hit_from_line(msg: &serde_json::Value) -> Option<LimitHit> {
         .and_then(|i| i.get("resetsAt"))
         .and_then(|v| v.as_u64());
     Some(LimitHit { resets_at })
+}
+
+/// Detect a Claude run that ended with an error: a `result` line with
+/// `is_error: true` that is not the usage limit (429, see
+/// `limit_hit_from_line`). Examples: "API Error: 500 …", "API Error: Can't
+/// reach the API server", "Failed to authenticate: OAuth session expired".
+pub fn run_error_from_line(msg: &serde_json::Value) -> Option<RunError> {
+    if msg.get("type").and_then(|v| v.as_str()) != Some("result")
+        || msg.get("is_error").and_then(|v| v.as_bool()) != Some(true)
+        || msg.get("api_error_status").and_then(|v| v.as_u64()) == Some(429)
+    {
+        return None;
+    }
+    let message = msg
+        .get("result")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            msg.get("errors").and_then(|v| v.as_array()).map(|errors| {
+                errors
+                    .iter()
+                    .filter_map(|e| e.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+        })
+        .unwrap_or_default();
+    Some(RunError {
+        kind: RunErrorKind::ApiError,
+        message,
+        retry_message: None,
+    })
 }
 
 /// Merge a newly seen limit signal into the run's state, keeping a known
@@ -3065,6 +3117,52 @@ mod tests {
     }
 
     #[test]
+    fn run_error_is_read_from_an_error_result() {
+        let result = serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": true,
+            "result": "API Error: 500 {\"type\":\"error\"}"
+        });
+        assert_eq!(
+            run_error_from_line(&result),
+            Some(RunError {
+                kind: RunErrorKind::ApiError,
+                message: "API Error: 500 {\"type\":\"error\"}".to_string(),
+                retry_message: None,
+            })
+        );
+
+        let errors_only = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "errors": ["first", "second"]
+        });
+        assert_eq!(
+            run_error_from_line(&errors_only).map(|e| e.message),
+            Some("first\nsecond".to_string())
+        );
+    }
+
+    #[test]
+    fn run_error_skips_the_usage_limit_and_good_results() {
+        let limit = serde_json::json!({
+            "type": "result",
+            "is_error": true,
+            "api_error_status": 429,
+            "result": "You've hit your session limit"
+        });
+        assert_eq!(run_error_from_line(&limit), None);
+
+        let ok = serde_json::json!({"type": "result", "is_error": false, "result": "done"});
+        assert_eq!(run_error_from_line(&ok), None);
+
+        let assistant = serde_json::json!({"type": "assistant", "is_error": true});
+        assert_eq!(run_error_from_line(&assistant), None);
+    }
+
+    #[test]
     fn limit_hit_ignores_subagents_and_normal_results() {
         let subagent = serde_json::json!({
             "type": "assistant",
@@ -3250,8 +3348,11 @@ mod tests {
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("GitHub Issue and Discussion Discovery"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("search the current repository's existing GitHub issues and discussions"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
-            .contains("Include the results in both the main response and the `## Recap`"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains(
+            "Include the results in the main response (and in the `## Recap` if you write one)"
+        ));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("or that the search found nothing."));
+        assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("say so explicitly"));
     }
 
     #[test]
@@ -3316,6 +3417,7 @@ mod tests {
             antigravity_session_id: None,
             checkpoint_id: None,
             limit_hit: None,
+            run_error: None,
         }
     }
 

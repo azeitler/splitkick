@@ -637,6 +637,29 @@ marked `api_error: "usage_limit_reached"` / `error: "rate_limit"` with
   (`src/components/chat/limit-hit.tsx`); `LimitHitBanner` in `ChatWindow` offers
   **Resume** (sends "continue") and **Resume with message** (focuses the composer).
 
+## Errored runs
+
+Same pattern as the usage limit: `RunEntry.run_error` (`RunError { kind,
+message, retry_message }`) is surfaced as `Session.last_run_error` and clears
+on the next run. `RunEntry::effective_error` also reports a crashed run that
+has no stored error.
+
+- `api_error`: Claude `result` with `is_error: true` that is not a 429
+  (`run_error_from_line` in `claude.rs`), or non-JSON CLI error output.
+- `aborted`: the backend refused the send and the run was undone
+  (`error_emitted`, today Codex; `CodexResponse.error_message` keeps the text).
+  `set_run_error` copies the user message into `retry_message`.
+- `crashed`: the run thread returned an error (its text is stored) or the
+  process died (no text).
+- Set through `RunLogWriter::set_run_error` on the live, resume-tail, thread
+  error and crash-recovery (`jsonl_claude_outcome`) paths. Other backends'
+  `chat:error` events that do not set `error_emitted` are not recorded yet.
+- UI: `SessionCardData.runError` → red `RunErrorGlyph`
+  (`src/components/chat/run-error.tsx`); `RunErrorBanner` in `ChatWindow`
+  replaces the in-memory `ErrorBanner` once the error is persisted. Login
+  errors (`isCliAuthError`) get **Log in** (`openBackendLoginModal`); aborted
+  sends get **Retry** (sends `retry_message`) and **Edit message**.
+
 ## Antigravity CLI backend
 
 Jean integrates Google's native `agy` executable through its documented headless interface. Interactive turns use `agy -p --output-format stream-json`; structured one-shot operations use `--output-format json --json-schema`. Jean maps Plan to `--mode plan`, Build to `--mode accept-edits`, and Yolo to `--mode accept-edits --dangerously-skip-permissions`.

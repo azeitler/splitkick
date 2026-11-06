@@ -402,3 +402,26 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - "Make the graph UI simpler" meant the crowded detail panels, not the whole graph UI. I first audited every screen (header, outline, review, dependencies).
 - When a UI request names an area, not a screen, ask which screens hurt most before a full audit, or present the audit as a short list and let the user pick.
 - "Simpler" here meant progressive disclosure: a simple layer by default and an expert layer on demand, not fewer features.
+
+## Recap only when the recap instruction is in the prompt (2026-11-06)
+
+- Write a `## Recap` block only when the system prompt has the
+  "End-of-turn recap" instruction. When Automatic recaps is off, that
+  instruction is absent: do not add a recap, even after reading
+  `RECAP_INSTRUCTION` in the code or seeing other prompt lines that mention
+  `## Recap` (the default global prompt's issue-discovery rule does).
+
+## Shared checkout: never truncate a file before you read it (2026-11-06)
+
+- `open(p, 'w').write(transform(open(p).read()))` opens for writing first,
+  so the file is empty when it is read. It wiped `ChatWindow.tsx` with
+  another session's uncommitted work. Read into a variable, transform,
+  then write: `src = open(p).read(); out = transform(src); open(p, 'w')`.
+- If it happens: Splitkick snapshots the tree before every chat turn.
+  `git for-each-ref --sort=-creatordate refs/jean/checkpoints` and
+  `git show <ref>:<path>` restore the file; tell the user which session's
+  work may be missing since that snapshot.
+- Staging part of a shared file with `git apply --unidiff-zero` put lines in
+  the wrong place (#93). Build the index blob instead: HEAD text plus your
+  own edits, `git hash-object -w`, `git update-index --cacheinfo`, then
+  check an export of the commit (`git archive HEAD | tar -x -C tmp/...`).
