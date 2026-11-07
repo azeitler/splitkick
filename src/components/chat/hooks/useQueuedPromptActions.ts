@@ -12,6 +12,7 @@ import {
 import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
 import { useChatStore } from '@/store/chat-store'
 import { logger } from '@/lib/logger'
+import { invoke } from '@/lib/transport'
 import type { QueuedMessage } from '@/types/chat'
 
 function resolveWorktree(sessionId: string) {
@@ -185,6 +186,22 @@ export function useQueuedPromptActions() {
         await cancelChatMessage(sessionId, worktreeId)
       } else {
         // Only waiting for input (plan approval / question) — skip the wait.
+        // The backend holds the queue while its waiting flag is set (#111),
+        // so clear that first; then the queue processor can dequeue.
+        try {
+          await invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+          })
+        } catch (error) {
+          logger.error('Failed to clear waiting state for send now', {
+            error,
+            sessionId,
+          })
+        }
         useChatStore.getState().forceProcessQueue(sessionId)
       }
     },

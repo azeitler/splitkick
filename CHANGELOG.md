@@ -20,6 +20,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   serves in one step, and shows the agent badge on its tab and canvas row
   (#109).
 
+### Fixed
+
+- **A pending question now holds the queue.** When a turn ended with
+  AskUserQuestion, a queued message could still run, and the question was
+  never answered. The app hears of the turn end before the backend records
+  the open question; a session refresh in that gap cleared the waiting
+  state, and the queue sent the next message. The backend now keeps queued
+  messages while a question waits or a turn is not finalized yet. They run
+  after you answer or dismiss the question, or when you choose "Send now". A
+  queued message still skips a plan approval (#111).
+
 ## [1.5.3] - 2026-11-06
 
 Built on Jean 0.1.73.

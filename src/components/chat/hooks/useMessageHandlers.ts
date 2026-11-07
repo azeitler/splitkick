@@ -566,23 +566,27 @@ export function useMessageHandlers({
       clearStreamingContentBlocks(sessionId)
       removeSendingSession(sessionId)
 
-      // Clear waiting state and mark as reviewing since interaction is complete
-      setWaitingForInput(sessionId, false)
+      // Mark as reviewing since interaction is complete
       setSessionReviewing(sessionId, true)
 
-      // Persist cleared waiting state to backend (for canvas view where session may not be active)
+      // Clear the waiting state on the backend first, then locally. The local
+      // flag releases the queue processor, and the backend holds the queue
+      // while its flag is still set — clearing locally first could let the
+      // dequeue beat this write and leave the queue stuck (issue #111).
       invoke('update_session_state', {
         worktreeId,
         worktreePath,
         sessionId,
         waitingForInput: false,
         waitingForInputType: null,
-      }).catch(err => {
-        console.error(
-          '[useMessageHandlers] Failed to clear waiting state:',
-          err
-        )
       })
+        .catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to clear waiting state:',
+            err
+          )
+        })
+        .finally(() => setWaitingForInput(sessionId, false))
 
       // For OpenCode: cancel the in-flight HTTP POST that's waiting for the question answer.
       // Without this, the POST would hang for up to 30 minutes.

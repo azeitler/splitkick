@@ -6024,45 +6024,19 @@ pub async fn send_chat_message(
     // Note: Assistant message is stored in NDJSON, not sessions JSON.
     // Messages are loaded from NDJSON on demand via load_session_messages().
 
-    // Finalize run log (complete or cancel based on response status)
-    if was_cancelled {
-        let cancel_resume_sid = resume_id_for_persisted_claude_run(
-            &response_backend,
-            &resume_id_for_log,
-            has_resume_worthy_payload,
-        );
-        if let Err(e) = run_log_writer.cancel(Some(&assistant_msg_id), cancel_resume_sid) {
-            log::warn!("Failed to cancel run log: {e}");
-        }
-    } else {
-        let resume_sid = resume_id_for_persisted_claude_run(
-            &response_backend,
-            &resume_id_for_log,
-            has_resume_worthy_payload,
-        );
-        if let Some(error) = unified_response.run_error.clone() {
-            if let Err(e) = run_log_writer.set_run_error(error) {
-                log::warn!("Failed to record run error: {e}");
-            }
-        }
-        if let Err(e) = run_log_writer.complete(
-            &assistant_msg_id,
-            resume_sid,
-            unified_response.usage,
-            unified_response.limit_hit,
-        ) {
-            log::warn!("Failed to complete run log: {e}");
-        }
-    }
-
     // Atomically save session metadata (resume ID for session continuity)
     // Note: Messages are NOT saved here - they're in NDJSON only
     // Only persist if the run produced meaningful content.
-    // IMPORTANT: This is non-fatal — the critical data (run completion, JSONL content)
-    // is already persisted by run_log_writer.complete() above. If this fails, the
-    // resume ID and completion state will be recovered on next app startup via
-    // recover_incomplete_runs(). Making this fatal would cause the frontend to roll
-    // back the conversation cache even though the CLI ran successfully (#209).
+    // ORDER: this write comes BEFORE the run log is finalized below. While the
+    // run is `Running`, `dequeue_message` holds the queue; once it is finalized,
+    // the waiting state must already be on disk, or a queued message slips past
+    // a pending question in between (#111).
+    // IMPORTANT: This is non-fatal — the critical data (JSONL content) is already
+    // on disk, and run completion is persisted by run_log_writer.complete() below.
+    // If this fails, the resume ID and completion state will be recovered on next
+    // app startup via recover_incomplete_runs(). Making this fatal would cause the
+    // frontend to roll back the conversation cache even though the CLI ran
+    // successfully (#209).
     if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
             if !resume_id_for_log.is_empty() && has_resume_worthy_payload {
@@ -6145,6 +6119,37 @@ pub async fn send_chat_message(
         log::error!(
             "[SendChat] Failed to save session state for session={session_id} (non-fatal, will recover on restart): {e}"
         );
+    }
+
+    // Finalize run log (complete or cancel based on response status)
+    if was_cancelled {
+        let cancel_resume_sid = resume_id_for_persisted_claude_run(
+            &response_backend,
+            &resume_id_for_log,
+            has_resume_worthy_payload,
+        );
+        if let Err(e) = run_log_writer.cancel(Some(&assistant_msg_id), cancel_resume_sid) {
+            log::warn!("Failed to cancel run log: {e}");
+        }
+    } else {
+        let resume_sid = resume_id_for_persisted_claude_run(
+            &response_backend,
+            &resume_id_for_log,
+            has_resume_worthy_payload,
+        );
+        if let Some(error) = unified_response.run_error.clone() {
+            if let Err(e) = run_log_writer.set_run_error(error) {
+                log::warn!("Failed to record run error: {e}");
+            }
+        }
+        if let Err(e) = run_log_writer.complete(
+            &assistant_msg_id,
+            resume_sid,
+            unified_response.usage,
+            unified_response.limit_hit,
+        ) {
+            log::warn!("Failed to complete run log: {e}");
+        }
     }
 
     // Emit cache invalidation so all clients (native + web) refetch authoritative state
@@ -10127,8 +10132,33 @@ pub async fn enqueue_message(
     Ok(queue)
 }
 
+/// Pop the front queued message, unless the queue must wait (issue #111):
+///
+/// - `waiting_for_input`: a pending question or plan holds the queue until the
+///   user answers or dismisses it. (A queued prompt may still skip a plan
+///   wait: `send_chat_message` then does not set the flag at all.)
+/// - the last run is still `Running`: the frontend's queue processor reacts to
+///   `chat:done`, which backends emit *before* `send_chat_message` has written
+///   the waiting state. Until the run is finalized, a pending question is not
+///   known yet. The backend drain needs no such check: it runs after the run
+///   is finalized and handles this queue then.
+fn dequeue_front_unless_held(
+    metadata: &mut super::types::SessionMetadata,
+) -> Option<serde_json::Value> {
+    let turn_in_flight = metadata
+        .runs
+        .last()
+        .is_some_and(|run| run.status == RunStatus::Running);
+    if metadata.waiting_for_input || turn_in_flight || metadata.queued_messages.is_empty() {
+        None
+    } else {
+        Some(metadata.queued_messages.remove(0))
+    }
+}
+
 /// Remove and return the first message from a session's queue.
-/// Returns null if the queue is empty (prevents double-processing by racing clients).
+/// Returns null if the queue is empty (prevents double-processing by racing clients)
+/// or held (see `dequeue_front_unless_held`).
 /// Holds the metadata lock across the entire read-modify-write to prevent TOCTOU races.
 pub async fn dequeue_message(
     app: AppHandle,
@@ -10137,11 +10167,7 @@ pub async fn dequeue_message(
     session_id: String,
 ) -> Result<Option<serde_json::Value>, String> {
     let (dequeued, queue) = with_existing_metadata_mut(&app, &session_id, |metadata| {
-        let dequeued = if metadata.queued_messages.is_empty() {
-            None
-        } else {
-            Some(metadata.queued_messages.remove(0))
-        };
+        let dequeued = dequeue_front_unless_held(metadata);
         let remaining = metadata.queued_messages.clone();
         (dequeued, remaining)
     })?;
@@ -12046,6 +12072,61 @@ mod tests {
         assert!(!queued_prompt_skips_plan_wait(false, false, true));
         assert!(!queued_prompt_skips_plan_wait(true, true, true));
         assert!(!queued_prompt_skips_plan_wait(true, false, false));
+    }
+
+    fn metadata_with_queue(last_run_status: &str) -> crate::chat::types::SessionMetadata {
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            "s1".to_string(),
+            "wt".to_string(),
+            "Session".to_string(),
+            0,
+        );
+        metadata.runs.push(
+            serde_json::from_value(serde_json::json!({
+                "run_id": "run-1",
+                "user_message_id": "u1",
+                "user_message": "hi",
+                "started_at": 0,
+                "status": last_run_status
+            }))
+            .expect("test RunEntry"),
+        );
+        metadata.queued_messages = vec![
+            serde_json::json!({ "id": "q1", "message": "first" }),
+            serde_json::json!({ "id": "q2", "message": "second" }),
+        ];
+        metadata
+    }
+
+    /// Issue #111: a turn that ends on AskUserQuestion must hold the queue.
+    #[test]
+    fn dequeue_holds_queue_while_a_question_waits() {
+        let mut metadata = metadata_with_queue("completed");
+        metadata.waiting_for_input = true;
+        metadata.waiting_for_input_type = Some("question".to_string());
+
+        assert!(dequeue_front_unless_held(&mut metadata).is_none());
+        assert_eq!(metadata.queued_messages.len(), 2);
+    }
+
+    /// Issue #111: the frontend learns of the turn end (`chat:done`) before
+    /// `send_chat_message` has written the waiting state. Until the run is
+    /// finalized, the backend cannot know whether a question is pending.
+    #[test]
+    fn dequeue_holds_queue_while_the_last_run_is_still_running() {
+        let mut metadata = metadata_with_queue("running");
+
+        assert!(dequeue_front_unless_held(&mut metadata).is_none());
+        assert_eq!(metadata.queued_messages.len(), 2);
+    }
+
+    #[test]
+    fn dequeue_pops_the_front_once_the_turn_is_done() {
+        let mut metadata = metadata_with_queue("completed");
+
+        let popped = dequeue_front_unless_held(&mut metadata).expect("front message");
+        assert_eq!(popped["id"], "q1");
+        assert_eq!(metadata.queued_messages.len(), 1);
     }
 
     #[test]
