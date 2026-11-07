@@ -19,6 +19,18 @@ let kimiInstalled: boolean
 let isMobile: boolean
 let defaultExecutionMode: 'plan' | 'build' | 'yolo'
 let defaultBackend: 'claude' | 'codex'
+let agentProfiles: unknown[]
+
+const reviewer = {
+  id: 'agent-reviewer',
+  name: 'Reviewer',
+  color: '#3b82f6',
+  persona: 'Review every diff.\nBe strict.',
+  permission: 'write',
+  backend: 'codex',
+  model: 'gpt-5.5',
+  default_serves: null,
+}
 
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({
@@ -30,6 +42,7 @@ vi.mock('@/services/preferences', () => ({
       selected_codex_model: 'gpt-5.6-sol',
       default_effort_level: 'max',
       default_codex_reasoning_effort: 'xhigh',
+      agent_profiles: agentProfiles,
     },
   }),
 }))
@@ -147,6 +160,8 @@ describe('NewSessionModeModal', () => {
     isMobile = false
     defaultExecutionMode = 'plan'
     defaultBackend = 'claude'
+    agentProfiles = []
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
     invoke.mockResolvedValue({
       commandArgs: ['--context-arg', 'context-value'],
     })
@@ -1122,5 +1137,165 @@ describe('NewSessionModeModal', () => {
 
     expect(jeanDescription).not.toHaveClass('truncate')
     expect(terminalDescription).not.toHaveClass('truncate')
+  })
+
+  describe('agent choice (#109)', () => {
+    const openPicker = (intent?: 'picker' | 'agent') =>
+      useUIStore.getState().openNewSessionModeModal({
+        worktreeId: 'worktree-1',
+        worktreePath: '/tmp/worktree-1',
+        origin: 'chat',
+        intent,
+      })
+    const asNativeApp = () => {
+      ;(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+        invoke: vi.fn(),
+      }
+    }
+    const agentSession = {
+      id: 'session-agent',
+      backend: 'codex',
+      selected_model: 'gpt-5.5',
+    }
+
+    beforeEach(() => {
+      agentProfiles = [reviewer]
+      mutate.mockImplementation(
+        (_args: unknown, opts?: { onSuccess?: (s: unknown) => void }) =>
+          opts?.onSuccess?.(agentSession)
+      )
+    })
+
+    it('lists "No agent" (default) and the profiles with their summary', () => {
+      openPicker()
+      render(<NewSessionModeModal />)
+
+      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      const row = screen.getByRole('radio', { name: /Reviewer/ })
+      expect(row).toHaveAttribute('aria-checked', 'false')
+      expect(row).toHaveTextContent('write · codex · gpt-5.5')
+      expect(row).toHaveTextContent('Review every diff.')
+      expect(row).not.toHaveTextContent('Be strict.')
+    })
+
+    it('arrows pick an agent and Enter starts the chat from it (native desktop)', () => {
+      asNativeApp()
+      openPicker()
+      render(<NewSessionModeModal />)
+      expect(screen.getByText('↑↓')).toBeInTheDocument()
+
+      fireEvent.keyDown(window, { key: 'ArrowDown' })
+      expect(screen.getByRole('radio', { name: /Reviewer/ })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.getByText('As agent Reviewer')).toBeInTheDocument()
+      fireEvent.keyDown(window, { key: 'Enter' })
+
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          worktreeId: 'worktree-1',
+          worktreePath: '/tmp/worktree-1',
+          agentId: 'agent-reviewer',
+        },
+        expect.any(Object)
+      )
+      // The agent's backend and model, not the app defaults.
+      expect(invoke).toHaveBeenCalledWith(
+        'update_session_state',
+        expect.objectContaining({
+          sessionId: 'session-agent',
+          selectedModel: 'gpt-5.5',
+          selectedEffortLevel: 'xhigh',
+        })
+      )
+    })
+
+    it('arrows wrap back to "No agent", and Enter then starts a plain chat', () => {
+      asNativeApp()
+      openPicker('agent')
+      render(<NewSessionModeModal />)
+      fireEvent.keyDown(window, { key: 'ArrowDown' })
+      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      fireEvent.keyDown(window, { key: 'Enter' })
+      expect(mutate).toHaveBeenCalledWith(
+        expect.not.objectContaining({ agentId: expect.anything() }),
+        expect.any(Object)
+      )
+    })
+
+    it('"New session from agent" opens with the first agent chosen', () => {
+      openPicker('agent')
+      render(<NewSessionModeModal />)
+      expect(screen.getByRole('radio', { name: /Reviewer/ })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    })
+
+    it('Web Access: no arrow hint or handler, but tapping works', async () => {
+      openPicker()
+      render(<NewSessionModeModal />)
+      expect(screen.queryByText('↑↓')).not.toBeInTheDocument()
+      fireEvent.keyDown(window, { key: 'ArrowDown' })
+      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+
+      await userEvent.click(screen.getByRole('radio', { name: /Reviewer/ }))
+      await userEvent.click(screen.getByText('As agent Reviewer'))
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: 'agent-reviewer' }),
+        expect.any(Object)
+      )
+    })
+
+    it('mobile: no arrow hint', () => {
+      asNativeApp()
+      isMobile = true
+      openPicker()
+      render(<NewSessionModeModal />)
+      expect(screen.queryByText('↑↓')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('radio', { name: /Reviewer/ })
+      ).toBeInTheDocument()
+    })
+
+    it('"Edit Agents…" closes the dialog and opens Settings → Agents', async () => {
+      agentProfiles = []
+      openPicker()
+      render(<NewSessionModeModal />)
+      expect(screen.getByText(/No agents yet/)).toBeInTheDocument()
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Edit Agents…' })
+      )
+      const state = useUIStore.getState()
+      expect(state.newSessionModeTarget).toBeNull()
+      expect(state.preferencesOpen).toBe(true)
+      expect(state.preferencesPane).toBe('agents')
+    })
+
+    it('the configured default chat (⌘T) never picks an agent', async () => {
+      useUIStore.getState().openNewSessionModeModal({
+        worktreeId: 'worktree-1',
+        worktreePath: '/tmp/worktree-1',
+        origin: 'chat',
+        intent: 'default',
+      })
+      render(<NewSessionModeModal />)
+      await waitFor(() => expect(mutate).toHaveBeenCalled())
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({ backend: 'claude' }),
+        expect.any(Object)
+      )
+      expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('agentId')
+    })
   })
 })

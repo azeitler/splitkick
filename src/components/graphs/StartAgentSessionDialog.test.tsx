@@ -7,11 +7,7 @@ import { useChatStore } from '@/store/chat-store'
 import { StartAgentSessionForm } from './StartAgentSessionDialog'
 
 const mocks = vi.hoisted(() => ({
-  calls: [] as string[],
   createSession: vi.fn(),
-  setAgent: vi.fn(),
-  setServes: vi.fn(),
-  setModel: vi.fn(),
   navigate: vi.fn(),
 }))
 
@@ -33,15 +29,12 @@ vi.mock('@/services/preferences', () => ({
 }))
 vi.mock('@/services/chat', () => ({
   useCreateSession: () => ({ mutateAsync: mocks.createSession }),
-  useSetSessionModel: () => ({ mutateAsync: mocks.setModel }),
 }))
 vi.mock('@/services/graphs', () => ({
   useGraphs: () => ({
     data: [{ id: 'g1', title: 'Splitkick roadmap', projectId: 'p1' }],
   }),
   useGraph: () => ({ data: { nodes: [] } }),
-  useSetSessionAgent: () => ({ mutateAsync: mocks.setAgent }),
-  useSetSessionServes: () => ({ mutateAsync: mocks.setServes }),
 }))
 vi.mock('@/services/projects', () => ({
   useProjects: () => ({ data: [{ id: 'p1', name: 'splitkick' }] }),
@@ -63,20 +56,7 @@ vi.mock('@/lib/navigate-to-session', () => ({
 
 describe('StartAgentSessionForm', () => {
   beforeEach(() => {
-    mocks.calls = []
-    mocks.createSession.mockReset().mockImplementation(async () => {
-      mocks.calls.push('create')
-      return { id: 'new' }
-    })
-    mocks.setAgent.mockReset().mockImplementation(async () => {
-      mocks.calls.push('agent')
-    })
-    mocks.setServes.mockReset().mockImplementation(async () => {
-      mocks.calls.push('serves')
-    })
-    mocks.setModel.mockReset().mockImplementation(async () => {
-      mocks.calls.push('model')
-    })
+    mocks.createSession.mockReset().mockResolvedValue({ id: 'new' })
     mocks.navigate.mockReset()
   })
 
@@ -94,31 +74,21 @@ describe('StartAgentSessionForm', () => {
     expect(screen.getByRole('radio', { name: 'write' })).toBeChecked()
   })
 
-  it('creates, sets agent, serves, model, prefills and navigates', async () => {
+  it('creates the session from the agent in one call, prefills and navigates', async () => {
     renderForm()
     await userEvent.click(screen.getByRole('radio', { name: 'read' }))
     await userEvent.type(screen.getByLabelText('First message'), 'Hello')
     await userEvent.click(screen.getByRole('button', { name: 'Start session' }))
 
-    expect(mocks.calls).toEqual(['create', 'agent', 'serves', 'model'])
+    // The backend applies name, backend, model, permission and serves (#109).
+    expect(mocks.createSession).toHaveBeenCalledTimes(1)
     expect(mocks.createSession).toHaveBeenCalledWith({
       worktreeId: 'w1',
       worktreePath: '/repo',
-      name: 'Release manager',
-      backend: 'claude',
-    })
-    expect(mocks.setAgent).toHaveBeenCalledWith({
-      sessionId: 'new',
       agentId: 'a1',
-      permission: 'read',
-    })
-    expect(mocks.setServes).toHaveBeenCalledWith({
-      sessionId: 'new',
+      graphPermission: 'read',
       serves: ['g1'],
     })
-    expect(mocks.setModel).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'new', model: 'claude-sonnet-4-6' })
-    )
     expect(useChatStore.getState().inputDrafts.new).toBe('Hello')
     expect(mocks.navigate).toHaveBeenCalledWith({
       projectId: 'p1',

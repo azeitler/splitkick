@@ -16,6 +16,7 @@ import {
   Terminal,
   Trash2,
   X,
+  Bot,
 } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -212,6 +213,18 @@ export function WorktreeDropdownMenu({
           >
             <Plus className="mr-2 h-4 w-4" />
             New Session
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('create-new-session', {
+                  detail: { intent: 'agent' },
+                })
+              )
+            }
+          >
+            <Bot className="mr-2 h-4 w-4" />
+            New Session from Agent…
           </DropdownMenuItem>
 
           {!isMobile && runScripts.length === 1 && (

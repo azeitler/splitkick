@@ -14,18 +14,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { cn } from '@/lib/utils'
-import { useCreateSession, useSetSessionModel } from '@/services/chat'
-import {
-  useGraphs,
-  useSetSessionAgent,
-  useSetSessionServes,
-} from '@/services/graphs'
+import { useCreateSession } from '@/services/chat'
+import { useGraphs } from '@/services/graphs'
 import { useProjects, useWorktrees } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import type { Session } from '@/types/chat'
 import type { AgentProfile, GraphPermission } from '@/types/graphs'
-import { backendOptions } from '@/types/preferences'
 import { isBaseSession, isFolder } from '@/types/projects'
 import {
   capPermission,
@@ -36,14 +30,6 @@ import {
 } from './agent-utils'
 import { parseGraphRef } from './graph-utils'
 import { ServesPicker } from './ServesPicker'
-
-type Backend = NonNullable<Session['backend']>
-
-function asBackend(value: string | null): Backend | undefined {
-  return backendOptions.some(option => option.value === value)
-    ? (value as Backend)
-    : undefined
-}
 
 /**
  * "Start session from agent" (mockup screen 5b), mounted once in
@@ -79,9 +65,6 @@ export function StartAgentSessionForm({
   const { data: projects } = useProjects()
   const { data: graphs } = useGraphs()
   const createSession = useCreateSession()
-  const setSessionAgent = useSetSessionAgent()
-  const setSessionServes = useSetSessionServes()
-  const setSessionModel = useSetSessionModel()
 
   // null = follow the agent (its default serves, its level).
   const [agentId, setAgentId] = useState(initialAgentId ?? '')
@@ -139,31 +122,15 @@ export function StartAgentSessionForm({
     if (!agent || !worktree) return
     setBusy(true)
     try {
+      // One call: the backend applies the agent's name, backend, model,
+      // permission and serves (#109).
       const session = await createSession.mutateAsync({
         worktreeId: worktree.id,
         worktreePath: worktree.path,
-        name: agent.name,
-        backend: asBackend(agent.backend),
-      })
-      await setSessionAgent.mutateAsync({
-        sessionId: session.id,
         agentId: agent.id,
-        permission,
+        graphPermission: permission,
+        serves: serves ? [serves] : [],
       })
-      if (serves) {
-        await setSessionServes.mutateAsync({
-          sessionId: session.id,
-          serves: [serves],
-        })
-      }
-      if (agent.model) {
-        await setSessionModel.mutateAsync({
-          worktreeId: worktree.id,
-          worktreePath: worktree.path,
-          sessionId: session.id,
-          model: agent.model,
-        })
-      }
       if (message.trim()) {
         useChatStore.getState().setInputDraft(session.id, message.trim())
       }

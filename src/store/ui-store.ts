@@ -55,7 +55,8 @@ export type OnboardingStartStep = 'claude' | 'gh' | null
 
 export type WorktreePrimarySurface = 'chat' | 'terminal'
 export type NewSessionModeOrigin = 'chat' | 'modal' | 'canvas'
-export type NewSessionModeIntent = 'picker' | 'default'
+/** 'agent' opens the picker with the first agent chosen (#109). */
+export type NewSessionModeIntent = 'picker' | 'default' | 'agent'
 
 export interface NewSessionModeTarget {
   worktreeId: string

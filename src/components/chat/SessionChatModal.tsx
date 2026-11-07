@@ -45,7 +45,7 @@ import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
-import { useUIStore } from '@/store/ui-store'
+import { useUIStore, type NewSessionModeIntent } from '@/store/ui-store'
 import { toast } from 'sonner'
 import {
   useSessions,
@@ -107,6 +107,8 @@ import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { DraftGlyph } from './DraftGlyph'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { AgentBadge } from '@/components/graphs/AgentBadge'
+import { NewSessionButtonMenuContent } from './NewSessionButtonMenu'
 import {
   SessionContextMenuItems,
   closeOpenSessionContextMenus,
@@ -657,6 +659,16 @@ export function SessionChatModal({
     })
   }, [worktreeId, worktreePath])
 
+  // Right-click / long-press on "+": the picker with the first agent chosen.
+  const handleCreateAgentSession = useCallback(() => {
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId,
+      worktreePath,
+      origin: 'modal',
+      intent: 'agent',
+    })
+  }, [worktreeId, worktreePath])
+
   const handleClearContext = useCallback(() => {
     if (!currentSessionId) return
     requestClearSessionContext({
@@ -711,7 +723,7 @@ export function SessionChatModal({
     const handler = (e: Event) => {
       e.stopImmediatePropagation()
       const intent =
-        (e as CustomEvent<{ intent?: 'default' | 'picker' }>).detail?.intent ??
+        (e as CustomEvent<{ intent?: NewSessionModeIntent }>).detail?.intent ??
         'picker'
       useUIStore.getState().openNewSessionModeModal({
         worktreeId,
@@ -1515,6 +1527,12 @@ export function SessionChatModal({
                                 </TooltipContent>
                               </Tooltip>
                             )}
+                            {renamingSessionId !== session.id && (
+                              <AgentBadge
+                                agentId={session.agent_id}
+                                sessionName={session.name}
+                              />
+                            )}
                             <SessionNetworkGlyph
                               sessionId={session.id}
                               startedBySessionId={session.started_by_session_id}
@@ -1574,21 +1592,28 @@ export function SessionChatModal({
                 </div>
                 <ScrollBar orientation="horizontal" className="h-1" />
               </ScrollArea>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 shrink-0"
-                    // Icon-only: the tooltip is not an accessible name.
-                    aria-label="New session"
-                    onClick={handleCreateSession}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>New session</TooltipContent>
-              </Tooltip>
+              <ContextMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ContextMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 shrink-0"
+                        // Icon-only: the tooltip is not an accessible name.
+                        aria-label="New session"
+                        onClick={handleCreateSession}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </ContextMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>New session</TooltipContent>
+                </Tooltip>
+                <NewSessionButtonMenuContent
+                  onNewAgentSession={handleCreateAgentSession}
+                />
+              </ContextMenu>
             </div>
           )}
 
@@ -1614,15 +1639,22 @@ export function SessionChatModal({
                     : 'Loading sessions…'}
                 </p>
                 {sessionsData && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCreateSession}
-                  >
-                    <Plus className="mr-2 h-3.5 w-3.5" />
-                    New session
-                  </Button>
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCreateSession}
+                      >
+                        <Plus className="mr-2 h-3.5 w-3.5" />
+                        New session
+                      </Button>
+                    </ContextMenuTrigger>
+                    <NewSessionButtonMenuContent
+                      onNewAgentSession={handleCreateAgentSession}
+                    />
+                  </ContextMenu>
                 )}
               </div>
             )}

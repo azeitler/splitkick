@@ -43,6 +43,7 @@ import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { hasBackendTransport } from '@/lib/environment'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
+import type { GraphPermission } from '@/types/graphs'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
@@ -1003,6 +1004,9 @@ export function useCreateSession() {
       terminalCommandArgs,
       terminalLabel,
       nativeSessionId,
+      agentId,
+      graphPermission,
+      serves,
     }: {
       worktreeId: string
       worktreePath: string
@@ -1013,6 +1017,13 @@ export function useCreateSession() {
       terminalCommandArgs?: string[]
       terminalLabel?: string
       nativeSessionId?: string
+      /** Start from this agent profile: its name, backend, model, graph
+       * permission and default serves fill what is not given (#109). */
+      agentId?: string
+      /** Lower than the agent's level for this session. */
+      graphPermission?: GraphPermission
+      /** Graph refs; omitted = the agent's default serves. */
+      serves?: string[]
     }): Promise<Session> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1029,6 +1040,9 @@ export function useCreateSession() {
         terminalCommandArgs,
         terminalLabel,
         nativeSessionId,
+        agentId,
+        graphPermission,
+        serves,
       })
       logger.info('Session created', { sessionId: session.id })
       return session

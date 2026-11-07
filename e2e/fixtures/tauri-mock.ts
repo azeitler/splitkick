@@ -117,14 +117,34 @@ export const test = base.extend<TauriMockFixtures>({
           create_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
+            // Like the backend (#109): an agent fills name, backend, model,
+            // permission and serves.
+            const prefs = responseMap.load_preferences as
+              | { agent_profiles?: Array<Record<string, unknown>> }
+              | undefined
+            const agent = args?.agentId
+              ? prefs?.agent_profiles?.find(a => a.id === args.agentId)
+              : undefined
             const name =
-              (args?.name as string) || `Session ${store.sessions.length + 1}`
+              (args?.name as string) ||
+              (agent?.name as string | undefined) ||
+              `Session ${store.sessions.length + 1}`
             const session = {
               id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               name,
               order: store.sessions.length,
               created_at: Date.now() / 1000,
               messages: [],
+              ...(agent && {
+                agent_id: agent.id,
+                graph_permission:
+                  (args?.graphPermission as string) ?? agent.permission,
+                backend: agent.backend ?? undefined,
+                selected_model: agent.model ?? undefined,
+                serves:
+                  (args?.serves as string[] | undefined) ??
+                  (agent.default_serves ? [agent.default_serves] : []),
+              }),
             }
             store.sessions.unshift(session)
             store.active_session_id = session.id
