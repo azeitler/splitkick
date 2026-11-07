@@ -179,6 +179,7 @@ interface GraphLocationInfo {
 | `change_session_serves` | `sessionId, add?: string[], remove?: string[]` (removing a missing ref is a no-op) | `string[]` resulting list |
 | `set_session_agent` | `sessionId, agentId: string \| null, permission?: GraphPermission` (≤ profile level) | `null` |
 | `set_session_graph_permission` | `sessionId, permission` | `null` |
+| `create_session` (chat, #109) | also `agentId?, graphPermission? (≤ profile level), serves?` — the agent fills name, backend, model (only with its own backend), permission and serves (`serves` omitted = the profile's `default_serves`, `[]` = none) in one metadata write; refused for terminal sessions | `Session` |
 
 Answer semantics: `accept` (accept-done) sets the node `done`; `send-back` keeps the
 state and adds the answer as a follow-up note in the requesting session
@@ -285,6 +286,11 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 - Settings → Agents pane; "Start session from agent" dialog; agent badge next to
   session names (badge when the name differs from the agent name, glyph only when
   equal).
+- New Session dialog (#109): an Agent group under the chat choice ("No agent" +
+  profiles, ↑↓ on native desktop, "Edit Agents…"). Right-click/long-press on the
+  session tab "+", "New Session from Agent…" in the worktree "…" menu and the
+  canvas row menu open it with intent `agent` (first agent chosen). All entry
+  points, and the ⌘K dialog, call the same `create_session` with `agentId`.
 
 ## Implementation notes (2026-11-03)
 

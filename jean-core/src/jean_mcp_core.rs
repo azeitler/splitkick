@@ -3794,6 +3794,7 @@ pub async fn start_background_investigation_impl(
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .map_err(|err| {
@@ -6849,6 +6850,92 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message.contains("Unknown agentId"));
+    }
+
+    /// The UI `create_session` command (New Session dialog, agent dialog)
+    /// takes the agent's backend, model, permission and default serves (#109).
+    #[test]
+    fn ui_create_session_with_agent_applies_profile_defaults() {
+        let (temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
+        let r = format!("{graph_id}#{node_id}");
+        let mut agent = agent_profile("reviewer", "write", "Review well.");
+        agent.backend = Some("codex".into());
+        agent.model = Some("gpt-5.5".into());
+        agent.default_serves = Some(r.clone());
+        save_agent_profiles(&app, vec![agent]);
+        let worktree_path = temp.path().join("tool-wt").to_string_lossy().to_string();
+
+        let dispatch = |args: Value| {
+            std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        block_on(dispatch_command(&app, "create_session", args))
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap()
+            })
+        };
+
+        let session = dispatch(json!({
+            "worktreeId": "tool-wt",
+            "worktreePath": worktree_path,
+            "agentId": "reviewer",
+        }))
+        .unwrap();
+        assert_eq!(session["name"], "Agent reviewer");
+        assert_eq!(session["backend"], "codex");
+        assert_eq!(session["selected_model"], "gpt-5.5");
+        assert_eq!(session["agent_id"], "reviewer");
+        let id = created_session_id(&session);
+        let m = crate::chat::storage::load_metadata(&app, &id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.agent_id.as_deref(), Some("reviewer"));
+        assert_eq!(m.graph_permission.as_deref(), Some("write"));
+        assert_eq!(m.serves, vec![r]);
+        assert_eq!(m.selected_model.as_deref(), Some("gpt-5.5"));
+
+        // Lowered permission and no serves.
+        let session = dispatch(json!({
+            "worktreeId": "tool-wt",
+            "worktreePath": worktree_path,
+            "agentId": "reviewer",
+            "graphPermission": "read",
+            "serves": [],
+        }))
+        .unwrap();
+        let m = crate::chat::storage::load_metadata(&app, &created_session_id(&session))
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.graph_permission.as_deref(), Some("read"));
+        assert!(m.serves.is_empty());
+
+        // Never above the profile's level; never on a terminal session.
+        let error = dispatch(json!({
+            "worktreeId": "tool-wt",
+            "worktreePath": worktree_path,
+            "agentId": "reviewer",
+            "graphPermission": "manage",
+        }))
+        .unwrap_err();
+        assert!(error.contains("cannot exceed"), "{error}");
+        let error = dispatch(json!({
+            "worktreeId": "tool-wt",
+            "worktreePath": worktree_path,
+            "agentId": "reviewer",
+            "primarySurface": "terminal",
+        }))
+        .unwrap_err();
+        assert!(error.contains("chat sessions"), "{error}");
+        let error = dispatch(json!({
+            "worktreeId": "tool-wt",
+            "worktreePath": worktree_path,
+            "agentId": "ghost",
+        }))
+        .unwrap_err();
+        assert!(error.contains("Unknown agent"), "{error}");
     }
 
     // ------------------------------------------------------------------
