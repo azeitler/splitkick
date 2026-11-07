@@ -301,6 +301,8 @@ pub(crate) fn newest_log_file(dir: &std::path::Path) -> Option<std::path::PathBu
         .ok()?
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "log"))
+        // Crash files share the folder and the extension.
+        .filter(|entry| !crate::crash_log::is_crash_file(&entry.file_name().to_string_lossy()))
         .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
         .max_by_key(|(modified, _)| *modified)
         .map(|(_, path)| path)
@@ -315,6 +317,20 @@ pub(crate) async fn show_log_file(app: &AppHandle) -> Result<(), String> {
         .app_log_dir()
         .map_err(|error| error.to_string())?;
     match newest_log_file(&dir) {
+        Some(file) => open_path_in_default_app(file.to_string_lossy().into_owned()).await,
+        None => open_worktree_in_finder(dir.to_string_lossy().into_owned()).await,
+    }
+}
+
+/// Help → Show Crash Reports: open the newest crash file (issue #110), or the
+/// log folder, which holds all of them, when there is none.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // Help menu is macOS-only
+pub(crate) async fn show_crash_reports(app: &AppHandle) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| error.to_string())?;
+    match crate::crash_log::newest_crash_file(&dir) {
         Some(file) => open_path_in_default_app(file.to_string_lossy().into_owned()).await,
         None => open_worktree_in_finder(dir.to_string_lossy().into_owned()).await,
     }
@@ -619,6 +635,8 @@ mod tests {
         write(dir.path(), "Splitkick_2026-10-16_10-00-00.log", 600);
         write(dir.path(), "Splitkick.log", 5);
         write(dir.path(), "notes.txt", 0);
+        // A crash file is newer, but it is not the run log.
+        write(dir.path(), "crash-20261107-142847-80400.log", 0);
 
         assert_eq!(
             newest_log_file(dir.path()),
