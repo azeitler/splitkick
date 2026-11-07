@@ -10,6 +10,7 @@ import {
   Shield,
   Trash2,
 } from 'lucide-react'
+import { AgentBadge } from '@/components/graphs/AgentBadge'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -149,9 +150,15 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                 className="flex-1 min-w-0 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
               />
             ) : (
-              <span className="flex-1 truncate text-sm">
-                {card.session.name}
-              </span>
+              <>
+                <span className="flex-1 truncate text-sm">
+                  {card.session.name}
+                </span>
+                <AgentBadge
+                  agentId={card.session.agent_id}
+                  sessionName={card.session.name}
+                />
+              </>
             )}
 
             {/* Blocked badge */}

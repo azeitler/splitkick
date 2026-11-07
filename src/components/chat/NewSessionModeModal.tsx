@@ -9,6 +9,7 @@ import {
 } from 'react'
 import {
   ArrowLeft,
+  Bot,
   MessageSquarePlus,
   Loader2,
   Terminal,
@@ -35,7 +36,10 @@ import { useGrokCliStatus } from '@/services/grok-cli'
 import { useKimiCliStatus } from '@/services/kimi-cli'
 import { useAntigravityCliStatus } from '@/services/antigravity-cli'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
+import { useUIStore, type NewSessionModeTarget } from '@/store/ui-store'
+import { isNativeApp } from '@/lib/environment'
+import { useAgentProfiles } from '@/components/graphs/agent-utils'
+import type { AgentProfile } from '@/types/graphs'
 import {
   getBackendIcon,
   getBackendPlainLabel,
@@ -109,6 +113,30 @@ export function NewSessionModeModal() {
   const autoHandledTargetRef = useRef<string | null>(null)
   const open = target !== null
   const isMobile = useIsMobile()
+  // Arrow keys move the agent choice: native desktop only (keyboard hints).
+  const desktopKeys = !isMobile && isNativeApp()
+  const agents = useAgentProfiles()
+  // The agent choice belongs to the target it was made for, so a new
+  // target starts again at "No agent" (or the first agent for 'agent').
+  const [agentPick, setAgentPick] = useState<{
+    target: NewSessionModeTarget
+    agentId: string | null
+  } | null>(null)
+  const selectedAgentId =
+    agentPick && agentPick.target === target
+      ? agentPick.agentId
+      : target?.intent === 'agent'
+        ? (agents[0]?.id ?? null)
+        : null
+  const selectedAgent = selectedAgentId
+    ? agents.find(agent => agent.id === selectedAgentId)
+    : undefined
+  const selectAgent = useCallback(
+    (agentId: string | null) => {
+      if (target) setAgentPick({ target, agentId })
+    },
+    [target]
+  )
 
   const installedBackendChoices = useMemo(() => {
     const statusByBackend: Record<
@@ -225,44 +253,63 @@ export function NewSessionModeModal() {
     [target]
   )
 
-  const chooseChat = useCallback(() => {
-    if (!target) return
-    const { worktreeId, worktreePath } = target
-    const backend = (preferences?.default_backend ?? 'claude') as CliBackend
-    const model = resolveDefaultModelForBackend(backend, preferences)
-    const effortLevel =
-      backend === 'codex'
-        ? (preferences?.default_codex_reasoning_effort ?? 'high')
-        : backend === 'grok'
-          ? (preferences?.default_grok_reasoning_effort ?? 'high')
-          : (preferences?.default_effort_level ?? 'high')
+  const chooseChat = useCallback(
+    (agent?: AgentProfile) => {
+      if (!target) return
+      const { worktreeId, worktreePath } = target
+      const defaultBackend = (preferences?.default_backend ??
+        'claude') as CliBackend
+      close()
+      createSession.mutate(
+        // An agent brings its own name, backend, model, permission and
+        // serves; the backend applies them in the same call (#109).
+        agent
+          ? { worktreeId, worktreePath, agentId: agent.id }
+          : { worktreeId, worktreePath, backend: defaultBackend },
+        {
+          onSuccess: session => {
+            const backend = (
+              agent ? (session.backend ?? defaultBackend) : defaultBackend
+            ) as CliBackend
+            const model =
+              (agent ? session.selected_model : null) ??
+              resolveDefaultModelForBackend(backend, preferences)
+            const effortLevel =
+              backend === 'codex'
+                ? (preferences?.default_codex_reasoning_effort ?? 'high')
+                : backend === 'grok'
+                  ? (preferences?.default_grok_reasoning_effort ?? 'high')
+                  : (preferences?.default_effort_level ?? 'high')
+            const defaultExecutionMode =
+              preferences?.default_execution_mode ?? 'plan'
+            useChatStore
+              .getState()
+              .setExecutionMode(session.id, defaultExecutionMode)
+            useChatStore.getState().setSelectedModel(session.id, model)
+            useChatStore.getState().setEffortLevel(session.id, effortLevel)
+            invoke('update_session_state', {
+              worktreeId,
+              worktreePath,
+              sessionId: session.id,
+              selectedExecutionMode: defaultExecutionMode,
+              selectedModel: model,
+              selectedEffortLevel: effortLevel,
+            }).catch(() => undefined)
+            useChatStore.getState().setActiveSession(worktreeId, session.id)
+            useUIStore.getState().setSessionPrimarySurface(session.id, 'chat')
+            openSessionModal(session.id, worktreeId, worktreePath)
+          },
+        }
+      )
+    },
+    [close, createSession, openSessionModal, preferences, target]
+  )
+
+  const editAgents = useCallback(() => {
+    autoHandledTargetRef.current = null
     close()
-    createSession.mutate(
-      { worktreeId, worktreePath, backend },
-      {
-        onSuccess: session => {
-          const defaultExecutionMode =
-            preferences?.default_execution_mode ?? 'plan'
-          useChatStore
-            .getState()
-            .setExecutionMode(session.id, defaultExecutionMode)
-          useChatStore.getState().setSelectedModel(session.id, model)
-          useChatStore.getState().setEffortLevel(session.id, effortLevel)
-          invoke('update_session_state', {
-            worktreeId,
-            worktreePath,
-            sessionId: session.id,
-            selectedExecutionMode: defaultExecutionMode,
-            selectedModel: model,
-            selectedEffortLevel: effortLevel,
-          }).catch(() => undefined)
-          useChatStore.getState().setActiveSession(worktreeId, session.id)
-          useUIStore.getState().setSessionPrimarySurface(session.id, 'chat')
-          openSessionModal(session.id, worktreeId, worktreePath)
-        },
-      }
-    )
-  }, [close, createSession, openSessionModal, preferences, target])
+    useUIStore.getState().openAgentEditor(null)
+  }, [close])
 
   const choosePlainTerminal = useCallback(() => {
     setNativePickerInitialCommandArgs([])
@@ -326,7 +373,21 @@ export function NewSessionModeModal() {
     if (event.key === 'Enter') {
       event.preventDefault()
       event.stopPropagation()
-      chooseChat()
+      chooseChat(selectedAgent)
+      return
+    }
+
+    if (
+      desktopKeys &&
+      agents.length > 0 &&
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      const ids = [null, ...agents.map(agent => agent.id)]
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      const index = Math.max(0, ids.indexOf(selectedAgentId))
+      selectAgent(ids[(index + step + ids.length) % ids.length] ?? null)
       return
     }
 
@@ -391,12 +452,25 @@ export function NewSessionModeModal() {
                     )
                   }
                   title={`${PRODUCT_NAME} Chat`}
-                  subtitle={`Normal ChatWindow session with ${PRODUCT_NAME} features`}
+                  subtitle={
+                    selectedAgent
+                      ? `As agent ${selectedAgent.name}`
+                      : `Normal ChatWindow session with ${PRODUCT_NAME} features`
+                  }
                   badge="Default"
                   shortcut="↵"
                   showShortcut={!isMobile}
                   disabled={createSession.isPending}
-                  onClick={chooseChat}
+                  onClick={() => chooseChat(selectedAgent)}
+                />
+
+                <AgentChoices
+                  agents={agents}
+                  selectedAgentId={selectedAgentId}
+                  showShortcut={desktopKeys}
+                  disabled={createSession.isPending}
+                  onSelect={selectAgent}
+                  onEditAgents={editAgents}
                 />
 
                 <NewSessionChoice
@@ -498,6 +572,139 @@ export function NewSessionModeModal() {
         />
       )}
     </>
+  )
+}
+
+function agentSummary(agent: AgentProfile): string {
+  return [agent.permission, agent.backend, agent.model]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** "No agent" plus the saved agent profiles; the chat choice uses the pick. */
+function AgentChoices({
+  agents,
+  selectedAgentId,
+  showShortcut,
+  disabled,
+  onSelect,
+  onEditAgents,
+}: {
+  agents: AgentProfile[]
+  selectedAgentId: string | null
+  showShortcut: boolean
+  disabled?: boolean
+  onSelect: (agentId: string | null) => void
+  onEditAgents: () => void
+}) {
+  return (
+    <div className="grid min-w-0 gap-1 pl-3" data-testid="new-session-agents">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span id="new-session-agent-label">Agent</span>
+        {showShortcut && agents.length > 0 && (
+          <Kbd className="text-[10px]">↑↓</Kbd>
+        )}
+        <button
+          type="button"
+          onClick={onEditAgents}
+          className="ml-auto rounded px-1 font-normal underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Edit Agents…
+        </button>
+      </div>
+      {agents.length === 0 ? (
+        <div className="text-xs text-muted-foreground">
+          No agents yet. An agent gives a session a persona, a graph permission
+          and a default model.
+        </div>
+      ) : (
+        <div
+          role="radiogroup"
+          aria-labelledby="new-session-agent-label"
+          className="grid max-h-52 min-w-0 gap-1 overflow-y-auto"
+        >
+          <AgentChoiceRow
+            label="No agent"
+            detail="A plain chat session"
+            checked={selectedAgentId === null}
+            disabled={disabled}
+            onClick={() => onSelect(null)}
+          />
+          {agents.map(agent => (
+            <AgentChoiceRow
+              key={agent.id}
+              label={agent.name}
+              color={agent.color || 'currentColor'}
+              detail={agentSummary(agent)}
+              persona={agent.persona.trim().split('\n')[0]}
+              checked={selectedAgentId === agent.id}
+              disabled={disabled}
+              onClick={() => onSelect(agent.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentChoiceRow({
+  label,
+  color,
+  detail,
+  persona,
+  checked,
+  disabled,
+  onClick,
+}: {
+  label: string
+  color?: string
+  detail: string
+  persona?: string
+  checked: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'flex w-full min-w-0 items-start gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        checked
+          ? 'border-primary/50 bg-primary/5'
+          : 'border-transparent hover:bg-muted/50',
+        disabled && 'cursor-not-allowed opacity-50'
+      )}
+    >
+      <span
+        className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+        style={color ? { color } : undefined}
+      >
+        {color ? (
+          <Bot className="size-3.5" aria-hidden="true" />
+        ) : (
+          <MessageSquarePlus className="size-3.5" aria-hidden="true" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-xs font-medium">{label}</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {detail}
+          </span>
+        </span>
+        {persona && (
+          <span className="block truncate text-[11px] leading-snug text-muted-foreground">
+            {persona}
+          </span>
+        )}
+      </span>
+    </button>
   )
 }
 

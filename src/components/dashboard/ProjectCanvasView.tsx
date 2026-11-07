@@ -53,6 +53,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Tag,
+  Bot,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,6 +64,7 @@ import {
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import {
@@ -121,7 +123,7 @@ import { useGhCliAuth } from '@/services/gh-cli'
 import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useUIStore } from '@/store/ui-store'
+import { useUIStore, type NewSessionModeIntent } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { isBaseSession, isPlainProject, type Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
@@ -543,6 +545,7 @@ function WorktreeSectionHeader({
   assignedLabels,
   availableLabels,
   onLabelsChange,
+  onNewAgentSession,
   onResolveConflicts,
   disableTextSelection = false,
 }: {
@@ -558,6 +561,8 @@ function WorktreeSectionHeader({
   onDiffClick?: (request: DiffRequest) => void
   /** Opens the label modal, used by the "Manage labels…" submenu item. */
   onSetLabels?: () => void
+  /** "New Session from Agent…" in the row's context menu (#109). */
+  onNewAgentSession?: () => void
   /**
    * Labels on this worktree, merged with the project pinned state. Merged, not
    * raw: a toggle writes this whole list back, so an unmerged list would strip
@@ -980,19 +985,27 @@ function WorktreeSectionHeader({
     </div>
   )
 
-  if (!onLabelsChange) return row
+  if (!onLabelsChange && !onNewAgentSession) return row
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <LabelsSubmenu
-          mode="multi"
-          labels={availableLabels ?? []}
-          selected={assignedLabels ?? []}
-          onChange={onLabelsChange}
-          onManage={onSetLabels}
-        />
+        {onNewAgentSession && (
+          <ContextMenuItem onSelect={onNewAgentSession}>
+            <Bot className="mr-2 h-4 w-4" />
+            New Session from Agent…
+          </ContextMenuItem>
+        )}
+        {onLabelsChange && (
+          <LabelsSubmenu
+            mode="multi"
+            labels={availableLabels ?? []}
+            selected={assignedLabels ?? []}
+            onChange={onLabelsChange}
+            onManage={onSetLabels}
+          />
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -3148,7 +3161,7 @@ export function ProjectCanvasView({
 
       e.stopImmediatePropagation()
       const intent =
-        (e as CustomEvent<{ intent?: 'default' | 'picker' }>).detail?.intent ??
+        (e as CustomEvent<{ intent?: NewSessionModeIntent }>).detail?.intent ??
         'picker'
 
       useUIStore.getState().openNewSessionModeModal({
@@ -4073,6 +4086,16 @@ export function ProjectCanvasView({
                                               next
                                             )
                                         : undefined
+                                    }
+                                    onNewAgentSession={() =>
+                                      useUIStore
+                                        .getState()
+                                        .openNewSessionModeModal({
+                                          worktreeId: section.worktree.id,
+                                          worktreePath: section.worktree.path,
+                                          origin: 'canvas',
+                                          intent: 'agent',
+                                        })
                                     }
                                     onResolveConflicts={
                                       handleCanvasResolveConflicts

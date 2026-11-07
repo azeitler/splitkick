@@ -9,7 +9,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
+import { useUIStore, type NewSessionModeIntent } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { cancelChatMessage } from '@/services/chat'
 import { logger } from '@/lib/logger'
@@ -31,10 +31,7 @@ interface UseChatWindowEventsParams {
   // Git diff
   gitStatus: { base_branch?: string; base_remote?: string } | null | undefined
   setDiffRequest: (
-    req:
-      | DiffRequest
-      | null
-      | ((prev: DiffRequest | null) => DiffRequest | null)
+    req: DiffRequest | null | ((prev: DiffRequest | null) => DiffRequest | null)
   ) => void
   // Auto-scroll
   isAtBottom: boolean
@@ -205,7 +202,7 @@ export function useChatWindowEvents({
     const handler = (event: Event) => {
       if (!activeWorktreeId || !activeWorktreePath) return
       const intent =
-        (event as CustomEvent<{ intent?: 'default' | 'picker' }>).detail
+        (event as CustomEvent<{ intent?: NewSessionModeIntent }>).detail
           ?.intent ?? 'picker'
       useUIStore.getState().openNewSessionModeModal({
         worktreeId: activeWorktreeId,

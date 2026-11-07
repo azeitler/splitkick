@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Start a session from an agent in the New Session dialog.** The dialog has
+  an Agent choice under Splitkick Chat: "No agent" (default) or one of your
+  agent profiles, with its graph permission, backend, model and the first
+  line of its persona. Arrow keys move the choice on the desktop; "Edit
+  Agents…" opens Settings → Agents. Right-click (long-press on touch) the "+"
+  next to the session tabs, or use "New Session from Agent…" in the worktree
+  menu or the canvas row menu, to open it with the first agent chosen. The
+  session gets the agent's persona, permission, backend, model and default
+  serves in one step, and shows the agent badge on its tab and canvas row
+  (#109).
+
 ## [1.5.3] - 2026-11-06
 
 Built on Jean 0.1.73.
