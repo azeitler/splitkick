@@ -19,9 +19,29 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   session gets the agent's persona, permission, backend, model and default
   serves in one step, and shows the agent badge on its tab and canvas row
   (#109).
+- **Crash files and Help → Show Crash Reports.** A Rust panic now writes
+  `crash-YYYYMMDD-HHMMSS-<pid>.log` (message, file:line, thread, version,
+  process role, backtrace) to the log folder and to the app log, also from
+  background modes such as the MCP stdio server. The last 20 are kept. Help →
+  Show Crash Reports opens the newest one; Settings → General → Show Logs
+  opens the folder on every platform. Release builds keep symbol names, so
+  macOS crash reports are readable too (#110).
 
 ### Fixed
 
+- **Splitkick aborted when its web content process died.** A reply to a
+  request that WebKit had already cancelled raised an Objective-C exception.
+  wry catches that exception, but it cannot do so in a `panic = "abort"`
+  build, so the app aborted (1.5.2 and 1.5.3, often after the liveness
+  watchdog ended a hung content process). Release builds now unwind, so the
+  exception is caught and a panic in a background task no longer ends the app
+  (#110).
+- **Background MCP processes aborted after their Claude CLI went away.** The
+  `--jean-mcp-stdio` child failed to write its reply, and then the failure
+  message itself panicked on the closed stderr. These were the "Splitkick
+  quit unexpectedly" reports from 1.4.1 to 1.5.1 (#110).
+- **The app log no longer loses earlier runs.** The log was deleted each time
+  it reached 40 KB. It now rotates at 5 MB and keeps 5 old files (#110).
 - **A pending question now holds the queue.** When a turn ended with
   AskUserQuestion, a queued message could still run, and the question was
   never answered. The app hears of the turn end before the backend records

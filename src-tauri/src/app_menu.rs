@@ -242,6 +242,7 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
         )?)
         .separator()
         .item(&MenuItemBuilder::with_id("show-log", "Show Log").build(app)?)
+        .item(&MenuItemBuilder::with_id("show-crash-reports", "Show Crash Reports").build(app)?)
         .item(&MenuItemBuilder::with_id("copy-memory-report", "Copy Memory Report").build(app)?)
         .build()?;
     let menu = MenuBuilder::new(app)
@@ -278,6 +279,15 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = crate::desktop_commands::show_log_file(&app).await {
                     log::warn!("Show Log failed: {error}");
+                }
+            });
+            return;
+        }
+        if event.id().as_ref() == "show-crash-reports" {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = crate::desktop_commands::show_crash_reports(&app).await {
+                    log::warn!("Show Crash Reports failed: {error}");
                 }
             });
             return;

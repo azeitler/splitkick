@@ -5,6 +5,7 @@ mod app_menu;
 mod artifact_preview;
 mod browser;
 mod connection_window;
+mod crash_log;
 mod desktop_commands;
 mod dock;
 mod http_server;
@@ -30,7 +31,8 @@ async fn dispatch_core_command(
     .await
 }
 
-fn should_run_server() -> bool {
+/// The background mode this process runs in, or `None` for the window app.
+fn server_role() -> Option<&'static str> {
     const SERVER_ARGS: &[&str] = &[
         "--headless",
         "--help",
@@ -43,8 +45,17 @@ fn should_run_server() -> bool {
         "--jean-kimi-acp-host",
         "--splitkick-browser-mcp",
     ];
-    std::env::var("JEAN_HEADLESS").is_ok_and(|value| value != "0" && value != "false")
-        || std::env::args().any(|argument| SERVER_ARGS.contains(&argument.as_str()))
+    if let Some(role) = std::env::args().find_map(|argument| {
+        SERVER_ARGS
+            .iter()
+            .copied()
+            .find(|known| *known == argument.as_str())
+    }) {
+        return Some(role);
+    }
+    std::env::var("JEAN_HEADLESS")
+        .is_ok_and(|value| value != "0" && value != "false")
+        .then_some("headless")
 }
 
 #[cfg(target_os = "macos")]
@@ -324,6 +335,10 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// Size at which the app log rotates, and how many old files are kept.
+const LOG_FILE_BYTES: u128 = 5 * 1024 * 1024;
+const LOG_FILES_KEPT: usize = 5;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Product version is the bundle version (the Splitkick version from
@@ -332,14 +347,26 @@ pub fn run() {
     let version: &'static str =
         Box::leak(context.package_info().version.to_string().into_boxed_str());
     jean_core::set_app_version(version);
+    let role = server_role();
+    // First thing after the version is known: every later panic leaves a
+    // crash file (issue #110), also in the background modes below.
+    crash_log::install(
+        crash_log::log_dir_for(&context.config().identifier),
+        version,
+        role.unwrap_or("app"),
+    );
 
-    if should_run_server() {
+    if role.is_some() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("failed to create server runtime");
         if let Err(error) = runtime.block_on(jean_core::run_server()) {
-            eprintln!("Server failed: {error}");
+            // Not `eprintln!`: it panics when stderr is gone. An MCP stdio
+            // child whose Claude CLI died fails exactly so (stdout and stderr
+            // are both broken pipes), and the panic aborted it (issue #110).
+            use std::io::Write;
+            let _ = writeln!(std::io::stderr(), "Server failed: {error}");
             std::process::exit(1);
         }
         return;
@@ -382,6 +409,10 @@ pub fn run() {
                     log::LevelFilter::Info
                 })
                 .level_for("reqwest", log::LevelFilter::Warn)
+                // The default keeps one 40 KB file and deletes it when full,
+                // which lost the log of every crashed run (issue #110).
+                .max_file_size(LOG_FILE_BYTES)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(LOG_FILES_KEPT))
                 .targets(log_targets)
                 .build(),
         )

@@ -5101,7 +5101,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             <div className="space-y-4">
               <InlineField
                 label="Application logs"
-                description="Open the log directory for troubleshooting"
+                description="Open the log folder: run logs and crash reports (crash-*.log)"
               >
                 <Button
                   variant="outline"

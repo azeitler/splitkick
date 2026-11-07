@@ -71,8 +71,12 @@ tauri-plugin-updater = "2"
 codegen-units = 1        # Better LLVM optimization (slower build, smaller binary)
 lto = true               # Link-time optimizations
 opt-level = "s"          # Optimize for size over speed
-panic = "abort"          # Don't include panic unwinding code
-strip = true             # Remove debug symbols
+# Not "abort": wry catches the Objective-C exceptions WebKit throws (e.g. a
+# reply to a URL scheme task WebKit already stopped when its content process
+# died) with objc2::exception::catch, which cannot catch under panic=abort —
+# the exception aborted the app instead (issue #110).
+panic = "unwind"
+strip = "debuginfo"      # Keep symbol names so crash reports are readable (#110)
 
 # Fast local release profile — for testing release builds without distribution-grade size optimization.
 # Use via: bun run tauri:build:fast
