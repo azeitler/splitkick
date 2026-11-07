@@ -117,10 +117,12 @@ export function useQueueProcessor(): void {
       persistDequeue(worktreeId, worktreePath, sessionId)
         .then(msg => {
           if (!msg) {
-            // Another client already dequeued this message, or the backend
-            // queue was empty. Clear local Zustand queue to prevent phantom
-            // entries from lingering (defense against stale state).
-            useChatStore.getState().clearQueue(capturedSessionId)
+            // Another client already dequeued this message, the backend queue
+            // was empty, or the backend holds the queue (a pending question,
+            // or a turn that is not finalized yet — issue #111). Do not clear
+            // the local queue: dequeue_message emits queue:updated with the
+            // authoritative queue, which also removes phantom entries. The
+            // backend drain sends held messages once the hold ends.
             processingRef.current.delete(capturedSessionId)
             return
           }

@@ -102,6 +102,29 @@ describe('useQueueProcessor', () => {
     })
   })
 
+  // Issue #111: the backend returns null when it holds the queue (a question
+  // is pending, or the turn is not finalized yet). The queued messages are
+  // still there and must stay visible — the backend's queue:updated event
+  // carries the authoritative queue.
+  it('keeps the local queue when the backend holds it', async () => {
+    vi.mocked(persistDequeue).mockResolvedValueOnce(null)
+    useChatStore.setState({
+      messageQueues: { 'session-1': [queuedMessage] },
+      sessionWorktreeMap: { 'session-1': 'worktree-1' },
+      worktreePaths: { 'worktree-1': '/tmp/worktree' },
+    })
+
+    renderHook(() => useQueueProcessor())
+
+    await waitFor(() => expect(persistDequeue).toHaveBeenCalledTimes(1))
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(sendMessageMutate).not.toHaveBeenCalled()
+    expect(useChatStore.getState().messageQueues['session-1']).toEqual([
+      queuedMessage,
+    ])
+  })
+
   it('waits before retrying a message that lost the send race', async () => {
     vi.mocked(persistDequeue).mockResolvedValue(queuedMessage)
     vi.mocked(isDuplicateSendError).mockReturnValue(true)

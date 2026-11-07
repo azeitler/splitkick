@@ -12,6 +12,7 @@ import {
   steerOpencodeTurn,
   steerPiTurn,
 } from '@/services/chat'
+import { invoke } from '@/lib/transport'
 import type { QueuedMessage } from '@/types/chat'
 
 vi.mock('@/services/chat', () => ({
@@ -23,6 +24,10 @@ vi.mock('@/services/chat', () => ({
   steerGrokTurn: vi.fn().mockResolvedValue(undefined),
   steerOpencodeTurn: vi.fn().mockResolvedValue(undefined),
   steerPiTurn: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/transport', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -189,6 +194,40 @@ describe('useQueuedPromptActions', () => {
     expect(
       useChatStore.getState().messageQueues['session-1']?.map(m => m.id)
     ).toEqual(['msg-1', 'msg-2', 'msg-3'])
+  })
+
+  // Issue #111: the backend holds the queue while waiting_for_input is set.
+  // "Send now" is an explicit choice to skip the wait, so it must clear the
+  // backend flag before the queue processor dequeues.
+  it('waiting session: clears the backend wait before force-processing', async () => {
+    useChatStore.setState({ waitingForInputSessionIds: { 'session-1': true } })
+    const order: string[] = []
+    vi.mocked(invoke).mockImplementation(async () => {
+      order.push('update_session_state')
+      return undefined
+    })
+    const forceProcessQueue = vi.spyOn(
+      useChatStore.getState(),
+      'forceProcessQueue'
+    )
+    forceProcessQueue.mockImplementation(() => {
+      order.push('forceProcessQueue')
+    })
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(invoke).toHaveBeenCalledWith('update_session_state', {
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      sessionId: 'session-1',
+      waitingForInput: false,
+      waitingForInputType: null,
+    })
+    expect(order).toEqual(['update_session_state', 'forceProcessQueue'])
+    forceProcessQueue.mockRestore()
   })
 
   it('busy codex session: steers the running turn and removes the message', async () => {
