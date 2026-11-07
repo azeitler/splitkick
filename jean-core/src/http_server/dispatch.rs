@@ -1585,6 +1585,16 @@ pub async fn dispatch_command(
                 field_opt(&args, "terminalLabel", "terminal_label")?;
             let native_session_id: Option<String> =
                 field_opt(&args, "nativeSessionId", "native_session_id")?;
+            let agent_id: Option<String> = field_opt(&args, "agentId", "agent_id")?;
+            let agent = agent_id
+                .map(|agent_id| -> Result<_, String> {
+                    Ok(crate::graphs::permissions::SessionAgentStart {
+                        agent_id,
+                        permission: field_opt(&args, "graphPermission", "graph_permission")?,
+                        serves: from_field_opt(&args, "serves")?,
+                    })
+                })
+                .transpose()?;
             let result = crate::chat::create_session(
                 app.clone(),
                 worktree_id,
@@ -1596,6 +1606,7 @@ pub async fn dispatch_command(
                 terminal_command_args,
                 terminal_label,
                 native_session_id,
+                agent,
             )
             .await?;
             // Every client's cross-project session list (Starred, Home, the

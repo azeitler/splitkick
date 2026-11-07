@@ -1091,14 +1091,39 @@ pub async fn create_session(
     terminal_command_args: Option<Vec<String>>,
     terminal_label: Option<String>,
     native_session_id: Option<String>,
+    agent: Option<crate::graphs::permissions::SessionAgentStart>,
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
     if native_session_id.is_some() && primary_surface.as_deref() != Some("terminal") {
         return Err("Native session IDs are only valid for terminal sessions".to_string());
     }
+    if agent.is_some() && primary_surface.as_deref() == Some("terminal") {
+        return Err("Agents only apply to chat sessions".to_string());
+    }
 
     // Archived worktrees must be restored before creating new sessions.
     ensure_worktree_not_archived(&worktree_id, worktree_archived_at(&app, &worktree_id))?;
+
+    // The agent fills name, backend, model, permission and serves (#109).
+    let agent = match agent {
+        Some(start) => {
+            let profile = crate::graphs::permissions::find_agent(&app, &start.agent_id)
+                .ok_or_else(|| format!("Unknown agent: {}", start.agent_id))?;
+            let defaults = crate::graphs::permissions::agent_session_defaults(
+                &profile,
+                &start,
+                backend.as_deref(),
+            )?;
+            Some((start.agent_id, defaults))
+        }
+        None => None,
+    };
+    let name = name.or_else(|| agent.as_ref().map(|(_, d)| d.name.clone()));
+    let backend = agent
+        .as_ref()
+        .and_then(|(_, d)| d.backend.clone())
+        .or(backend);
+    let agent_model = agent.as_ref().and_then(|(_, d)| d.model.clone());
 
     let preferences = crate::load_preferences(app.clone()).await.ok();
 
@@ -1122,9 +1147,11 @@ pub async fn create_session(
             persist_salvaged_resume_id(&mut session, &backend_enum, native_session_id);
         }
         if primary_surface.as_deref() != Some("terminal") {
-            session.selected_model = preferences
-                .as_ref()
-                .and_then(|prefs| default_model_for_backend(&backend_enum, prefs));
+            session.selected_model = agent_model.clone().or_else(|| {
+                preferences
+                    .as_ref()
+                    .and_then(|prefs| default_model_for_backend(&backend_enum, prefs))
+            });
         }
         let session_id = session.id.clone();
 
@@ -1134,6 +1161,21 @@ pub async fn create_session(
         log::trace!("Created session: {}", session.id);
         Ok(session)
     })?;
+
+    // One metadata write for all graph fields (#101), before any client
+    // learns about the session.
+    let mut session = session;
+    if let Some((agent_id, defaults)) = agent {
+        let permission = defaults.permission.as_str().to_string();
+        with_existing_metadata_mut(&app, &session.id, |m| {
+            m.agent_id = Some(agent_id.clone());
+            m.graph_permission = Some(permission.clone());
+            m.serves = defaults.serves.clone();
+        })?;
+        session.agent_id = Some(agent_id);
+        session.graph_permission = Some(permission);
+        session.serves = defaults.serves;
+    }
 
     copy_worktree_context_refs(&app, &worktree_id, &session.id);
 
