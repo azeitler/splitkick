@@ -452,6 +452,111 @@ pub fn delete(app: &AppHandle, schedule_id: &str) -> Result<bool, String> {
     Ok(removed.is_some())
 }
 
+/// New values for an existing schedule (Edit in the Scheduled view). A
+/// one-off stays a one-off: `recurrence` is used only when the schedule
+/// already repeats, `fire_at_unix` only when it does not.
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleEdit {
+    pub prompt: String,
+    pub name: String,
+    pub target: ScheduleTarget,
+    pub fire_at_unix: Option<u64>,
+    pub recurrence: Option<Recurrence>,
+}
+
+/// Change a schedule's prompt, name, target and time. Returns the new
+/// schedule.
+pub fn edit(app: &AppHandle, schedule_id: &str, changes: ScheduleEdit) -> Result<Schedule, String> {
+    if changes.prompt.trim().is_empty() {
+        return Err("Schedule: prompt is empty".to_string());
+    }
+    let now = now_unix();
+    let edited = update(app, |list| {
+        let Some(schedule) = list.iter_mut().find(|s| s.id == schedule_id) else {
+            return (false, Err(format!("Schedule not found: {schedule_id}")));
+        };
+        let recurrence = schedule.recurrence.as_ref().and(changes.recurrence.clone());
+        let fire_at = match first_fire_time(changes.fire_at_unix, recurrence.as_ref(), now) {
+            Ok(at) => at,
+            Err(e) => return (false, Err(e)),
+        };
+        schedule.prompt = changes.prompt.trim().to_string();
+        schedule.name = changes.name.trim().to_string();
+        schedule.target = changes.target;
+        if recurrence.is_some() {
+            schedule.recurrence = recurrence;
+        }
+        schedule.fire_at_unix = fire_at;
+        (true, Ok(schedule.clone()))
+    })??;
+    emit_changed(app);
+    Ok(edited)
+}
+
+/// Pause (`false`) or resume (`true`) a schedule. On resume a repeating
+/// schedule moves to its next time after now, and a one-off whose time
+/// passed while paused runs at the next tick.
+pub fn set_enabled(app: &AppHandle, schedule_id: &str, enabled: bool) -> Result<Schedule, String> {
+    let now = now_unix();
+    let schedule = update(app, |list| {
+        let Some(schedule) = list.iter_mut().find(|s| s.id == schedule_id) else {
+            return (false, Err(format!("Schedule not found: {schedule_id}")));
+        };
+        apply_enabled(schedule, enabled, now);
+        (true, Ok(schedule.clone()))
+    })??;
+    emit_changed(app);
+    Ok(schedule)
+}
+
+fn apply_enabled(schedule: &mut Schedule, enabled: bool, now: u64) {
+    schedule.enabled = enabled;
+    if !enabled {
+        return;
+    }
+    schedule.last_error = None;
+    match &schedule.recurrence {
+        Some(rule) => {
+            if let Ok(next) = next_occurrence(rule, now) {
+                schedule.fire_at_unix = next;
+            }
+        }
+        None => schedule.fire_at_unix = schedule.fire_at_unix.max(now),
+    }
+}
+
+/// Run a schedule now, also a paused one. A repeating schedule keeps its
+/// next time; a one-off that ran is done and leaves the list. Returns the
+/// session the prompt went into.
+pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, String> {
+    let schedule = SCHEDULES
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|s| s.id == schedule_id)
+        .cloned()
+        .ok_or_else(|| format!("Schedule not found: {schedule_id}"))?;
+    let result = fire(app, &schedule).await;
+    let now = now_unix();
+    update(app, |list| {
+        if result.is_ok() && schedule.recurrence.is_none() {
+            list.retain(|s| s.id != schedule.id);
+            return (true, ());
+        }
+        if let Some(stored) = list.iter_mut().find(|s| s.id == schedule.id) {
+            stored.last_run_unix = Some(now);
+            if result.is_ok() {
+                stored.last_outcome = Some(RunOutcome::Queued);
+                stored.last_error = None;
+            }
+        }
+        apply_fire_result(list, &schedule, &result);
+        (true, ())
+    })?;
+    emit_changed(app);
+    result
+}
+
 /// Cancel every schedule of a session. Returns whether any existed.
 pub fn cancel_session(app: &AppHandle, session_id: &str) -> Result<bool, String> {
     let removed = update(app, |list| {
@@ -1293,5 +1398,82 @@ mod tests {
         assert_eq!(schedule.target, ScheduleTarget::NewSession);
         assert_eq!(schedule.template, Some(serde_json::json!({ "model": "m" })));
         assert_eq!(on_disk(&app, "opts-1"), vec![schedule]);
+    }
+
+    #[test]
+    fn resume_moves_a_repeating_schedule_past_now() {
+        let now = unix("2026-10-26T12:00:00Z");
+        let mut schedule = repeating("resume", unix("2026-10-20T07:00:00Z"));
+        apply_enabled(&mut schedule, false, now);
+        assert!(!schedule.enabled);
+
+        schedule.last_error = Some("old".into());
+        apply_enabled(&mut schedule, true, now);
+        assert!(schedule.enabled);
+        assert!(schedule.last_error.is_none());
+        assert_eq!(schedule.fire_at_unix, unix("2026-10-27T08:00:00Z"));
+
+        let mut one_off = repeating("resume-once", 100);
+        one_off.recurrence = None;
+        apply_enabled(&mut one_off, true, now);
+        assert_eq!(one_off.fire_at_unix, now);
+    }
+
+    #[test]
+    fn edit_changes_prompt_target_and_time() {
+        let (_temp, app) = app();
+        session(&app, "edit-1");
+        let once = create_simple(&app, "edit-1", "old", Some(4_000_000_000), None).unwrap();
+        let edited = edit(
+            &app,
+            &once.id,
+            ScheduleEdit {
+                prompt: " new prompt ".into(),
+                name: "Renamed".into(),
+                target: ScheduleTarget::NewSession,
+                fire_at_unix: Some(4_000_000_500),
+                // Ignored: a one-off stays a one-off.
+                recurrence: Some(daily_9_berlin()),
+            },
+        )
+        .unwrap();
+        assert_eq!(edited.prompt, "new prompt");
+        assert_eq!(edited.name, "Renamed");
+        assert_eq!(edited.target, ScheduleTarget::NewSession);
+        assert_eq!(edited.fire_at_unix, 4_000_000_500);
+        assert!(edited.recurrence.is_none());
+        assert_eq!(on_disk(&app, "edit-1"), vec![edited]);
+
+        assert!(edit(
+            &app,
+            "missing",
+            ScheduleEdit {
+                prompt: "p".into(),
+                ..Default::default()
+            }
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn edit_changes_a_repeat_rule() {
+        let (_temp, app) = app();
+        session(&app, "edit-2");
+        let daily = create_simple(&app, "edit-2", "d", None, Some(daily_9_berlin())).unwrap();
+        let weekly = Recurrence {
+            cron: "0 9 * * 1".into(),
+            tz: "Europe/Berlin".into(),
+        };
+        let edited = edit(
+            &app,
+            &daily.id,
+            ScheduleEdit {
+                prompt: "d".into(),
+                recurrence: Some(weekly.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(edited.recurrence, Some(weekly));
     }
 }

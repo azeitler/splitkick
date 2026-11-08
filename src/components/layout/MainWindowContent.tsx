@@ -35,6 +35,11 @@ const ArchivedView = lazy(() =>
   }))
 )
 
+const ScheduledView = lazy(() =>
+  import('@/components/schedules/ScheduledView').then(mod => ({
+    default: mod.ScheduledView,
+  }))
+)
 const GraphView = lazy(() =>
   import('@/components/graphs/GraphView').then(mod => ({
     default: mod.GraphView,
@@ -107,6 +112,7 @@ export function MainWindowContent({
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const archivedViewOpen = useUIStore(state => state.archivedViewOpen)
+  const scheduledViewOpen = useUIStore(state => state.scheduledViewOpen)
   const activeGraphId = useUIStore(state => state.activeGraphId)
 
   // The Archived and Graph views replace Home only while nothing is selected.
@@ -115,6 +121,7 @@ export function MainWindowContent({
   useEffect(() => {
     if (selectedProjectId || activeWorktreeId) {
       useUIStore.getState().setArchivedViewOpen(false)
+      useUIStore.getState().setScheduledViewOpen(false)
       useUIStore.getState().setActiveGraphId(null)
     }
   }, [selectedProjectId, activeWorktreeId])
@@ -198,6 +205,10 @@ export function MainWindowContent({
   ) : archivedViewOpen ? (
     <Suspense fallback={<JeanLoadingScreen />}>
       <ArchivedView />
+    </Suspense>
+  ) : scheduledViewOpen ? (
+    <Suspense fallback={<JeanLoadingScreen />}>
+      <ScheduledView />
     </Suspense>
   ) : realProjects.length > 0 ? (
     <HomeView

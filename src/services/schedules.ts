@@ -41,3 +41,28 @@ export interface CreateScheduleArgs {
 export function createSchedule(args: CreateScheduleArgs): Promise<Schedule> {
   return invoke<Schedule>('create_schedule', { ...args })
 }
+
+export interface UpdateScheduleArgs {
+  scheduleId: string
+  prompt: string
+  name?: string
+  target?: ScheduleTarget
+  fireAtUnix?: number
+  recurrence?: ScheduleRecurrence
+}
+
+export function updateSchedule(args: UpdateScheduleArgs): Promise<Schedule> {
+  return invoke<Schedule>('update_schedule', { ...args })
+}
+
+export function setScheduleEnabled(
+  scheduleId: string,
+  enabled: boolean
+): Promise<Schedule> {
+  return invoke<Schedule>('set_schedule_enabled', { scheduleId, enabled })
+}
+
+/** Run now; resolves to the session the prompt went into. */
+export function runScheduleNow(scheduleId: string): Promise<string> {
+  return invoke<string>('run_schedule_now', { scheduleId })
+}

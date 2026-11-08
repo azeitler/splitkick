@@ -235,6 +235,9 @@ interface UIState {
   /** Whether the main area shows the Archived view. Only meaningful while no
    *  project and no worktree is selected; not persisted. */
   archivedViewOpen: boolean
+  /** Whether the main area shows the Scheduled view (#38). Like the
+   *  Archived view; not persisted. */
+  scheduledViewOpen: boolean
   /** Graph shown in the main area (graph layer, #79). Like the Archived view
    *  it needs no project and no worktree selected; not persisted. */
   activeGraphId: string | null
@@ -399,6 +402,7 @@ interface UIState {
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
   setArchivedViewOpen: (open: boolean) => void
+  setScheduledViewOpen: (open: boolean) => void
   setActiveGraphId: (graphId: string | null) => void
   setGraphFocusNodeId: (nodeId: string | null) => void
   /** Open Settings → Agents on one agent (or the first when null). */
@@ -532,6 +536,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
       archivedViewOpen: false,
+      scheduledViewOpen: false,
       activeGraphId: null,
       graphFocusNodeId: null,
       editingAgentId: null,
@@ -1227,6 +1232,16 @@ export const useUIStore = create<UIState>()(
               : { archivedViewOpen: open },
           undefined,
           'setArchivedViewOpen'
+        ),
+
+      setScheduledViewOpen: open =>
+        set(
+          state =>
+            state.scheduledViewOpen === open
+              ? state
+              : { scheduledViewOpen: open },
+          undefined,
+          'setScheduledViewOpen'
         ),
 
       setActiveGraphId: graphId =>

@@ -5,6 +5,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { SidebarArchivedRow } from './SidebarArchivedRow'
+import { SidebarScheduledRow } from './SidebarScheduledRow'
 import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
@@ -116,6 +117,7 @@ export function ProjectsSidebar() {
                 newProjectDisabled={!backendCheckReady || setupIncomplete}
               />
             )}
+            <SidebarScheduledRow />
             <SidebarArchivedRow />
           </div>
         </div>

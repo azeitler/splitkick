@@ -11163,6 +11163,29 @@ pub async fn create_schedule(
     )
 }
 
+/// Change a schedule's prompt, name, target and time (Scheduled view).
+pub async fn update_schedule(
+    app: AppHandle,
+    schedule_id: String,
+    changes: super::schedules::ScheduleEdit,
+) -> Result<super::schedules::Schedule, String> {
+    super::schedules::edit(&app, &schedule_id, changes)
+}
+
+/// Pause or resume a schedule.
+pub async fn set_schedule_enabled(
+    app: AppHandle,
+    schedule_id: String,
+    enabled: bool,
+) -> Result<super::schedules::Schedule, String> {
+    super::schedules::set_enabled(&app, &schedule_id, enabled)
+}
+
+/// Run a schedule now. Returns the session the prompt went into.
+pub async fn run_schedule_now(app: AppHandle, schedule_id: String) -> Result<String, String> {
+    super::schedules::run_now(&app, &schedule_id).await
+}
+
 /// Delete one schedule. Returns whether it existed.
 pub async fn delete_schedule(app: AppHandle, schedule_id: String) -> Result<bool, String> {
     super::schedules::delete(&app, &schedule_id)
