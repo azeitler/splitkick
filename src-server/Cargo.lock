@@ -1284,6 +1284,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "hmac 0.12.1",
+ "iana-time-zone",
  "if-addrs",
  "ignore",
  "image",

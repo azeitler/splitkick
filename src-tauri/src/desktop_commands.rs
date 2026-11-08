@@ -133,6 +133,32 @@ pub async fn send_native_notification(
 #[cfg(not(target_os = "windows"))]
 const NOTIFICATION_SESSION_KEY: &str = "jeanSession";
 
+/// A scheduled run (#38) that ends while no webview window exists shows a
+/// native notification; a click opens the session. With a window, also a
+/// hidden one, the frontend's notification path shows it instead, so this
+/// never notifies twice.
+pub(crate) fn install_schedule_notifier(app: AppHandle) {
+    jean_core::set_run_notifier(move |notice: jean_core::ScheduledRunNotice| {
+        if !app.webview_windows().is_empty() {
+            return;
+        }
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let session = crate::dock::SessionTarget {
+                project_id: notice.project_id,
+                worktree_id: notice.worktree_id,
+                session_id: notice.session_id,
+            };
+            if let Err(error) =
+                send_native_notification(app, notice.title, Some(notice.body), Some(session), None)
+                    .await
+            {
+                log::warn!("Scheduled run notification failed: {error}");
+            }
+        });
+    });
+}
+
 /// A click on a session notification opens that session in the main window.
 /// Windows toasts are not shown through the plugin; see
 /// `platform/notifications.rs`.

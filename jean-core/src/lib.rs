@@ -83,6 +83,7 @@ pub use version::{app_version, release_version, set_app_version, set_release_ver
 // launch logic stays shared and complete: binary mapping, -g goto args,
 // macOS app fallbacks, Windows .cmd wrappers).
 pub use chat::open_file_in_default_app;
+pub use chat::schedules::{set_run_notifier, ScheduledRunNotice};
 pub use platform::open_url_in_browser;
 pub use projects::open_path_in_default_app;
 pub use projects::open_worktree_in_editor;

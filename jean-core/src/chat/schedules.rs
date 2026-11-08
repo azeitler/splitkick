@@ -599,6 +599,234 @@ pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, Strin
     result
 }
 
+/// A schedule an agent makes through the Splitkick MCP `create_schedule`.
+#[derive(Debug, Clone, Default)]
+pub struct AgentScheduleRequest {
+    /// The session whose agent asks; `None` for a client outside a session
+    pub caller_session_id: Option<String>,
+    /// Run into this session (default: the caller)
+    pub session_id: Option<String>,
+    /// Run into a new session in this worktree each time instead
+    pub worktree_id: Option<String>,
+    pub prompt: String,
+    pub name: Option<String>,
+    pub fire_at_unix: Option<u64>,
+    pub recurrence: Option<Recurrence>,
+}
+
+fn mode_rank(mode: &str) -> u8 {
+    match mode {
+        "yolo" => 2,
+        "build" => 1,
+        _ => 0,
+    }
+}
+
+/// The mode an agent schedule runs in: the lower of the caller's and the
+/// target session's mode, so an agent never schedules a run with more
+/// rights than it has (plan Q3). A session that never saved a mode counts as
+/// plan for the caller; an unknown target takes the caller's mode.
+fn capped_mode(caller: Option<&str>, target: Option<&str>) -> String {
+    let caller = caller.or(target).unwrap_or("plan");
+    let target = target.unwrap_or(caller);
+    if mode_rank(target) < mode_rank(caller) {
+        target.to_string()
+    } else {
+        caller.to_string()
+    }
+}
+
+/// Save an agent schedule (origin `agent`). Like `ScheduleWakeup`, the new
+/// one replaces the session's previous agent schedule.
+pub fn create_for_agent(
+    app: &AppHandle,
+    request: AgentScheduleRequest,
+) -> Result<Schedule, String> {
+    if request.prompt.trim().is_empty() {
+        return Err("Schedule: prompt is empty".to_string());
+    }
+    let now = now_unix();
+    let fire_at_unix = first_fire_time(request.fire_at_unix, request.recurrence.as_ref(), now)?;
+    if request.recurrence.is_none() && fire_at_unix <= now {
+        return Err("Schedule: the time is in the past".to_string());
+    }
+    let load = |session_id: &str| {
+        storage::load_metadata(app, session_id)?
+            .ok_or_else(|| format!("Unknown sessionId: {session_id}"))
+    };
+    let caller = match &request.caller_session_id {
+        Some(id) => load(id).ok(),
+        None => None,
+    };
+    let caller_mode = caller.as_ref().map(|m| {
+        m.selected_execution_mode
+            .clone()
+            .unwrap_or_else(|| "plan".into())
+    });
+
+    let (target, session_id, worktree_id, target_mode) = match &request.worktree_id {
+        Some(worktree_id) => {
+            resolve_worktree_path(app, worktree_id)
+                .ok_or_else(|| format!("Unknown worktreeId: {worktree_id}"))?;
+            super::ensure_worktree_not_archived(
+                worktree_id,
+                super::worktree_archived_at(app, worktree_id),
+            )?;
+            let session_id = request.caller_session_id.clone().unwrap_or_default();
+            (
+                ScheduleTarget::NewSession,
+                session_id,
+                worktree_id.clone(),
+                None,
+            )
+        }
+        None => {
+            let session_id = request
+                .session_id
+                .clone()
+                .or_else(|| request.caller_session_id.clone())
+                .ok_or_else(|| "Give sessionId or worktreeId".to_string())?;
+            let target = find_session(app, &session_id)?;
+            super::ensure_session_can_run(
+                &session_id,
+                target.archived_at,
+                &target.worktree_id,
+                super::worktree_archived_at(app, &target.worktree_id),
+            )?;
+            let mode = load(&session_id)
+                .ok()
+                .and_then(|m| m.selected_execution_mode);
+            (
+                ScheduleTarget::Session,
+                session_id,
+                target.worktree_id,
+                mode,
+            )
+        }
+    };
+
+    let mut schedule = Schedule::new(
+        ScheduleOrigin::Agent,
+        &session_id,
+        &worktree_id,
+        request.prompt.trim().to_string(),
+        fire_at_unix,
+        now,
+    );
+    schedule.name = request.name.unwrap_or_default().trim().to_string();
+    schedule.target = target;
+    schedule.recurrence = request.recurrence;
+    schedule.template = Some(serde_json::json!({
+        "executionMode": capped_mode(caller_mode.as_deref(), target_mode.as_deref()),
+    }));
+    add(app, schedule.clone())?;
+    Ok(schedule)
+}
+
+/// What the desktop shows when a scheduled run ends with no window open.
+#[derive(Debug, Clone)]
+pub struct ScheduledRunNotice {
+    pub title: String,
+    pub body: String,
+    pub project_id: String,
+    pub worktree_id: String,
+    pub session_id: String,
+}
+
+type RunNotifier = Box<dyn Fn(ScheduledRunNotice) + Send + Sync>;
+
+/// Set by the desktop shell; it decides whether a window is open. The
+/// headless server sets none: there a connected client notifies.
+static RUN_NOTIFIER: std::sync::OnceLock<RunNotifier> = std::sync::OnceLock::new();
+
+/// Install the native notification for scheduled runs. First call wins.
+pub fn set_run_notifier(notifier: impl Fn(ScheduledRunNotice) + Send + Sync + 'static) {
+    let _ = RUN_NOTIFIER.set(Box::new(notifier));
+}
+
+/// A queued message from a schedule finished its run (called by the queue
+/// drain). A failed send is recorded on the schedule, which stays enabled
+/// (the user may fix the model or MCP server with Edit). Then the native
+/// notification, if the preference allows it.
+pub fn scheduled_run_finished(
+    app: &AppHandle,
+    schedule_id: &str,
+    session_id: &str,
+    worktree_id: &str,
+    error: Option<&str>,
+) {
+    let schedule = SCHEDULES
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|s| s.id == schedule_id)
+        .cloned();
+    if let Some(error) = error {
+        let _ = update(app, |list| {
+            let found = list.iter_mut().find(|s| s.id == schedule_id);
+            let changed = found.is_some();
+            if let Some(s) = found {
+                s.last_outcome = Some(RunOutcome::Failed);
+                s.last_error = Some(error.to_string());
+            }
+            (changed, ())
+        });
+        emit_changed(app);
+    }
+
+    let Some(notifier) = RUN_NOTIFIER.get() else {
+        return;
+    };
+    if !desktop_notifications_enabled(app) {
+        return;
+    }
+    let Some(project_id) = crate::projects::storage::load_projects_data(app)
+        .ok()
+        .and_then(|data| {
+            data.find_worktree(worktree_id)
+                .map(|w| w.project_id.clone())
+        })
+    else {
+        return;
+    };
+    let waiting = storage::load_metadata(app, session_id)
+        .ok()
+        .flatten()
+        .is_some_and(|m| m.waiting_for_input);
+    let title = if error.is_some() {
+        "Scheduled run failed"
+    } else if waiting {
+        "Scheduled run needs your input"
+    } else {
+        "Scheduled run finished"
+    };
+    let body = schedule
+        .map(|s| if s.name.is_empty() { s.prompt } else { s.name })
+        .unwrap_or_default();
+    notifier(ScheduledRunNotice {
+        title: title.to_string(),
+        body: body.chars().take(160).collect(),
+        project_id,
+        worktree_id: worktree_id.to_string(),
+        session_id: session_id.to_string(),
+    });
+}
+
+/// The `desktop_notifications_enabled` preference (default on), read from
+/// the file like `skip_missed_runs`.
+fn desktop_notifications_enabled(app: &AppHandle) -> bool {
+    crate::get_preferences_path(app)
+        .and_then(|path| std::fs::read_to_string(path).map_err(|e| e.to_string()))
+        .ok()
+        .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
+        .and_then(|prefs| {
+            prefs
+                .get("desktop_notifications_enabled")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(true)
+}
+
 /// Cancel every schedule of a session. Returns whether any existed.
 pub fn cancel_session(app: &AppHandle, session_id: &str) -> Result<bool, String> {
     let removed = update(app, |list| {
@@ -869,17 +1097,20 @@ fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec
 }
 
 /// Build a queued message (frontend `QueuedMessage` shape) for a fired
-/// schedule. A schedule made in the composer carries its toolbar settings
-/// as `template`. Without one, settings come only from the session's saved
-/// selections; a setting the session never saved stays out, so
+/// schedule: the session's saved selections, overlaid by the schedule's
+/// `template` (the composer's toolbar settings, or the capped mode of an
+/// agent schedule). Without a template, settings come only from the
+/// session's saved selections; a setting the session never saved stays out, so
 /// `send_chat_message` resolves it from the session and preferences instead
 /// of a hard-coded default. `scheduleId` lets the drain report the run's end.
 fn queued_message(metadata: &SessionMetadata, schedule: &Schedule, now: u64) -> Value {
-    let mut message = match &schedule.template {
-        Some(Value::Object(template)) => Value::Object(template.clone()),
-        _ => session_settings(metadata),
-    };
+    let mut message = session_settings(metadata);
     let fields = message.as_object_mut().expect("json object");
+    if let Some(Value::Object(template)) = &schedule.template {
+        for (key, value) in template {
+            fields.insert(key.clone(), value.clone());
+        }
+    }
     fields.insert("id".into(), Value::from(uuid::Uuid::new_v4().to_string()));
     fields.insert("message".into(), Value::from(schedule.prompt.clone()));
     fields.insert("queuedAt".into(), Value::from(now.saturating_mul(1000)));
@@ -1526,6 +1757,93 @@ mod tests {
         )
         .unwrap();
         assert_eq!(edited.recurrence, Some(weekly));
+    }
+
+    #[test]
+    fn an_agent_never_raises_the_mode() {
+        assert_eq!(capped_mode(Some("plan"), Some("yolo")), "plan");
+        assert_eq!(capped_mode(Some("yolo"), Some("build")), "build");
+        assert_eq!(capped_mode(Some("yolo"), Some("yolo")), "yolo");
+        assert_eq!(capped_mode(Some("build"), None), "build");
+        assert_eq!(capped_mode(None, Some("yolo")), "yolo");
+        assert_eq!(capped_mode(None, None), "plan");
+    }
+
+    #[test]
+    fn an_agent_schedule_runs_in_the_lower_mode() {
+        let (_temp, app) = app();
+        storage::with_metadata_mut(&app, "agent-caller", "w1", "Caller", 0, |m| {
+            m.selected_execution_mode = Some("build".into());
+            Ok(())
+        })
+        .unwrap();
+        storage::with_metadata_mut(&app, "agent-target", "w1", "Target", 0, |m| {
+            m.selected_execution_mode = Some("yolo".into());
+            m.selected_model = Some("saved-model".into());
+            Ok(())
+        })
+        .unwrap();
+
+        let schedule = create_for_agent(
+            &app,
+            AgentScheduleRequest {
+                caller_session_id: Some("agent-caller".into()),
+                session_id: Some("agent-target".into()),
+                prompt: "check later".into(),
+                fire_at_unix: Some(4_000_000_000),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(schedule.origin, ScheduleOrigin::Agent);
+        assert_eq!(schedule.target, ScheduleTarget::Session);
+        assert_eq!(schedule.session_id, "agent-target");
+        let metadata = storage::load_metadata(&app, "agent-target")
+            .unwrap()
+            .unwrap();
+        let message = queued_message(&metadata, &schedule, 1);
+        // Capped to the caller's build; the target's model is kept.
+        assert_eq!(message["executionMode"], "build");
+        assert_eq!(message["model"], "saved-model");
+    }
+
+    #[test]
+    fn an_agent_schedule_needs_a_future_time_and_a_target() {
+        let (_temp, app) = app();
+        let past = create_for_agent(
+            &app,
+            AgentScheduleRequest {
+                session_id: Some("nobody".into()),
+                prompt: "p".into(),
+                fire_at_unix: Some(1),
+                ..Default::default()
+            },
+        );
+        assert!(past.unwrap_err().contains("past"));
+        let no_target = create_for_agent(
+            &app,
+            AgentScheduleRequest {
+                prompt: "p".into(),
+                fire_at_unix: Some(4_000_000_000),
+                ..Default::default()
+            },
+        );
+        assert!(no_target.is_err());
+    }
+
+    #[test]
+    fn a_failed_send_is_recorded_and_keeps_the_schedule_on() {
+        let (_temp, app) = app();
+        session(&app, "send-fail");
+        let daily = create_simple(&app, "send-fail", "d", None, Some(daily_9_berlin())).unwrap();
+
+        scheduled_run_finished(&app, &daily.id, "send-fail", "w1", Some("model retired"));
+
+        let stored = of_session("send-fail").pop().unwrap();
+        assert!(stored.enabled);
+        assert_eq!(stored.last_outcome, Some(RunOutcome::Failed));
+        assert_eq!(stored.last_error.as_deref(), Some("model retired"));
     }
 
     // A session that never sent a message exists only in its worktree

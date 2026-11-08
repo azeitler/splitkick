@@ -324,6 +324,7 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
     #[cfg(not(target_os = "windows"))]
     desktop_commands::install_notification_click(app.handle());
+    desktop_commands::install_schedule_notifier(app.handle().clone());
 
     // Recover from WebView2 process death on Windows (issue #575 — blank /
     // "invisible" window after the browser process exits). No-op elsewhere.
