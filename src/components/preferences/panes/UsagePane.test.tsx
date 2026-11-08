@@ -1,6 +1,6 @@
 import type * as PreferencesService from '@/services/preferences'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@/test/test-utils'
+import { render, screen, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { UsagePane } from './UsagePane'
 
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   // Usage per Claude account id; falls back to useClaudeUsage for one account.
   useClaudeAccountUsage: vi.fn(),
   usePreferences: vi.fn(),
+  patchPreferences: vi.fn(),
   useCodexCliStatus: vi.fn(),
   useCodexCliAuth: vi.fn(),
   useCodexUsage: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/claude-cli', () => ({
+  claudeCliQueryKeys: { all: ['claude-cli'] },
   useClaudeCliStatus: () => mocks.useClaudeCliStatus(),
   useClaudeCliAuth: () => mocks.useClaudeCliAuth(),
   useClaudeUsage: () => mocks.useClaudeUsage(),
@@ -30,6 +32,10 @@ vi.mock('@/services/claude-cli', () => ({
 vi.mock('@/services/preferences', async importOriginal => ({
   ...(await importOriginal<typeof PreferencesService>()),
   usePreferences: () => mocks.usePreferences(),
+  usePatchPreferences: () => ({
+    mutate: mocks.patchPreferences,
+    isPending: false,
+  }),
 }))
 
 vi.mock('@/services/codex-cli', () => ({
@@ -333,11 +339,36 @@ describe('UsagePane', () => {
     expect(root).toHaveTextContent('Personal')
     expect(root).toHaveTextContent('me@personal.test')
     expect(root).toHaveTextContent('11.0%')
-    expect(root).not.toHaveTextContent('active')
+    expect(within(root).queryByText('active')).not.toBeInTheDocument()
     expect(work).toHaveTextContent('Work')
     expect(work).toHaveTextContent('active')
     expect(work).toHaveTextContent('me@work.test')
     expect(work).toHaveTextContent('77.0%')
+  })
+
+  it('makes another Claude account active from its row', async () => {
+    const user = userEvent.setup()
+    mocks.usePreferences.mockReturnValue({
+      data: {
+        claude_accounts: [
+          { id: 'acc-work', label: 'Work', config_dir: '/u/.claude-work' },
+        ],
+        claude_active_account: 'acc-work',
+      },
+    })
+
+    render(<UsagePane />)
+
+    const work = screen.getByTestId('claude-usage-account-acc-work')
+    expect(
+      within(work).queryByRole('button', { name: 'Make active' })
+    ).not.toBeInTheDocument()
+    const root = screen.getByTestId('claude-usage-account-root')
+    await user.click(within(root).getByRole('button', { name: 'Make active' }))
+    expect(mocks.patchPreferences).toHaveBeenCalledWith(
+      { claude_active_account: null },
+      expect.any(Object)
+    )
   })
 
   it('shows why a signed-out Claude account has no limits', () => {

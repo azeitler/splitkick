@@ -30,6 +30,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   plugins, skills and `CLAUDE.md`, and that a `claude` in a terminal still
   uses `~/.claude`. (#90)
 
+- **Switch the Claude account from the usage popover.** With more than one
+  Claude account, each account row in the usage popover (and in Settings →
+  Usage) that is not active has a Make active button. New sessions use the
+  active account; open sessions keep theirs. (#90)
+
 ### Fixed
 
 - **A failed update check names the cause.** "Could not fetch a valid release

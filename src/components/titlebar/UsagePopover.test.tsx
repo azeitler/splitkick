@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   // Usage per Claude account id; falls back to useClaudeUsage for one account.
   useClaudeAccountUsage: vi.fn(),
   usePreferences: vi.fn(),
+  patchPreferences: vi.fn(),
   useCodexCliStatus: vi.fn(),
   useCodexCliAuth: vi.fn(),
   useCodexUsage: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/claude-cli', () => ({
+  claudeCliQueryKeys: { all: ['claude-cli'] },
   useClaudeCliStatus: () => mocks.useClaudeCliStatus(),
   useClaudeCliAuth: () => mocks.useClaudeCliAuth(),
   useClaudeUsage: () => mocks.useClaudeUsage(),
@@ -31,6 +33,10 @@ vi.mock('@/services/claude-cli', () => ({
 vi.mock('@/services/preferences', async importOriginal => ({
   ...(await importOriginal<typeof PreferencesService>()),
   usePreferences: () => mocks.usePreferences(),
+  usePatchPreferences: () => ({
+    mutate: mocks.patchPreferences,
+    isPending: false,
+  }),
 }))
 
 vi.mock('@/services/codex-cli', () => ({
