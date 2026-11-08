@@ -4,6 +4,7 @@ import {
   activeClaudeAccountId,
   claudeLoginCommand,
   listClaudeAccounts,
+  sessionClaudeAccount,
 } from './claude-accounts'
 
 const work = { id: 'acc-work', label: 'Work', config_dir: '/u/.claude-work' }
@@ -28,6 +29,15 @@ describe('claude-accounts', () => {
       'root'
     )
     expect(activeClaudeAccount(undefined).label).toBe('Default')
+  })
+
+  it("resolves a session's recorded account, else the active one", () => {
+    const prefs = { claude_accounts: [work], claude_active_account: 'root' }
+    expect(sessionClaudeAccount(prefs, 'acc-work').configDir).toBe(
+      '/u/.claude-work'
+    )
+    expect(sessionClaudeAccount(prefs, undefined).id).toBe('root')
+    expect(sessionClaudeAccount(prefs, 'gone').id).toBe('root')
   })
 
   it('logs a non-root account in through env CLAUDE_CONFIG_DIR', () => {

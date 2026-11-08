@@ -1928,7 +1928,7 @@ export interface LimitHit {
 }
 
 /** How a run failed. */
-export type RunErrorKind = 'api_error' | 'aborted' | 'crashed'
+export type RunErrorKind = 'api_error' | 'auth_failed' | 'aborted' | 'crashed'
 
 /** A run that ended with an error. */
 export interface RunError {

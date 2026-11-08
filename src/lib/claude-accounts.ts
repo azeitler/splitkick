@@ -66,6 +66,21 @@ export function activeClaudeAccount(
 }
 
 /**
+ * Account a session's Claude runs use: its recorded account, else the active
+ * one. Mirrors the backend: an id that is not configured any more is root.
+ */
+export function sessionClaudeAccount(
+  prefs: Partial<AccountPrefs> | undefined,
+  accountId: string | null | undefined
+): ClaudeAccountView {
+  if (!accountId) return activeClaudeAccount(prefs)
+  const accounts = listClaudeAccounts(prefs)
+  return (
+    accounts.find(a => a.id === accountId) ?? (accounts[0] as ClaudeAccountView)
+  )
+}
+
+/**
  * Terminal command for a Claude login. A non-root account runs through
  * `env CLAUDE_CONFIG_DIR=<dir>` so the login lands in that folder; the root
  * install runs the CLI as it is.

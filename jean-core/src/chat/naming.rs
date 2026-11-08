@@ -512,12 +512,13 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
+        log::warn!(
             "Claude CLI failed (exit code {:?}): stderr={}, stdout={}",
             output.status.code(),
             stderr.trim(),
             stdout.trim()
-        ));
+        );
+        return Err(crate::projects::format_claude_cli_failure(&stderr, &stdout));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

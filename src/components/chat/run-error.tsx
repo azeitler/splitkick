@@ -2,14 +2,14 @@ import { CircleAlert } from 'lucide-react'
 import type { RunError } from '@/types/chat'
 import { isCliAuthError } from '@/lib/cli-auth'
 
-/** True when the run failed because the backend login expired. */
+/** True when the run failed because the backend login failed or expired. */
 export function isRunAuthError(error: RunError): boolean {
-  return isCliAuthError(error.message)
+  return error.kind === 'auth_failed' || isCliAuthError(error.message)
 }
 
-/** Short title for a failed run — "Login expired", "Request failed", … */
+/** Short title for a failed run — "Not logged in", "Request failed", … */
 export function getRunErrorTitle(error: RunError): string {
-  if (isRunAuthError(error)) return 'Login expired'
+  if (isRunAuthError(error)) return 'Not logged in'
   switch (error.kind) {
     case 'aborted':
       return 'Message not sent'

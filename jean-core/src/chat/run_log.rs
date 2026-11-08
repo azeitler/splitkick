@@ -670,6 +670,7 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     // OpenCode echoes the user prompt as the first text block in assistant messages.
     // Skip it during replay so the prompt doesn't appear twice.
     let mut skipped_prompt_echo = false;
+    let mut errors = super::claude::ClaudeRunErrorState::default();
 
     // Mirror live-stream Monitor gating (see claude.rs): while a Monitor tool
     // call is armed and its initial post-arm result has fired, subsequent
@@ -771,6 +772,7 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         }
 
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let observed = errors.observe(&msg);
 
         match msg_type {
             "steered_user_message" => {
@@ -781,6 +783,16 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                 }
             }
             "assistant" => {
+                // Claude synthetic API errors: held back like the live
+                // stream does (#112), released when the run goes on.
+                if let Some(text) = observed.release {
+                    content.push_str(&text);
+                    content_blocks.push(ContentBlock::Text { text });
+                }
+                if observed.hold {
+                    continue;
+                }
+
                 // Text-routing gate (mirrors live-stream logic): if ANY armed
                 // Monitor has initial_turn_finished=true, this assistant turn
                 // is a per-notification wake-up, so skip its text from chat.
@@ -975,8 +987,9 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                 if let Some(dur) = msg.get("duration_ms").and_then(|v| v.as_u64()) {
                     last_ms = last_ms.saturating_add(dur);
                 }
-                // Use result if we somehow missed content
-                if content.is_empty() {
+                // Use result if we somehow missed content (not an error
+                // result: the error banner shows that)
+                if content.is_empty() && errors.run_error.is_none() {
                     if let Some(result) = msg.get("result").and_then(|v| v.as_str()) {
                         content = result.to_string();
                     }
@@ -1138,6 +1151,14 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                 });
             }
         }
+    }
+
+    // The run ended with the held error: the error banner shows it. Runs
+    // stored before run errors existed keep the text, or it would be lost.
+    let ended_with_error = errors.run_error.is_some() && run.run_error.is_some();
+    if let Some(text) = errors.take_held().filter(|_| !ended_with_error) {
+        content.push_str(&text);
+        content_blocks.push(ContentBlock::Text { text });
     }
 
     Ok(ChatMessage {
@@ -1588,6 +1609,17 @@ pub fn load_session_messages_window(
             // recovered sessions render the same approval affordances.
             if should_inject_synthetic_exit_plan(run_backend, run, &assistant_msg) {
                 inject_synthetic_exit_plan(run_backend, &run.run_id, &mut assistant_msg);
+            }
+
+            // The backend answered only with an error: the error banner shows
+            // it, so there is no reply to render (#112).
+            if run.run_error.as_ref().is_some_and(|e| {
+                matches!(e.kind, RunErrorKind::ApiError | RunErrorKind::AuthFailed)
+            }) && assistant_msg.content.is_empty()
+                && assistant_msg.content_blocks.is_empty()
+                && assistant_msg.tool_calls.is_empty()
+            {
+                continue;
             }
 
             // For crashed runs with no content (only metadata header), add placeholder
@@ -2781,7 +2813,7 @@ fn jsonl_claude_outcome(
 ) -> (Option<LimitHit>, Option<RunError>) {
     use std::io::{Seek, SeekFrom};
     let mut limit_hit = None;
-    let mut run_error = None;
+    let mut errors = super::claude::ClaudeRunErrorState::default();
     let Some(mut file) = get_session_dir(app, session_id)
         .ok()
         .and_then(|dir| File::open(dir.join(format!("{run_id}.jsonl"))).ok())
@@ -2795,12 +2827,10 @@ fn jsonl_claude_outcome(
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) {
             super::claude::merge_limit_hit(&mut limit_hit, &msg);
-            if let Some(error) = super::claude::run_error_from_line(&msg) {
-                run_error = Some(error);
-            }
+            errors.observe(&msg);
         }
     }
-    (limit_hit, run_error)
+    (limit_hit, errors.run_error)
 }
 
 /// Check if a run's JSONL file contains a "type":"result" line,

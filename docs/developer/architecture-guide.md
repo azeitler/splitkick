@@ -647,6 +647,16 @@ has no stored error.
 
 - `api_error`: Claude `result` with `is_error: true` that is not a 429
   (`run_error_from_line` in `claude.rs`), or non-JSON CLI error output.
+- `auth_failed`: the same, after a synthetic `error: "authentication_failed"`
+  message (the text can be "Invalid API key", which does not say "log in").
+- Claude reports an API error as a synthetic assistant message
+  (`model: "<synthetic>"`, top-level `error`), then an error `result` if it
+  gives up. `ClaudeRunErrorState` (live stream, `parse_run_to_message`,
+  `jsonl_claude_outcome`) holds that text back: released into the reply when
+  the run goes on (transient, e.g. "Connection lost mid-response"), dropped
+  when the run ends with the error, so it is not stored as a reply (#112).
+  `rate_limit` is not held: the limit text stays next to the limit banner.
+  A run left with no reply renders no assistant message.
 - `aborted`: the backend refused the send and the run was undone
   (`error_emitted`, today Codex; `CodexResponse.error_message` keeps the text).
   `set_run_error` copies the user message into `retry_message`.
@@ -658,7 +668,8 @@ has no stored error.
 - UI: `SessionCardData.runError` → red `RunErrorGlyph`
   (`src/components/chat/run-error.tsx`); `RunErrorBanner` in `ChatWindow`
   replaces the in-memory `ErrorBanner` once the error is persisted. Login
-  errors (`isCliAuthError`) get **Log in** (`openBackendLoginModal`); aborted
+  errors (`auth_failed` or `isCliAuthError`) get **Log in**
+  (`openBackendLoginModal`, for the session's Claude account); aborted
   sends get **Retry** (sends `retry_message`) and **Edit message**.
 
 ## Antigravity CLI backend

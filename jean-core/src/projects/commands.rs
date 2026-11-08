@@ -7868,7 +7868,9 @@ fn truncate_error_context(value: &str) -> String {
     }
 }
 
-fn format_claude_cli_failure(stderr: &str, stdout: &str) -> String {
+/// Readable error for a failed one-shot Claude CLI call: the error from the
+/// stream-json output (e.g. "Failed to authenticate …"), else stderr/stdout.
+pub(crate) fn format_claude_cli_failure(stderr: &str, stdout: &str) -> String {
     if let Some(error) = extract_claude_stream_error(stdout) {
         return format!("Claude CLI failed: {error}");
     }

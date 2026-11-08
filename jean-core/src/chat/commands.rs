@@ -3973,14 +3973,18 @@ pub async fn send_chat_message(
                         Ok((pid, response)) => {
                             log::trace!("execute_claude_detached succeeded (PID: {pid})");
 
-                            if should_clear_stale_resumed_claude_session(
-                                claude_session_id_for_call.is_some(),
-                                !response.content.is_empty(),
-                                !response.tool_calls.is_empty(),
-                                !response.content_blocks.is_empty(),
-                                response.usage.is_some(),
-                                response.cancelled,
-                            ) {
+                            // An API error (e.g. failed login, #112) leaves no
+                            // reply, but the session is not stale.
+                            if response.run_error.is_none()
+                                && should_clear_stale_resumed_claude_session(
+                                    claude_session_id_for_call.is_some(),
+                                    !response.content.is_empty(),
+                                    !response.tool_calls.is_empty(),
+                                    !response.content_blocks.is_empty(),
+                                    response.usage.is_some(),
+                                    response.cancelled,
+                                )
+                            {
                                 log::warn!(
                                     "Empty response while resuming session {}, clearing stale session ID",
                                     claude_session_id_for_call.as_deref().unwrap_or("")
@@ -8640,12 +8644,13 @@ fn execute_summarization_claude(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
+        log::warn!(
             "Claude CLI failed (exit code {:?}): stderr={}, stdout={}",
             output.status.code(),
             stderr.trim(),
             stdout.trim()
-        ));
+        );
+        return Err(crate::projects::format_claude_cli_failure(&stderr, &stdout));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

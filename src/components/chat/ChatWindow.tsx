@@ -2910,9 +2910,10 @@ export function ChatWindow({
     },
     [activeSessionId, sendTextMessage]
   )
+  const sessionClaudeAccountId = session?.claude_account_id
   const handleRunErrorLogin = useCallback(() => {
-    void openBackendLoginModal(resolvedBackend)
-  }, [resolvedBackend])
+    void openBackendLoginModal(resolvedBackend, sessionClaudeAccountId)
+  }, [resolvedBackend, sessionClaudeAccountId])
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
