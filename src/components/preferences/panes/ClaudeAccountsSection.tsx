@@ -138,6 +138,43 @@ export function ClaudeAccountsSection() {
         </>
       }
     >
+      <ol
+        className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground"
+        data-testid="claude-accounts-setup"
+      >
+        <li>
+          Enter a label and a new folder below, for example{' '}
+          <code>~/.claude-work</code>, and click Add account. Splitkick makes
+          the folder if it does not exist.
+        </li>
+        <li>
+          Click Login on the new row and sign in with the other Claude account.
+          The login is kept in that folder, so each account stays logged in.
+          {isWindows ? (
+            <>
+              {' '}
+              On Windows, log in from a terminal with{' '}
+              <code>CLAUDE_CONFIG_DIR</code> set to the folder, then run{' '}
+              <code>claude</code>.
+            </>
+          ) : null}
+        </li>
+        <li>
+          Click Make active. New sessions use this account; open sessions keep
+          their account.
+        </li>
+        <li>
+          A new folder starts empty. MCP servers, plugins, skills,{' '}
+          <code>CLAUDE.md</code> and settings from <code>~/.claude</code> are
+          not copied. Add them again, or copy or link the files you want to
+          share.
+        </li>
+        <li>
+          A <code>claude</code> you start in a terminal still uses{' '}
+          <code>~/.claude</code>, unless you set <code>CLAUDE_CONFIG_DIR</code>{' '}
+          there too.
+        </li>
+      </ol>
       <div className="space-y-2" data-testid="claude-accounts">
         {accounts.map(account => (
           <ClaudeAccountRow
