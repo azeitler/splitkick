@@ -24,6 +24,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the last result (time ago, outcome and a link to the session it ran in).
   Pause, resume, edit, run now and delete each one there (#38).
 
+- **Settings explain how to set up more Claude accounts.** Settings → Claude
+  → Accounts lists the steps: add a folder, log in on its row, make it
+  active. It also says that a new folder starts without your MCP servers,
+  plugins, skills and `CLAUDE.md`, and that a `claude` in a terminal still
+  uses `~/.claude`. (#90)
+
 ### Fixed
 
 - **A failed update check names the cause.** "Could not fetch a valid release

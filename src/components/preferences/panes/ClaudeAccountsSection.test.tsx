@@ -61,7 +61,20 @@ describe('ClaudeAccountsSection', () => {
     expect(account).toHaveTextContent('/u/.claude-work')
     expect(account).toHaveTextContent('Not logged in')
     expect(account).toHaveTextContent('Make active')
-    expect(screen.getByText(/MCP servers, plugins, skills/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/MCP servers, plugins, skills and settings are separate/)
+    ).toBeInTheDocument()
+  })
+
+  it('explains how to set up another account', () => {
+    render(<ClaudeAccountsSection />)
+
+    const steps = screen.getByTestId('claude-accounts-setup')
+    expect(steps.querySelectorAll('li')).toHaveLength(5)
+    expect(steps).toHaveTextContent('click Add account')
+    expect(steps).toHaveTextContent('Click Login on the new row')
+    expect(steps).toHaveTextContent('Click Make active')
+    expect(steps).toHaveTextContent('A new folder starts empty')
   })
 
   it('labels the root install', async () => {
