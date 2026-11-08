@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Scheduling into a session that never sent a message works.** Send later
+  and Repeat failed with "Session not found" in a new session, and a Repeat
+  into a new session per run could not queue its prompt. The schedule now
+  finds the session in its worktree and creates its data on the first run
+  (#38).
+
 ## [1.5.5] - 2026-11-08
 
 Built on Jean 0.1.73.

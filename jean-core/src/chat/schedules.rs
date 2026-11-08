@@ -367,6 +367,49 @@ fn first_fire_time(
     }
 }
 
+/// Where a session lives, for scheduling into it.
+struct SessionRef {
+    worktree_id: String,
+    name: String,
+    order: u32,
+    archived_at: Option<u64>,
+}
+
+/// Look up a session: from its metadata, or, for a session that never sent a
+/// message (its metadata file does not exist yet), from the worktree indexes.
+fn find_session(app: &AppHandle, session_id: &str) -> Result<SessionRef, String> {
+    if let Some(m) = storage::load_metadata(app, session_id)? {
+        return Ok(SessionRef {
+            worktree_id: m.worktree_id,
+            name: m.name,
+            order: m.order,
+            archived_at: m.archived_at,
+        });
+    }
+    let dir = storage::get_index_dir(app)?;
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(worktree_id) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Ok(index) = storage::load_index(app, worktree_id) else {
+            continue;
+        };
+        if let Some(found) = index.sessions.iter().find(|s| s.id == session_id) {
+            return Ok(SessionRef {
+                worktree_id: worktree_id.to_string(),
+                name: found.name.clone(),
+                order: found.order,
+                archived_at: found.archived_at,
+            });
+        }
+    }
+    Err(format!("Session not found: {session_id}"))
+}
+
 /// Schedule a user prompt into a session: once at `fire_at_unix`, or
 /// repeating by `recurrence` (then the first time is the next match).
 pub fn create(
@@ -382,12 +425,11 @@ pub fn create(
     }
     let now = now_unix();
     let fire_at_unix = first_fire_time(fire_at_unix, recurrence.as_ref(), now)?;
-    let metadata = storage::load_metadata(app, session_id)?
-        .ok_or_else(|| format!("Session not found: {session_id}"))?;
+    let session = find_session(app, session_id)?;
     let mut schedule = Schedule::new(
         ScheduleOrigin::User,
         session_id,
-        &metadata.worktree_id,
+        &session.worktree_id,
         prompt.to_string(),
         fire_at_unix,
         now,
@@ -801,20 +843,29 @@ fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result
 }
 
 /// Append the schedule's prompt to the session's message queue.
+/// A session that never sent a message gets its metadata here, as
+/// `send_chat_message` would create it.
 fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec<Value>, String> {
-    let metadata = storage::load_metadata(app, session_id)?
-        .ok_or_else(|| "The session no longer exists".to_string())?;
+    let session =
+        find_session(app, session_id).map_err(|_| "The session no longer exists".to_string())?;
     super::ensure_session_can_run(
         session_id,
-        metadata.archived_at,
-        &schedule.worktree_id,
-        super::worktree_archived_at(app, &schedule.worktree_id),
+        session.archived_at,
+        &session.worktree_id,
+        super::worktree_archived_at(app, &session.worktree_id),
     )?;
-    storage::with_existing_metadata_mut(app, session_id, |m| {
-        let message = queued_message(m, schedule, now_unix());
-        m.queued_messages.push(message);
-        m.queued_messages.clone()
-    })
+    storage::with_metadata_mut(
+        app,
+        session_id,
+        &session.worktree_id,
+        &session.name,
+        session.order,
+        |m| {
+            let message = queued_message(m, schedule, now_unix());
+            m.queued_messages.push(message);
+            Ok(m.queued_messages.clone())
+        },
+    )
 }
 
 /// Build a queued message (frontend `QueuedMessage` shape) for a fired
@@ -1475,5 +1526,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(edited.recurrence, Some(weekly));
+    }
+
+    // A session that never sent a message exists only in its worktree
+    // index; scheduling into it must work and the fire creates its metadata.
+    #[test]
+    fn a_never_sent_session_can_be_scheduled_and_fired() {
+        let (_temp, app) = app();
+        let index = storage::load_index(&app, "fresh-wt").unwrap();
+        let session_id = index.sessions[0].id.clone();
+        assert!(storage::load_metadata(&app, &session_id).unwrap().is_none());
+
+        let schedule =
+            create_simple(&app, &session_id, "first prompt", Some(4_000_000_000), None).unwrap();
+        assert_eq!(schedule.worktree_id, "fresh-wt");
+
+        let queue = enqueue(&app, &schedule, &session_id).unwrap();
+        assert_eq!(queue[0]["message"], "first prompt");
+        let metadata = storage::load_metadata(&app, &session_id).unwrap().unwrap();
+        assert_eq!(metadata.worktree_id, "fresh-wt");
+        assert_eq!(metadata.name, "Session 1");
     }
 }
