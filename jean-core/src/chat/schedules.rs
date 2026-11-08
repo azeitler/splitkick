@@ -857,7 +857,7 @@ pub fn next_wakeup_for_session(session_id: &str) -> Option<ScheduledWakeup> {
         .lock()
         .unwrap()
         .iter()
-        .filter(|s| s.session_id == session_id)
+        .filter(|s| s.enabled && s.session_id == session_id)
         .min_by_key(|s| s.fire_at_unix)
         .map(Schedule::to_wakeup)
 }
@@ -955,6 +955,14 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
                 }
                 Err(e) => log::warn!("schedules: dropping schedule {}: {e}", schedule.id),
             }
+        } else if !run {
+            // A skipped one-off stays, paused, so the user sees it did not run.
+            let mut skipped = schedule.clone();
+            skipped.enabled = false;
+            skipped.last_run_unix = Some(now);
+            skipped.last_outcome = Some(RunOutcome::Skipped);
+            skipped.last_error = None;
+            kept.push(skipped);
         }
         schedule.last_run_unix = Some(now);
         due.push((schedule, run));
@@ -1074,8 +1082,10 @@ fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result
 /// A session that never sent a message gets its metadata here, as
 /// `send_chat_message` would create it.
 fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec<Value>, String> {
-    let session =
-        find_session(app, session_id).map_err(|_| "The session no longer exists".to_string())?;
+    let session = find_session(app, session_id)
+        .ok()
+        .filter(|s| !deleted_from_index(app, &s.worktree_id, session_id))
+        .ok_or_else(|| "The session no longer exists".to_string())?;
     super::ensure_session_can_run(
         session_id,
         session.archived_at,
@@ -1094,6 +1104,15 @@ fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec
             Ok(m.queued_messages.clone())
         },
     )
+}
+
+/// The worktree's session index lists every session, archived ones too.
+/// A session missing from an existing index was deleted (archiving a
+/// session that never sent deletes it), even when its metadata is left.
+fn deleted_from_index(app: &AppHandle, worktree_id: &str, session_id: &str) -> bool {
+    storage::get_index_path(app, worktree_id).is_ok_and(|path| path.exists())
+        && storage::load_index(app, worktree_id)
+            .is_ok_and(|index| !index.sessions.iter().any(|s| s.id == session_id))
 }
 
 /// Build a queued message (frontend `QueuedMessage` shape) for a fired
@@ -1555,6 +1574,25 @@ mod tests {
     }
 
     #[test]
+    fn a_skipped_one_off_stays_paused() {
+        let now = unix("2026-10-26T12:00:00Z");
+        let mut one_off = repeating("once", unix("2026-10-26T09:00:00Z"));
+        one_off.recurrence = None;
+
+        let mut list = vec![one_off.clone()];
+        let due = take_due(&mut list, now, true);
+        assert!(!due[0].1);
+        assert_eq!(list.len(), 1);
+        assert!(!list[0].enabled);
+        assert_eq!(list[0].last_outcome, Some(RunOutcome::Skipped));
+        assert_eq!(list[0].last_run_unix, Some(now));
+
+        let mut list = vec![one_off];
+        take_due(&mut list, now, false);
+        assert!(list.is_empty());
+    }
+
+    #[test]
     fn a_schedule_caught_by_the_poll_is_not_missed() {
         let mut list = vec![repeating("daily", 1_000)];
         let due = take_due(&mut list, 1_000 + 30, true);
@@ -1864,5 +1902,35 @@ mod tests {
         let metadata = storage::load_metadata(&app, &session_id).unwrap().unwrap();
         assert_eq!(metadata.worktree_id, "fresh-wt");
         assert_eq!(metadata.name, "Session 1");
+    }
+
+    #[test]
+    fn a_deleted_session_is_not_brought_back() {
+        // Archiving a session that never sent deletes it from the index, but
+        // its metadata stays on disk.
+        let (_temp, app) = app();
+        session(&app, "deleted-1");
+        let schedule =
+            create_simple(&app, "deleted-1", "later", Some(4_000_000_000), None).unwrap();
+        storage::load_index(&app, "w1").unwrap();
+
+        assert_eq!(
+            enqueue(&app, &schedule, "deleted-1").unwrap_err(),
+            "The session no longer exists"
+        );
+        let metadata = storage::load_metadata(&app, "deleted-1").unwrap().unwrap();
+        assert!(metadata.queued_messages.is_empty());
+    }
+
+    #[test]
+    fn a_paused_schedule_does_not_mark_the_session_scheduled() {
+        let (_temp, app) = app();
+        session(&app, "paused-mark-1");
+        let schedule =
+            create_simple(&app, "paused-mark-1", "later", Some(4_000_000_000), None).unwrap();
+        assert!(next_wakeup_for_session("paused-mark-1").is_some());
+
+        set_enabled(&app, &schedule.id, false).unwrap();
+        assert!(next_wakeup_for_session("paused-mark-1").is_none());
     }
 }

@@ -97,7 +97,32 @@ describe('scheduleHeadline', () => {
       now
     )
     expect(text).toMatch(/^Repeats weekdays at 09:00 · next in 1h \(/)
-    expect(text).toMatch(/· last 2d ago \(skipped\)$/)
+    expect(text).toMatch(/· last 2d ago \([A-Z][a-z]+ \d+[a-z]{2} 26, \d\d:\d\d\) · skipped$/)
+  })
+
+  it('shows a paused schedule as paused, not with a next time', () => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const repeat = scheduleHeadline(
+      {
+        ...base,
+        enabled: false,
+        fire_at_unix: now / 1000 + 3600,
+        recurrence: { cron: '0 7 * * *', tz },
+      },
+      now
+    )
+    expect(repeat).toBe('Repeats daily at 07:00 · paused')
+    const once = scheduleHeadline(
+      {
+        ...base,
+        enabled: false,
+        fire_at_unix: now / 1000 - 60,
+        last_run_unix: now / 1000 - 60,
+        last_outcome: 'failed',
+      },
+      now
+    )
+    expect(once).toMatch(/^Scheduled · paused · last 1m ago \(\d\d:\d\d\) · failed$/)
   })
 
   it('says when each run goes to a new session', () => {
