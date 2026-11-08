@@ -20,16 +20,24 @@ interface ScheduledBannerProps {
   sessionId: string | null
 }
 
-/** "Scheduled · in 2h (…)" or "Repeats daily at 09:00 · next in 2h (…)". */
+/**
+ * "Scheduled · in 2h (…)" or "Repeats daily at 09:00 · next in 2h (…)",
+ * "paused" instead of the next time, then the last run as
+ * "last 3h ago (…) · skipped".
+ */
 export function scheduleHeadline(schedule: Schedule, now = Date.now()): string {
-  const when = `${formatTimeUntil(schedule.fire_at_unix, now)} (${formatMessageTimestamp(schedule.fire_at_unix, now)})`
+  const paused = schedule.enabled === false
+  const when = paused
+    ? 'paused'
+    : `${formatTimeUntil(schedule.fire_at_unix, now)} (${formatMessageTimestamp(schedule.fire_at_unix, now)})`
   const where = schedule.target === 'new_session' ? ' · in a new session' : ''
-  if (!schedule.recurrence) return `Scheduled · ${when}${where}`
-  let text = `Repeats ${describeRecurrence(schedule.recurrence)}${where} · next ${when}`
+  let text = schedule.recurrence
+    ? `Repeats ${describeRecurrence(schedule.recurrence)}${where} · ${paused ? '' : 'next '}${when}`
+    : `Scheduled · ${when}${where}`
   if (schedule.last_run_unix) {
-    text += ` · last ${formatRelativeTime(schedule.last_run_unix, now)}`
+    text += ` · last ${formatRelativeTime(schedule.last_run_unix, now)} (${formatMessageTimestamp(schedule.last_run_unix, now)})`
     if (schedule.last_outcome && schedule.last_outcome !== 'queued')
-      text += ` (${schedule.last_outcome})`
+      text += ` · ${schedule.last_outcome}`
   }
   return text
 }

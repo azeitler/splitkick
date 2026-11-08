@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A schedule into a deleted session pauses.** Archiving a session that
+  never sent a message deletes it. A schedule into that session now pauses
+  with "The session no longer exists" instead of vanishing (one-off) or
+  failing at every run (repeat) (#115).
+- **Paused schedules look paused.** The chat banner shows "paused" instead
+  of the next run, and a session whose schedules are all paused is no longer
+  marked Scheduled. The banner's last run has its full date, as in the
+  Scheduled view (#116).
+- **A skipped one-off stays visible.** With Missed runs set to Skip, a
+  missed _Send later_ stays in the Scheduled view, paused, with the last
+  result "skipped" (#117).
+
 ## [1.5.5] - 2026-11-08
 
 Built on Jean 0.1.73.
