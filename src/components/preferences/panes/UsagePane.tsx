@@ -1,13 +1,18 @@
 import React, { useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  claudeCliQueryKeys,
   useClaudeAccountsUsage,
   useClaudeCliAuth,
   useClaudeCliStatus,
 } from '@/services/claude-cli'
-import { usePreferences } from '@/services/preferences'
-import { listClaudeAccounts } from '@/lib/claude-accounts'
+import { usePatchPreferences, usePreferences } from '@/services/preferences'
+import {
+  listClaudeAccounts,
+  type ClaudeAccountView,
+} from '@/lib/claude-accounts'
 import type { ClaudeUsageSnapshot } from '@/types/claude-cli'
 import {
   useCodexCliAuth,
@@ -251,6 +256,24 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
   const { data: preferences } = usePreferences()
   const claudeAccounts = listClaudeAccounts(preferences)
   const claudeMultiAccount = claudeAccounts.length > 1
+  const patchPreferences = usePatchPreferences()
+  const queryClient = useQueryClient()
+  // Same write as Settings → Claude → Accounts → Make active. New Claude runs
+  // use the active account; open sessions keep theirs.
+  const activateClaudeAccount = useCallback(
+    (account: ClaudeAccountView) => {
+      patchPreferences.mutate(
+        { claude_active_account: account.isRoot ? null : account.id },
+        {
+          onSuccess: () => {
+            // The active account decides what "Claude is logged in" means.
+            queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.all })
+          },
+        }
+      )
+    },
+    [patchPreferences, queryClient]
+  )
   const claudeUsages = useClaudeAccountsUsage(
     claudeAccounts.map(account => account.id),
     {
@@ -414,7 +437,17 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
                   <span className="rounded bg-muted px-1 text-xs font-normal text-muted-foreground">
                     active
                   </span>
-                ) : null}
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto h-6 px-2 text-xs font-normal"
+                    disabled={patchPreferences.isPending}
+                    onClick={() => activateClaudeAccount(account)}
+                  >
+                    Make active
+                  </Button>
+                )}
               </div>
               {query ? renderClaudeUsage(query) : null}
             </div>
