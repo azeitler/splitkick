@@ -1748,7 +1748,7 @@ pub fn tail_claude_output(
     let mut startup_failed = false; // True when Claude produced no output before the startup timeout / died starting up
     let mut usage: Option<UsageData> = None;
     let mut limit_hit: Option<LimitHit> = None;
-    let mut run_error: Option<RunError> = None;
+    let mut error_state = ClaudeRunErrorState::default();
     let mut error_lines: Vec<String> = Vec::new();
 
     // Track Monitor tool_use_ids that are currently armed along with their
@@ -1869,12 +1869,23 @@ pub fn tail_claude_output(
             }
 
             merge_limit_hit(&mut limit_hit, &msg);
-            if let Some(error) = run_error_from_line(&msg) {
-                run_error = Some(error);
-            }
+            let observed = error_state.observe(&msg);
 
             match msg_type {
                 "assistant" => {
+                    // A synthetic API error is held back until the run goes
+                    // on (transient, released here) or ends with it (#112).
+                    if let Some(text) = observed.release {
+                        full_content.push_str(&text);
+                        content_blocks.push(ContentBlock::Text { text: text.clone() });
+                        if let Some(content) = chunk_coalescer.push(&text) {
+                            emit_chunk_batch(app, session_id, worktree_id, &run_id, content);
+                        }
+                    }
+                    if observed.hold {
+                        continue;
+                    }
+
                     // Route assistant text to a Monitor's event log when this
                     // turn is a per-notification wake-up:
                     //   - at least one Monitor is armed
@@ -2194,7 +2205,7 @@ pub fn tail_claude_output(
                                                 cancelled: false,
                                                 usage: None, // No usage for partial responses
                                                 limit_hit,
-                                                run_error,
+                                                run_error: error_state.run_error,
                                             });
                                         }
                                     }
@@ -2708,6 +2719,16 @@ pub fn tail_claude_output(
         std::thread::sleep(next_poll_interval(had_data, last_output_time.elapsed()));
     }
 
+    // A held synthetic error the run never answered with a result (stream
+    // cut off) stays visible as text.
+    if let Some(text) = error_state.finish() {
+        full_content.push_str(&text);
+        content_blocks.push(ContentBlock::Text { text: text.clone() });
+        if let Some(content) = chunk_coalescer.push(&text) {
+            emit_chunk_batch(app, session_id, worktree_id, &run_id, content);
+        }
+    }
+
     // Flush any text still buffered when the loop exited before the
     // terminal events below (defensive: every break follows a batch flush).
     flush_pending_chunks(app, session_id, worktree_id, &run_id, &mut chunk_coalescer);
@@ -2782,7 +2803,7 @@ pub fn tail_claude_output(
     let cli_error = cli_error_message(&full_content, &error_lines);
     if let Some(error) = &cli_error {
         log::warn!("CLI error output for session {session_id}: {error}");
-        run_error = Some(RunError {
+        error_state.run_error = Some(RunError {
             kind: RunErrorKind::ApiError,
             message: error.clone(),
             retry_message: None,
@@ -2829,7 +2850,7 @@ pub fn tail_claude_output(
         cancelled,
         usage,
         limit_hit,
-        run_error,
+        run_error: error_state.run_error,
     })
 }
 
@@ -2895,6 +2916,96 @@ pub fn run_error_from_line(msg: &serde_json::Value) -> Option<RunError> {
         message,
         retry_message: None,
     })
+}
+
+/// Claude's error code on a synthetic API-error message: a top-level
+/// assistant line with `model: "<synthetic>"` and a top-level `error`
+/// (`authentication_failed`, `billing_error`, `invalid_request`,
+/// `server_error`, `unknown`, …). The usage limit (`rate_limit`) is left
+/// out: its text stays in the reply next to the limit banner.
+fn synthetic_api_error(msg: &serde_json::Value) -> Option<&str> {
+    let model = msg
+        .get("message")
+        .and_then(|m| m.get("model"))
+        .and_then(|v| v.as_str());
+    if model != Some("<synthetic>") {
+        return None;
+    }
+    msg.get("error")
+        .and_then(|v| v.as_str())
+        .filter(|code| *code != "rate_limit")
+}
+
+/// What a caller does with one stream-json line (see [`ClaudeRunErrorState`]).
+#[derive(Debug, Default, PartialEq)]
+pub struct Observed {
+    /// The line is a synthetic error message: do not render it yet
+    pub hold: bool,
+    /// Held error text the run went on past: render it before this line
+    pub release: Option<String>,
+}
+
+/// A Claude run's error state, folded line by line (#112).
+///
+/// Claude reports an API error as a synthetic assistant message, then (if
+/// it gives up) an error `result`. The message is held back from the reply:
+/// when the run goes on it was transient and its text is released in place;
+/// when the result reports the error, the run ends with it and the text
+/// shows in the error banner, not as a reply.
+#[derive(Debug, Default)]
+pub struct ClaudeRunErrorState {
+    pub run_error: Option<RunError>,
+    /// Code and text of the held synthetic error message
+    held: Option<(String, String)>,
+}
+
+impl ClaudeRunErrorState {
+    pub fn observe(&mut self, msg: &serde_json::Value) -> Observed {
+        let mut observed = Observed::default();
+        let top_level_assistant = msg.get("type").and_then(|v| v.as_str()) == Some("assistant")
+            && !msg.get("parent_tool_use_id").is_some_and(|v| !v.is_null());
+        if top_level_assistant {
+            observed.release = self.held.take().map(|(_, text)| text);
+            if let Some(code) = synthetic_api_error(msg) {
+                let text = assistant_text(msg);
+                self.held = Some((code.to_string(), text));
+                observed.hold = true;
+            }
+        }
+        if let Some(mut error) = run_error_from_line(msg) {
+            if self.held.as_ref().map(|(code, _)| code.as_str()) == Some("authentication_failed") {
+                error.kind = RunErrorKind::AuthFailed;
+            }
+            self.run_error = Some(error);
+        }
+        observed
+    }
+
+    /// Held text to render at the end: only when the run did not end with
+    /// an error (a stream cut off before its result).
+    pub fn finish(&mut self) -> Option<String> {
+        let held = self.take_held();
+        held.filter(|_| self.run_error.is_none())
+    }
+
+    /// Held text, whatever the outcome.
+    pub fn take_held(&mut self) -> Option<String> {
+        self.held.take().map(|(_, text)| text)
+    }
+}
+
+fn assistant_text(msg: &serde_json::Value) -> String {
+    msg.get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter(|b| b.get("type").and_then(|v| v.as_str()) == Some("text"))
+                .filter_map(|b| b.get("text").and_then(|v| v.as_str()))
+                .collect::<String>()
+        })
+        .unwrap_or_default()
 }
 
 /// Merge a newly seen limit signal into the run's state, keeping a known
@@ -3185,6 +3296,105 @@ mod tests {
             run_error_from_line(&errors_only).map(|e| e.message),
             Some("first\nsecond".to_string())
         );
+    }
+
+    /// Real-shaped stdout of a Claude run whose login failed (#112): the CLI
+    /// writes a synthetic assistant message with a top-level `error`, then
+    /// an error result. Captured from `claude --print --output-format
+    /// stream-json --verbose` (irrelevant usage fields cut).
+    const AUTH_FAILED_LINES: [&str; 2] = [
+        r#"{"type":"assistant","message":{"id":"80a4620e","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0},"content":[{"type":"text","text":"Failed to authenticate. API Error: 401 Invalid authentication credentials"}],"context_management":null},"parent_tool_use_id":null,"session_id":"bd5a982f","uuid":"1028f45f","timestamp":"2026-10-04T15:26:38.319Z","error":"authentication_failed","is_api_error_message":true}"#,
+        r#"{"type":"result","subtype":"success","is_error":true,"api_error_status":401,"duration_ms":143,"num_turns":1,"result":"Failed to authenticate. API Error: 401 Invalid authentication credentials","stop_reason":"stop_sequence","session_id":"bd5a982f","terminal_reason":"api_error","total_cost_usd":0,"uuid":"3e99b54d"}"#,
+    ];
+
+    fn observe_all(lines: &[&str]) -> (ClaudeRunErrorState, Vec<Observed>) {
+        let mut state = ClaudeRunErrorState::default();
+        let observed = lines
+            .iter()
+            .map(|line| state.observe(&serde_json::from_str(line).unwrap()))
+            .collect();
+        (state, observed)
+    }
+
+    #[test]
+    fn auth_failure_ends_the_run_with_an_auth_error_and_no_reply() {
+        let (mut state, observed) = observe_all(&AUTH_FAILED_LINES);
+        assert!(observed[0].hold, "the synthetic error text is held back");
+        assert_eq!(observed[0].release, None);
+        assert_eq!(
+            state.run_error,
+            Some(RunError {
+                kind: RunErrorKind::AuthFailed,
+                message:
+                    "Failed to authenticate. API Error: 401 Invalid authentication credentials"
+                        .to_string(),
+                retry_message: None,
+            })
+        );
+        assert_eq!(state.finish(), None, "the error text never becomes a reply");
+    }
+
+    #[test]
+    fn auth_failure_is_not_stored_as_a_reply_in_history() {
+        let lines: Vec<String> = AUTH_FAILED_LINES.iter().map(|l| l.to_string()).collect();
+        let mut run = claude_run();
+        run.run_error = observe_all(&AUTH_FAILED_LINES).0.run_error;
+        assert_eq!(
+            run.run_error.as_ref().map(|e| &e.kind),
+            Some(&RunErrorKind::AuthFailed)
+        );
+        let message = super::super::run_log::parse_run_to_message(&lines, &run).unwrap();
+        assert_eq!(message.content, "");
+        assert!(message.content_blocks.is_empty());
+    }
+
+    #[test]
+    fn transient_synthetic_error_text_stays_when_the_run_goes_on() {
+        // "Connection lost mid-response": Claude retries and finishes.
+        let lines = [
+            r#"{"type":"assistant","message":{"model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"API Error: Connection lost mid-response."}]},"parent_tool_use_id":null,"error":"server_error","is_api_error_message":true}"#,
+            r#"{"type":"assistant","message":{"model":"claude-opus-5","role":"assistant","content":[{"type":"text","text":"Done."}]},"parent_tool_use_id":null}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"Done."}"#,
+        ];
+        let (state, observed) = observe_all(&lines);
+        assert!(observed[0].hold);
+        assert_eq!(
+            observed[1].release.as_deref(),
+            Some("API Error: Connection lost mid-response.")
+        );
+        assert_eq!(state.run_error, None);
+
+        let owned: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        let message = super::super::run_log::parse_run_to_message(&owned, &claude_run()).unwrap();
+        assert_eq!(
+            message.content,
+            "API Error: Connection lost mid-response.Done."
+        );
+    }
+
+    #[test]
+    fn other_synthetic_errors_end_as_api_errors() {
+        let lines = [
+            r#"{"type":"assistant","message":{"model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"Credit balance is too low"}]},"parent_tool_use_id":null,"error":"billing_error","is_api_error_message":true}"#,
+            r#"{"type":"result","subtype":"success","is_error":true,"api_error_status":400,"result":"Credit balance is too low"}"#,
+        ];
+        let (state, _) = observe_all(&lines);
+        assert_eq!(
+            state.run_error.map(|e| e.kind),
+            Some(RunErrorKind::ApiError)
+        );
+    }
+
+    #[test]
+    fn usage_limit_text_is_not_held_back() {
+        let limit = serde_json::json!({
+            "type": "assistant",
+            "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "You've hit your session limit"}]},
+            "parent_tool_use_id": null,
+            "error": "rate_limit"
+        });
+        let mut state = ClaudeRunErrorState::default();
+        assert_eq!(state.observe(&limit), Observed::default());
     }
 
     #[test]

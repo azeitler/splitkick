@@ -1719,6 +1719,9 @@ pub struct RunEntry {
 pub enum RunErrorKind {
     /// The backend answered with an error (e.g. Claude "API Error: 500")
     ApiError,
+    /// The backend login failed or expired (Claude `authentication_failed`);
+    /// the user must log in again
+    AuthFailed,
     /// The backend refused the send before it ran; the message was undone
     Aborted,
     /// The run's process died or the run thread failed

@@ -31,7 +31,14 @@ describe('run error titles', () => {
         kind: 'api_error',
         message: 'Failed to authenticate: OAuth session expired',
       })
-    ).toBe('Login expired')
+    ).toBe('Not logged in')
+    // Claude's 401 text does not say "log in"; the kind does (#112).
+    expect(
+      getRunErrorTitle({
+        kind: 'auth_failed',
+        message: 'Invalid API key · Fix external API key',
+      })
+    ).toBe('Not logged in')
   })
 
   it('shortens long messages for the tooltip', () => {
@@ -68,6 +75,18 @@ describe('RunErrorBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log in' }))
     expect(h.onLogin).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+  })
+
+  it('offers Log in for a Claude authentication failure', () => {
+    const h = renderBanner({
+      kind: 'auth_failed',
+      message: 'Invalid API key · Fix external API key',
+    })
+    expect(
+      screen.getByText('Invalid API key · Fix external API key')
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(h.onLogin).toHaveBeenCalledTimes(1)
   })
 
   it('retries an aborted send with the original message', () => {

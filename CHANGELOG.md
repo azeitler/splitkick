@@ -16,6 +16,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   `darwin-x86_64`, or the network, TLS or proxy error. The Check for Updates
   toast and the host-requested update show it; the background check writes it
   only to the log (#113).
+- **A Claude login failure is an error, not a reply.** "Failed to
+  authenticate …" and the other synthetic Claude API errors that end a run
+  are no longer stored as the assistant's answer. The run ends in the error
+  state with Claude's text, titled "Not logged in" for an
+  `authentication_failed` (also when the text does not say so, e.g. "Invalid
+  API key"), and Log in opens the login for the session's Claude account. A
+  transient error the run recovers from (e.g. "Connection lost
+  mid-response") still shows in the reply. Session naming and context
+  summaries show the Claude error instead of the raw CLI output (#112).
 
 ## [1.5.4] - 2026-11-07
 
