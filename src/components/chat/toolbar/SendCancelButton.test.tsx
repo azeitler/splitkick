@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@/test/test-utils'
+import { fireEvent, render, screen } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { SendCancelButton } from './SendCancelButton'
 
@@ -129,6 +129,101 @@ describe('SendCancelButton', () => {
     expect(
       cancel.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+})
+
+describe('SendCancelButton while a turn runs (#114)', () => {
+  it('gives Queue the primary style, not Cancel', () => {
+    render(
+      <SendCancelButton
+        isSending
+        canSend
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    const queue = screen.getByRole('button', { name: /^queue$/i })
+    const cancel = screen.getByRole('button', { name: /cancel/i })
+    expect(queue).toHaveClass('bg-primary', 'text-primary-foreground')
+    expect(cancel).not.toHaveClass('bg-primary')
+    expect(cancel).toHaveClass('text-muted-foreground')
+  })
+
+  it('gives Steer the primary style when it replaces Queue', () => {
+    render(
+      <SendCancelButton
+        isSending
+        canSend
+        willSteer
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /^steer$/i })).toHaveClass(
+      'bg-primary'
+    )
+    expect(screen.getByRole('button', { name: /cancel/i })).not.toHaveClass(
+      'bg-primary'
+    )
+  })
+
+  it('keeps Cancel secondary when it is the only action', () => {
+    render(
+      <SendCancelButton
+        isSending
+        canSend={false}
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /cancel/i })).not.toHaveClass(
+      'bg-primary'
+    )
+  })
+})
+
+describe('SendCancelButton keeps the composer focused (#114)', () => {
+  // A tap on a composer action must not take focus from the textarea: on iOS
+  // that closes the soft keyboard and the shell jumps down under the finger.
+  it.each([
+    ['Send', { isSending: false, canSend: true }, /^send$/i],
+    ['Queue', { isSending: true, canSend: true }, /^queue$/i],
+    ['Cancel', { isSending: true, canSend: false }, /cancel/i],
+  ])('prevents the focus change on mousedown of %s', (_, props, name) => {
+    render(
+      <SendCancelButton {...props} queuedMessageCount={0} onCancel={vi.fn()} />
+    )
+
+    const button = screen.getByRole('button', { name })
+    // fireEvent returns false when a handler called preventDefault().
+    expect(fireEvent.mouseDown(button)).toBe(false)
+  })
+
+  it('still sends on click with the textarea focused', () => {
+    const onSubmit = vi.fn((e: Event) => e.preventDefault())
+    render(
+      <form onSubmit={e => onSubmit(e.nativeEvent)}>
+        <textarea aria-label="prompt" />
+        <SendCancelButton
+          isSending={false}
+          canSend
+          queuedMessageCount={0}
+          onCancel={vi.fn()}
+        />
+      </form>
+    )
+
+    const textarea = screen.getByLabelText('prompt')
+    textarea.focus()
+    const send = screen.getByRole('button', { name: /^send$/i })
+    fireEvent.mouseDown(send)
+    fireEvent.click(send)
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(textarea)
   })
 })
 
