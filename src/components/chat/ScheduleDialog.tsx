@@ -65,6 +65,8 @@ interface ScheduleDialogProps {
   yolo?: boolean
   /** "Schedule" for a new one, "Save" when editing */
   submitLabel?: string
+  /** Defaults to "Send later" / "Repeat" */
+  title?: string
   onSubmit: (values: ScheduleFormValues) => Promise<void>
 }
 
@@ -122,6 +124,7 @@ export function ScheduleDialog({
   initial,
   yolo = false,
   submitLabel = 'Schedule',
+  title,
   onSubmit,
 }: ScheduleDialogProps) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -225,7 +228,7 @@ export function ScheduleDialog({
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <DialogHeader>
               <DialogTitle>
-                {kind === 'once' ? 'Send later' : 'Repeat'}
+                {title ?? (kind === 'once' ? 'Send later' : 'Repeat')}
               </DialogTitle>
               <DialogDescription>
                 {kind === 'once'

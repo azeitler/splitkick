@@ -18,6 +18,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   be changed. A schedule in Yolo mode asks for a confirm first, because it
   runs with nobody watching. A schedule whose session or worktree is gone
   pauses and keeps the reason (#38).
+- **Scheduled view.** The Scheduled row above Archived in the sidebar opens
+  a list of every schedule in every project, yours and the agents': name,
+  where it runs, the rule, the next run (in 2h, full date in brackets) and
+  the last result (time ago, outcome and a link to the session it ran in).
+  Pause, resume, edit, run now and delete each one there (#38).
 
 ### Fixed
 

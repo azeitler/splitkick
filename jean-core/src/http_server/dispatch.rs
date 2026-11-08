@@ -3715,6 +3715,26 @@ pub async fn dispatch_command(
             let schedule_id: String = field(&args, "scheduleId", "schedule_id")?;
             to_value(crate::chat::delete_schedule(app.clone(), schedule_id).await?)
         }
+        "update_schedule" => {
+            let schedule_id: String = field(&args, "scheduleId", "schedule_id")?;
+            let changes = crate::chat::schedules::ScheduleEdit {
+                prompt: from_field(&args, "prompt")?,
+                name: from_field_opt(&args, "name")?.unwrap_or_default(),
+                target: from_field_opt(&args, "target")?.unwrap_or_default(),
+                fire_at_unix: field_opt(&args, "fireAtUnix", "fire_at_unix")?,
+                recurrence: from_field_opt(&args, "recurrence")?,
+            };
+            to_value(crate::chat::update_schedule(app.clone(), schedule_id, changes).await?)
+        }
+        "set_schedule_enabled" => {
+            let schedule_id: String = field(&args, "scheduleId", "schedule_id")?;
+            let enabled: bool = from_field(&args, "enabled")?;
+            to_value(crate::chat::set_schedule_enabled(app.clone(), schedule_id, enabled).await?)
+        }
+        "run_schedule_now" => {
+            let schedule_id: String = field(&args, "scheduleId", "schedule_id")?;
+            to_value(crate::chat::run_schedule_now(app.clone(), schedule_id).await?)
+        }
 
         // =====================================================================
         // Chat (additional)
