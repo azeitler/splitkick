@@ -37,6 +37,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   transient error the run recovers from (e.g. "Connection lost
   mid-response") still shows in the reply. Session naming and context
   summaries show the Claude error instead of the raw CLI output (#112).
+- **iOS web access: Send works with the keyboard open, the header is sharp,
+  Queue is the main button.** A tap on Send, Queue or Cancel no longer takes
+  focus from the prompt, so the keyboard stays open and the composer does not
+  jump down under the finger, which made iOS drop the tap. A solid bar under
+  the status bar stops iOS 26 from blurring the top of the session header.
+  While a turn runs, Queue (or Steer) has the primary style and Cancel is
+  secondary, on desktop too: it is what Enter does (#114).
 
 ## [1.5.4] - 2026-11-07
 

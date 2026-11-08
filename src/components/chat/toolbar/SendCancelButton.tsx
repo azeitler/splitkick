@@ -16,6 +16,16 @@ import {
 } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 
+/**
+ * Keep focus in the composer textarea when a composer action is pressed.
+ * Focus moves on mousedown; on iOS that closes the soft keyboard, and the
+ * shell (useVisualViewportShell) grows back by the keyboard height, so the
+ * composer jumps down under the finger. WebKit drops a tap whose target is
+ * no longer under the touch point, so Send sometimes did nothing (#114).
+ * The click still fires; the keyboard stays open, as in Messages.
+ */
+const keepComposerFocus = (e: React.MouseEvent) => e.preventDefault()
+
 interface SendCancelButtonProps {
   isSending: boolean
   canSend: boolean
@@ -48,15 +58,18 @@ export function SendCancelButton({
         <TooltipTrigger asChild>
           <button
             type="button"
+            onMouseDown={keepComposerFocus}
             onClick={onCancel}
             className={cn(
               heightClass,
-              'flex items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
+              // Secondary: while a turn runs, queueing is the normal action
+              // and cancel the exception (#114).
+              'flex items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground'
             )}
           >
             <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
             {!isMobile && (
-              <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+              <Kbd className="ml-0.5 h-4 text-[10px]">
                 {isClientMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
               </Kbd>
             )}
@@ -94,14 +107,18 @@ export function SendCancelButton({
               <button
                 type="submit"
                 aria-label={actionLabel}
+                onMouseDown={keepComposerFocus}
                 className={cn(
                   heightClass,
-                  'rounded-md flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                  // Primary: it is what Enter does while the turn runs.
+                  'rounded-md flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
                 )}
               >
                 <span>{actionLabel}</span>
                 {!isMobile && (
-                  <Kbd className="h-4 text-[10px]">{actionShortcut}</Kbd>
+                  <Kbd className="h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                    {actionShortcut}
+                  </Kbd>
                 )}
               </button>
             </TooltipTrigger>
@@ -123,6 +140,7 @@ export function SendCancelButton({
         <button
           type="submit"
           disabled={!canSend}
+          onMouseDown={keepComposerFocus}
           className={cn(
             heightClass,
             'flex items-center justify-center rounded-md px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',

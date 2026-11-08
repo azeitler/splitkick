@@ -701,6 +701,17 @@ export function MainWindow() {
               className="absolute top-0 left-0 right-0"
             />
           )}
+          {/* iOS 26 lays its scroll-edge blur over the top ~40pt of the page
+              (status bar plus the session header under it) unless a fixed
+              box with a solid background spans the top edge; then it uses
+              that colour instead (WebKit LocalFrameView::fixedContainerEdges).
+              This band under the status bar is that box (#114). Above the
+              zen title bar and dialogs (z-50), which pad out the same strip. */}
+          <div
+            aria-hidden
+            data-testid="status-bar-band"
+            className="fixed inset-x-0 top-0 z-[55] h-[var(--safe-area-top)] bg-background"
+          />
           <DevModeBanner />
           {/* Offset by the title bar — see --titlebar-height in App.css.
               Without a bar, still clear the status bar and the notch. */}
