@@ -437,3 +437,9 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
   (`/Users/...`), use a temp dir instead.
 - A failed Windows job blocks the publish job (`needs: build`), so nothing
   ships and the same version can simply be pushed again after the fix.
+
+## Re-check the commit range before every release push (2026-11-08)
+
+- 1.5.5: I cut the release from HEAD while the #38 session still ran. Before my next push (a test fix), that session committed M6. The push carried M6 into the 1.5.5 build, but the changelog listed it as Unreleased.
+- Rule: right before each push in a release, run `git log --oneline <last pushed>..HEAD` and read every commit. If another session's commit is in the range, either list it in the release section or hold the push.
+- Rule: when CI fails on a GitHub download (504 on Setup Bun, NSIS, etc.), rerun only after github.com answers 2xx/3xx three times in a row. A publish with a failed Windows build ships macOS only, and a rerun cannot publish again (the tag exists): add the Windows files and `latest.json` by hand from the run's `release-*` artifacts with `scripts/updater-manifest.mjs`.
