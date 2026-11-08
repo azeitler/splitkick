@@ -147,6 +147,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onSetExecutionMode,
   onAttach,
   onCancel,
+  onSchedule,
   willSteer,
   steerWithModifier,
   queuedMessageCount,
@@ -700,6 +701,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               steerWithModifier={steerWithModifier}
               queuedMessageCount={queuedMessageCount}
               onCancel={onCancel}
+              onSchedule={onSchedule}
             />
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@/test/test-utils'
+import userEvent from '@testing-library/user-event'
 import { SendCancelButton } from './SendCancelButton'
 
 const { useIsMobileMock } = vi.hoisted(() => ({
@@ -182,5 +183,40 @@ describe('SendCancelButton touch target', () => {
     )
 
     expect(screen.getByRole('button', { name: /cancel/i })).toHaveClass('h-11')
+  })
+
+  it('offers Send later and Repeat in the Send menu (#38)', async () => {
+    const onSchedule = vi.fn()
+    render(
+      <SendCancelButton
+        isSending={false}
+        canSend
+        onCancel={vi.fn()}
+        onSchedule={onSchedule}
+      />
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /more send options/i })
+    )
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: /send later/i })
+    )
+    expect(onSchedule).toHaveBeenCalledWith('once')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /more send options/i })
+    )
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: /repeat/i })
+    )
+    expect(onSchedule).toHaveBeenCalledWith('repeat')
+  })
+
+  it('has no Send menu without a schedule handler', () => {
+    render(<SendCancelButton isSending={false} canSend onCancel={vi.fn()} />)
+    expect(
+      screen.queryByRole('button', { name: /more send options/i })
+    ).not.toBeInTheDocument()
   })
 })

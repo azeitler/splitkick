@@ -284,6 +284,102 @@ export function useMessageSending({
     ]
   )
 
+  // The composer's message with a snapshot of the toolbar settings, as the
+  // queue stores it. Send and the schedule template (#38) both use it.
+  const buildQueuedMessage = useCallback(
+    (
+      message: string,
+      attachments: Pick<
+        ComposerAttachments,
+        'images' | 'files' | 'skills' | 'textFiles'
+      >
+    ): QueuedMessage => {
+      const selectedBackend = selectedBackendRef.current
+      const usesEffortLevel =
+        useAdaptiveThinkingRef.current ||
+        isCodexBackendRef.current ||
+        selectedBackend === 'pi' ||
+        selectedBackend === 'grok' ||
+        selectedBackend === 'kimi' ||
+        selectedBackend === 'antigravity'
+      return {
+        id: generateId(),
+        message,
+        pendingImages: attachments.images,
+        pendingFiles: attachments.files,
+        pendingSkills: attachments.skills,
+        pendingTextFiles: attachments.textFiles,
+        model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
+        executionMode: executionModeRef.current,
+        thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: usesEffortLevel
+          ? selectedEffortLevelRef.current
+          : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current ?? [],
+          enabledMcpServersRef.current,
+          selectedBackend
+        ),
+        backend: selectedBackend,
+        queuedAt: Date.now(),
+      }
+    },
+    [
+      selectedBackendRef,
+      useAdaptiveThinkingRef,
+      isCodexBackendRef,
+      selectedModelRef,
+      selectedProviderRef,
+      executionModeRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      mcpServersDataRef,
+      enabledMcpServersRef,
+    ]
+  )
+
+  // What a schedule from the composer runs: the typed prompt and the
+  // toolbar settings. Leaves the composer as it is until the schedule saves.
+  const captureScheduleDraft = useCallback((): ScheduleDraft | null => {
+    if (!activeSessionId) return null
+    const {
+      inputDrafts,
+      getPendingImages,
+      getPendingFiles,
+      getPendingSkills,
+      getPendingTextFiles,
+    } = useChatStore.getState()
+    const prompt = (
+      inputRef.current?.value ??
+      inputDrafts[activeSessionId] ??
+      ''
+    ).trim()
+    const attachments = {
+      images: getPendingImages(activeSessionId),
+      files: getPendingFiles(activeSessionId),
+      skills: getPendingSkills(activeSessionId),
+      textFiles: getPendingTextFiles(activeSessionId),
+    }
+    return {
+      sessionId: activeSessionId,
+      prompt,
+      queued: buildQueuedMessage(prompt, attachments),
+    }
+  }, [activeSessionId, inputRef, buildQueuedMessage])
+
+  // Empty the composer after a schedule took its prompt.
+  const clearComposer = useCallback(() => {
+    if (!activeSessionId) return
+    const state = useChatStore.getState()
+    clearInputDraft(activeSessionId)
+    state.clearPendingImages(activeSessionId)
+    state.clearPendingFiles(activeSessionId)
+    state.clearPendingSkills(activeSessionId)
+    state.clearPendingTextFiles(activeSessionId)
+    clearChatInputState()
+  }, [activeSessionId, clearInputDraft, clearChatInputState])
+
   // Form submit handler
   const handleSubmit = useCallback(
     async (e: React.FormEvent, options?: { forceSteer?: boolean }) => {
@@ -524,38 +620,12 @@ export function useMessageSending({
       setQuestionsSkipped(activeSessionId, false)
       setWaitingForInput(activeSessionId, false)
 
-      const mode = executionModeRef.current
-      const thinkingLvl = selectedThinkingLevelRef.current
-      const selectedBackend = selectedBackendRef.current
-      const usesEffortLevel =
-        useAdaptiveThinkingRef.current ||
-        isCodexBackendRef.current ||
-        selectedBackend === 'pi' ||
-        selectedBackend === 'grok' ||
-        selectedBackend === 'kimi' ||
-        selectedBackend === 'antigravity'
-      const queuedMessage: QueuedMessage = {
-        id: generateId(),
-        message,
-        pendingImages: images,
-        pendingFiles: files,
-        pendingSkills: skills,
-        pendingTextFiles: textFiles,
-        model: selectedModelRef.current,
-        provider: selectedProviderRef.current,
-        executionMode: mode,
-        thinkingLevel: thinkingLvl,
-        effortLevel: usesEffortLevel
-          ? selectedEffortLevelRef.current
-          : undefined,
-        mcpConfig: buildMcpConfigJson(
-          mcpServersDataRef.current ?? [],
-          enabledMcpServersRef.current,
-          selectedBackendRef.current
-        ),
-        backend: selectedBackend,
-        queuedAt: Date.now(),
-      }
+      const queuedMessage = buildQueuedMessage(message, {
+        images,
+        files,
+        skills,
+        textFiles,
+      })
 
       markAtBottom()
 
@@ -644,6 +714,7 @@ export function useMessageSending({
       authByBackend,
       authLoading,
       backendsLoading,
+      buildQueuedMessage,
       clearInputDraft,
       clearChatInputState,
       installedBackends,
@@ -694,5 +765,21 @@ export function useMessageSending({
     handleSubmit,
     handleCancel,
     handleGitDiffAddToPrompt,
+    captureScheduleDraft,
+    clearComposer,
   }
+}
+
+interface ComposerAttachments {
+  images: QueuedMessage['pendingImages']
+  files: QueuedMessage['pendingFiles']
+  skills: QueuedMessage['pendingSkills']
+  textFiles: QueuedMessage['pendingTextFiles']
+}
+
+/** The composer's prompt and toolbar snapshot for a new schedule. */
+export interface ScheduleDraft {
+  sessionId: string
+  prompt: string
+  queued: QueuedMessage
 }

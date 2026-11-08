@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { hasBackend } from '@/lib/environment'
-import type { Schedule } from '@/types/chat'
+import type {
+  Schedule,
+  ScheduleRecurrence,
+  ScheduleTarget,
+} from '@/types/chat'
 
 export const schedulesQueryKeys = {
   all: ['schedules'] as const,
@@ -21,4 +25,19 @@ export function useSchedules() {
 
 export function deleteSchedule(scheduleId: string): Promise<boolean> {
   return invoke<boolean>('delete_schedule', { scheduleId })
+}
+
+export interface CreateScheduleArgs {
+  sessionId: string
+  prompt: string
+  /** One-off time in seconds; ignored when `recurrence` is set */
+  fireAtUnix?: number
+  recurrence?: ScheduleRecurrence
+  name?: string
+  target?: ScheduleTarget
+  template?: Record<string, unknown>
+}
+
+export function createSchedule(args: CreateScheduleArgs): Promise<Schedule> {
+  return invoke<Schedule>('create_schedule', { ...args })
 }

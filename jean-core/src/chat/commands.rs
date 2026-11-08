@@ -11151,8 +11151,16 @@ pub async fn create_schedule(
     prompt: String,
     fire_at_unix: Option<u64>,
     recurrence: Option<super::schedules::Recurrence>,
+    options: super::schedules::ScheduleOptions,
 ) -> Result<super::schedules::Schedule, String> {
-    super::schedules::create(&app, &session_id, &prompt, fire_at_unix, recurrence)
+    super::schedules::create(
+        &app,
+        &session_id,
+        &prompt,
+        fire_at_unix,
+        recurrence,
+        options,
+    )
 }
 
 /// Delete one schedule. Returns whether it existed.

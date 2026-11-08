@@ -405,6 +405,13 @@ export interface ScheduledWakeup {
 export interface Schedule {
   id: string
   origin: 'agent' | 'user'
+  /** Shown in the Scheduled view; empty = use the prompt */
+  name?: string
+  /** false = paused (stays in the list, does not fire) */
+  enabled?: boolean
+  /** Where a run goes; absent = 'session' */
+  target?: ScheduleTarget
+  /** The session the schedule was made in */
   session_id: string
   worktree_id: string
   prompt: string
@@ -417,7 +424,19 @@ export interface Schedule {
   /** When a repeating schedule last came due (seconds) */
   last_run_unix?: number
   last_outcome?: 'queued' | 'skipped' | 'failed'
+  /** Why the last run failed */
+  last_error?: string
+  /** The session the last run went into */
+  last_session_id?: string
+  /** Toolbar snapshot from the composer (`QueuedMessage` fields) */
+  template?: Record<string, unknown>
 }
+
+/**
+ * `session`: into the session the schedule was made in. `new_session`: a new
+ * session in the same worktree for every run.
+ */
+export type ScheduleTarget = 'session' | 'new_session'
 
 /** 5-field cron pattern read in an IANA time zone. */
 export interface ScheduleRecurrence {

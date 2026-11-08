@@ -75,6 +75,21 @@ pub fn next_occurrence(recurrence: &Recurrence, after_unix: u64) -> Result<u64, 
     Ok(next.timestamp().max(0) as u64)
 }
 
+/// Where a schedule's prompt goes when it fires.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScheduleTarget {
+    /// Into `session_id`, the session the schedule was made in
+    #[default]
+    Session,
+    /// Into a new session in `worktree_id`, one per run (clean context)
+    NewSession,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ScheduleOrigin {
@@ -89,6 +104,16 @@ pub enum ScheduleOrigin {
 pub struct Schedule {
     pub id: String,
     pub origin: ScheduleOrigin,
+    /// Shown in the Scheduled view; empty = the prompt is the name
+    #[serde(default)]
+    pub name: String,
+    /// `false` = paused: it stays in the list but does not fire
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub target: ScheduleTarget,
+    /// The session the schedule was made in (for `NewSession`: where it
+    /// shows in the chat, not where it runs)
     pub session_id: String,
     pub worktree_id: String,
     pub prompt: String,
@@ -107,9 +132,59 @@ pub struct Schedule {
     pub last_run_unix: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_outcome: Option<RunOutcome>,
+    /// Why the last run failed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    /// The session the last run went into
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_session_id: Option<String>,
+    /// Settings captured from the composer toolbar when the user made the
+    /// schedule: the frontend `QueuedMessage` shape (backend, model,
+    /// provider, effort, mode, MCP config, attachments). `None` = use the
+    /// session's saved settings at fire time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<Value>,
+}
+
+/// Optional parts of a new user schedule.
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleOptions {
+    pub name: Option<String>,
+    pub target: ScheduleTarget,
+    pub template: Option<Value>,
 }
 
 impl Schedule {
+    fn new(
+        origin: ScheduleOrigin,
+        session_id: &str,
+        worktree_id: &str,
+        prompt: String,
+        fire_at_unix: u64,
+        created_at_unix: u64,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            origin,
+            name: String::new(),
+            enabled: true,
+            target: ScheduleTarget::Session,
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            prompt,
+            reason: String::new(),
+            fire_at_unix,
+            created_at_unix,
+            tool_call_id: None,
+            recurrence: None,
+            last_run_unix: None,
+            last_outcome: None,
+            last_error: None,
+            last_session_id: None,
+            template: None,
+        }
+    }
+
     /// The shape the frontend already renders for a pending wakeup.
     pub fn to_wakeup(&self) -> ScheduledWakeup {
         ScheduledWakeup {
@@ -264,23 +339,32 @@ pub fn schedule_from_tool_input(
         .to_string();
 
     let now = now_unix();
-    let schedule = Schedule {
-        id: uuid::Uuid::new_v4().to_string(),
-        origin: ScheduleOrigin::Agent,
-        session_id: session_id.to_string(),
-        worktree_id: worktree_id.to_string(),
+    let mut schedule = Schedule::new(
+        ScheduleOrigin::Agent,
+        session_id,
+        worktree_id,
         prompt,
-        reason,
-        fire_at_unix: now.saturating_add(delay_seconds),
-        created_at_unix: now,
-        tool_call_id: Some(tool_call_id.to_string()),
-        recurrence: None,
-        last_run_unix: None,
-        last_outcome: None,
-    };
+        now.saturating_add(delay_seconds),
+        now,
+    );
+    schedule.reason = reason;
+    schedule.tool_call_id = Some(tool_call_id.to_string());
     let wakeup = schedule.to_wakeup();
     add(app, schedule)?;
     Ok(wakeup)
+}
+
+/// The first fire time: the next match of a repeat rule, else `fire_at_unix`.
+fn first_fire_time(
+    fire_at_unix: Option<u64>,
+    recurrence: Option<&Recurrence>,
+    now: u64,
+) -> Result<u64, String> {
+    match (recurrence, fire_at_unix) {
+        (Some(rule), _) => next_occurrence(rule, now),
+        (None, Some(at)) => Ok(at),
+        (None, None) => Err("Schedule: give a time or a repeat rule".to_string()),
+    }
 }
 
 /// Schedule a user prompt into a session: once at `fire_at_unix`, or
@@ -291,32 +375,27 @@ pub fn create(
     prompt: &str,
     fire_at_unix: Option<u64>,
     recurrence: Option<Recurrence>,
+    options: ScheduleOptions,
 ) -> Result<Schedule, String> {
     if prompt.trim().is_empty() {
         return Err("Schedule: prompt is empty".to_string());
     }
     let now = now_unix();
-    let fire_at_unix = match (&recurrence, fire_at_unix) {
-        (Some(rule), _) => next_occurrence(rule, now)?,
-        (None, Some(at)) => at,
-        (None, None) => return Err("Schedule: give a time or a repeat rule".to_string()),
-    };
+    let fire_at_unix = first_fire_time(fire_at_unix, recurrence.as_ref(), now)?;
     let metadata = storage::load_metadata(app, session_id)?
         .ok_or_else(|| format!("Session not found: {session_id}"))?;
-    let schedule = Schedule {
-        id: uuid::Uuid::new_v4().to_string(),
-        origin: ScheduleOrigin::User,
-        session_id: session_id.to_string(),
-        worktree_id: metadata.worktree_id,
-        prompt: prompt.to_string(),
-        reason: String::new(),
+    let mut schedule = Schedule::new(
+        ScheduleOrigin::User,
+        session_id,
+        &metadata.worktree_id,
+        prompt.to_string(),
         fire_at_unix,
-        created_at_unix: now,
-        tool_call_id: None,
-        recurrence,
-        last_run_unix: None,
-        last_outcome: None,
-    };
+        now,
+    );
+    schedule.recurrence = recurrence;
+    schedule.name = options.name.unwrap_or_default().trim().to_string();
+    schedule.target = options.target;
+    schedule.template = options.template.filter(Value::is_object);
     add(app, schedule.clone())?;
     Ok(schedule)
 }
@@ -408,17 +487,21 @@ pub fn next_wakeup_for_session(session_id: &str) -> Option<ScheduledWakeup> {
         .map(Schedule::to_wakeup)
 }
 
-/// Fire every schedule whose `fire_at_unix <= now`: put its prompt into the
-/// session's queue, start the backend queue drain and emit
+/// Fire every enabled schedule whose `fire_at_unix <= now`: put its prompt
+/// into the target session's queue, start the backend queue drain and emit
 /// `chat:wakeup_fired` for the UI. One-off schedules are removed, repeating
 /// ones move to their next time after now. A missed schedule is skipped when
 /// the `schedule_missed_runs` preference says so.
 ///
 /// Called by BackgroundTaskManager every ~10 s.
-pub fn fire_due(app: &AppHandle) {
+pub async fn fire_due(app: &AppHandle) {
     let now = now_unix();
     // This runs every 10 s: read the preference only when a run was missed.
-    let any_missed = SCHEDULES.lock().unwrap().iter().any(|s| is_missed(s, now));
+    let any_missed = SCHEDULES
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|s| s.enabled && is_missed(s, now));
     let skip_missed = any_missed && skip_missed_runs(app);
 
     let due = match update(app, |list| {
@@ -439,8 +522,9 @@ pub fn fire_due(app: &AppHandle) {
     log::info!("schedules::fire_due: {} schedule(s) due", due.len());
 
     for (schedule, run) in due {
-        if run && !fire(app, &schedule) {
-            record_outcome(app, &schedule.id, RunOutcome::Failed);
+        if run {
+            let result = fire(app, &schedule).await;
+            record_fire(app, &schedule, result);
         }
     }
     emit_changed(app);
@@ -468,13 +552,14 @@ fn skip_missed_runs(app: &AppHandle) -> bool {
 }
 
 /// Take the due schedules out of `list`, with whether each should run.
-/// Repeating schedules stay, moved to their next time after `now` and with
-/// the outcome recorded; a rule that no longer parses is dropped.
+/// Paused schedules are left alone. Repeating schedules stay, moved to their
+/// next time after `now` and with the outcome recorded; a rule that no
+/// longer parses is dropped.
 fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Schedule, bool)> {
     let mut due = Vec::new();
     let mut kept = Vec::with_capacity(list.len());
     for mut schedule in list.drain(..) {
-        if schedule.fire_at_unix > now {
+        if !schedule.enabled || schedule.fire_at_unix > now {
             kept.push(schedule);
             continue;
         }
@@ -490,6 +575,7 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
                     } else {
                         RunOutcome::Skipped
                     });
+                    next_schedule.last_error = None;
                     kept.push(next_schedule);
                 }
                 Err(e) => log::warn!("schedules: dropping schedule {}: {e}", schedule.id),
@@ -502,44 +588,60 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
     due
 }
 
-/// Queue one schedule's prompt and start the drain. Returns false when the
-/// session or worktree is gone.
-fn fire(app: &AppHandle, schedule: &Schedule) -> bool {
-    let worktree_path = resolve_worktree_path(app, &schedule.worktree_id).unwrap_or_default();
-    if worktree_path.is_empty() {
-        log::warn!(
-            "schedules::fire: cannot resolve worktree_path for worktree_id={}, skipping",
-            schedule.worktree_id
-        );
-        return false;
-    }
+/// Queue one schedule's prompt into its target and start the drain. A
+/// `NewSession` target gets a new session in the worktree first. Returns
+/// the session the prompt went into.
+async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<String, String> {
+    let worktree_path = resolve_worktree_path(app, &schedule.worktree_id)
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| "The worktree no longer exists".to_string())?;
 
-    let queue = match enqueue(app, schedule) {
-        Ok(queue) => queue,
-        Err(e) => {
-            log::warn!(
-                "schedules::fire: failed to enqueue schedule for session={}: {e}",
-                schedule.session_id
-            );
-            return false;
+    let session_id = match schedule.target {
+        ScheduleTarget::Session => schedule.session_id.clone(),
+        ScheduleTarget::NewSession => {
+            let backend = schedule
+                .template
+                .as_ref()
+                .and_then(|t| t.get("backend"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            super::commands::create_session(
+                app.clone(),
+                schedule.worktree_id.clone(),
+                worktree_path.clone(),
+                Some(new_session_name(schedule)),
+                backend,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await?
+            .id
         }
     };
 
+    let queue = enqueue(app, schedule, &session_id).inspect_err(|e| {
+        log::warn!("schedules::fire: failed to enqueue schedule for session={session_id}: {e}");
+    })?;
+
     let _ = app.emit_all(
         "queue:updated",
-        &serde_json::json!({ "sessionId": schedule.session_id, "queue": queue }),
+        &serde_json::json!({ "sessionId": session_id, "queue": queue }),
     );
     super::commands::trigger_backend_queue_drain(
         app.clone(),
         schedule.worktree_id.clone(),
         worktree_path.clone(),
-        schedule.session_id.clone(),
+        session_id.clone(),
     );
 
     let _ = app.emit_all(
         "chat:wakeup_fired",
         &WakeupFiredEvent {
-            session_id: schedule.session_id.clone(),
+            session_id: session_id.clone(),
             worktree_id: schedule.worktree_id.clone(),
             worktree_path,
             prompt: schedule.prompt.clone(),
@@ -547,46 +649,103 @@ fn fire(app: &AppHandle, schedule: &Schedule) -> bool {
             schedule_id: schedule.id.clone(),
         },
     );
-    true
+    Ok(session_id)
 }
 
-/// Mark a repeating schedule's last run (still in the list) as failed.
-fn record_outcome(app: &AppHandle, schedule_id: &str, outcome: RunOutcome) {
+/// Name of the session a `NewSession` run creates.
+fn new_session_name(schedule: &Schedule) -> String {
+    if !schedule.name.is_empty() {
+        return schedule.name.clone();
+    }
+    let prompt: String = schedule.prompt.trim().chars().take(40).collect();
+    format!("Scheduled: {prompt}")
+}
+
+/// Record how a fire went. A failed fire (session or worktree gone) pauses
+/// the schedule and keeps it in the list, also a one-off, so the user sees
+/// why it did not run and can fix or delete it.
+fn record_fire(app: &AppHandle, schedule: &Schedule, result: Result<String, String>) {
     let _ = update(app, |list| {
-        let found = list.iter_mut().find(|s| s.id == schedule_id);
-        let changed = found.is_some();
-        if let Some(schedule) = found {
-            schedule.last_outcome = Some(outcome);
-        }
-        (changed, ())
+        apply_fire_result(list, schedule, &result);
+        (true, ())
     });
 }
 
+fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result<String, String>) {
+    let index = match list.iter().position(|s| s.id == fired.id) {
+        Some(index) => index,
+        // A one-off that ran is done; one that failed comes back paused.
+        None if result.is_err() => {
+            list.push(fired.clone());
+            list.len() - 1
+        }
+        None => return,
+    };
+    let schedule = &mut list[index];
+    match result {
+        Ok(session_id) => {
+            schedule.last_session_id = Some(session_id.clone());
+        }
+        Err(e) => {
+            log::warn!("schedules: schedule {} failed: {e}", schedule.id);
+            schedule.last_outcome = Some(RunOutcome::Failed);
+            schedule.last_error = Some(e.clone());
+            schedule.enabled = false;
+        }
+    }
+}
+
 /// Append the schedule's prompt to the session's message queue.
-fn enqueue(app: &AppHandle, schedule: &Schedule) -> Result<Vec<Value>, String> {
-    storage::with_existing_metadata_mut(app, &schedule.session_id, |m| {
-        let message = queued_message(m, &schedule.prompt, now_unix());
+fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec<Value>, String> {
+    let metadata = storage::load_metadata(app, session_id)?
+        .ok_or_else(|| "The session no longer exists".to_string())?;
+    super::ensure_session_can_run(
+        session_id,
+        metadata.archived_at,
+        &schedule.worktree_id,
+        super::worktree_archived_at(app, &schedule.worktree_id),
+    )?;
+    storage::with_existing_metadata_mut(app, session_id, |m| {
+        let message = queued_message(m, schedule, now_unix());
         m.queued_messages.push(message);
         m.queued_messages.clone()
     })
 }
 
 /// Build a queued message (frontend `QueuedMessage` shape) for a fired
-/// schedule. Settings come only from the session's saved selections; a
-/// setting the session never saved stays out, so `send_chat_message`
-/// resolves it from the session and preferences instead of a hard-coded
-/// default.
-fn queued_message(metadata: &SessionMetadata, prompt: &str, now: u64) -> Value {
+/// schedule. A schedule made in the composer carries its toolbar settings
+/// as `template`. Without one, settings come only from the session's saved
+/// selections; a setting the session never saved stays out, so
+/// `send_chat_message` resolves it from the session and preferences instead
+/// of a hard-coded default. `scheduleId` lets the drain report the run's end.
+fn queued_message(metadata: &SessionMetadata, schedule: &Schedule, now: u64) -> Value {
+    let mut message = match &schedule.template {
+        Some(Value::Object(template)) => Value::Object(template.clone()),
+        _ => session_settings(metadata),
+    };
+    let fields = message.as_object_mut().expect("json object");
+    fields.insert("id".into(), Value::from(uuid::Uuid::new_v4().to_string()));
+    fields.insert("message".into(), Value::from(schedule.prompt.clone()));
+    fields.insert("queuedAt".into(), Value::from(now.saturating_mul(1000)));
+    fields.insert("scheduleId".into(), Value::from(schedule.id.clone()));
+    for key in [
+        "pendingImages",
+        "pendingFiles",
+        "pendingSkills",
+        "pendingTextFiles",
+    ] {
+        fields
+            .entry(key)
+            .or_insert_with(|| Value::Array(Vec::new()));
+    }
+    message
+}
+
+/// The session's saved toolbar selections as queued-message fields.
+fn session_settings(metadata: &SessionMetadata) -> Value {
     let mut message = serde_json::json!({
-        "id": uuid::Uuid::new_v4().to_string(),
-        "message": prompt,
-        "pendingImages": [],
-        "pendingFiles": [],
-        "pendingSkills": [],
-        "pendingTextFiles": [],
         "provider": metadata.selected_provider,
         "backend": metadata.backend,
-        "queuedAt": now.saturating_mul(1000),
     });
     let fields = message.as_object_mut().expect("json object");
     if let Some(model) = &metadata.selected_model {
@@ -658,20 +817,17 @@ fn migrate_session_wakeups(app: &AppHandle) -> Result<usize, String> {
                 .iter()
                 .any(|s| s.tool_call_id.as_deref() == Some(wakeup.tool_call_id.as_str()));
             if !known {
-                list.push(Schedule {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    origin: ScheduleOrigin::Agent,
-                    session_id: metadata.id.clone(),
-                    worktree_id: metadata.worktree_id.clone(),
-                    prompt: wakeup.prompt.clone(),
-                    reason: wakeup.reason.clone(),
-                    fire_at_unix: wakeup.fire_at_unix,
-                    created_at_unix: wakeup.scheduled_at_unix,
-                    tool_call_id: Some(wakeup.tool_call_id.clone()),
-                    recurrence: None,
-                    last_run_unix: None,
-                    last_outcome: None,
-                });
+                let mut schedule = Schedule::new(
+                    ScheduleOrigin::Agent,
+                    &metadata.id,
+                    &metadata.worktree_id,
+                    wakeup.prompt.clone(),
+                    wakeup.fire_at_unix,
+                    wakeup.scheduled_at_unix,
+                );
+                schedule.reason = wakeup.reason.clone();
+                schedule.tool_call_id = Some(wakeup.tool_call_id.clone());
+                list.push(schedule);
             }
             (!known, ())
         })?;
@@ -736,6 +892,23 @@ mod tests {
             .collect()
     }
 
+    fn create_simple(
+        app: &RuntimeContext,
+        session_id: &str,
+        prompt: &str,
+        fire_at_unix: Option<u64>,
+        recurrence: Option<Recurrence>,
+    ) -> Result<Schedule, String> {
+        create(
+            app,
+            session_id,
+            prompt,
+            fire_at_unix,
+            recurrence,
+            ScheduleOptions::default(),
+        )
+    }
+
     fn tool_input(delay: u64) -> Value {
         serde_json::json!({ "delaySeconds": delay, "prompt": "check the build" })
     }
@@ -753,7 +926,7 @@ mod tests {
     fn schedules_are_saved_to_disk() {
         let (_temp, app) = app();
         session(&app, "disk-1");
-        let schedule = create(&app, "disk-1", "later", Some(4_000_000_000), None).unwrap();
+        let schedule = create_simple(&app, "disk-1", "later", Some(4_000_000_000), None).unwrap();
 
         assert_eq!(on_disk(&app, "disk-1"), vec![schedule.clone()]);
         assert_eq!(of_session("disk-1"), vec![schedule]);
@@ -763,7 +936,8 @@ mod tests {
     fn a_new_agent_wakeup_replaces_only_the_old_agent_wakeup() {
         let (_temp, app) = app();
         session(&app, "agent-1");
-        let user = create(&app, "agent-1", "user prompt", Some(4_000_000_000), None).unwrap();
+        let user =
+            create_simple(&app, "agent-1", "user prompt", Some(4_000_000_000), None).unwrap();
         schedule_from_tool_input(&app, "agent-1", "w1", "t1", &tool_input(60)).unwrap();
         schedule_from_tool_input(&app, "agent-1", "w1", "t2", &tool_input(60)).unwrap();
 
@@ -782,8 +956,8 @@ mod tests {
     fn a_session_holds_many_user_schedules() {
         let (_temp, app) = app();
         session(&app, "many-1");
-        let later = create(&app, "many-1", "second", Some(4_000_000_200), None).unwrap();
-        let sooner = create(&app, "many-1", "first", Some(4_000_000_100), None).unwrap();
+        let later = create_simple(&app, "many-1", "second", Some(4_000_000_200), None).unwrap();
+        let sooner = create_simple(&app, "many-1", "first", Some(4_000_000_100), None).unwrap();
 
         assert_eq!(of_session("many-1"), vec![sooner.clone(), later]);
         assert_eq!(
@@ -796,8 +970,8 @@ mod tests {
     fn delete_removes_one_schedule() {
         let (_temp, app) = app();
         session(&app, "delete-1");
-        let keep = create(&app, "delete-1", "keep", Some(4_000_000_000), None).unwrap();
-        let drop = create(&app, "delete-1", "drop", Some(4_000_000_000), None).unwrap();
+        let keep = create_simple(&app, "delete-1", "keep", Some(4_000_000_000), None).unwrap();
+        let drop = create_simple(&app, "delete-1", "drop", Some(4_000_000_000), None).unwrap();
 
         assert!(delete(&app, &drop.id).unwrap());
         assert!(!delete(&app, &drop.id).unwrap());
@@ -809,8 +983,8 @@ mod tests {
     fn cancel_session_removes_all_its_schedules() {
         let (_temp, app) = app();
         session(&app, "cancel-1");
-        create(&app, "cancel-1", "a", Some(4_000_000_000), None).unwrap();
-        create(&app, "cancel-1", "b", Some(4_000_000_000), None).unwrap();
+        create_simple(&app, "cancel-1", "a", Some(4_000_000_000), None).unwrap();
+        create_simple(&app, "cancel-1", "b", Some(4_000_000_000), None).unwrap();
 
         assert!(cancel_session(&app, "cancel-1").unwrap());
         assert!(of_session("cancel-1").is_empty());
@@ -822,9 +996,9 @@ mod tests {
     fn a_fired_schedule_moves_into_the_message_queue() {
         let (_temp, app) = app();
         session(&app, "fire-1");
-        let schedule = create(&app, "fire-1", "check the build", Some(0), None).unwrap();
+        let schedule = create_simple(&app, "fire-1", "check the build", Some(0), None).unwrap();
 
-        let queue = enqueue(&app, &schedule).unwrap();
+        let queue = enqueue(&app, &schedule, "fire-1").unwrap();
 
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0]["message"], "check the build");
@@ -870,7 +1044,8 @@ mod tests {
     #[test]
     fn the_queued_message_only_carries_saved_session_settings() {
         let mut metadata = SessionMetadata::new("s1".into(), "w1".into(), "Session".into(), 0);
-        let bare = queued_message(&metadata, "p", 7);
+        let schedule = repeating("q", 0);
+        let bare = queued_message(&metadata, &schedule, 7);
         assert!(bare.get("model").is_none());
         assert!(bare.get("executionMode").is_none());
         assert!(bare.get("thinkingLevel").is_none());
@@ -878,7 +1053,7 @@ mod tests {
 
         metadata.selected_model = Some("claude-opus-4-8".into());
         metadata.selected_execution_mode = Some("plan".into());
-        let saved = queued_message(&metadata, "p", 7);
+        let saved = queued_message(&metadata, &schedule, 7);
         assert_eq!(saved["model"], "claude-opus-4-8");
         assert_eq!(saved["executionMode"], "plan");
     }
@@ -897,20 +1072,11 @@ mod tests {
     }
 
     fn repeating(id: &str, fire_at_unix: u64) -> Schedule {
-        Schedule {
-            id: id.into(),
-            origin: ScheduleOrigin::User,
-            session_id: "s".into(),
-            worktree_id: "w".into(),
-            prompt: "p".into(),
-            reason: String::new(),
-            fire_at_unix,
-            created_at_unix: 0,
-            tool_call_id: None,
-            recurrence: Some(daily_9_berlin()),
-            last_run_unix: None,
-            last_outcome: None,
-        }
+        let mut schedule =
+            Schedule::new(ScheduleOrigin::User, "s", "w", "p".into(), fire_at_unix, 0);
+        schedule.id = id.into();
+        schedule.recurrence = Some(daily_9_berlin());
+        schedule
     }
 
     #[test]
@@ -1012,11 +1178,120 @@ mod tests {
     fn create_with_a_repeat_rule_starts_at_the_next_match() {
         let (_temp, app) = app();
         session(&app, "repeat-1");
-        let schedule = create(&app, "repeat-1", "daily", None, Some(daily_9_berlin())).unwrap();
+        let schedule =
+            create_simple(&app, "repeat-1", "daily", None, Some(daily_9_berlin())).unwrap();
         assert!(schedule.fire_at_unix > now_unix());
         assert_eq!(
             schedule.fire_at_unix,
             next_occurrence(&daily_9_berlin(), schedule.created_at_unix).unwrap()
         );
+    }
+
+    // The composer's toolbar snapshot wins over the session's saved
+    // settings; the prompt and a fresh id always come from the schedule.
+    #[test]
+    fn a_template_carries_the_composer_settings() {
+        let mut metadata = SessionMetadata::new("s1".into(), "w1".into(), "Session".into(), 0);
+        metadata.selected_model = Some("saved-model".into());
+        let mut schedule = repeating("tpl", 0);
+        schedule.prompt = "run the checks".into();
+        schedule.template = Some(serde_json::json!({
+            "id": "old",
+            "message": "stale",
+            "model": "claude-fable-5",
+            "backend": "claude",
+            "executionMode": "yolo",
+            "mcpConfig": "{}",
+            "pendingFiles": [{ "id": "f", "relativePath": "a.rs" }],
+        }));
+
+        let message = queued_message(&metadata, &schedule, 7);
+
+        assert_eq!(message["model"], "claude-fable-5");
+        assert_eq!(message["executionMode"], "yolo");
+        assert_eq!(message["mcpConfig"], "{}");
+        assert_eq!(message["message"], "run the checks");
+        assert_eq!(message["scheduleId"], "tpl");
+        assert_ne!(message["id"], "old");
+        assert_eq!(message["pendingFiles"].as_array().unwrap().len(), 1);
+        assert_eq!(message["pendingImages"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn a_paused_schedule_does_not_fire() {
+        let mut paused = repeating("paused", 100);
+        paused.enabled = false;
+        let mut list = vec![paused];
+
+        assert!(take_due(&mut list, 10_000, false).is_empty());
+        assert_eq!(list[0].fire_at_unix, 100);
+    }
+
+    // A one-off whose session is gone must not vanish: it comes back
+    // paused with the reason, so the Scheduled view can show it.
+    #[test]
+    fn a_failed_one_off_comes_back_paused() {
+        let mut one_off = repeating("gone", 100);
+        one_off.recurrence = None;
+        let mut list = Vec::new();
+
+        apply_fire_result(
+            &mut list,
+            &one_off,
+            &Err("The session no longer exists".into()),
+        );
+
+        assert_eq!(list.len(), 1);
+        assert!(!list[0].enabled);
+        assert_eq!(list[0].last_outcome, Some(RunOutcome::Failed));
+        assert_eq!(
+            list[0].last_error.as_deref(),
+            Some("The session no longer exists")
+        );
+    }
+
+    #[test]
+    fn a_repeating_run_records_its_session() {
+        let mut list = vec![repeating("rep", 10_000)];
+        let fired = list[0].clone();
+        apply_fire_result(&mut list, &fired, &Ok("new-session".into()));
+        assert_eq!(list[0].last_session_id.as_deref(), Some("new-session"));
+        assert!(list[0].enabled);
+    }
+
+    // Older schedules.json files have none of the new fields.
+    #[test]
+    fn an_old_schedule_file_still_loads() {
+        let old = serde_json::json!({
+            "id": "x", "origin": "user", "session_id": "s", "worktree_id": "w",
+            "prompt": "p", "fire_at_unix": 1, "created_at_unix": 0
+        });
+        let schedule: Schedule = serde_json::from_value(old).unwrap();
+        assert!(schedule.enabled);
+        assert_eq!(schedule.target, ScheduleTarget::Session);
+        assert!(schedule.template.is_none());
+    }
+
+    #[test]
+    fn create_keeps_the_target_template_and_name() {
+        let (_temp, app) = app();
+        session(&app, "opts-1");
+        let schedule = create(
+            &app,
+            "opts-1",
+            "nightly",
+            None,
+            Some(daily_9_berlin()),
+            ScheduleOptions {
+                name: Some("  Nightly check ".into()),
+                target: ScheduleTarget::NewSession,
+                template: Some(serde_json::json!({ "model": "m" })),
+            },
+        )
+        .unwrap();
+        assert_eq!(schedule.name, "Nightly check");
+        assert_eq!(schedule.target, ScheduleTarget::NewSession);
+        assert_eq!(schedule.template, Some(serde_json::json!({ "model": "m" })));
+        assert_eq!(on_disk(&app, "opts-1"), vec![schedule]);
     }
 }
