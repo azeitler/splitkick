@@ -1278,7 +1278,9 @@ async fn drain_backend_queue(
             "[QueueDrain] processing queued message session={session_id} message_id={queued_id}"
         );
 
-        if let Err(e) = send_chat_message(
+        // Set by a schedule (#38): its run's end is reported back.
+        let schedule_id = json_string(&queued, "scheduleId");
+        let sent = send_chat_message(
             app.clone(),
             session_id.clone(),
             worktree_id.clone(),
@@ -1297,8 +1299,18 @@ async fn drain_backend_queue(
             request.backend,
             None,
         )
-        .await
-        {
+        .await;
+        let lost_race = matches!(&sent, Err(e) if e.contains("already has an active request"));
+        if let (Some(schedule_id), false) = (&schedule_id, lost_race) {
+            super::schedules::scheduled_run_finished(
+                &app,
+                schedule_id,
+                &session_id,
+                &worktree_id,
+                sent.as_ref().err().map(String::as_str),
+            );
+        }
+        if let Err(e) = sent {
             // Lost a send race against another consumer (frontend queue
             // processor or another client). Re-insert at the queue front so
             // the message is NOT lost — the active run's completion re-triggers

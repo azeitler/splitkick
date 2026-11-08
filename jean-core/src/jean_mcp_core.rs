@@ -72,10 +72,12 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "add_project",
     "archive_session",
     "archive_worktree",
+    "cancel_schedule",
     "cancel_session_run",
     "clone_project",
     "create_commit",
     "create_pull_request",
+    "create_schedule",
     "create_session",
     "create_worktree",
     "create_worktree_from_existing_branch",
@@ -485,6 +487,9 @@ fn tool_registry_session() -> Value {
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Splitkick session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Splitkick infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Splitkick (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
+        {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A session keeps one agent schedule: a new one replaces the previous. Returns the schedule.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
+        {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
+        {"name":"cancel_schedule","description":"Delete one Splitkick schedule by id (from list_schedules or create_schedule). Returns whether it existed.","inputSchema":{"type":"object","properties":{"scheduleId":{"type":"string"}},"required":["scheduleId"],"additionalProperties":false}},
         {"name":"add_artifact","description":"Register a file or URL you produced that the user should look at (report, screenshot, generated doc, HTML page, preview URL) in the Artifacts tab of a Splitkick session. Not for every edited source file: only outputs worth opening. Register it again with the same target after you change the file: Splitkick keeps a copy of the file per version, so the user can open and compare versions; pass change to say what changed. Unchanged content adds no version. Omit sessionId to target the calling session. Returns sessionId and the artifact with its versions.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1,"description":"Short name shown in the list."},"target":{"type":"string","minLength":1,"description":"Absolute path, path relative to the worktree, or http(s)/file URL."},"note":{"type":"string","description":"What the artifact is, one line. Omit it for a new version: the current note stays (a different note on a new version is stored as its change)."},"change":{"type":"string","description":"What changed since the last version, one short line (e.g. \"Added the Q3 table\"). Pass it every time you register a changed file. Also adds a version for a URL."},"sessionId":{"type":"string","description":"Session whose list gets the artifact. Defaults to the calling session."}},"required":["title","target"],"additionalProperties":false}},
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the root Claude install; claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
@@ -1557,6 +1562,66 @@ async fn run_tool(
                 "followUp": follow_up,
             }))
         }
+        "create_schedule" => {
+            let prompt = require_nonempty_str(&args, "prompt")?;
+            let fire_at_unix = match optional_str(&args, "at") {
+                Some(at) => Some(
+                    chrono::DateTime::parse_from_rfc3339(&at)
+                        .map_err(|e| {
+                            ToolError::invalid_params(format!(
+                                "at must be ISO 8601 with an offset (e.g. 2026-11-09T09:00:00+01:00): {e}"
+                            ))
+                        })?
+                        .timestamp()
+                        .max(0) as u64,
+                ),
+                None => None,
+            };
+            let recurrence =
+                optional_str(&args, "cron").map(|cron| crate::chat::schedules::Recurrence {
+                    cron,
+                    tz: optional_str(&args, "tz").unwrap_or_else(host_time_zone),
+                });
+            if fire_at_unix.is_none() && recurrence.is_none() {
+                return Err(ToolError::invalid_params("Give at or cron"));
+            }
+            let schedule = crate::chat::schedules::create_for_agent(
+                app,
+                crate::chat::schedules::AgentScheduleRequest {
+                    // Only a real session counts as the caller; `anon` and
+                    // `remote:…` sources have no mode to cap against.
+                    caller_session_id: crate::chat::storage::load_metadata(app, source)
+                        .ok()
+                        .flatten()
+                        .map(|_| source.to_string()),
+                    session_id: optional_str(&args, "sessionId"),
+                    worktree_id: optional_str(&args, "worktreeId"),
+                    prompt,
+                    name: optional_str(&args, "name"),
+                    fire_at_unix,
+                    recurrence,
+                },
+            )
+            .map_err(ToolError::invalid_params)?;
+            Ok(json!({ "schedule": describe_schedule(&schedule) }))
+        }
+        "list_schedules" => {
+            let session_id = optional_str(&args, "sessionId");
+            let worktree_id = optional_str(&args, "worktreeId");
+            let schedules: Vec<Value> = crate::chat::schedules::list()
+                .iter()
+                .filter(|s| session_id.as_ref().is_none_or(|id| &s.session_id == id))
+                .filter(|s| worktree_id.as_ref().is_none_or(|id| &s.worktree_id == id))
+                .map(describe_schedule)
+                .collect();
+            Ok(json!({ "schedules": schedules }))
+        }
+        "cancel_schedule" => {
+            let schedule_id = require_nonempty_str(&args, "scheduleId")?;
+            let cancelled =
+                crate::chat::schedules::delete(app, &schedule_id).map_err(ToolError::internal)?;
+            Ok(json!({ "scheduleId": schedule_id, "cancelled": cancelled }))
+        }
         "add_artifact" => {
             let title = require_nonempty_str(&args, "title")?;
             let target = require_nonempty_str(&args, "target")?;
@@ -2322,6 +2387,31 @@ fn search_sessions_result(response: &crate::chat::search::SessionSearchResponse)
         .collect();
 
     json!({ "results": results, "truncated": response.truncated })
+}
+
+/// A schedule as MCP tools return it (camelCase, like the other tools).
+fn describe_schedule(schedule: &crate::chat::schedules::Schedule) -> Value {
+    json!({
+        "id": schedule.id,
+        "origin": schedule.origin,
+        "name": schedule.name,
+        "enabled": schedule.enabled,
+        "target": schedule.target,
+        "sessionId": schedule.session_id,
+        "worktreeId": schedule.worktree_id,
+        "prompt": schedule.prompt,
+        "fireAtUnix": schedule.fire_at_unix,
+        "recurrence": schedule.recurrence,
+        "lastRunUnix": schedule.last_run_unix,
+        "lastOutcome": schedule.last_outcome,
+        "lastError": schedule.last_error,
+        "lastSessionId": schedule.last_session_id,
+    })
+}
+
+/// The host's IANA time zone, for a cron rule given without `tz`.
+fn host_time_zone() -> String {
+    iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string())
 }
 
 fn require_str(args: &Value, key: &str) -> Result<String, ToolError> {
@@ -4982,6 +5072,25 @@ mod tests {
     }
 
     #[test]
+    fn tool_registry_has_the_schedule_tools() {
+        let tools = tool_registry();
+        let create = find_tool(&tools, "create_schedule");
+        assert_eq!(create["inputSchema"]["required"], json!(["prompt"]));
+        for key in ["at", "cron", "tz", "sessionId", "worktreeId", "name"] {
+            assert!(
+                create["inputSchema"]["properties"][key].is_object(),
+                "{key}"
+            );
+        }
+        find_tool(&tools, "list_schedules");
+        let cancel = find_tool(&tools, "cancel_schedule");
+        assert_eq!(cancel["inputSchema"]["required"], json!(["scheduleId"]));
+        assert!(RATE_LIMITED_TOOLS.contains(&"create_schedule"));
+        assert!(RATE_LIMITED_TOOLS.contains(&"cancel_schedule"));
+        assert!(!RATE_LIMITED_TOOLS.contains(&"list_schedules"));
+    }
+
+    #[test]
     fn tool_registry_add_artifact_defaults_to_the_calling_session() {
         let tools = tool_registry();
         let add = find_tool(&tools, "add_artifact");
@@ -6285,6 +6394,100 @@ mod tests {
             let text = wrapped["content"][0]["text"].as_str().expect("text");
             let parsed: Value = serde_json::from_str(text).expect("valid JSON payload");
             assert!(parsed.is_object(), "{name} returned {text}");
+        }
+    }
+
+    #[test]
+    fn schedule_tools_create_list_and_cancel() {
+        let (_temp, app) = tool_fixture();
+
+        let created = call_as(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "check the deploy", "at": "2096-01-01T09:00:00+01:00" }),
+            "tool-s1",
+        )
+        .unwrap();
+        let schedule = &created["schedule"];
+        assert_eq!(schedule["origin"], "agent");
+        assert_eq!(schedule["sessionId"], "tool-s1");
+        assert_eq!(schedule["target"], "session");
+        assert_eq!(
+            schedule["fireAtUnix"],
+            json!(
+                chrono::DateTime::parse_from_rfc3339("2096-01-01T09:00:00+01:00")
+                    .unwrap()
+                    .timestamp()
+            )
+        );
+        let id = schedule["id"].as_str().unwrap().to_string();
+
+        let listed = call_as(
+            &app,
+            "list_schedules",
+            json!({ "sessionId": "tool-s1" }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(listed["schedules"].as_array().unwrap().len(), 1);
+
+        let repeat = call_as(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "nightly", "cron": "0 2 * * *", "tz": "Europe/Berlin", "worktreeId": "tool-wt" }),
+            "tool-s1",
+        )
+        .unwrap();
+        // One agent schedule per session: the repeat replaced the one-off.
+        assert_eq!(repeat["schedule"]["target"], "new_session");
+        assert_eq!(repeat["schedule"]["recurrence"]["tz"], "Europe/Berlin");
+        let cancelled = call_as(
+            &app,
+            "cancel_schedule",
+            json!({ "scheduleId": id }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(cancelled["cancelled"], json!(false));
+
+        let repeat_id = repeat["schedule"]["id"].as_str().unwrap();
+        let cancelled = call_as(
+            &app,
+            "cancel_schedule",
+            json!({ "scheduleId": repeat_id }),
+            "tool-s1",
+        )
+        .unwrap();
+        assert_eq!(cancelled["cancelled"], json!(true));
+    }
+
+    #[test]
+    fn create_schedule_from_outside_a_session_names_no_caller() {
+        let (_temp, app) = tool_fixture();
+        let created = call_as(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "p", "cron": "0 7 * * *", "tz": "UTC", "worktreeId": "tool-wt" }),
+            "remote:unknown",
+        )
+        .unwrap();
+        assert_eq!(created["schedule"]["sessionId"], "");
+        assert_eq!(created["schedule"]["target"], "new_session");
+    }
+
+    #[test]
+    fn create_schedule_rejects_bad_times() {
+        let (_temp, app) = tool_fixture();
+        for args in [
+            json!({ "prompt": "p" }),
+            json!({ "prompt": "p", "at": "tomorrow" }),
+            json!({ "prompt": "p", "at": "2001-01-01T00:00:00Z" }),
+            json!({ "prompt": "p", "cron": "not cron", "tz": "UTC" }),
+        ] {
+            assert!(
+                call_as(&app, "create_schedule", args.clone(), "tool-s1").is_err(),
+                "{args}"
+            );
         }
     }
 

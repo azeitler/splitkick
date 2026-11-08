@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can schedule prompts.** New Splitkick MCP tools
+  `create_schedule` (once at a time, or repeating by a cron pattern, into a
+  session or a new session per run), `list_schedules` and `cancel_schedule`.
+  An agent's schedule never runs in a higher mode than the agent's own
+  session, and creating or cancelling is rate-limited (#38).
+- **Scheduled runs notify also with no window.** A scheduled run that
+  finishes, fails or waits for input while Splitkick has no window shows a
+  native notification; a click opens the session. With a window, also a
+  hidden one, the usual session notification shows. A send that fails is
+  shown as the last result in the Scheduled view (#38).
+
 ### Fixed
 
 - **Scheduling into a session that never sent a message works.** Send later
