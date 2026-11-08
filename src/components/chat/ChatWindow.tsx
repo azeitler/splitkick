@@ -127,6 +127,7 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { SendCancelButton } from './toolbar/SendCancelButton'
+import { useComposerSchedule } from './useComposerSchedule'
 import { FollowUpsButton } from './toolbar/FollowUpsButton'
 import { ArtifactsButton } from './toolbar/ArtifactsButton'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
@@ -2289,6 +2290,8 @@ export function ChatWindow({
     handleSubmit,
     handleCancel,
     handleGitDiffAddToPrompt,
+    captureScheduleDraft,
+    clearComposer,
   } = useMessageSending({
     activeSessionId,
     activeWorktreeId,
@@ -2313,6 +2316,10 @@ export function ChatWindow({
     clearInputDraft,
     clearChatInputState: () => clearChatInputStateRef.current?.(),
   })
+
+  // Send menu → Send later… / Repeat… (#38)
+  const { onSchedule: handleSchedule, dialog: scheduleDialog } =
+    useComposerSchedule(captureScheduleDraft, clearComposer)
 
   // Note: Queue processing moved to useQueueProcessor hook in App.tsx
   // This ensures queued messages execute even when the worktree is unfocused
@@ -4063,6 +4070,7 @@ export function ChatWindow({
                                       triggerChatAttachRef.current?.()
                                     }
                                     onCancel={handleCancel}
+                                    onSchedule={handleSchedule}
                                     willSteer={
                                       isBackendAutoSteerEnabled(
                                         selectedBackend,
@@ -4231,6 +4239,8 @@ export function ChatWindow({
             )}
           </ResizablePanelGroup>
         )}
+
+        {scheduleDialog}
 
         {/* Git diff modal for viewing diffs */}
         <Suspense fallback={null}>

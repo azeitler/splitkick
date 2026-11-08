@@ -23,8 +23,9 @@ interface ScheduledBannerProps {
 /** "Scheduled · in 2h (…)" or "Repeats daily at 09:00 · next in 2h (…)". */
 export function scheduleHeadline(schedule: Schedule, now = Date.now()): string {
   const when = `${formatTimeUntil(schedule.fire_at_unix, now)} (${formatMessageTimestamp(schedule.fire_at_unix, now)})`
-  if (!schedule.recurrence) return `Scheduled · ${when}`
-  let text = `Repeats ${describeRecurrence(schedule.recurrence)} · next ${when}`
+  const where = schedule.target === 'new_session' ? ' · in a new session' : ''
+  if (!schedule.recurrence) return `Scheduled · ${when}${where}`
+  let text = `Repeats ${describeRecurrence(schedule.recurrence)}${where} · next ${when}`
   if (schedule.last_run_unix) {
     text += ` · last ${formatRelativeTime(schedule.last_run_unix, now)}`
     if (schedule.last_outcome && schedule.last_outcome !== 'queued')

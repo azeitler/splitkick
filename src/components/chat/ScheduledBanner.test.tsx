@@ -99,4 +99,20 @@ describe('scheduleHeadline', () => {
     expect(text).toMatch(/^Repeats weekdays at 09:00 · next in 1h \(/)
     expect(text).toMatch(/· last 2d ago \(skipped\)$/)
   })
+
+  it('says when each run goes to a new session', () => {
+    const text = scheduleHeadline(
+      {
+        ...base,
+        target: 'new_session',
+        fire_at_unix: now / 1000 + 3600,
+        recurrence: {
+          cron: '0 9 * * *',
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+      },
+      now
+    )
+    expect(text).toMatch(/^Repeats daily at 09:00 · in a new session · next/)
+  })
 })

@@ -27,6 +27,7 @@ import type {
 } from '@/types/github'
 import type { LoadedLinearIssueContext } from '@/types/linear'
 import type { SentryIssueContext } from '@/types/sentry'
+import type { ScheduleKind } from '@/lib/schedule-compose'
 
 export interface ViewingContext {
   type: 'issue' | 'pr' | 'saved' | 'security' | 'advisory' | 'linear' | 'sentry'
@@ -109,6 +110,8 @@ export interface ChatToolbarProps {
   onSetExecutionMode: (mode: ExecutionMode) => void
   onAttach: () => void
   onCancel: () => void
+  /** Opens the schedule dialog from the Send menu (#38) */
+  onSchedule?: (kind: ScheduleKind) => void
   /** When true while sending, the secondary submit button steers instead of queues. */
   willSteer?: boolean
   steerWithModifier?: boolean

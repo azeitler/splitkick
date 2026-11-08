@@ -1,6 +1,14 @@
+import { ChevronDown, Clock, Repeat } from 'lucide-react'
 import { getModifierSymbol, isClientMacOS } from '@/lib/platform'
 import { cn } from '@/lib/utils'
+import type { ScheduleKind } from '@/lib/schedule-compose'
 import { Kbd } from '@/components/ui/kbd'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
@@ -17,6 +25,8 @@ interface SendCancelButtonProps {
   steerWithModifier?: boolean
   queuedMessageCount?: number
   onCancel: () => void
+  /** Adds a menu to Send with *Send later…* and *Repeat…* (#38). */
+  onSchedule?: (kind: ScheduleKind) => void
 }
 
 export function SendCancelButton({
@@ -26,6 +36,7 @@ export function SendCancelButton({
   steerWithModifier = false,
   queuedMessageCount,
   onCancel,
+  onSchedule,
 }: SendCancelButtonProps) {
   const isMobile = useIsMobile()
   // Send / Cancel is the most-tapped control in the composer.
@@ -103,7 +114,10 @@ export function SendCancelButton({
     return cancelButton
   }
 
-  return (
+  const colorClass = canSend
+    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+  const sendButton = (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
@@ -112,9 +126,8 @@ export function SendCancelButton({
           className={cn(
             heightClass,
             'flex items-center justify-center rounded-md px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
-            canSend
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+            onSchedule && 'rounded-r-none',
+            colorClass
           )}
         >
           <span>Send</span>
@@ -124,5 +137,39 @@ export function SendCancelButton({
         {isMobile ? 'Send message' : 'Send message (Enter)'}
       </TooltipContent>
     </Tooltip>
+  )
+  if (!onSchedule) return sendButton
+
+  return (
+    <div className="flex items-center">
+      {sendButton}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            disabled={!canSend}
+            aria-label="More send options"
+            className={cn(
+              heightClass,
+              'flex items-center justify-center rounded-md rounded-l-none px-1.5 transition-colors disabled:pointer-events-none disabled:opacity-50',
+              canSend && 'border-l border-l-primary-foreground/20',
+              colorClass
+            )}
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => onSchedule('once')}>
+            <Clock className="h-4 w-4" />
+            Send later…
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onSchedule('repeat')}>
+            <Repeat className="h-4 w-4" />
+            Repeat…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }

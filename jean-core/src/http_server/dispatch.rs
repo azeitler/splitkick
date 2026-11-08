@@ -3694,6 +3694,11 @@ pub async fn dispatch_command(
             let fire_at_unix: Option<u64> = field_opt(&args, "fireAtUnix", "fire_at_unix")?;
             let recurrence: Option<crate::chat::schedules::Recurrence> =
                 from_field_opt(&args, "recurrence")?;
+            let options = crate::chat::schedules::ScheduleOptions {
+                name: from_field_opt(&args, "name")?,
+                target: from_field_opt(&args, "target")?.unwrap_or_default(),
+                template: from_field_opt(&args, "template")?,
+            };
             to_value(
                 crate::chat::create_schedule(
                     app.clone(),
@@ -3701,6 +3706,7 @@ pub async fn dispatch_command(
                     prompt,
                     fire_at_unix,
                     recurrence,
+                    options,
                 )
                 .await?,
             )

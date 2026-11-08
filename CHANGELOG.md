@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Send later and Repeat from the composer.** The arrow next to Send opens
+  *Send later…* (date and time, or In 1 hour / Tomorrow 09:00 / Monday 09:00)
+  and *Repeat…* (every hour, day, weekday or week at a time, or a cron
+  pattern). The schedule keeps the toolbar settings of that moment: backend,
+  model, provider, effort, mode and MCP servers. *Send later* runs in this
+  session, *Repeat* in a new session in the worktree for each run; both can
+  be changed. A schedule in Yolo mode asks for a confirm first, because it
+  runs with nobody watching. A schedule whose session or worktree is gone
+  pauses and keeps the reason (#38).
+
 ### Fixed
 
 - **A failed update check names the cause.** "Could not fetch a valid release
