@@ -23,6 +23,9 @@ use tauri::AppHandle;
 
 use crate::http_server::EmitExt;
 
+mod diagnosis;
+pub use diagnosis::diagnose_update_check;
+
 const MANIFEST_URL: &str =
     "https://github.com/coollabsio/jean/releases/latest/download/server-latest.json";
 /// The feed the desktop shell's native updater reads (`plugins.updater` in

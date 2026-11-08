@@ -147,6 +147,9 @@ pub async fn dispatch_command(
             let result = crate::server_update::apply_server_update(app.clone()).await?;
             to_value(result)
         }
+        // Native shell, after a failed updater check: fetch the feed once and
+        // name the cause the plugin drops (#113).
+        "diagnose_update_check" => to_value(crate::server_update::diagnose_update_check().await),
         // Host desktop shell only: reports how its Tauri updater run is going
         // so remote clients can show progress and confirm the relaunch.
         "report_host_update_state" => {

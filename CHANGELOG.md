@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed update check names the cause.** "Could not fetch a valid release
+  JSON from the remote" now ends with what the release feed answered: the
+  host and HTTP status (for example "github.com answered HTTP 504
+  (text/html)"), a JSON parse error, a missing platform entry such as
+  `darwin-x86_64`, or the network, TLS or proxy error. The Check for Updates
+  toast and the host-requested update show it; the background check writes it
+  only to the log (#113).
+
 ## [1.5.4] - 2026-11-07
 
 Built on Jean 0.1.73.

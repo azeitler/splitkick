@@ -35,7 +35,6 @@ import {
 import type { Worktree } from '@/types/projects'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
-import { logNativeError } from './lib/native-log'
 import { toast } from 'sonner'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
@@ -70,6 +69,7 @@ import { useUIStore } from './store/ui-store'
 import type { HostInstallPhase } from './store/ui-store'
 import {
   resolveInstallPendingAction,
+  describeUpdateCheckFailure,
   shouldOfferUpdateCheck,
   installAndRelaunch,
   updateChecksEnabledForThisApp,
@@ -418,9 +418,10 @@ function App() {
         installed ? undefined : 'The host could not install the update'
       )
     } catch (error) {
-      logger.error('Host-requested desktop update failed', { error })
-      toast.error(`Update failed: ${String(error)}`, { duration: 8000 })
-      report('failed', undefined, String(error))
+      // Only the check can fail here; installAppUpdate catches its own errors.
+      const message = await describeUpdateCheckFailure(error)
+      toast.error(`Update failed: ${message}`, { duration: 8000 })
+      report('failed', undefined, message)
     }
   }, [installAppUpdate])
 
@@ -1472,8 +1473,9 @@ function App() {
           useUIStore.getState().setUpdateModalVersion(update.version)
         }
       } catch (checkError) {
-        logNativeError(`Update check failed: ${String(checkError)}`)
-        // Silent fail for update checks - don't bother user with network issues
+        // Silent fail for update checks - don't bother user with network
+        // issues. The cause still goes to the log (#113).
+        void describeUpdateCheckFailure(checkError)
       }
     }
 

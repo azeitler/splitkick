@@ -1,12 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { invoke } from '@/lib/transport'
+import { logNativeError } from '@/lib/native-log'
 import {
   RELEASE_IDENTIFIER,
   type AppUpdateGuardState,
+  describeUpdateCheckFailure,
   installAndRelaunch,
   isUpdateCheckEnabled,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
 } from './app-update'
+
+vi.mock('@/lib/transport', () => ({ invoke: vi.fn() }))
+vi.mock('@/lib/native-log', () => ({ logNativeError: vi.fn() }))
+
+describe('describeUpdateCheckFailure', () => {
+  const pluginError = 'Could not fetch a valid release JSON from the remote'
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(logNativeError).mockReset()
+  })
+
+  it('adds the cause the plugin drops and logs it (#113)', async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      'github.com answered HTTP 504 (text/html)'
+    )
+    const message = await describeUpdateCheckFailure(pluginError)
+    expect(invoke).toHaveBeenCalledWith('diagnose_update_check')
+    expect(message).toBe(
+      `${pluginError} (github.com answered HTTP 504 (text/html))`
+    )
+    expect(logNativeError).toHaveBeenCalledWith(
+      `Update check failed: ${message}`
+    )
+  })
+
+  it('keeps the original error when the diagnosis fails', async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error('Unknown command'))
+    const message = await describeUpdateCheckFailure(pluginError)
+    expect(message).toBe(
+      `${pluginError} (diagnosis failed: Error: Unknown command)`
+    )
+    expect(logNativeError).toHaveBeenCalledOnce()
+  })
+})
 
 describe('isUpdateCheckEnabled', () => {
   it('checks for updates only in the released app', () => {
@@ -268,10 +306,11 @@ describe('checkForUpdatesManually (#100)', () => {
 
   it('reports a failed check', async () => {
     updater.check.mockRejectedValue(new Error('offline'))
+    vi.mocked(invoke).mockResolvedValue('could not reach github.com: timeout')
     const { checkForUpdatesManually } = await load()
     await checkForUpdatesManually()
     expect(updater.notify).toHaveBeenCalledWith(
-      'Failed to check for updates: Error: offline',
+      'Failed to check for updates: Error: offline (could not reach github.com: timeout)',
       undefined,
       { type: 'error' }
     )
