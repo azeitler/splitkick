@@ -7,27 +7,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Added
-
-- **Agents can schedule prompts.** New Splitkick MCP tools
-  `create_schedule` (once at a time, or repeating by a cron pattern, into a
-  session or a new session per run), `list_schedules` and `cancel_schedule`.
-  An agent's schedule never runs in a higher mode than the agent's own
-  session, and creating or cancelling is rate-limited (#38).
-- **Scheduled runs notify also with no window.** A scheduled run that
-  finishes, fails or waits for input while Splitkick has no window shows a
-  native notification; a click opens the session. With a window, also a
-  hidden one, the usual session notification shows. A send that fails is
-  shown as the last result in the Scheduled view (#38).
-
-### Fixed
-
-- **Scheduling into a session that never sent a message works.** Send later
-  and Repeat failed with "Session not found" in a new session, and a Repeat
-  into a new session per run could not queue its prompt. The schedule now
-  finds the session in its worktree and creates its data on the first run
-  (#38).
-
 ## [1.5.5] - 2026-11-08
 
 Built on Jean 0.1.73.
@@ -59,6 +38,16 @@ Built on Jean 0.1.73.
   Claude account, each account row in the usage popover (and in Settings →
   Usage) that is not active has a Make active button. New sessions use the
   active account; open sessions keep theirs. (#90)
+- **Agents can schedule prompts.** New Splitkick MCP tools
+  `create_schedule` (once at a time, or repeating by a cron pattern, into a
+  session or a new session per run), `list_schedules` and `cancel_schedule`.
+  An agent's schedule never runs in a higher mode than the agent's own
+  session, and creating or cancelling is rate-limited (#38).
+- **Scheduled runs notify also with no window.** A scheduled run that
+  finishes, fails or waits for input while Splitkick has no window shows a
+  native notification; a click opens the session. With a window, also a
+  hidden one, the usual session notification shows. A send that fails is
+  shown as the last result in the Scheduled view (#38).
 
 ### Fixed
 
@@ -85,6 +74,11 @@ Built on Jean 0.1.73.
   the status bar stops iOS 26 from blurring the top of the session header.
   While a turn runs, Queue (or Steer) has the primary style and Cancel is
   secondary, on desktop too: it is what Enter does (#114).
+- **Scheduling into a session that never sent a message works.** Send later
+  and Repeat failed with "Session not found" in a new session, and a Repeat
+  into a new session per run could not queue its prompt. The schedule now
+  finds the session in its worktree and creates its data on the first run
+  (#38).
 
 ## [1.5.4] - 2026-11-07
 
