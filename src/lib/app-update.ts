@@ -15,6 +15,7 @@
 import { isNativeApp } from '@/lib/environment'
 import { logNativeError } from '@/lib/native-log'
 import { notify } from '@/lib/notifications'
+import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 
 /** Bundle identifier of the released app (`src-tauri/tauri.fork.conf.json`). */
@@ -87,6 +88,28 @@ export async function installAndRelaunch(
 }
 
 /**
+ * The error text of a failed updater check, plus its cause, and log both.
+ *
+ * tauri-plugin-updater reports a non-2xx feed answer only as "Could not fetch
+ * a valid release JSON from the remote" (#113). The Rust side fetches the
+ * feed once more and names the host, HTTP status, parse error, missing
+ * platform key, or network/TLS/proxy error.
+ */
+export async function describeUpdateCheckFailure(
+  error: unknown
+): Promise<string> {
+  let message = String(error)
+  try {
+    const cause = await invoke<string>('diagnose_update_check')
+    if (cause) message = `${message} (${cause})`
+  } catch (diagnosisError) {
+    message = `${message} (diagnosis failed: ${String(diagnosisError)})`
+  }
+  logNativeError(`Update check failed: ${message}`)
+  return message
+}
+
+/**
  * The manual "Check for Updates…" action. Shared by the macOS menu bar
  * (`menu-check-updates`) and the sidebar's more menu, which is the only entry
  * on Windows and Linux (#100). Native desktop app only.
@@ -127,8 +150,8 @@ export async function checkForUpdatesManually(): Promise<void> {
       })
     }
   } catch (error) {
-    logNativeError(`Update check failed: ${String(error)}`)
-    notify(`Failed to check for updates: ${String(error)}`, undefined, {
+    const message = await describeUpdateCheckFailure(error)
+    notify(`Failed to check for updates: ${message}`, undefined, {
       type: 'error',
     })
   }
