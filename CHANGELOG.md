@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-11-08
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Send later and Repeat from the composer.** The arrow next to Send opens
@@ -2623,7 +2627,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.4...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.5...HEAD
+[1.5.5]: https://github.com/azeitler/jean/compare/splitkick-v1.5.4...splitkick-v1.5.5
 [1.5.4]: https://github.com/azeitler/jean/compare/splitkick-v1.5.3...splitkick-v1.5.4
 [1.5.3]: https://github.com/azeitler/jean/compare/splitkick-v1.5.2...splitkick-v1.5.3
 [1.5.2]: https://github.com/azeitler/jean/compare/splitkick-v1.5.1...splitkick-v1.5.2
