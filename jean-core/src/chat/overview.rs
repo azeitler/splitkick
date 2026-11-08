@@ -843,7 +843,17 @@ mod tests {
         let mut found = ids(&response);
         found.sort_unstable();
         assert_eq!(found, vec!["all-s1", "all-s2", "all-s3"]);
-        assert_eq!(response.sessions[0].project_name, "project-a");
+        // The order is by last activity, which the fixture does not fix, so
+        // check the project of each session, not the first position.
+        let project_of = |id: &str| {
+            response
+                .sessions
+                .iter()
+                .find(|record| record.id == id)
+                .map(|record| record.project_name.as_str())
+        };
+        assert_eq!(project_of("all-s1"), Some("project-a"));
+        assert_eq!(project_of("all-s3"), Some("project-b"));
     }
 
     #[test]
