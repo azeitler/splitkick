@@ -13,9 +13,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   has a strong border and a solid Active tag, and the buttons have outlines.
   Each limit shows the time until it resets and the date, for example "Resets
   in 2h (Mon, Nov 9, 3:44 PM)" (#90).
-- **The usage badge follows the active Claude account.** It used the highest
-  figure across all accounts, so a full account that was not in use could
-  turn it red. Other backends still count (#90).
+- **The usage badge follows the open session.** It shows the backend and
+  Claude account of the open session; with no open session, the default
+  backend and the active account. It used the highest figure across all
+  accounts and backends, so something not in use could turn it red. A backend
+  icon shows the source, and "+1" or "+2" tells how many other signed-in
+  backends the popover also shows (#90).
 
 ### Fixed
 

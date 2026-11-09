@@ -3,11 +3,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { UsagePopover, findPeakUsage } from './UsagePopover'
+import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
 const mocks = vi.hoisted(() => ({
   useClaudeCliStatus: vi.fn(),
   useClaudeCliAuth: vi.fn(),
+  useSession: vi.fn(),
   useClaudeUsage: vi.fn(),
   // Usage per Claude account id; falls back to useClaudeUsage for one account.
   useClaudeAccountUsage: vi.fn(),
@@ -21,10 +23,15 @@ const mocks = vi.hoisted(() => ({
   useGrokUsage: vi.fn(),
 }))
 
+vi.mock('@/services/chat', () => ({
+  useSession: () => mocks.useSession(),
+}))
+
 vi.mock('@/services/claude-cli', () => ({
   claudeCliQueryKeys: { all: ['claude-cli'] },
   useClaudeCliStatus: () => mocks.useClaudeCliStatus(),
   useClaudeCliAuth: () => mocks.useClaudeCliAuth(),
+  useClaudeAccountAuth: () => mocks.useClaudeCliAuth(),
   useClaudeUsage: (options?: { accountId?: string }) =>
     (options?.accountId && mocks.useClaudeAccountUsage(options.accountId)) ??
     mocks.useClaudeUsage(),
@@ -67,6 +74,13 @@ function idleQuery(data: unknown = undefined) {
 describe('UsagePopover', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useChatStore.setState({
+      activeWorktreeId: null,
+      activeSessionIds: {},
+      selectedBackends: {},
+      worktreePaths: {},
+    })
+    mocks.useSession.mockReturnValue({ data: undefined })
     mocks.usePreferences.mockReturnValue({ data: undefined })
     mocks.useClaudeAccountUsage.mockReturnValue(undefined)
     mocks.useClaudeCliStatus.mockReturnValue(
@@ -124,14 +138,7 @@ describe('UsagePopover', () => {
     expect(screen.queryByText('Claude')).not.toBeInTheDocument()
   })
 
-  it('shows the highest session or weekly figure across backends', () => {
-    mocks.useClaudeUsage.mockReturnValue(
-      idleQuery({
-        session: { usedPercent: 22, resetsAt: null },
-        weekly: { usedPercent: 64, resetsAt: null },
-        fetchedAt: 0,
-      })
-    )
+  const signInCodex = () => {
     mocks.useCodexCliStatus.mockReturnValue(idleQuery({ installed: true }))
     mocks.useCodexCliAuth.mockReturnValue(idleQuery({ authenticated: true }))
     mocks.useCodexUsage.mockReturnValue(
@@ -141,14 +148,88 @@ describe('UsagePopover', () => {
         fetchedAt: 0,
       })
     )
+  }
+
+  const openSession = (backend: string, claudeAccountId?: string) => {
+    useChatStore.setState({
+      activeWorktreeId: 'wt',
+      activeSessionIds: { wt: 'sess' },
+      worktreePaths: { wt: '/repo' },
+    })
+    mocks.useSession.mockReturnValue({
+      data: { backend, claude_account_id: claudeAccountId },
+    })
+  }
+
+  it('without a session shows the default backend and counts the others', () => {
+    mocks.useClaudeUsage.mockReturnValue(
+      idleQuery({
+        session: { usedPercent: 22, resetsAt: null },
+        weekly: { usedPercent: 64, resetsAt: null },
+        fetchedAt: 0,
+      })
+    )
+    signInCodex()
 
     render(<UsagePopover />)
 
     const trigger = screen.getByRole('button', {
-      name: 'Usage, Codex · Weekly 91%',
+      name: 'Usage, Claude · Weekly 64%, 1 more backend',
     })
-    expect(trigger).toHaveTextContent('91%')
+    expect(trigger).toHaveTextContent('64%')
+    expect(screen.getByTestId('titlebar-usage-more')).toHaveTextContent('+1')
+  })
+
+  it('follows the backend of the open session', () => {
+    signInCodex()
+    openSession('codex')
+
+    render(<UsagePopover />)
+
+    const trigger = screen.getByRole('button', {
+      name: 'Usage, Codex · Weekly 91%, 1 more backend',
+    })
     expect(trigger.querySelector('svg')).toHaveClass('text-destructive')
+  })
+
+  it('uses the Claude account of the open session, not the active one', () => {
+    mocks.usePreferences.mockReturnValue({
+      data: {
+        claude_root_label: 'Personal',
+        claude_accounts: [
+          { id: 'acc-work', label: 'Work', config_dir: '/u/.claude-work' },
+        ],
+        claude_active_account: 'acc-work',
+      },
+    })
+    mocks.useClaudeAccountUsage.mockImplementation((id: string) =>
+      idleQuery({
+        session: { usedPercent: id === 'root' ? 35 : 80, resetsAt: null },
+        weekly: null,
+        fetchedAt: 0,
+      })
+    )
+    openSession('claude', 'root')
+
+    render(<UsagePopover />)
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Usage, Claude Personal · Session 35%',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('shows no figure for a backend without usage data, but counts others', () => {
+    openSession('cursor')
+
+    render(<UsagePopover />)
+
+    const trigger = screen.getByRole('button', {
+      name: 'Usage, 1 more backend',
+    })
+    expect(trigger).not.toHaveTextContent('%')
+    expect(trigger).toHaveTextContent('+1')
   })
 
   it('shows the active Claude account, even when another is higher', () => {
