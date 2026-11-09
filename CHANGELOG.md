@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Starred and Graphs stay at the top of the sidebar.** Both sections are
+  pinned above the list that scrolls, and scroll on their own when they use
+  more than 40% of the height. Folders is now the first header that sticks.
+- **The graph view formats text as the chat does.** Node descriptions, review
+  requests and evidence show as Markdown: images, file links, movie links,
+  code blocks and diagrams resolve, with relative paths from the graph's
+  repository. Use "Edit description" to change a description. `file`
+  attachments are links, and all attachment links follow the chat rules.
+
 ## [1.5.6] - 2026-11-09
 
 Built on Jean 0.1.73.

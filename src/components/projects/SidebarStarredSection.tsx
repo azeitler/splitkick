@@ -1,3 +1,4 @@
+import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { useCallback, useMemo } from 'react'
 import { Star } from 'lucide-react'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -18,7 +19,6 @@ import {
   SIDEBAR_WORKTREE_LIST,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
-import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
 import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
 
 /**
@@ -76,15 +76,8 @@ export function SidebarStarredSection() {
   if (shortcuts.length === 0) return null
 
   return (
-    // `contents`: the header's containing block is the whole scroller, so it
-    // stays stuck in slot 0 after you scroll past Starred.
-    <div
-      data-testid="sidebar-starred-section"
-      data-sidebar-starred=""
-      className="contents"
-    >
-      <SidebarStickySectionHeader
-        top="0px"
+    <div data-testid="sidebar-starred-section">
+      <SidebarSectionRow
         icon={<Star className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Starred"
         count={shortcuts.length}

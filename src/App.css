@@ -733,8 +733,8 @@ body:not(.native-app) kbd {
   animation-play-state: paused !important;
 }
 
-/* Sidebar sticky stack (#45). The projects scroller holds Starred, Graphs,
-   Folders and Projects. A section header you scroll past stays stuck in its slot, stacked
+/* Sidebar sticky stack (#45). The projects scroller holds Folders and
+   Projects; Starred and Graphs are pinned above it. A section header you scroll past stays stuck in its slot, stacked
    above the next one; below them the folder, project and worktree rows stick
    and the next row pushes them out. Only session rows scroll. Every `top` comes
    from these variables, so the short-window cap is one change.
@@ -746,23 +746,10 @@ body:not(.native-app) kbd {
      block (pb-0.5 while children show), so a stuck selected row keeps it to
      the next stuck row and to the hairline (#59). */
   --sb-row-gap: 0.125rem;
-  --sb-starred: 0; /* 1 while the Starred section takes slot 0 */
-  --sb-graphs: 0; /* 1 while the Graphs section takes the next slot */
-  --sb-graphs-top: calc(var(--sb-starred) * var(--sb-sec-h));
-  --sb-folders-top: calc(
-    (var(--sb-starred) + var(--sb-graphs)) * var(--sb-sec-h)
-  );
-  --sb-projects-top: calc(
-    (var(--sb-starred) + var(--sb-graphs) + 1) * var(--sb-sec-h)
-  );
+  --sb-folders-top: 0px;
+  --sb-projects-top: var(--sb-sec-h);
 }
-.sidebar-sticky-scroll:has([data-sidebar-starred]) {
-  --sb-starred: 1;
-}
-.sidebar-sticky-scroll:has([data-sidebar-graphs]) {
-  --sb-graphs: 1;
-}
-/* Short window: smaller headers keep the stack at most 4 × 24 + 64 px. */
+/* Short window: smaller headers keep the stack at most 2 × 24 + 64 px. */
 @media (max-height: 600px) {
   .sidebar-sticky-scroll {
     --sb-sec-h: 1.5rem;
@@ -771,9 +758,7 @@ body:not(.native-app) kbd {
 /* Rows of the Folders section stick under the Starred, Graphs and Folders
    headers. */
 .sidebar-sticky-folders {
-  --sb-folder-top: calc(
-    (var(--sb-starred) + var(--sb-graphs) + 1) * var(--sb-sec-h)
-  );
+  --sb-folder-top: var(--sb-sec-h);
   --sb-project-top: calc(
     var(--sb-folder-top) + var(--sb-row-h) + var(--sb-row-gap)
   );
@@ -783,9 +768,7 @@ body:not(.native-app) kbd {
 }
 /* Rows of the Projects section stick under all four headers. */
 .sidebar-sticky-projects {
-  --sb-project-top: calc(
-    (var(--sb-starred) + var(--sb-graphs) + 2) * var(--sb-sec-h)
-  );
+  --sb-project-top: calc(2 * var(--sb-sec-h));
   --sb-worktree-top: calc(
     var(--sb-project-top) + var(--sb-row-h) + var(--sb-row-gap)
   );

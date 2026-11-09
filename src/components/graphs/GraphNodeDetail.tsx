@@ -5,8 +5,16 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { ArrowRight, Ban, Inbox, Play, Plus, Trash2, X } from 'lucide-react'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import {
+  ArrowRight,
+  Ban,
+  Inbox,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,10 +27,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Markdown } from '@/components/ui/markdown'
+import { MarkdownLink } from '@/components/ui/markdown-link'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { isNativeApp } from '@/lib/environment'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { formatRelativeTime } from '@/lib/relative-time'
 import {
@@ -392,7 +401,7 @@ function StatePicker({
   )
 }
 
-/** The description as text; a small link instead of an empty box. */
+/** The description as chat Markdown; a small link instead of an empty box. */
 function DescriptionBlock({
   value,
   onSave,
@@ -413,10 +422,25 @@ function DescriptionBlock({
       </button>
     )
   }
+  if (!editing) {
+    return (
+      <div className="flex flex-col gap-1" data-testid="graph-node-description">
+        <Markdown className="text-sm">{value}</Markdown>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Pencil className="size-3" aria-hidden="true" />
+          Edit description
+        </button>
+      </div>
+    )
+  }
   return (
     <DescriptionField
       value={value}
-      autoFocus={editing && !value.trim()}
+      autoFocus
       onSave={next => {
         setEditing(false)
         if (next !== value) onSave(next)
@@ -770,21 +794,12 @@ function IncomingList({
 
 function AttachmentValue({ attachment }: { attachment: GraphAttachment }) {
   const url = attachmentUrl(attachment)
-  if (!url) return <span className="flex-1 truncate">{attachment.value}</span>
+  const href = url ?? (attachment.kind === 'file' ? attachment.value : null)
+  if (!href) return <span className="flex-1 truncate">{attachment.value}</span>
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex-1 truncate text-blue-500 hover:underline"
-      onClick={e => {
-        if (!isNativeApp()) return
-        e.preventDefault()
-        void openUrl(url)
-      }}
-    >
-      {attachment.value}
-    </a>
+    <span className="flex-1 truncate">
+      <MarkdownLink href={href}>{attachment.value}</MarkdownLink>
+    </span>
   )
 }
 

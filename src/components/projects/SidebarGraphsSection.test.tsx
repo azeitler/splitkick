@@ -43,15 +43,6 @@ describe('SidebarGraphsSection', () => {
     expect(screen.getByTestId('new-graph-dialog')).toBeInTheDocument()
   })
 
-  it('marks the scroller slot with data-sidebar-graphs', () => {
-    render(<SidebarGraphsSection />)
-    expect(
-      screen
-        .getByTestId('sidebar-graphs-section')
-        .hasAttribute('data-sidebar-graphs')
-    ).toBe(true)
-  })
-
   it('lists graphs with type, where, counts and warnings', () => {
     mocks.graphs = [
       summary({ id: 'g1', openRequests: 3, unseenChanges: 2 }),

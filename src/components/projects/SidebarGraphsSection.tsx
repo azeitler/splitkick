@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { AlertTriangle, Workflow } from 'lucide-react'
+import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { NewGraphDialog } from '@/components/graphs/NewGraphDialog'
 import { graphSubtitle } from '@/components/graphs/graph-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -17,10 +18,10 @@ import {
   SIDEBAR_WORKTREE_LIST,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
-import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
 
 /**
- * Registered graphs, between Starred and Folders (graph layer, #79).
+ * Registered graphs, pinned below Starred above the scrolling list (graph
+ * layer, #79).
  *
  * Unlike Starred, the header always shows so "+ New" stays reachable; with no
  * graphs there are simply no rows under it. Orange count = requests waiting
@@ -46,15 +47,8 @@ export function SidebarGraphsSection() {
   )
 
   return (
-    // `contents`: the header's containing block is the whole scroller, so it
-    // stays stuck in its slot after you scroll past the section.
-    <div
-      data-testid="sidebar-graphs-section"
-      data-sidebar-graphs=""
-      className="contents"
-    >
-      <SidebarStickySectionHeader
-        top="var(--sb-graphs-top)"
+    <div data-testid="sidebar-graphs-section">
+      <SidebarSectionRow
         icon={<Workflow className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Graphs"
         count={graphs.length}

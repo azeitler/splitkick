@@ -27,6 +27,8 @@ import {
 import { ToolbarPaletteSearch } from '@/components/toolbar/ToolbarSearchField'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { LocalPathRootContext } from '@/lib/chat-links'
+import { getDirname } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import {
   useCommitGraph,
@@ -165,21 +167,26 @@ export function GraphView({ graphId }: { graphId: string }) {
         ))}
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-y-auto" role="tabpanel">
-          <ActiveTab {...tabProps} />
-        </div>
-        {selectedNodeId && (
-          <GraphNodeDetail
-            key={selectedNodeId}
-            graphId={graphId}
-            detail={detail}
-            nodeId={selectedNodeId}
-            changes={changes}
-            onClose={() => setSelectedNodeId(null)}
-            onSelectNode={setSelectedNodeId}
-            onOpenReview={() => setTab('review')}
-          />
-        )}
+        {/* Relative paths in graph text resolve as they do in chat. */}
+        <LocalPathRootContext.Provider
+          value={detail.summary.repoRoot ?? getDirname(detail.summary.path)}
+        >
+          <div className="min-w-0 flex-1 overflow-y-auto" role="tabpanel">
+            <ActiveTab {...tabProps} />
+          </div>
+          {selectedNodeId && (
+            <GraphNodeDetail
+              key={selectedNodeId}
+              graphId={graphId}
+              detail={detail}
+              nodeId={selectedNodeId}
+              changes={changes}
+              onClose={() => setSelectedNodeId(null)}
+              onSelectNode={setSelectedNodeId}
+              onOpenReview={() => setTab('review')}
+            />
+          )}
+        </LocalPathRootContext.Provider>
       </div>
     </div>
   )
