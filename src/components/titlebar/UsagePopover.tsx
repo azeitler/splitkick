@@ -18,12 +18,12 @@ import {
   type UsageSeverity,
 } from '@/components/preferences/panes/UsagePane'
 import {
-  useClaudeAccountsUsage,
+  useClaudeUsage,
   useClaudeCliAuth,
   useClaudeCliStatus,
 } from '@/services/claude-cli'
 import { usePreferences } from '@/services/preferences'
-import { listClaudeAccounts } from '@/lib/claude-accounts'
+import { activeClaudeAccount, listClaudeAccounts } from '@/lib/claude-accounts'
 import {
   useCodexCliAuth,
   useCodexCliStatus,
@@ -62,7 +62,7 @@ export function findPeakUsage(
 
 /**
  * Session and weekly windows of every signed-in backend, reduced to the
- * highest one. Shares its query keys with the dock badge and the Settings
+ * highest one. For Claude that is the active account only. Shares its query keys with the dock badge and the Settings
  * pane, so it adds no backend calls of its own.
  */
 export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
@@ -70,17 +70,17 @@ export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
   })
-  // Every Claude account (#90); same query keys as the Usage pane.
+  // Only the active Claude account counts (#90): it is the one new runs use.
+  // Same query key as the Usage pane.
   const { data: preferences } = usePreferences()
-  const claudeAccounts = listClaudeAccounts(preferences)
-  const claudeMultiAccount = claudeAccounts.length > 1
+  const claudeAccount = activeClaudeAccount(preferences)
+  const claudeMultiAccount = listClaudeAccounts(preferences).length > 1
   const claudeReady =
-    !!claudeStatus.data?.installed &&
-    (claudeMultiAccount || !!claudeAuth.data?.authenticated)
-  const claudeUsages = useClaudeAccountsUsage(
-    claudeAccounts.map(account => account.id),
-    { enabled: claudeReady && fetchEnabled }
-  )
+    !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated
+  const claudeUsage = useClaudeUsage({
+    accountId: claudeAccount.id,
+    enabled: claudeReady && fetchEnabled,
+  })
 
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({ enabled: !!codexStatus.data?.installed })
@@ -94,21 +94,16 @@ export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
     !!grokStatus.data?.installed && !!grokAuth.data?.authenticated
   const grokUsage = useGrokUsage({ enabled: grokReady && fetchEnabled })
 
-  const claudeWindows = claudeReady
-    ? claudeAccounts.flatMap((account, index) => {
-        const usage = claudeUsages[index]?.data
-        const prefix = claudeMultiAccount ? `Claude ${account.label}` : 'Claude'
-        return [
-          { label: `${prefix} · Session`, usage: usage?.session },
-          { label: `${prefix} · Weekly`, usage: usage?.weekly },
-        ]
-      })
-    : []
+  const claudePrefix = claudeMultiAccount
+    ? `Claude ${claudeAccount.label}`
+    : 'Claude'
+  const claude = claudeReady ? claudeUsage.data : undefined
   const codex = codexReady ? codexUsage.data : undefined
   const grok = grokReady ? grokUsage.data : undefined
 
   return findPeakUsage([
-    ...claudeWindows,
+    { label: `${claudePrefix} · Session`, usage: claude?.session },
+    { label: `${claudePrefix} · Weekly`, usage: claude?.weekly },
     { label: 'Codex · Session', usage: codex?.session },
     { label: 'Codex · Weekly', usage: codex?.weekly },
     { label: 'Grok · Build', usage: grok?.session },
