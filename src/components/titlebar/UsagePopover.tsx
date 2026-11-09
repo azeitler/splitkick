@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { createElement, useCallback, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,9 +18,9 @@ import {
   type UsageSeverity,
 } from '@/components/preferences/panes/UsagePane'
 import {
-  useClaudeUsage,
-  useClaudeCliAuth,
+  useClaudeAccountAuth,
   useClaudeCliStatus,
+  useClaudeUsage,
 } from '@/services/claude-cli'
 import { usePreferences } from '@/services/preferences'
 import { activeClaudeAccount, listClaudeAccounts } from '@/lib/claude-accounts'
@@ -34,7 +34,11 @@ import {
   useGrokCliStatus,
   useGrokUsage,
 } from '@/services/grok-cli'
+import { useSession } from '@/services/chat'
+import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { getBackendIcon } from '@/components/ui/backend-label'
+import type { CliBackend } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 
 interface UsageWindowCandidate {
@@ -60,55 +64,110 @@ export function findPeakUsage(
   return peak
 }
 
+export interface UsageBadge {
+  /** The backend the badge is about. */
+  backend: CliBackend
+  /** The figure of that backend, or null when it has no usage data. */
+  peak: PeakUsage | null
+  /** How many other signed-in backends the popover also shows. */
+  otherBackends: number
+}
+
 /**
- * Session and weekly windows of every signed-in backend, reduced to the
- * highest one. For Claude that is the active account only. Shares its query keys with the dock badge and the Settings
- * pane, so it adds no backend calls of its own.
+ * What the usage badge shows: the backend and Claude account of the open
+ * session, or the default backend and the active account without one. The
+ * figure is the fuller of that account's session and weekly windows. Shares
+ * its query keys with the Usage pane, so it adds no backend calls of its own.
  */
-export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
+export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
+  const modalOpen = useUIStore(state => state.sessionChatModalOpen)
+  const modalWorktreeId = useUIStore(state => state.sessionChatModalWorktreeId)
+  const worktreeId = useChatStore(state =>
+    modalOpen && modalWorktreeId ? modalWorktreeId : state.activeWorktreeId
+  )
+  const worktreePath = useChatStore(state =>
+    worktreeId ? (state.worktreePaths[worktreeId] ?? null) : null
+  )
+  const sessionId = useChatStore(state =>
+    worktreeId ? (state.activeSessionIds[worktreeId] ?? null) : null
+  )
+  const selectedBackend = useChatStore(state =>
+    sessionId ? state.selectedBackends[sessionId] : undefined
+  )
+  const { data: session } = useSession(sessionId, worktreeId, worktreePath)
+  const { data: preferences } = usePreferences()
+
+  const backend: CliBackend =
+    (session?.backend as CliBackend | undefined) ??
+    selectedBackend ??
+    preferences?.default_backend ??
+    'claude'
+
+  const claudeAccounts = listClaudeAccounts(preferences)
+  const claudeAccount =
+    claudeAccounts.find(account => account.id === session?.claude_account_id) ??
+    activeClaudeAccount(preferences)
   const claudeStatus = useClaudeCliStatus()
-  const claudeAuth = useClaudeCliAuth({
+  const claudeAuth = useClaudeAccountAuth(claudeAccount.id, {
     enabled: !!claudeStatus.data?.installed,
   })
-  // Only the active Claude account counts (#90): it is the one new runs use.
-  // Same query key as the Usage pane.
-  const { data: preferences } = usePreferences()
-  const claudeAccount = activeClaudeAccount(preferences)
-  const claudeMultiAccount = listClaudeAccounts(preferences).length > 1
   const claudeReady =
     !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated
   const claudeUsage = useClaudeUsage({
     accountId: claudeAccount.id,
-    enabled: claudeReady && fetchEnabled,
+    enabled: backend === 'claude' && claudeReady && fetchEnabled,
   })
 
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({ enabled: !!codexStatus.data?.installed })
   const codexReady =
     !!codexStatus.data?.installed && !!codexAuth.data?.authenticated
-  const codexUsage = useCodexUsage({ enabled: codexReady && fetchEnabled })
+  const codexUsage = useCodexUsage({
+    enabled: backend === 'codex' && codexReady && fetchEnabled,
+  })
 
   const grokStatus = useGrokCliStatus()
   const grokAuth = useGrokCliAuth({ enabled: !!grokStatus.data?.installed })
   const grokReady =
     !!grokStatus.data?.installed && !!grokAuth.data?.authenticated
-  const grokUsage = useGrokUsage({ enabled: grokReady && fetchEnabled })
+  const grokUsage = useGrokUsage({
+    enabled: backend === 'grok' && grokReady && fetchEnabled,
+  })
 
-  const claudePrefix = claudeMultiAccount
-    ? `Claude ${claudeAccount.label}`
-    : 'Claude'
-  const claude = claudeReady ? claudeUsage.data : undefined
-  const codex = codexReady ? codexUsage.data : undefined
-  const grok = grokReady ? grokUsage.data : undefined
+  const otherBackends = (
+    [
+      ['claude', claudeReady],
+      ['codex', codexReady],
+      ['grok', grokReady],
+    ] as const
+  ).filter(([name, ready]) => ready && name !== backend).length
 
-  return findPeakUsage([
-    { label: `${claudePrefix} · Session`, usage: claude?.session },
-    { label: `${claudePrefix} · Weekly`, usage: claude?.weekly },
-    { label: 'Codex · Session', usage: codex?.session },
-    { label: 'Codex · Weekly', usage: codex?.weekly },
-    { label: 'Grok · Build', usage: grok?.session },
-    { label: 'Grok · Weekly credits', usage: grok?.weekly },
-  ])
+  let candidates: UsageWindowCandidate[] = []
+  if (backend === 'claude' && claudeReady) {
+    const prefix =
+      claudeAccounts.length > 1 ? `Claude ${claudeAccount.label}` : 'Claude'
+    candidates = [
+      { label: `${prefix} · Session`, usage: claudeUsage.data?.session },
+      { label: `${prefix} · Weekly`, usage: claudeUsage.data?.weekly },
+    ]
+  } else if (backend === 'codex' && codexReady) {
+    candidates = [
+      { label: 'Codex · Session', usage: codexUsage.data?.session },
+      { label: 'Codex · Weekly', usage: codexUsage.data?.weekly },
+    ]
+  } else if (backend === 'grok' && grokReady) {
+    candidates = [
+      { label: 'Grok · Build', usage: grokUsage.data?.session },
+      { label: 'Grok · Weekly credits', usage: grokUsage.data?.weekly },
+    ]
+  }
+
+  return { backend, peak: findPeakUsage(candidates), otherBackends }
+}
+
+/** The badge figure alone, for the mobile tab icon. */
+export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
+  return useUsageBadge(fetchEnabled).peak
 }
 
 export const RING_CLASS: Record<UsageSeverity, string> = {
@@ -164,8 +223,14 @@ export function UsagePopover() {
   const [open, setOpen] = useState(false)
   // Same gate as the dock badge: dev builds only fetch on demand, so a
   // restart loop does not hit the usage endpoints' rate limits.
-  const peak = usePeakUsage(!import.meta.env.DEV || open)
+  const { backend, peak, otherBackends } = useUsageBadge(
+    !import.meta.env.DEV || open
+  )
   const rounded = peak ? Math.round(peak.percent) : null
+  const moreLabel =
+    otherBackends > 0
+      ? `${otherBackends} more ${otherBackends === 1 ? 'backend' : 'backends'}`
+      : null
 
   const openSettings = useCallback(() => {
     setOpen(false)
@@ -179,7 +244,12 @@ export function UsagePopover() {
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
-              aria-label={peak ? `Usage, ${peak.label} ${rounded}%` : 'Usage'}
+              aria-label={[
+                peak ? `Usage, ${peak.label} ${rounded}%` : 'Usage',
+                moreLabel,
+              ]
+                .filter(Boolean)
+                .join(', ')}
               data-testid="titlebar-usage"
               className={cn(
                 'h-6 gap-1 rounded-md bg-muted/40 px-1.5 text-[0.625rem] font-medium tabular-nums text-foreground/70 hover:bg-muted hover:text-foreground',
@@ -189,16 +259,30 @@ export function UsagePopover() {
               {peak ? (
                 <>
                   <UsageRing percent={peak.percent} />
+                  {createElement(getBackendIcon(backend), {
+                    className: 'size-3',
+                    'aria-hidden': true,
+                  })}
                   <span>{rounded}%</span>
                 </>
               ) : (
                 <BarChart3 className="size-3.5" />
               )}
+              {otherBackends > 0 ? (
+                <span
+                  data-testid="titlebar-usage-more"
+                  className="text-muted-foreground"
+                >
+                  +{otherBackends}
+                </span>
+              ) : null}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>
-          {peak ? `Usage · ${peak.label} ${rounded}%` : 'Usage'}
+          {[peak ? `Usage · ${peak.label} ${rounded}%` : 'Usage', moreLabel]
+            .filter(Boolean)
+            .join(' · ')}
         </TooltipContent>
       </Tooltip>
       <PopoverContent

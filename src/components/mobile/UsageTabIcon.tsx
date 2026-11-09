@@ -10,8 +10,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS
  * The Usage tab icon: the chart glyph of the desktop usage badge, with plan
  * usage drawn as a ring around it.
  *
- * The arc is the fullest window across every signed-in backend
- * (`usePeakUsage`), coloured by severity like the desktop badge, so the tab
+ * The arc is the figure of the desktop usage badge (`usePeakUsage`), coloured by severity like the desktop badge, so the tab
  * bar answers "how close am I to a limit?" without opening the tab. Without
  * usage data it is the plain glyph, the same size as the other tab icons.
  */

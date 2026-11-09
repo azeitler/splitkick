@@ -38,6 +38,13 @@ test.use({
       supports_auth_command: true,
     },
     check_claude_cli_auth: { authenticated: true, error: null },
+    // A second signed-in backend, for the "+1" on the usage badge.
+    check_codex_cli_installed: {
+      installed: true,
+      version: '1.0.0',
+      path: '/c',
+    },
+    check_codex_cli_auth: { authenticated: true, error: null },
     get_claude_usage: {
       __byAccountId: {
         root: usage('me@example.com', 18, 42),
@@ -102,6 +109,15 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
   })
   await mockPage.getByTestId('toggle-left-sidebar').first().click()
   await mockPage.getByTestId('titlebar-usage').click()
+
+  const badge = mockPage.getByTestId('titlebar-usage')
+  await expect(badge).toHaveText(/71%/)
+  await expect(badge).toHaveText(/\+1/)
+  if (captureDir) {
+    await mockPage
+      .getByTestId('sidebar-column')
+      .screenshot({ path: `${captureDir}/usage-badge-sidebar.png` })
+  }
 
   const work = mockPage.getByTestId('claude-usage-account-acc-work')
   const root = mockPage.getByTestId('claude-usage-account-root')
