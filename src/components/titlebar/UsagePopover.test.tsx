@@ -25,7 +25,9 @@ vi.mock('@/services/claude-cli', () => ({
   claudeCliQueryKeys: { all: ['claude-cli'] },
   useClaudeCliStatus: () => mocks.useClaudeCliStatus(),
   useClaudeCliAuth: () => mocks.useClaudeCliAuth(),
-  useClaudeUsage: () => mocks.useClaudeUsage(),
+  useClaudeUsage: (options?: { accountId?: string }) =>
+    (options?.accountId && mocks.useClaudeAccountUsage(options.accountId)) ??
+    mocks.useClaudeUsage(),
   useClaudeAccountsUsage: (ids: string[]) =>
     ids.map(id => mocks.useClaudeAccountUsage(id) ?? mocks.useClaudeUsage()),
 }))
@@ -149,7 +151,9 @@ describe('UsagePopover', () => {
     expect(trigger.querySelector('svg')).toHaveClass('text-destructive')
   })
 
-  it('takes the peak across every Claude account and names it', () => {
+  it('shows the active Claude account, even when another is higher', () => {
+    mocks.useClaudeCliStatus.mockReturnValue(idleQuery({ installed: true }))
+    mocks.useClaudeCliAuth.mockReturnValue(idleQuery({ authenticated: true }))
     mocks.usePreferences.mockReturnValue({
       data: {
         claude_root_label: 'Personal',
@@ -160,11 +164,12 @@ describe('UsagePopover', () => {
             config_dir: '/Users/me/.claude-work',
           },
         ],
+        claude_active_account: 'acc-work',
       },
     })
     mocks.useClaudeAccountUsage.mockImplementation((id: string) =>
       idleQuery({
-        session: { usedPercent: id === 'acc-work' ? 83 : 20, resetsAt: null },
+        session: { usedPercent: id === 'acc-work' ? 20 : 83, resetsAt: null },
         weekly: { usedPercent: 10, resetsAt: null },
         fetchedAt: 0,
       })
@@ -173,7 +178,7 @@ describe('UsagePopover', () => {
     render(<UsagePopover />)
 
     expect(
-      screen.getByRole('button', { name: 'Usage, Claude Work · Session 83%' })
+      screen.getByRole('button', { name: 'Usage, Claude Work · Session 20%' })
     ).toBeInTheDocument()
   })
 

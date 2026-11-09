@@ -13,6 +13,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   has a strong border and a solid Active tag, and the buttons have outlines.
   Each limit shows the time until it resets and the date, for example "Resets
   in 2h (Mon, Nov 9, 3:44 PM)" (#90).
+- **The usage badge follows the active Claude account.** It used the highest
+  figure across all accounts, so a full account that was not in use could
+  turn it red. Other backends still count (#90).
 
 ### Fixed
 
