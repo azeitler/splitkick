@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -232,8 +233,8 @@ export function ScheduleDialog({
               </DialogTitle>
               <DialogDescription>
                 {kind === 'once'
-                  ? 'The prompt runs once at the time you pick, also when no window is open.'
-                  : 'The prompt runs at every match of the rule, also when no window is open.'}
+                  ? `The prompt runs once at the time you pick. ${PRODUCT_NAME} stays running for it after you close the window.`
+                  : `The prompt runs at every match of the rule. ${PRODUCT_NAME} stays running for it after you close the window.`}
               </DialogDescription>
             </DialogHeader>
 

@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { Loader2, Check, ChevronsUpDown, Play } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { OpenAtLoginSwitch } from './OpenAtLoginField'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { BackendLabel } from '@/components/ui/backend-label'
@@ -212,7 +213,7 @@ import {
 } from '@/lib/remote-version'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { hasBackend, isNativeApp } from '@/lib/environment'
-import { isWindows, openExternal } from '@/lib/platform'
+import { isClientLinux, isWindows, openExternal } from '@/lib/platform'
 import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -4851,6 +4852,29 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                   </SelectContent>
                 </Select>
               </InlineField>
+              {isNativeApp() && !isClientLinux && (
+                <InlineField
+                  label="Show in menu bar"
+                  description={`Usage of your Claude accounts. While a schedule is enabled, ${PRODUCT_NAME} also stays running here after you close the window.`}
+                >
+                  <Switch
+                    checked={preferences?.show_in_menu_bar ?? true}
+                    onCheckedChange={checked => {
+                      if (preferences) {
+                        patchPreferences.mutate({ show_in_menu_bar: checked })
+                      }
+                    }}
+                  />
+                </InlineField>
+              )}
+              {isNativeApp() && (
+                <InlineField
+                  label="Open at login"
+                  description={`Repeating schedules also run after a restart, without opening ${PRODUCT_NAME} first.`}
+                >
+                  <OpenAtLoginSwitch />
+                </InlineField>
+              )}
             </div>
           </SettingsSection>
 
