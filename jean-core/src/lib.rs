@@ -84,6 +84,10 @@ pub use version::{app_version, release_version, set_app_version, set_release_ver
 // macOS app fallbacks, Windows .cmd wrappers).
 pub use chat::open_file_in_default_app;
 pub use chat::schedules::{set_run_notifier, ScheduledRunNotice};
+pub use claude_cli::{
+    get_claude_accounts_usage, refresh_claude_accounts_usage, ClaudeAccountUsage,
+    ClaudeUsageLimitSnapshot, ClaudeUsageSnapshot, ClaudeUsageWindowSnapshot,
+};
 pub use platform::open_url_in_browser;
 pub use projects::open_path_in_default_app;
 pub use projects::open_worktree_in_editor;
@@ -264,6 +268,8 @@ pub struct AppPreferences {
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
     #[serde(default = "default_schedule_missed_runs")]
     pub schedule_missed_runs: String, // Schedule due while app was off: catch_up (run once), skip
+    #[serde(default = "default_show_in_menu_bar")]
+    pub show_in_menu_bar: bool, // Menu bar (tray) icon with usage (#127)
     #[serde(default = "default_waiting_sound")]
     pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
@@ -914,6 +920,10 @@ fn default_sync_zoom_levels() -> bool {
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
     true // Enabled by default
+}
+
+fn default_show_in_menu_bar() -> bool {
+    true
 }
 
 fn default_schedule_missed_runs() -> String {
@@ -2873,6 +2883,7 @@ impl Default for AppPreferences {
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
             schedule_missed_runs: default_schedule_missed_runs(),
+            show_in_menu_bar: true,
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
             web_access_sounds_enabled: default_web_access_sounds_enabled(),
@@ -4785,6 +4796,14 @@ pub async fn save_dropped_image_from_path(
 
 pub fn has_nonsurvivable_running_sessions() -> bool {
     chat::has_nonsurvivable_running_sessions()
+}
+
+/// Whether a schedule is waiting to fire: the desktop app stays running for it
+/// after the last window closes (#119).
+pub fn has_enabled_schedules() -> bool {
+    chat::schedules::list()
+        .iter()
+        .any(|schedule| schedule.enabled)
 }
 
 pub fn shutdown_runtime() {

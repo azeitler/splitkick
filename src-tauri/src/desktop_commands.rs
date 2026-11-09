@@ -137,6 +137,25 @@ const NOTIFICATION_SESSION_KEY: &str = "jeanSession";
 /// native notification; a click opens the session. With a window, also a
 /// hidden one, the frontend's notification path shows it instead, so this
 /// never notifies twice.
+/// Whether the OS starts Splitkick at login (#119).
+#[tauri::command]
+pub(crate) fn get_open_at_login(app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn set_open_at_login(app: AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if enabled {
+        autostart.enable()
+    } else {
+        autostart.disable()
+    }
+    .map_err(|e| e.to_string())
+}
+
 pub(crate) fn install_schedule_notifier(app: AppHandle) {
     jean_core::set_run_notifier(move |notice: jean_core::ScheduledRunNotice| {
         if !app.webview_windows().is_empty() {

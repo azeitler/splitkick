@@ -218,6 +218,7 @@ import { useContextPanelShown } from './use-context-panel-shown'
 import { openArchivedView } from '@/lib/archived-view'
 import { useProjectsStore } from '@/store/projects-store'
 import { useDockSync } from '@/hooks/useDockSync'
+import { useTraySync } from '@/hooks/useTraySync'
 import { useWebviewRecovery } from '@/hooks/useWebviewRecovery'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
@@ -409,6 +410,7 @@ export function MainWindow() {
 
   // macOS dock badge (unread count) and dock menu (sessions)
   useDockSync()
+  useTraySync()
 
   // Toast after the shell reloaded an empty window (#97)
   useWebviewRecovery()

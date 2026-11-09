@@ -2,7 +2,7 @@
 
 Investigation of 2026-11-09 on mb14 (macOS 27.2, `main` at b8a64a36). Two questions:
 what stays alive after a crash, and how schedules can run when Splitkick is not
-open ([#119](https://github.com/azeitler/splitkick/issues/119)). No option is built yet.
+open ([#119](https://github.com/azeitler/splitkick/issues/119)). Option A is built, see "Built" at the end.
 
 ## 1. "Running in Background" in the Dock
 
@@ -202,3 +202,19 @@ Sources not linked above:
 [Tauri system tray](https://v2.tauri.app/learn/system-tray/),
 [Tauri `app.rs`](https://docs.rs/tauri/latest/src/tauri/app.rs.html),
 [LogonType](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-logontype-principaltype-element).
+
+## Built (option A with #127)
+
+- `RunEvent::ExitRequested` (`exit_action` in `src-tauri/src/lib.rs`): when the last
+  window closes (`code` is `None`) and an enabled schedule exists, the app stays
+  running with no window. Cmd+Q does not pass through `ExitRequested`, so it still
+  quits. On Windows the app stays only if the tray icon is on. Linux is unchanged.
+- Tray: `src-tauri/src/tray.rs`, macOS and Windows. A Rust loop reads the shared
+  5-minute usage cache every 5 minutes, because the frontend query does not run with
+  no window. It adds no requests. "Refresh now" skips the cache.
+  `useTraySync` rebuilds at once when the account list changes.
+- Linux has no tray (`tray_stub.rs`): the binding aborts if the system library is missing.
+- `show_in_menu_bar` preference, and "Open at login" (`tauri-plugin-autostart`, state
+  in the OS, off by default) under Settings > General > Scheduled prompts.
+- `limits` from the usage endpoint and RFC 3339 `resets_at` values are parsed. Before,
+  every date-form reset time was lost. The dock and Preferences part of #126 is still open.

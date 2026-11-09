@@ -183,6 +183,9 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'set_menu_accelerators',
   'set_dock_badge',
   'set_dock_sessions',
+  'refresh_tray',
+  'get_open_at_login',
+  'set_open_at_login',
   'open_connection_window',
   'focus_main_window',
   'close_connection_window',
@@ -245,6 +248,9 @@ const LOCAL_SHELL_COMMANDS = new Set([
   'set_menu_accelerators',
   'set_dock_badge',
   'set_dock_sessions',
+  'refresh_tray',
+  'get_open_at_login',
+  'set_open_at_login',
   // Windows belong to this desktop shell, so a connection window opening
   // another connection must reach the local process, not its remote.
   'open_connection_window',

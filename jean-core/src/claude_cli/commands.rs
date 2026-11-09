@@ -616,6 +616,20 @@ pub struct ClaudeUsageWindowSnapshot {
     pub resets_at: Option<u64>,
 }
 
+/// One entry of the usage endpoint's `limits` array.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeUsageLimitSnapshot {
+    /// `weekly_all`, `weekly_scoped`, ...
+    pub kind: String,
+    pub used_percent: f64,
+    /// `normal`, `warning` or `critical`.
+    pub severity: Option<String>,
+    pub resets_at: Option<u64>,
+    /// Model name of a `weekly_scoped` limit, for example "Fable".
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeUsageSnapshot {
@@ -626,6 +640,9 @@ pub struct ClaudeUsageSnapshot {
     pub session: Option<ClaudeUsageWindowSnapshot>,
     pub weekly: Option<ClaudeUsageWindowSnapshot>,
     pub sonnet_weekly: Option<ClaudeUsageWindowSnapshot>,
+    /// The endpoint's `limits` array: severity and model-scoped limits.
+    #[serde(default)]
+    pub limits: Vec<ClaudeUsageLimitSnapshot>,
     pub extra_usage_spent: Option<f64>,
     pub extra_usage_limit: Option<f64>,
     pub fetched_at: u64,
@@ -672,8 +689,22 @@ struct ClaudeCredentialsFile {
 struct ClaudeUsageWindow {
     #[serde(default, deserialize_with = "de_opt_f64")]
     utilization: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_u64")]
+    #[serde(default, deserialize_with = "de_opt_reset_time")]
     resets_at: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeUsageLimit {
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
+    percent: Option<f64>,
+    #[serde(default)]
+    severity: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_reset_time")]
+    resets_at: Option<u64>,
+    #[serde(default)]
+    scope: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -694,6 +725,8 @@ struct ClaudeUsageApiResponse {
     seven_day: Option<ClaudeUsageWindow>,
     #[serde(default)]
     seven_day_sonnet: Option<ClaudeUsageWindow>,
+    #[serde(default)]
+    limits: Vec<ClaudeUsageLimit>,
     #[serde(default)]
     extra_usage: Option<ClaudeExtraUsage>,
 }
@@ -726,6 +759,44 @@ where
         Value::String(s) => s.parse::<u64>().ok(),
         _ => None,
     })
+}
+
+/// The endpoint sends an RFC 3339 date; older responses sent a number.
+fn de_opt_reset_time<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(Value::Number(num)) => num.as_u64(),
+        Some(Value::String(s)) => s.parse::<u64>().ok().or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .and_then(|date| u64::try_from(date.timestamp()).ok())
+        }),
+        _ => None,
+    })
+}
+
+fn map_limits(limits: Vec<ClaudeUsageLimit>) -> Vec<ClaudeUsageLimitSnapshot> {
+    limits
+        .into_iter()
+        .filter_map(|limit| {
+            let model = limit
+                .scope
+                .as_ref()
+                .and_then(|scope| scope.pointer("/model/display_name"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            Some(ClaudeUsageLimitSnapshot {
+                kind: limit.kind?,
+                used_percent: limit.percent?,
+                severity: limit.severity,
+                resets_at: limit.resets_at,
+                model,
+            })
+        })
+        .collect()
 }
 
 fn build_usage_client() -> Result<reqwest::Client, String> {
@@ -1215,11 +1286,33 @@ pub struct ClaudeAccountUsage {
 /// Usage of every configured Claude account, root first. One account at a time,
 /// each through its own 5-minute cache, so this adds no request storm.
 pub async fn get_claude_accounts_usage(app: AppHandle) -> Result<Vec<ClaudeAccountUsage>, String> {
+    accounts_usage(app, false).await
+}
+
+/// Same list, but skips the 5-minute cache: an explicit "Refresh now".
+pub async fn refresh_claude_accounts_usage(
+    app: AppHandle,
+) -> Result<Vec<ClaudeAccountUsage>, String> {
+    accounts_usage(app, true).await
+}
+
+async fn accounts_usage(
+    app: AppHandle,
+    skip_cache: bool,
+) -> Result<Vec<ClaudeAccountUsage>, String> {
     let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
     let active_id = accounts::active_account(&prefs).id;
     let mut result = Vec::new();
     for account in accounts::all_accounts(&prefs) {
-        let fetched = get_claude_usage_with_source("accounts", &account).await;
+        let cache_path = get_claude_usage_cache_path(account.config_dir.as_deref());
+        let fetched = fetch_claude_usage(
+            "accounts",
+            account.config_dir.as_deref(),
+            CLAUDE_USAGE_URL,
+            cache_path.as_deref(),
+            skip_cache,
+        )
+        .await;
         result.push(ClaudeAccountUsage {
             active: account.id == active_id,
             account_id: account.id,
@@ -1256,6 +1349,7 @@ pub(crate) async fn get_claude_usage_with_source(
         config_dir,
         CLAUDE_USAGE_URL,
         cache_path.as_deref(),
+        false,
     )
     .await
 }
@@ -1265,6 +1359,7 @@ async fn fetch_claude_usage(
     config_dir: Option<&str>,
     usage_url: &str,
     cache_path: Option<&std::path::Path>,
+    skip_cache: bool,
 ) -> Result<ClaudeUsageSnapshot, String> {
     // Serialize usage fetches so UI + background polls share one request and cache write.
     let _usage_lock = claude_usage_fetch_lock().lock().await;
@@ -1274,7 +1369,10 @@ async fn fetch_claude_usage(
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if let Some(cached) = load_cached_claude_usage(cache_path, now_secs) {
+    if let Some(cached) = (!skip_cache)
+        .then(|| load_cached_claude_usage(cache_path, now_secs))
+        .flatten()
+    {
         log::trace!("Claude usage fetch hit cache (source={request_source})");
         return Ok(cached);
     }
@@ -1402,6 +1500,7 @@ async fn fetch_claude_usage(
         session: map_window(usage.five_hour),
         weekly: map_window(usage.seven_day),
         sonnet_weekly: map_window(usage.seven_day_sonnet),
+        limits: map_limits(usage.limits),
         extra_usage_spent,
         extra_usage_limit,
         fetched_at,
@@ -1873,7 +1972,13 @@ attributes:
             .unwrap();
         let fetch = |dir: &str, cache: &std::path::Path| {
             runtime
-                .block_on(fetch_claude_usage("test", Some(dir), &url, Some(cache)))
+                .block_on(fetch_claude_usage(
+                    "test",
+                    Some(dir),
+                    &url,
+                    Some(cache),
+                    false,
+                ))
                 .unwrap()
         };
 
@@ -1909,6 +2014,7 @@ attributes:
             Some(&empty.to_string_lossy()),
             &url,
             Some(&temp.path().join("cache.json")),
+            false,
         ));
         assert!(result.is_err());
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -1936,6 +2042,7 @@ attributes:
                 Some(&dir),
                 CLAUDE_USAGE_URL,
                 Some(&cache_path),
+                false,
             ))
             .expect("usage of the extra account");
         println!(
@@ -1947,5 +2054,33 @@ attributes:
             snapshot.weekly.map(|w| w.used_percent),
         );
         assert!(snapshot.account_email.is_some());
+    }
+
+    #[test]
+    fn usage_response_with_limits_and_date_resets() {
+        let usage: ClaudeUsageApiResponse = serde_json::from_str(
+            r#"{"five_hour":null,
+                "seven_day":{"utilization":93.0,"resets_at":"2026-11-11T01:00:00+00:00"},
+                "limits":[
+                  {"kind":"weekly_all","percent":93,"severity":"critical","scope":null},
+                  {"kind":"weekly_scoped","percent":34,"severity":"normal",
+                   "resets_at":"2026-11-11T01:00:00+00:00",
+                   "scope":{"model":{"id":null,"display_name":"Fable"}}}
+                ]}"#,
+        )
+        .unwrap();
+        assert!(usage.five_hour.is_none());
+        assert_eq!(usage.seven_day.unwrap().resets_at, Some(1_794_358_800));
+        let limits = map_limits(usage.limits);
+        assert_eq!(limits[0].severity.as_deref(), Some("critical"));
+        assert_eq!(limits[1].model.as_deref(), Some("Fable"));
+        assert_eq!(limits[1].resets_at, Some(1_794_358_800));
+    }
+
+    #[test]
+    fn a_number_reset_time_still_parses() {
+        let window: ClaudeUsageWindow =
+            serde_json::from_str(r#"{"utilization":1,"resets_at":1794358800}"#).unwrap();
+        assert_eq!(window.resets_at, Some(1_794_358_800));
     }
 }

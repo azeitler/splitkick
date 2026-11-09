@@ -69,3 +69,8 @@ headless server installs no notifier: a connected client notifies.
 `list_schedules`, `create_schedule`, `update_schedule`, `set_schedule_enabled`,
 `run_schedule_now`, `delete_schedule` — jean-core commands, so only a
 `dispatch.rs` arm. Each mutation emits `cache:invalidate` with `schedules`.
+
+## Closing the window
+
+While an enabled schedule exists, closing the last window keeps the desktop app
+running (tray icon on macOS and Windows). See `background-running.md`.

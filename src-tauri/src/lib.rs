@@ -13,6 +13,11 @@ mod installed_apps;
 mod memory_log;
 mod platform;
 mod remote_install;
+#[cfg(any(target_os = "macos", windows))]
+mod tray;
+#[cfg(not(any(target_os = "macos", windows)))]
+#[path = "tray_stub.rs"]
+mod tray;
 mod webview_watchdog;
 
 pub(crate) struct CoreRuntime(pub jean_core::RuntimeContext);
@@ -326,6 +331,11 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     desktop_commands::install_notification_click(app.handle());
     desktop_commands::install_schedule_notifier(app.handle().clone());
 
+    #[cfg(any(target_os = "macos", windows))]
+    if let Err(error) = tray::install(app.handle()) {
+        log::warn!("Failed to add the menu bar icon: {error}");
+    }
+
     // Recover from WebView2 process death on Windows (issue #575 — blank /
     // "invisible" window after the browser process exits). No-op elsewhere.
     platform::install_process_failed_recovery(app);
@@ -339,6 +349,32 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 /// Size at which the app log rotates, and how many old files are kept.
 const LOG_FILE_BYTES: u128 = 5 * 1024 * 1024;
 const LOG_FILES_KEPT: usize = 5;
+
+#[derive(Debug, PartialEq)]
+enum ExitAction {
+    Quit,
+    HideForSessions,
+    StayForSchedules,
+}
+
+/// What to do when Tauri is about to exit. `code` is `None` when the last
+/// window closed and `Some` for an explicit `app.exit`.
+fn exit_action(
+    code: Option<i32>,
+    tray_quit: bool,
+    nonsurvivable_sessions: bool,
+    schedules_waiting: bool,
+) -> ExitAction {
+    if tray_quit {
+        ExitAction::Quit
+    } else if nonsurvivable_sessions {
+        ExitAction::HideForSessions
+    } else if code.is_none() && schedules_waiting {
+        ExitAction::StayForSchedules
+    } else {
+        ExitAction::Quit
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -402,6 +438,10 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(if cfg!(debug_assertions) {
@@ -455,6 +495,9 @@ pub fn run() {
             app_menu::set_menu_accelerators,
             dock::set_dock_badge,
             dock::set_dock_sessions,
+            tray::refresh_tray,
+            desktop_commands::get_open_at_login,
+            desktop_commands::set_open_at_login,
             desktop_commands::send_native_notification,
             desktop_commands::relaunch_app,
             desktop_commands::read_clipboard_image,
@@ -510,8 +553,18 @@ pub fn run() {
         .expect("error building Tauri application")
         .run(|app, event| match event {
             tauri::RunEvent::Exit => jean_core::shutdown_runtime(),
-            tauri::RunEvent::ExitRequested { api, .. } => {
-                if jean_core::has_nonsurvivable_running_sessions() {
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
+                let action = exit_action(
+                    code,
+                    tray::quit_requested(),
+                    jean_core::has_nonsurvivable_running_sessions(),
+                    jean_core::has_enabled_schedules() && tray::has_way_back(),
+                );
+                if action == ExitAction::StayForSchedules {
+                    // No window is left. Schedules fire from the backend, and
+                    // the tray or the Dock brings a window back (#119).
+                    api.prevent_exit();
+                } else if action == ExitAction::HideForSessions {
                     api.prevent_exit();
                     // Hide every window, not just `main` — the last one closed
                     // may have been a connection window, and `main` may be
@@ -551,4 +604,40 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod exit_tests {
+    use super::{exit_action, ExitAction};
+
+    #[test]
+    fn closing_the_last_window_stays_for_schedules() {
+        assert_eq!(
+            exit_action(None, false, false, true),
+            ExitAction::StayForSchedules
+        );
+    }
+
+    #[test]
+    fn closing_the_last_window_without_schedules_quits() {
+        assert_eq!(exit_action(None, false, false, false), ExitAction::Quit);
+    }
+
+    #[test]
+    fn an_explicit_exit_is_not_kept_for_schedules() {
+        assert_eq!(exit_action(Some(0), false, false, true), ExitAction::Quit);
+    }
+
+    #[test]
+    fn a_running_session_still_hides_the_windows() {
+        assert_eq!(
+            exit_action(None, false, true, true),
+            ExitAction::HideForSessions
+        );
+    }
+
+    #[test]
+    fn tray_quit_wins_over_everything() {
+        assert_eq!(exit_action(Some(0), true, true, true), ExitAction::Quit);
+    }
 }

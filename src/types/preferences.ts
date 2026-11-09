@@ -1239,6 +1239,7 @@ export interface AppPreferences {
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
   schedule_missed_runs: ScheduleMissedRuns // Schedule due while the app was off: run once at next start, or skip
+  show_in_menu_bar: boolean // Menu bar (tray) icon with usage (macOS, Windows)
   waiting_sound: NotificationSound // Sound when session is waiting for input
   review_sound: NotificationSound // Sound when session finishes reviewing
   web_access_sounds_enabled: boolean // Play notification sounds in browser/web access views
@@ -2491,6 +2492,7 @@ export const defaultPreferences: AppPreferences = {
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
   schedule_missed_runs: 'catch_up',
+  show_in_menu_bar: true,
   waiting_sound: 'none',
   review_sound: 'none',
   web_access_sounds_enabled: true,
