@@ -178,6 +178,9 @@ describe('UsagePopover', () => {
     })
     expect(trigger).toHaveTextContent('64%')
     expect(screen.getByTestId('titlebar-usage-more')).toHaveTextContent('+1')
+    expect(trigger).not.toContainElement(
+      screen.getByTestId('titlebar-usage-more')
+    )
   })
 
   it('follows the backend of the open session', () => {
@@ -229,7 +232,7 @@ describe('UsagePopover', () => {
       name: 'Usage, 1 more backend',
     })
     expect(trigger).not.toHaveTextContent('%')
-    expect(trigger).toHaveTextContent('+1')
+    expect(screen.getByTestId('titlebar-usage-more')).toHaveTextContent('+1')
   })
 
   it('shows the active Claude account, even when another is higher', () => {

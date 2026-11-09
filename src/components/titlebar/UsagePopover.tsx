@@ -238,73 +238,77 @@ export function UsagePopover() {
   }, [])
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
+    <div className="flex items-center gap-1">
+      <Popover open={open} onOpenChange={setOpen}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                aria-label={[
+                  peak ? `Usage, ${peak.label} ${rounded}%` : 'Usage',
+                  moreLabel,
+                ]
+                  .filter(Boolean)
+                  .join(', ')}
+                data-testid="titlebar-usage"
+                className={cn(
+                  'h-6 gap-1 rounded-md bg-card px-1 text-[0.625rem] font-medium tabular-nums text-foreground/80 shadow-xs hover:bg-muted hover:text-foreground has-[>svg]:px-1',
+                  open && 'bg-muted text-foreground'
+                )}
+              >
+                {peak ? (
+                  <>
+                    <UsageRing percent={peak.percent} />
+                    <span>{rounded}%</span>
+                    {createElement(getBackendIcon(backend), {
+                      className: 'size-3',
+                      'aria-hidden': true,
+                    })}
+                  </>
+                ) : (
+                  <BarChart3 className="size-3.5" />
+                )}
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            {[peak ? `Usage · ${peak.label} ${rounded}%` : 'Usage', moreLabel]
+              .filter(Boolean)
+              .join(' · ')}
+          </TooltipContent>
+        </Tooltip>
+        <PopoverContent
+          align="start"
+          side="bottom"
+          sideOffset={4}
+          className="max-h-[70vh] w-[22rem] overflow-y-auto p-3"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-foreground">Usage</span>
             <Button
               variant="outline"
-              aria-label={[
-                peak ? `Usage, ${peak.label} ${rounded}%` : 'Usage',
-                moreLabel,
-              ]
-                .filter(Boolean)
-                .join(', ')}
-              data-testid="titlebar-usage"
-              className={cn(
-                'h-6 gap-1 rounded-md bg-card px-1.5 text-[0.625rem] font-medium tabular-nums text-foreground/80 shadow-xs hover:bg-muted hover:text-foreground',
-                open && 'bg-muted text-foreground'
-              )}
+              size="sm"
+              className="h-6 shrink-0 px-2 text-[11px]"
+              onClick={openSettings}
             >
-              {peak ? (
-                <>
-                  <UsageRing percent={peak.percent} />
-                  <span>{rounded}%</span>
-                  {createElement(getBackendIcon(backend), {
-                    className: 'size-3',
-                    'aria-hidden': true,
-                  })}
-                </>
-              ) : (
-                <BarChart3 className="size-3.5" />
-              )}
-              {otherBackends > 0 ? (
-                <span
-                  data-testid="titlebar-usage-more"
-                  className="text-muted-foreground"
-                >
-                  +{otherBackends}
-                </span>
-              ) : null}
+              Settings
             </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>
-          {[peak ? `Usage · ${peak.label} ${rounded}%` : 'Usage', moreLabel]
-            .filter(Boolean)
-            .join(' · ')}
-        </TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        align="start"
-        side="bottom"
-        sideOffset={4}
-        className="max-h-[70vh] w-[22rem] overflow-y-auto p-3"
-      >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-foreground">Usage</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 shrink-0 px-2 text-[11px]"
-            onClick={openSettings}
-          >
-            Settings
-          </Button>
-        </div>
-        <UsagePane withSectionIds={false} />
-      </PopoverContent>
-    </Popover>
+          </div>
+          <UsagePane withSectionIds={false} />
+        </PopoverContent>
+      </Popover>
+      {otherBackends > 0 ? (
+        <span
+          data-testid="titlebar-usage-more"
+          title={moreLabel ?? undefined}
+          aria-hidden
+          className="text-[0.625rem] font-medium tabular-nums text-muted-foreground"
+        >
+          +{otherBackends}
+        </span>
+      ) : null}
+    </div>
   )
 }
 
