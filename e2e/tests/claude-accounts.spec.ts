@@ -23,6 +23,8 @@ test.use({
   responseOverrides: {
     load_preferences: {
       ...mockPreferences,
+      // The shared mock's 1.0 shrinks rem text; the app's normal zoom is 100.
+      zoom_level: 100,
       claude_root_label: 'Personal',
       claude_accounts: [
         { id: 'acc-work', label: 'Work', config_dir: '~/.claude-work' },
@@ -63,7 +65,9 @@ test('settings list the labelled root install and a second account', async ({
     'Personal'
   )
   await expect(section.getByLabel('Label for Work')).toHaveValue('Work')
-  await expect(section.getByText('~/.claude-work')).toBeVisible()
+  await expect(
+    section.getByTestId('claude-account-acc-work').getByText('~/.claude-work')
+  ).toBeVisible()
   await expect(
     section.getByTestId('claude-account-acc-work').getByText('Active')
   ).toBeVisible()
@@ -89,5 +93,26 @@ test('usage shows the limits of both accounts', async ({ mockPage }) => {
 
   if (captureDir) {
     await claude.screenshot({ path: `${captureDir}/accounts-usage.png` })
+  }
+})
+
+test('the usage popover shows each account as a card', async ({ mockPage }) => {
+  await expect(mockPage.getByText('Test Project')).toBeVisible({
+    timeout: 60_000,
+  })
+  await mockPage.getByTestId('toggle-left-sidebar').first().click()
+  await mockPage.getByTestId('titlebar-usage').click()
+
+  const work = mockPage.getByTestId('claude-usage-account-acc-work')
+  const root = mockPage.getByTestId('claude-usage-account-root')
+  await expect(work.getByText('Active', { exact: true })).toBeVisible()
+  await expect(root.getByRole('button', { name: 'Make active' })).toBeVisible()
+  await expect(work.getByText(/^Resets in 2h \(/).first()).toBeVisible()
+
+  if (captureDir) {
+    await mockPage.waitForTimeout(300)
+    await mockPage
+      .locator('[data-slot="popover-content"]')
+      .screenshot({ path: `${captureDir}/usage-popover.png` })
   }
 })

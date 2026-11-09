@@ -2,7 +2,7 @@ import type * as PreferencesService from '@/services/preferences'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
-import { UsagePane } from './UsagePane'
+import { formatResetLine, UsagePane } from './UsagePane'
 
 const mocks = vi.hoisted(() => ({
   useClaudeCliStatus: vi.fn(),
@@ -339,11 +339,19 @@ describe('UsagePane', () => {
     expect(root).toHaveTextContent('Personal')
     expect(root).toHaveTextContent('me@personal.test')
     expect(root).toHaveTextContent('11.0%')
-    expect(within(root).queryByText('active')).not.toBeInTheDocument()
+    expect(within(root).queryByText('Active')).not.toBeInTheDocument()
     expect(work).toHaveTextContent('Work')
-    expect(work).toHaveTextContent('active')
+    expect(within(work).getByText('Active')).toBeInTheDocument()
     expect(work).toHaveTextContent('me@work.test')
     expect(work).toHaveTextContent('77.0%')
+  })
+
+  it('words the reset with the time left and the date', () => {
+    const now = Date.UTC(2026, 10, 9, 12, 0, 0)
+    const inTwoHours = now / 1000 + 2 * 3600
+    const line = formatResetLine(inTwoHours, now)
+    expect(line).toMatch(/^Resets in 2h \(.*Nov.*\)$/)
+    expect(formatResetLine(now / 1000 - 3600, now)).toMatch(/^Reset 1h ago \(/)
   })
 
   it('makes another Claude account active from its row', async () => {
