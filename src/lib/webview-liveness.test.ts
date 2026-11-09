@@ -31,7 +31,12 @@ describe('webview liveness responder (#97)', () => {
     listeners.get(LIVENESS_PING_EVENT)?.()
     expect(invokeMock).toHaveBeenCalledWith('webview_liveness_pong', {
       rendered: true,
-      stats: { queries: 0, domNodes: expect.any(Number) },
+      stats: {
+        queries: 0,
+        domNodes: expect.any(Number),
+        messages: 0,
+        messageChars: 0,
+      },
     })
   })
 

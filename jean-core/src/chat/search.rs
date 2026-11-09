@@ -236,6 +236,7 @@ pub async fn search_session_messages(
         });
     }
 
+    let started = std::time::Instant::now();
     let projects_data = load_projects_data(&app)?;
     let mut candidates = Vec::new();
 
@@ -402,9 +403,12 @@ pub async fn search_session_messages(
         });
     }
 
-    log::debug!(
-        "[SearchSessions] query={query_lower:?} hits={} truncated={truncated}",
-        hits.len()
+    // Info level on purpose: this is what a memory spike is matched against
+    // (#128). No query text, it may hold anything the user typed.
+    log::info!(
+        "[SearchSessions] hits={} truncated={truncated} in {} ms",
+        hits.len(),
+        started.elapsed().as_millis()
     );
 
     Ok(SessionSearchResponse { hits, truncated })

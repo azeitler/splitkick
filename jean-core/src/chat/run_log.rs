@@ -1286,6 +1286,9 @@ fn inject_synthetic_exit_plan(backend: &Backend, run_id: &str, assistant_msg: &m
 // Message Loading
 // ============================================================================
 
+/// A session load at least this slow is logged at info level.
+const SLOW_LOAD_LOG_MS: u128 = 500;
+
 /// Load all messages for a session by parsing JSONL files
 /// Returns messages in chronological order (user message, then assistant response)
 pub fn load_session_messages(
@@ -1415,6 +1418,23 @@ fn cancelled_codex_run_has_visible_artifacts(
 /// Returned `LoadedMessages.loaded_run_start_index` is the index of the first run actually
 /// parsed; subsequent paginated loads should pass that value as `before_run_index`.
 pub fn load_session_messages_window(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    limit: Option<usize>,
+    before_run_index: Option<usize>,
+) -> Result<LoadedMessages, String> {
+    let started = std::time::Instant::now();
+    let loaded = load_session_messages_inner(app, session_id, limit, before_run_index);
+    // Info level on purpose: this is what a memory spike is matched against (#128).
+    let elapsed_ms = started.elapsed().as_millis();
+    if elapsed_ms >= SLOW_LOAD_LOG_MS {
+        let runs = loaded.as_ref().map_or(0, |loaded| loaded.total_runs);
+        log::info!("[LoadMessages] slow load session={session_id} limit={limit:?} runs={runs} in {elapsed_ms} ms");
+    }
+    loaded
+}
+
+fn load_session_messages_inner(
     app: &tauri::AppHandle,
     session_id: &str,
     limit: Option<usize>,

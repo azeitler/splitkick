@@ -53,6 +53,12 @@ const RESUME_GAP: Duration = Duration::from_secs(45);
 pub(crate) struct FrontendStats {
     pub queries: u64,
     pub dom_nodes: u64,
+    /// Chat messages held in the query cache, and their text size. WebKit has
+    /// no JS heap figure (`performance.memory`), so this stands in for it.
+    #[serde(default)]
+    pub messages: u64,
+    #[serde(default)]
+    pub message_chars: u64,
 }
 
 /// What the reloaded page shows the user.
@@ -601,6 +607,7 @@ mod tests {
         let stats = FrontendStats {
             queries: 12,
             dom_nodes: 3400,
+            ..Default::default()
         };
         liveness.answered(LABEL, true, Some(stats.clone()), now);
         liveness.answered(LABEL, true, None, now);

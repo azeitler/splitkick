@@ -20,20 +20,23 @@ pub struct ProcessMemory {
     /// Resident set size on other systems.
     pub footprint_bytes: u64,
     pub resident_bytes: u64,
+    /// Highest footprint since the process started, also between samples.
+    /// Zero where the system does not tell.
+    pub peak_footprint_bytes: u64,
 }
 
 /// Memory of process `pid`, or `None` when the system does not tell.
 ///
-/// macOS: `proc_pid_rusage(RUSAGE_INFO_V2)`. It works for any process of the
+/// macOS: `proc_pid_rusage(RUSAGE_INFO_V4)`. It works for any process of the
 /// same user without extra rights, which covers WebKit's content process.
 #[cfg(target_os = "macos")]
 pub fn process_memory(pid: u32) -> Option<ProcessMemory> {
-    let mut info = std::mem::MaybeUninit::<libc::rusage_info_v2>::zeroed();
-    // SAFETY: the buffer is a properly sized `rusage_info_v2` for flavor V2.
+    let mut info = std::mem::MaybeUninit::<libc::rusage_info_v4>::zeroed();
+    // SAFETY: the buffer is a properly sized `rusage_info_v4` for flavor V4.
     let result = unsafe {
         libc::proc_pid_rusage(
             pid as libc::c_int,
-            libc::RUSAGE_INFO_V2,
+            libc::RUSAGE_INFO_V4,
             info.as_mut_ptr().cast::<libc::rusage_info_t>(),
         )
     };
@@ -45,6 +48,7 @@ pub fn process_memory(pid: u32) -> Option<ProcessMemory> {
     Some(ProcessMemory {
         footprint_bytes: info.ri_phys_footprint,
         resident_bytes: info.ri_resident_size,
+        peak_footprint_bytes: info.ri_lifetime_max_phys_footprint,
     })
 }
 
@@ -64,6 +68,7 @@ pub fn process_memory(pid: u32) -> Option<ProcessMemory> {
     Some(ProcessMemory {
         footprint_bytes: bytes,
         resident_bytes: bytes,
+        peak_footprint_bytes: 0,
     })
 }
 
@@ -96,6 +101,7 @@ pub fn process_memory(pid: u32) -> Option<ProcessMemory> {
         Some(ProcessMemory {
             footprint_bytes: counters.PrivateUsage as u64,
             resident_bytes: counters.WorkingSetSize as u64,
+            peak_footprint_bytes: counters.PeakPagefileUsage as u64,
         })
     }
 }
@@ -105,20 +111,47 @@ pub fn process_memory(_pid: u32) -> Option<ProcessMemory> {
     None
 }
 
-/// Direct child processes of `pid` (CLI runs, terminals, MCP servers, …).
-/// Only macOS can list them cheaply; elsewhere this is `None`.
 #[cfg(target_os = "macos")]
-pub fn child_process_count(pid: u32) -> Option<usize> {
+fn child_pids(pid: u32) -> Option<Vec<u32>> {
     let mut pids = vec![0 as libc::pid_t; 1024];
     let bytes = (pids.len() * std::mem::size_of::<libc::pid_t>()) as libc::c_int;
     // SAFETY: the buffer holds `bytes` bytes of pid_t.
     let count =
         unsafe { libc::proc_listchildpids(pid as libc::pid_t, pids.as_mut_ptr().cast(), bytes) };
-    (count >= 0).then_some(count as usize)
+    (count >= 0).then(|| {
+        pids.into_iter()
+            .take(count as usize)
+            .map(|child| child as u32)
+            .collect()
+    })
+}
+
+/// Direct child processes of `pid` (CLI runs, terminals, MCP servers, …).
+/// Only macOS can list them cheaply; elsewhere this is `None`.
+#[cfg(target_os = "macos")]
+pub fn child_process_count(pid: u32) -> Option<usize> {
+    child_pids(pid).map(|children| children.len())
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn child_process_count(_pid: u32) -> Option<usize> {
+    None
+}
+
+/// Summed footprint of the direct child processes of `pid`.
+#[cfg(target_os = "macos")]
+pub fn child_process_bytes(pid: u32) -> Option<u64> {
+    Some(
+        child_pids(pid)?
+            .into_iter()
+            .filter_map(process_memory)
+            .map(|memory| memory.footprint_bytes)
+            .sum(),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn child_process_bytes(_pid: u32) -> Option<u64> {
     None
 }
 

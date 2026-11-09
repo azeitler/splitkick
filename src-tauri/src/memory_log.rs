@@ -23,6 +23,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub(crate) const INTERVAL: Duration = Duration::from_secs(5 * 60);
+const WARNING_FILE: &str = "memory-warnings.log";
+const WARNING_FILE_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
 // Only macOS finds content processes; elsewhere the report says n/a.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -37,6 +39,7 @@ struct Snapshot {
     /// `None` where the platform cannot tell.
     content: Option<Vec<ContentProcess>>,
     children: Option<usize>,
+    children_bytes: Option<u64>,
     counts: memory_report::InMemoryCounts,
     frontend: Vec<(String, crate::webview_watchdog::FrontendStats)>,
 }
@@ -107,6 +110,7 @@ async fn snapshot(app: &AppHandle) -> Snapshot {
         main: memory_report::process_memory(pid),
         content: content_processes(app).await,
         children: memory_report::child_process_count(pid),
+        children_bytes: memory_report::child_process_bytes(pid),
         counts,
         frontend: crate::webview_watchdog::frontend_stats(),
     }
@@ -156,12 +160,53 @@ impl Snapshot {
             .iter()
             .map(|(label, stats)| {
                 format!(
-                    "{label}(queries={} domNodes={})",
-                    stats.queries, stats.dom_nodes
+                    "{label}(queries={} domNodes={} messages={} messageText={})",
+                    stats.queries,
+                    stats.dom_nodes,
+                    stats.messages,
+                    memory_report::format_bytes(stats.message_chars),
                 )
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// The peak shows spikes that fall between two samples.
+    fn peak_field(&self) -> String {
+        match self.main.map(|memory| memory.peak_footprint_bytes) {
+            Some(peak) if peak > 0 => format!(" peak={}", memory_report::format_bytes(peak)),
+            _ => String::new(),
+        }
+    }
+
+    fn children_field(&self) -> String {
+        self.children_bytes
+            .map(|total| format!(" childMemory={}", memory_report::format_bytes(total)))
+            .unwrap_or_default()
+    }
+
+    /// The largest processes first, for the warning.
+    fn top_contributors(&self) -> String {
+        let mut top: Vec<(String, u64)> = Vec::new();
+        if let Some(memory) = self.main {
+            top.push(("main".to_string(), memory.footprint_bytes));
+        }
+        for process in self.content.iter().flatten() {
+            if let Some(memory) = process.memory {
+                top.push((
+                    format!("webContent {}", process.labels.join(",")),
+                    memory.footprint_bytes,
+                ));
+            }
+        }
+        if let Some(total) = self.children_bytes {
+            top.push(("children".to_string(), total));
+        }
+        top.sort_by_key(|entry| std::cmp::Reverse(entry.1));
+        top.iter()
+            .map(|(name, size)| format!("{name} {}", memory_report::format_bytes(*size)))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// One line for the log.
@@ -172,10 +217,12 @@ impl Snapshot {
             .unwrap_or_else(|| "?".to_string());
         let frontend = self.frontend_line();
         format!(
-            "Memory: main={} webContent={} children={children} {}{}{}",
+            "Memory: main={}{} webContent={} children={children} {}{}{}{}",
             bytes(self.main),
+            self.peak_field(),
             self.content_line(),
             self.counts.log_fields(),
+            self.children_field(),
             if frontend.is_empty() {
                 ""
             } else {
@@ -221,9 +268,42 @@ impl Snapshot {
                 "Warning: above {}",
                 memory_report::format_bytes(MEMORY_WARN_BYTES)
             ));
+            lines.push(format!("Largest: {}", self.top_contributors()));
         }
         lines.join("\n")
     }
+}
+
+/// Keep each warning in its own file: the main log rotates, and a 20 GB event
+/// must still be readable afterwards (#128).
+fn save_warning(app: &AppHandle, report: &str) {
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
+    };
+    let unix_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    if let Err(error) = append_capped(
+        &dir.join(WARNING_FILE),
+        &format!("--- unix {unix_secs}\n{report}\n"),
+        WARNING_FILE_MAX_BYTES,
+    ) {
+        log::warn!("Could not save the memory warning: {error}");
+    }
+}
+
+/// Append `text`; a file past `max_bytes` moves to `<name>.1` first, so the
+/// file stays bounded and the previous warnings stay readable.
+fn append_capped(path: &std::path::Path, text: &str, max_bytes: u64) -> std::io::Result<()> {
+    use std::io::Write;
+    if std::fs::metadata(path).is_ok_and(|meta| meta.len() > max_bytes) {
+        std::fs::rename(path, path.with_extension("log.1"))?;
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .write_all(text.as_bytes())
 }
 
 /// Write the memory line to the log; a warning above the limit.
@@ -231,10 +311,12 @@ pub(crate) async fn log_now(app: &AppHandle) {
     let snapshot = snapshot(app).await;
     if snapshot.warns() {
         log::warn!(
-            "{} — above {}",
+            "{} — above {} — largest: {}",
             snapshot.line(),
-            memory_report::format_bytes(MEMORY_WARN_BYTES)
+            memory_report::format_bytes(MEMORY_WARN_BYTES),
+            snapshot.top_contributors()
         );
+        save_warning(app, &snapshot.report());
     } else {
         log::info!("{}", snapshot.line());
     }
@@ -272,6 +354,7 @@ mod tests {
         Some(ProcessMemory {
             footprint_bytes,
             resident_bytes: footprint_bytes,
+            peak_footprint_bytes: 2 * footprint_bytes,
         })
     }
 
@@ -284,6 +367,7 @@ mod tests {
                 memory: memory(content),
             }]),
             children: Some(3),
+            children_bytes: Some(GB / 2),
             counts: memory_report::InMemoryCounts {
                 cached_sessions: 7,
                 ..Default::default()
@@ -293,6 +377,8 @@ mod tests {
                 crate::webview_watchdog::FrontendStats {
                     queries: 40,
                     dom_nodes: 2100,
+                    messages: 12,
+                    message_chars: 3 * 1024 * 1024,
                 },
             )],
         }
@@ -301,11 +387,16 @@ mod tests {
     #[test]
     fn the_line_names_main_content_and_counts() {
         let line = snapshot(GB, 2 * GB).line();
-        assert!(line.starts_with("Memory: main=1.00 GB "), "{line}");
+        assert!(
+            line.starts_with("Memory: main=1.00 GB peak=2.00 GB "),
+            "{line}"
+        );
         assert!(line.contains("webContent=2.00 GB[pid 4321 main]"), "{line}");
         assert!(line.contains("children=3 cachedSessions=7 "), "{line}");
         assert!(
-            line.ends_with("frontend=main(queries=40 domNodes=2100)"),
+            line.ends_with(
+                " childMemory=512 MB frontend=main(queries=40 domNodes=2100 messages=12 messageText=3 MB)"
+            ),
             "{line}"
         );
     }
@@ -318,6 +409,29 @@ mod tests {
         assert!(snapshot(GB, 5 * GB)
             .report()
             .contains("Warning: above 4.00 GB"));
+    }
+
+    #[test]
+    fn a_warning_names_the_largest_process_first() {
+        let report = snapshot(GB, 5 * GB).report();
+        assert!(
+            report.contains("Largest: webContent main 5.00 GB, main 1.00 GB, children 512 MB"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn saved_warnings_rotate_at_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(WARNING_FILE);
+        append_capped(&path, "first\n", 4).unwrap();
+        append_capped(&path, "second\n", 4).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second\n");
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("log.1")).unwrap(),
+            "first\n"
+        );
     }
 
     #[test]
