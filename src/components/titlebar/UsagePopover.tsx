@@ -243,7 +243,7 @@ export function UsagePopover() {
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant="ghost"
+              variant="outline"
               aria-label={[
                 peak ? `Usage, ${peak.label} ${rounded}%` : 'Usage',
                 moreLabel,
@@ -252,18 +252,18 @@ export function UsagePopover() {
                 .join(', ')}
               data-testid="titlebar-usage"
               className={cn(
-                'h-6 gap-1 rounded-md bg-muted/40 px-1.5 text-[0.625rem] font-medium tabular-nums text-foreground/70 hover:bg-muted hover:text-foreground',
+                'h-6 gap-1 rounded-md bg-card px-1.5 text-[0.625rem] font-medium tabular-nums text-foreground/80 shadow-xs hover:bg-muted hover:text-foreground',
                 open && 'bg-muted text-foreground'
               )}
             >
               {peak ? (
                 <>
                   <UsageRing percent={peak.percent} />
+                  <span>{rounded}%</span>
                   {createElement(getBackendIcon(backend), {
                     className: 'size-3',
                     'aria-hidden': true,
                   })}
-                  <span>{rounded}%</span>
                 </>
               ) : (
                 <BarChart3 className="size-3.5" />
