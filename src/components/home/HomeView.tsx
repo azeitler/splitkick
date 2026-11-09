@@ -4,6 +4,7 @@ import { WelcomeProjectGrid } from '@/components/layout/WelcomeProjectGrid'
 import { cn } from '@/lib/utils'
 import { RecentSessionsSection } from './RecentSessionsSection'
 import { StarredSessionsSection } from './StarredSessionsSection'
+import { TodoSessionsSection } from './TodoSessionsSection'
 import { RecentActivitySection } from './RecentActivitySection'
 import {
   ToolbarContent,
@@ -64,6 +65,7 @@ export const HomeView = memo(function HomeView({
 
         <div className="grid gap-x-6 gap-y-8 @2xl:grid-cols-2 @4xl:min-h-0 @4xl:flex-1 @4xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)] @4xl:grid-rows-[minmax(0,1fr)]">
           <HomeColumn testId="home-column-sessions">
+            <TodoSessionsSection />
             <StarredSessionsSection />
             <RecentSessionsSection />
             <RecentActivitySection />

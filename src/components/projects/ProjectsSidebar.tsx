@@ -8,6 +8,7 @@ import { SidebarArchivedRow } from './SidebarArchivedRow'
 import { SidebarScheduledRow } from './SidebarScheduledRow'
 import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
+import { SidebarTodoSection } from './SidebarTodoSection'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
 import { SidebarRecentSessions } from './SidebarRecentSessions'
 import { SidebarTabs } from './SidebarTabs'
@@ -86,6 +87,7 @@ export function ProjectsSidebar() {
             className="max-h-[40%] shrink-0 overflow-y-auto overflow-x-hidden border-b border-sidebar-border [scrollbar-gutter:stable]"
           >
             <SidebarStarredSection />
+            <SidebarTodoSection />
             <SidebarGraphsSection />
           </div>
           <div

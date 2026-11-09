@@ -174,6 +174,22 @@ describe('SidebarStarredSection', () => {
     expect(screen.queryByTestId('starred-glyph')).toBeNull()
   })
 
+  it('marks a starred session that is also on the To-Do list', () => {
+    mocks.entries = [
+      entry('Jean', 'main', [
+        session('s-1', 'Investigation', { todo_at: 1_700_000_000 }),
+      ]),
+    ]
+    useProjectsStore.setState({
+      starredSessions: [star('s-1', 'Jean', 'main')],
+    })
+    render(<SidebarStarredSection />)
+
+    expect(
+      screen.getByText('Investigation').closest('button')
+    ).toContainElement(screen.getByTestId('todo-glyph'))
+  })
+
   it('offers Unstar on the row menu and removes the star', async () => {
     const user = userEvent.setup()
     useProjectsStore.setState({

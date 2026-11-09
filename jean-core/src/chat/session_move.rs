@@ -379,6 +379,16 @@ mod tests {
     }
 
     #[test]
+    fn a_move_keeps_the_todo_mark() {
+        let mut metadata = metadata_with_every_resume_id();
+        metadata.todo_at = Some(1_700_000_000);
+
+        prepare_moved_metadata(&mut metadata, "/old/worktree");
+
+        assert_eq!(metadata.todo_at, Some(1_700_000_000));
+    }
+
+    #[test]
     fn a_move_keeps_the_claude_id_and_clears_every_folder_bound_id() {
         let mut metadata = metadata_with_every_resume_id();
 

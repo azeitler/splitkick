@@ -33,6 +33,7 @@ pub mod session_links;
 pub mod session_move;
 pub mod storage;
 pub mod tail;
+pub mod todo;
 pub mod transfer;
 pub mod types;
 
@@ -42,6 +43,7 @@ pub use follow_ups::edit_session_follow_ups;
 pub use fork::fork_session_in_place;
 pub use native_history::*;
 pub use storage::{preserve_base_sessions, restore_base_sessions, with_sessions_mut};
+pub use todo::set_session_todo;
 pub use transfer::{export_session_bundle, import_session_bundle, SessionBundle};
 
 use std::sync::atomic::{AtomicUsize, Ordering};

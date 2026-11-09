@@ -370,6 +370,11 @@ export interface Session {
   last_run_started_at?: number
   /** User-assigned label with color (e.g. "Needs testing") */
   label?: LabelData
+  /**
+   * Unix timestamp (seconds) when the user marked the session as To-Do (#125).
+   * Read-only here: change it only through `set_session_todo`.
+   */
+  todo_at?: number
   /** Messages queued for sending (synced between native + web clients) */
   queued_messages?: QueuedMessage[]
   /** Follow-up notes for future turns, never sent automatically (#46) */

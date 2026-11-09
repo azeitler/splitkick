@@ -1011,6 +1011,10 @@ pub struct Session {
         deserialize_with = "deserialize_label_compat"
     )]
     pub label: Option<LabelData>,
+    /// Unix timestamp (seconds) when the user marked this session as To-Do
+    /// (#125). Read-only for clients: only `set_session_todo` changes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todo_at: Option<u64>,
 
     // ========================================================================
     // Queued messages (synced between native + web clients)
@@ -1148,6 +1152,7 @@ impl Session {
             last_run_execution_mode: None,
             last_run_started_at: None,
             label: None,
+            todo_at: None,
             queued_messages: vec![],
             follow_ups: vec![],
             artifacts: vec![],
@@ -1386,6 +1391,7 @@ impl SessionMetadata {
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
             last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
+            todo_at: self.todo_at,
             queued_messages: self.queued_messages.clone(),
             follow_ups: self.follow_ups.clone(),
             artifacts: self.artifacts.clone(),
@@ -1453,6 +1459,7 @@ impl SessionMetadata {
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
         self.table_checked_rows = session.table_checked_rows.clone();
         self.label = session.label.clone();
+        // NOTE: Do NOT copy todo_at back. Only `set_session_todo` writes it.
         // NOTE: Do NOT copy scheduled_wakeup back. It is filled from
         // `schedules.json` and would re-create a wakeup the user cancelled.
         // NOTE: Do NOT overwrite queued_messages here. Queue state is managed
@@ -1972,6 +1979,12 @@ pub struct SessionMetadata {
     )]
     pub label: Option<LabelData>,
 
+    /// Unix timestamp (seconds) when the user marked this session as To-Do
+    /// (#125). Changed only through `set_session_todo`; never synced back
+    /// from `Session`, so a stale client cannot clear or restore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todo_at: Option<u64>,
+
     /// Messages queued for sending (synced between native + web clients)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queued_messages: Vec<serde_json::Value>,
@@ -2157,6 +2170,7 @@ impl SessionMetadata {
             enabled_mcp_servers: None,
             table_checked_rows: HashMap::new(),
             label: None,
+            todo_at: None,
             queued_messages: vec![],
             follow_ups: vec![],
             artifacts: vec![],

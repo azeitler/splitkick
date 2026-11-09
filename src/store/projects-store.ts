@@ -56,6 +56,8 @@ interface ProjectsUIState {
   starredSessions: StarredSessionRef[]
   // Whether the sidebar's Starred section is collapsed
   starredSectionCollapsed: boolean
+  // Whether the sidebar's To-Do section is collapsed (#125)
+  todoSectionCollapsed: boolean
   // Whether the sidebar's Graphs section is collapsed
   graphsSectionCollapsed: boolean
   // Whether graph detail panels show the expert layer ("Show details")
@@ -134,6 +136,8 @@ interface ProjectsUIState {
   setStarredSessions: (stars: StarredSessionRef[]) => void
   toggleStarredSectionCollapsed: () => void
   setStarredSectionCollapsed: (collapsed: boolean) => void
+  toggleTodoSectionCollapsed: () => void
+  setTodoSectionCollapsed: (collapsed: boolean) => void
   toggleGraphsSectionCollapsed: () => void
   setGraphsSectionCollapsed: (collapsed: boolean) => void
   setGraphDetailsShown: (shown: boolean) => void
@@ -226,6 +230,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedGraphsProjectIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
+      todoSectionCollapsed: false,
       graphsSectionCollapsed: false,
       graphDetailsShown: false,
       graphRelationsShown: false,
@@ -393,6 +398,23 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { starredSectionCollapsed: collapsed },
           undefined,
           'setStarredSectionCollapsed'
+        ),
+
+      toggleTodoSectionCollapsed: () =>
+        set(
+          state => ({ todoSectionCollapsed: !state.todoSectionCollapsed }),
+          undefined,
+          'toggleTodoSectionCollapsed'
+        ),
+
+      setTodoSectionCollapsed: collapsed =>
+        set(
+          state =>
+            state.todoSectionCollapsed === collapsed
+              ? state
+              : { todoSectionCollapsed: collapsed },
+          undefined,
+          'setTodoSectionCollapsed'
         ),
 
       setGraphRelationsShown: shown =>

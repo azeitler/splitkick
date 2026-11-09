@@ -220,6 +220,7 @@ const LinkedProjectsModal = lazy(() =>
   }))
 )
 import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
+import { SessionTodoToggle } from './SessionTodoToggle'
 import { ToolbarContent } from '@/components/toolbar/toolbar-slots'
 import {
   ResizablePanelGroup,
@@ -3081,7 +3082,19 @@ export function ChatWindow({
       >
         {/* Full chat view: the session window has its own header (#84). */}
         {!isModal && (
-          <ToolbarContent actions={<SessionGraphToggle session={session} />} />
+          <ToolbarContent
+            actions={
+              <>
+                {activeWorktreeId && (
+                  <SessionTodoToggle
+                    session={session}
+                    worktreeId={activeWorktreeId}
+                  />
+                )}
+                <SessionGraphToggle session={session} />
+              </>
+            }
+          />
         )}
         <ReviewMethodModal
           open={reviewMethodModalOpen}

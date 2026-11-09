@@ -177,6 +177,9 @@ pub struct SessionOverviewRecord {
     pub pinned: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub starred: bool,
+    /// When the user marked the session as To-Do (unix seconds, #125).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub todo_at: Option<u64>,
     /// The session's own label. A session carries at most one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -269,6 +272,7 @@ pub fn build_record(
         worktree_archived: worktree.archived_at.is_some(),
         pinned,
         starred,
+        todo_at: session.todo_at,
         label: session.label.as_ref().map(|label| label.name.clone()),
         worktree_labels: worktree
             .labels
@@ -518,6 +522,33 @@ mod tests {
             false,
             now,
         )
+    }
+
+    #[test]
+    fn the_record_carries_the_todo_mark() {
+        let mut marked = session("s1", 100);
+        marked.todo_at = Some(90);
+        let record = build_record(
+            &marked,
+            "p1",
+            "jean",
+            &worktree("w1"),
+            false,
+            false,
+            false,
+            false,
+            100,
+        );
+        assert_eq!(record.todo_at, Some(90));
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(json.contains("\"todoAt\":90"), "{json}");
+
+        let plain = serde_json::to_string(&record_for_unmarked()).unwrap();
+        assert!(!plain.contains("todoAt"), "{plain}");
+    }
+
+    fn record_for_unmarked() -> SessionOverviewRecord {
+        record("s2", 100, 100)
     }
 
     #[test]

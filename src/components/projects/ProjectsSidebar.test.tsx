@@ -39,6 +39,9 @@ vi.mock('./ProjectTree', () => ({
 vi.mock('./SidebarStarredSection', () => ({
   SidebarStarredSection: () => <div data-testid="sidebar-starred-section" />,
 }))
+vi.mock('./SidebarTodoSection', () => ({
+  SidebarTodoSection: () => <div data-testid="sidebar-todo-section" />,
+}))
 vi.mock('./SidebarGraphsSection', () => ({
   SidebarGraphsSection: () => <div data-testid="sidebar-graphs-section" />,
 }))
@@ -69,13 +72,14 @@ describe('ProjectsSidebar layout', () => {
     useChatStore.getState().clearActiveWorktree()
   })
 
-  it('puts the tabs first, then Home, Starred, Graphs, the tree and Archived', () => {
+  it('puts the tabs first, then Home, Starred, To-Do, Graphs, the tree and Archived', () => {
     renderSidebar()
 
     const order = [
       'sidebar-tabs',
       'sidebar-home-row',
       'sidebar-starred-section',
+      'sidebar-todo-section',
       'sidebar-graphs-section',
       'project-tree',
       'sidebar-archived-row',
@@ -95,6 +99,9 @@ describe('ProjectsSidebar layout', () => {
     expect(scroll).not.toContainElement(screen.getByTestId('sidebar-home-row'))
     expect(scroll).not.toContainElement(
       screen.getByTestId('sidebar-starred-section')
+    )
+    expect(scroll).not.toContainElement(
+      screen.getByTestId('sidebar-todo-section')
     )
     expect(scroll).not.toContainElement(
       screen.getByTestId('sidebar-graphs-section')

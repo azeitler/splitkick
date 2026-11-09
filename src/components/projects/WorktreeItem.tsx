@@ -49,6 +49,7 @@ import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useSessionArchive } from '@/components/chat/hooks/useSessionArchive'
 import { useSessionRename } from '@/components/chat/hooks/useSessionRename'
 import { StarGlyph } from '@/components/chat/StarGlyph'
+import { TodoGlyph } from '@/components/chat/TodoGlyph'
 import { PinGlyph } from '@/components/chat/PinGlyph'
 import { DraftGlyph } from '@/components/chat/DraftGlyph'
 import { LimitGlyph } from '@/components/chat/limit-hit'
@@ -1115,6 +1116,7 @@ export function WorktreeItem({
                             <RunErrorGlyph error={card.runError} />
                           )}
                           {starredIds.has(card.session.id) && <StarGlyph />}
+                          {card.session.todo_at && <TodoGlyph />}
                           {pinnedIds.has(card.session.id) && <PinGlyph />}
                           {/* Issue the workspace was created from. Dropped on a
                               narrow sidebar, where the indented row has no room. */}

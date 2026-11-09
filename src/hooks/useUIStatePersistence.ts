@@ -211,6 +211,9 @@ export function useUIStatePersistence() {
     if (uiState.starred_sessions_collapsed) {
       useProjectsStore.getState().setStarredSectionCollapsed(true)
     }
+    if (uiState.todo_sessions_collapsed) {
+      useProjectsStore.getState().setTodoSectionCollapsed(true)
+    }
     if (uiState.graphs_section_collapsed) {
       useProjectsStore.getState().setGraphsSectionCollapsed(true)
     }
@@ -1004,6 +1007,8 @@ export function useUIStatePersistence() {
     let prevStarredSessions = useProjectsStore.getState().starredSessions
     let prevStarredSectionCollapsed =
       useProjectsStore.getState().starredSectionCollapsed
+    let prevTodoSectionCollapsed =
+      useProjectsStore.getState().todoSectionCollapsed
     let prevGraphsSectionCollapsed =
       useProjectsStore.getState().graphsSectionCollapsed
     let prevGraphDetailsShown = useProjectsStore.getState().graphDetailsShown
@@ -1085,7 +1090,8 @@ export function useUIStatePersistence() {
         state.expandedWorktreeIds !== prevExpandedWorktreeIds
       const starredChanged =
         state.starredSessions !== prevStarredSessions ||
-        state.starredSectionCollapsed !== prevStarredSectionCollapsed
+        state.starredSectionCollapsed !== prevStarredSectionCollapsed ||
+        state.todoSectionCollapsed !== prevTodoSectionCollapsed
       const sectionsCollapsedChanged =
         state.graphsSectionCollapsed !== prevGraphsSectionCollapsed ||
         state.graphDetailsShown !== prevGraphDetailsShown ||
@@ -1131,6 +1137,7 @@ export function useUIStatePersistence() {
         prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
+        prevTodoSectionCollapsed = state.todoSectionCollapsed
         prevGraphsSectionCollapsed = state.graphsSectionCollapsed
         prevGraphDetailsShown = state.graphDetailsShown
         prevGraphRelationsShown = state.graphRelationsShown

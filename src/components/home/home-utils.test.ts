@@ -5,6 +5,7 @@ import {
   matchesSessionQuery,
   resolveSessionLabel,
   resolveStarredSessions,
+  resolveTodoSessions,
 } from './home-utils'
 import type { AllSessionsEntry, LabelData, Session } from '@/types/chat'
 
@@ -163,6 +164,28 @@ describe('resolveStarredSessions', () => {
 
   it('returns nothing before the sessions have loaded', () => {
     expect(resolveStarredSessions([star('a')], [])).toEqual([])
+  })
+})
+
+describe('resolveTodoSessions', () => {
+  it('lists marked sessions across projects, newest mark first', () => {
+    const rows = resolveTodoSessions([
+      entry([session({ id: 'old', todo_at: 100 }), session({ id: 'plain' })]),
+      entry([session({ id: 'new', todo_at: 300 })], 'b'),
+    ])
+
+    expect(rows.map(row => row.session.id)).toEqual(['new', 'old'])
+    expect(rows[0]).toMatchObject({
+      projectName: 'Project b',
+      worktreeName: 'Worktree b',
+      todoAt: 300,
+    })
+  })
+
+  it('hides an archived session but keeps its mark', () => {
+    const archived = session({ id: 'gone', todo_at: 100, archived_at: 5 })
+    expect(resolveTodoSessions([entry([archived])])).toEqual([])
+    expect(archived.todo_at).toBe(100)
   })
 })
 
