@@ -20,6 +20,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Memory problems can now be traced afterwards.** The memory log line adds
+  the main process peak, the memory of CLI child processes, and chat messages
+  held per page. A warning names the largest processes and is also kept in
+  `memory-warnings.log`. Slow session loads and searches are logged (#128).
 - **Message search uses far less memory.** Search reads run logs line by line
   instead of holding each whole log twice (833 MB → 89 MB for one search over
   6.6 GB of sessions, 2.2 GB → 489 MB for ten at once) (#128).

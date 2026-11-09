@@ -28,6 +28,31 @@ export function takeWebviewRecovery(): Promise<WebviewRecoveryNote | null> {
   return recovery
 }
 
+/** Chat messages in the query cache and their text size (#128). */
+function cachedMessageStats() {
+  let messages = 0
+  let messageChars = 0
+  for (const query of queryClient.getQueryCache().getAll()) {
+    const data = query.state.data as
+      | {
+          messages?: {
+            content?: string
+            tool_calls?: { output?: string }[]
+          }[]
+        }
+      | undefined
+    if (!Array.isArray(data?.messages)) continue
+    messages += data.messages.length
+    for (const message of data.messages) {
+      messageChars += message.content?.length ?? 0
+      for (const tool of message.tool_calls ?? []) {
+        messageChars += tool.output?.length ?? 0
+      }
+    }
+  }
+  return { messages, messageChars }
+}
+
 /** What the page tells the shell with each answer. */
 export function livenessAnswer(doc: Document = document) {
   return {
@@ -36,6 +61,7 @@ export function livenessAnswer(doc: Document = document) {
     stats: {
       queries: queryClient.getQueryCache().getAll().length,
       domNodes: doc.getElementsByTagName('*').length,
+      ...cachedMessageStats(),
     },
   }
 }
