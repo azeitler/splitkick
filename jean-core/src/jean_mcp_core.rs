@@ -93,6 +93,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "send_chat_message",
     "set_session_model",
     "set_session_status",
+    "set_session_todo",
     "start_run_environment",
     "unarchive_session",
     "unarchive_worktree",
@@ -474,7 +475,7 @@ fn tool_registry_core() -> Value {
 fn tool_registry_session() -> Value {
     json!([
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
+        {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars, the To-Do mark (todoAt) and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
         {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Each result has a link for a markdown link to the session. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"agentId":{"type":"string","description":"Start the session as this saved agent profile (its graph permission applies). Needs graph permission manage."}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
@@ -487,6 +488,7 @@ fn tool_registry_session() -> Value {
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Splitkick session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Splitkick infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Splitkick (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
+        {"name":"set_session_todo","description":"Mark a Splitkick session as To-Do for the user, or clear the mark. The To-Do list in the sidebar and on Home shows every marked session, newest mark first, until the user clears it. Use it when the user must come back to a session, e.g. to review your work (\"I marked this for you to review\"). Omit sessionId to target the calling session. Marking a marked session keeps its first time. Returns sessionId and todoAt (unix seconds, null when cleared).","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"todo":{"type":"boolean","description":"true marks the session as To-Do, false clears the mark."}},"required":["todo"],"additionalProperties":false}},
         {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A session keeps one agent schedule: a new one replaces the previous. Returns the schedule.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
         {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
         {"name":"cancel_schedule","description":"Delete one Splitkick schedule by id (from list_schedules or create_schedule). Returns whether it existed.","inputSchema":{"type":"object","properties":{"scheduleId":{"type":"string"}},"required":["scheduleId"],"additionalProperties":false}},
@@ -1525,6 +1527,38 @@ async fn run_tool(
             Ok(json!({
                 "sessionId": session_id,
                 "status": status,
+            }))
+        }
+        "set_session_todo" => {
+            let todo = args
+                .get("todo")
+                .and_then(|v| v.as_bool())
+                .ok_or_else(|| ToolError::invalid_params("'todo' must be true or false"))?;
+            let session_id = match optional_str(&args, "sessionId") {
+                Some(id) => id,
+                None => {
+                    if source == "anon" {
+                        return Err(no_current_context_error(source));
+                    }
+                    source.to_string()
+                }
+            };
+            let (worktree_id, _) = resolve_session_worktree(app, &session_id)?;
+            let todo_at = dispatch_command(
+                app,
+                "set_session_todo",
+                json!({
+                    "sessionId": session_id.clone(),
+                    "worktreeId": worktree_id,
+                    "todo": todo,
+                }),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+
+            Ok(json!({
+                "sessionId": session_id,
+                "todoAt": todo_at,
             }))
         }
         "add_follow_up" => {
@@ -6331,6 +6365,77 @@ mod tests {
         assert_eq!(result["results"][0]["sessionId"], "tool-s1");
         assert_eq!(result["results"][0]["nameMatch"], json!(true));
         assert_eq!(result["results"][0]["link"], "splitkick://session/tool-s1");
+    }
+
+    #[test]
+    fn set_session_todo_marks_and_clears_and_list_all_sessions_shows_it() {
+        let (_temp, app) = tool_fixture();
+        crate::chat::storage::save_metadata(
+            &app,
+            &crate::chat::types::SessionMetadata::new(
+                "tool-s1".to_string(),
+                "tool-wt".to_string(),
+                "redirect notes".to_string(),
+                0,
+            ),
+        )
+        .unwrap();
+        let run = |args: Value, source: &str| {
+            // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+            std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap()
+                            .block_on(run_tool(&app, "set_session_todo", args, source))
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap()
+            })
+        };
+
+        // No sessionId: the calling session is marked.
+        let marked = run(json!({ "todo": true }), "tool-s1").unwrap();
+        assert_eq!(marked["sessionId"], "tool-s1");
+        let todo_at = marked["todoAt"].as_u64().expect("todoAt is set");
+        let stored = crate::chat::storage::load_metadata(&app, "tool-s1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.todo_at, Some(todo_at));
+
+        let listed = call(&app, "list_all_sessions", json!({})).unwrap();
+        assert_eq!(listed["sessions"][0]["todoAt"], json!(todo_at));
+
+        let cleared = run(json!({ "sessionId": "tool-s1", "todo": false }), "anon").unwrap();
+        assert_eq!(cleared["todoAt"], Value::Null);
+        let listed = call(&app, "list_all_sessions", json!({})).unwrap();
+        assert!(listed["sessions"][0].get("todoAt").is_none());
+    }
+
+    #[test]
+    fn set_session_todo_needs_a_boolean_and_is_rate_limited() {
+        let (_temp, app) = tool_fixture();
+        let error = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(run_tool(
+                &app,
+                "set_session_todo",
+                json!({ "todo": "yes" }),
+                "tool-s1",
+            ))
+            .unwrap_err();
+        assert_eq!(error.code, -32602);
+
+        let tools = tool_registry();
+        let tool = find_tool(&tools, "set_session_todo");
+        assert_eq!(tool["inputSchema"]["required"], json!(["todo"]));
+        assert!(RATE_LIMITED_TOOLS.contains(&"set_session_todo"));
     }
 
     #[test]

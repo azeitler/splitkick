@@ -5,6 +5,8 @@ import {
   GitBranchPlus,
   GitFork,
   Link,
+  ListChecks,
+  ListTodo,
   Network,
   Pause,
   Pencil,
@@ -45,6 +47,7 @@ import {
   toggleStarredSession,
 } from './session-pin-actions'
 import { SessionStatusMenu } from './SessionStatusMenu'
+import { toggleSessionTodo } from './session-todo-actions'
 import { openSessionNetwork } from './SessionNetworkIndicator'
 import { useSessionFork } from './hooks/useSessionFork'
 import {
@@ -195,6 +198,25 @@ export function SessionContextMenuItems({
           )}
         </ContextMenuItem>
       )}
+      {/* On the session itself, so it shows in every client and to agents. */}
+      <ContextMenuItem
+        data-testid="session-todo-menu-item"
+        onSelect={() => {
+          void toggleSessionTodo(session, worktreeId)
+        }}
+      >
+        {session.todo_at ? (
+          <>
+            <ListChecks className="mr-2 h-4 w-4" />
+            Clear To-Do
+          </>
+        ) : (
+          <>
+            <ListTodo className="mr-2 h-4 w-4" />
+            Mark as To-Do
+          </>
+        )}
+      </ContextMenuItem>
       <SessionStatusMenu
         statusOverride={card.statusOverride}
         automaticStatus={card.automaticStatus}

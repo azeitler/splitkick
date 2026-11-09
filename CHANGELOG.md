@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Mark sessions as To-Do** (#125). Use the session menu, the To-Do button in
+  the chat header, the phone menu, or Cmd/Ctrl+Shift+L in the desktop app. A
+  To-Do section in the sidebar and on Home lists the marked sessions of every
+  project, newest first, with the time of the mark. The check on a row clears
+  the mark. The mark is on the session, so web access, remote instances and
+  agents see it: `list_all_sessions` returns `todoAt`, and the new MCP tool
+  `set_session_todo` sets or clears it. A move keeps the mark, a fork does not
+  copy it, and an archived session leaves the list until you unarchive it.
+
 ### Changed
 
 - **Starred and Graphs stay at the top of the sidebar.** Both sections are

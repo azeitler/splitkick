@@ -132,6 +132,8 @@ export interface UIState {
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
   starred_sessions_collapsed?: boolean
+  /** Whether the sidebar's To-Do section is collapsed (#125) */
+  todo_sessions_collapsed?: boolean
   /** Whether the sidebar's Graphs section is collapsed */
   graphs_section_collapsed?: boolean
   /** Whether graph detail panels show the expert layer ("Show details") */
@@ -259,6 +261,7 @@ export const defaultUIState: UIState = {
   expanded_graphs_project_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
+  todo_sessions_collapsed: false,
   graphs_section_collapsed: false,
   graph_details_shown: false,
   graph_relations_shown: false,

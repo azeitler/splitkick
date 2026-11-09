@@ -80,6 +80,8 @@ import { notify } from '@/lib/notifications'
 import { ChatWindow } from './ChatWindow'
 import { SessionAgentChip } from '@/components/graphs/SessionAgentChip'
 import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
+import { SessionTodoToggle } from './SessionTodoToggle'
+import { TodoGlyph } from './TodoGlyph'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
@@ -1061,6 +1063,7 @@ export function SessionChatModal({
           session={currentSession}
         />
       )}
+      <SessionTodoToggle session={currentSession} worktreeId={worktreeId} />
       <SessionGraphToggle session={currentSession} />
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1537,6 +1540,7 @@ export function SessionChatModal({
                               sessionId={session.id}
                               startedBySessionId={session.started_by_session_id}
                             />
+                            {session.todo_at && <TodoGlyph />}
                             {renamingSessionId !== session.id &&
                               sessionLabel && (
                                 <span

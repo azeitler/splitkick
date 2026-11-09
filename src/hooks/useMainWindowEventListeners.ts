@@ -5,6 +5,7 @@ import { notify } from '@/lib/notifications'
 import { PRODUCT_NAME, UPSTREAM_BASE_VERSION } from '@/lib/build-info'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toggleActiveSessionGraphPanel } from '@/lib/session-graph-panel'
+import { toggleActiveSessionTodo } from '@/components/chat/session-todo-actions'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -322,7 +323,8 @@ export function shouldAllowKeybindingThroughOpenOverlay(
     (action === 'toggle_zen_mode' ||
       action === 'clear_session_context' ||
       action === 'add_follow_up' ||
-      action === 'toggle_session_graph')
+      action === 'toggle_session_graph' ||
+      action === 'toggle_session_todo')
   ) {
     return true
   }
@@ -813,6 +815,12 @@ function executeKeybindingAction(
     case 'toggle_session_graph':
       logger.debug('Keybinding: toggle_session_graph')
       toggleActiveSessionGraphPanel(queryClient)
+      break
+    case 'toggle_session_todo':
+      // Desktop only: web access and mobile mark through the menus (#125).
+      if (!isNativeApp()) break
+      logger.debug('Keybinding: toggle_session_todo')
+      void toggleActiveSessionTodo(queryClient)
       break
     case 'toggle_browser': {
       logger.debug('Keybinding: toggle_browser')

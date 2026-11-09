@@ -105,6 +105,39 @@ export function resolveStarredSessions(
   return rows
 }
 
+/** A session on the To-Do list, with when it was marked (unix seconds). */
+export interface TodoSessionEntry extends HomeSessionEntry {
+  todoAt: number
+}
+
+/**
+ * Every session marked as To-Do, across every project, newest mark first.
+ *
+ * Archived sessions keep their mark but are left out, so unarchiving one
+ * brings its row straight back (#125).
+ */
+export function resolveTodoSessions(
+  entries: readonly AllSessionsEntry[]
+): TodoSessionEntry[] {
+  const rows: TodoSessionEntry[] = []
+  for (const entry of entries) {
+    for (const session of entry.sessions) {
+      if (session.archived_at || !session.todo_at) continue
+      rows.push({
+        session,
+        projectId: entry.project_id,
+        projectName: entry.project_name,
+        worktreeId: entry.worktree_id,
+        worktreeName: entry.worktree_name,
+        worktreePath: entry.worktree_path,
+        activityAt: getSessionActivityTimestamp(session),
+        todoAt: session.todo_at,
+      })
+    }
+  }
+  return rows.sort((a, b) => b.todoAt - a.todoAt)
+}
+
 /**
  * Whether a Home session row matches the typed filter.
  *

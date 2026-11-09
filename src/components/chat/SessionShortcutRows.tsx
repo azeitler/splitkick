@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { AgentBadge } from '@/components/graphs/AgentBadge'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -15,6 +15,7 @@ import { RunErrorGlyph } from './run-error'
 import { LabelModal } from './LabelModal'
 import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
+import { TodoGlyph } from './TodoGlyph'
 import { SessionNetworkGlyph } from './SessionNetworkIndicator'
 import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { useSessionRemoval } from './hooks/useSessionArchive'
@@ -43,6 +44,8 @@ export interface SessionShortcut {
   context: string
   /** Last activity; the `stacked` layout shows it as time ago. */
   activityAt?: number
+  /** Extra text: its own line in `stacked`, after the context in `inline`. */
+  detail?: ReactNode
 }
 
 interface SessionShortcutRowsProps {
@@ -58,6 +61,13 @@ interface SessionShortcutRowsProps {
   showStarGlyph?: boolean
   /** Mark pinned sessions with a pin. Off where every row is a pin anyway. */
   showPinGlyph?: boolean
+  /** Mark To-Do sessions. Off where every row is a To-Do anyway. */
+  showTodoGlyph?: boolean
+  /**
+   * A button beside each row (e.g. the To-Do check). It sits outside the row
+   * button, because a button cannot hold another one.
+   */
+  renderAction?: (shortcut: SessionShortcut) => ReactNode
   /**
    * `inline` puts the context after the name on one line. `stacked` gives it
    * a second line, with the time ago beside the name, for lists that span
@@ -85,6 +95,8 @@ export function SessionShortcutRows({
   sidebarNested = true,
   showStarGlyph = true,
   showPinGlyph = true,
+  showTodoGlyph = true,
+  renderAction,
   layout = 'inline',
   activeSessionId = null,
   onOpen,
@@ -161,7 +173,9 @@ export function SessionShortcutRows({
             : isStacked
               ? 'text-foreground/90'
               : 'text-muted-foreground',
-          isSidebar ? sidebarRowClassName : 'rounded px-2 py-1.5'
+          isSidebar ? sidebarRowClassName : 'rounded px-2 py-1.5',
+          // Room for the action, which overlays the row's right edge.
+          renderAction && 'pr-8'
         )
         const statusDot = (
           <StatusIndicator
@@ -203,7 +217,13 @@ export function SessionShortcutRows({
               pinnedKeys.has(`${shortcut.projectId}/${shortcut.sessionId}`) && (
                 <PinGlyph />
               )}
+            {showTodoGlyph && session.todo_at && <TodoGlyph />}
           </>
+        )
+        const detailText = shortcut.detail && (
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
+            {shortcut.detail}
+          </span>
         )
         const contextText = (
           <span
@@ -257,6 +277,12 @@ export function SessionShortcutRows({
               {contextText}
               {labelBadge}
             </span>
+            {/* Line 3, so a long detail never squeezes out the context. */}
+            {shortcut.detail && (
+              <span className="col-start-2 col-end-4 truncate text-[10px] tabular-nums text-muted-foreground/70">
+                {shortcut.detail}
+              </span>
+            )}
           </>
         ) : (
           <>
@@ -277,12 +303,13 @@ export function SessionShortcutRows({
                 {markGlyphs}
                 {contextText}
                 {labelBadge}
+                {detailText}
               </>
             )}
           </>
         )
 
-        return (
+        const row = (
           <ContextMenu key={shortcut.sessionId}>
             {/* Disabled while renaming: a right-click in the input gets the
                 text menu, not the session menu. */}
@@ -320,6 +347,15 @@ export function SessionShortcutRows({
               onDelete={sessionId => remove({ sessionId, ...target })}
             />
           </ContextMenu>
+        )
+        if (!renderAction) return row
+        return (
+          <div key={shortcut.sessionId} className="relative">
+            {row}
+            <div className="absolute inset-y-0 right-3 flex items-center">
+              {renderAction(shortcut)}
+            </div>
+          </div>
         )
       })}
 

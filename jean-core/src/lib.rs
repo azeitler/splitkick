@@ -3195,6 +3195,11 @@ pub struct UIState {
     #[serde(default)]
     pub starred_sessions_collapsed: bool,
 
+    /// Whether the sidebar's To-Do section is collapsed (#125). Defaults to
+    /// open. The marks themselves live on the session metadata (`todo_at`).
+    #[serde(default)]
+    pub todo_sessions_collapsed: bool,
+
     /// Whether the sidebar's Folders section is collapsed. Defaults to open.
     #[serde(default)]
     pub folders_section_collapsed: bool,
@@ -3402,6 +3407,7 @@ impl Default for UIState {
             project_canvas_settings: std::collections::HashMap::new(),
             starred_sessions: Vec::new(),
             starred_sessions_collapsed: false,
+            todo_sessions_collapsed: false,
             folders_section_collapsed: false,
             graphs_section_collapsed: false,
             graph_details_shown: false,
@@ -4956,6 +4962,20 @@ mod starred_sessions_tests {
 
         assert!(parsed.starred_sessions.is_empty());
         assert!(!parsed.starred_sessions_collapsed);
+    }
+
+    #[test]
+    fn the_todo_section_collapse_round_trips_and_defaults_to_open() {
+        let parsed: UIState = serde_json::from_str("{}").unwrap();
+        assert!(!parsed.todo_sessions_collapsed);
+
+        let state = UIState {
+            todo_sessions_collapsed: true,
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert!(parsed.todo_sessions_collapsed);
     }
 
     #[test]

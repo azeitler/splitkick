@@ -52,6 +52,7 @@ export type KeybindingAction =
   | 'clear_session_context'
   | 'add_follow_up'
   | 'toggle_session_graph'
+  | 'toggle_session_todo'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl. "ctrl" is a
 // separate modifier only in the macOS native app (Ctrl+Cmd chords).
@@ -130,6 +131,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   clear_session_context: 'mod+shift+k',
   add_follow_up: 'mod+j',
   toggle_session_graph: 'mod+shift+g',
+  toggle_session_todo: 'mod+shift+l',
 }
 
 // UI definitions for the settings pane
@@ -483,6 +485,14 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description:
       'Show or hide the graph panel of the session (desktop only; the session must serve a graph node or have an agent)',
     default_shortcut: 'mod+shift+g',
+    category: 'chat',
+  },
+  {
+    action: 'toggle_session_todo',
+    label: 'Toggle To-Do mark',
+    description:
+      'Mark the open session as To-Do, or clear the mark (desktop app only)',
+    default_shortcut: 'mod+shift+l',
     category: 'chat',
   },
 ]

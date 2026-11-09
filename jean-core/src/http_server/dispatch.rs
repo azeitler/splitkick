@@ -3510,6 +3510,14 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "set_session_todo" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let todo: bool = from_field(&args, "todo")?;
+            let result =
+                crate::chat::set_session_todo(app.clone(), worktree_id, session_id, todo).await?;
+            to_value(result)
+        }
         "edit_session_artifacts" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
@@ -4546,6 +4554,52 @@ mod tests {
 
             crate::platform::set_allow_native_open(previous);
         });
+    }
+
+    #[test]
+    fn set_session_todo_marks_and_clears_through_dispatch() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        crate::chat::storage::save_metadata(
+            &app,
+            &crate::chat::types::SessionMetadata::new(
+                "todo-s1".to_string(),
+                "todo-wt".to_string(),
+                "S".to_string(),
+                0,
+            ),
+        )
+        .unwrap();
+        let run = |args: Value| {
+            // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+            std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap()
+                            .block_on(dispatch_command(&app, "set_session_todo", args))
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap()
+            })
+        };
+
+        let marked =
+            run(json!({ "worktreeId": "todo-wt", "sessionId": "todo-s1", "todo": true })).unwrap();
+        assert!(marked.as_u64().is_some(), "{marked}");
+
+        let cleared =
+            run(json!({ "worktree_id": "todo-wt", "session_id": "todo-s1", "todo": false }))
+                .unwrap();
+        assert_eq!(cleared, Value::Null);
+        let stored = crate::chat::storage::load_metadata(&app, "todo-s1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.todo_at, None);
     }
 
     #[test]

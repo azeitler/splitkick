@@ -260,6 +260,7 @@ describe('eventToShortcutString', () => {
     const shortcuts = Object.values(DEFAULT_KEYBINDINGS)
     expect(new Set(shortcuts).size).toBe(shortcuts.length)
     expect(DEFAULT_KEYBINDINGS.add_follow_up).toBe('mod+j')
+    expect(DEFAULT_KEYBINDINGS.toggle_session_todo).toBe('mod+shift+l')
   })
 })
 

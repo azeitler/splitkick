@@ -131,6 +131,8 @@ pub(crate) fn prepare_forked_session(
     forked.forked_from_session_id = Some(source.id.clone());
     forked.archived_at = None;
     forked.archived_by_base_close = None;
+    // A To-Do mark is the user's note on the source, not on the fork (#125).
+    forked.todo_at = None;
     forked.session_naming_completed = false;
     clear_session_runtime_state(&mut forked, strategy);
     forked
@@ -251,6 +253,7 @@ pub(crate) fn prepare_forked_metadata(
     metadata.session_naming_completed = false;
     metadata.archived_at = None;
     metadata.archived_by_base_close = None;
+    metadata.todo_at = None;
     metadata.pending_permission_denials.clear();
     metadata.pending_codex_permission_requests.clear();
     metadata.pending_opencode_permission_requests.clear();
@@ -634,6 +637,26 @@ mod tests {
         assert!(!forked.is_reviewing);
         assert!(forked.pending_codex_permission_requests.is_empty());
         assert!(forked.queued_messages.is_empty());
+    }
+
+    #[test]
+    fn a_fork_does_not_copy_the_todo_mark() {
+        let mut source = session_with_every_resume_id(Backend::Claude);
+        source.todo_at = Some(1_700_000_000);
+        let forked = prepare_forked_session(&source, 0, 1234, PendingFork::Native);
+        assert_eq!(forked.todo_at, None);
+
+        let mut source_metadata = metadata_with_every_resume_id(Backend::Claude);
+        source_metadata.todo_at = Some(1_700_000_000);
+        let metadata = prepare_forked_metadata(
+            Some(source_metadata),
+            &forked,
+            "source-session",
+            "target-worktree",
+            three_runs(),
+            PendingFork::Native,
+        );
+        assert_eq!(metadata.todo_at, None);
     }
 
     #[test]

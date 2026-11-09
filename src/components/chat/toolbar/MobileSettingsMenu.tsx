@@ -28,6 +28,8 @@ import {
   Shield,
   ShieldAlert,
   Sparkles,
+  ListChecks,
+  ListTodo,
   Star,
   StarOff,
   Terminal,
@@ -65,6 +67,10 @@ import {
   togglePinnedSession,
   toggleStarredSession,
 } from '@/components/chat/session-pin-actions'
+import {
+  findCachedSession,
+  setSessionTodo,
+} from '@/components/chat/session-todo-actions'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
@@ -466,6 +472,12 @@ export function MobileSettingsMenu({
       ? state.starredSessions.some(star => star.sessionId === sessionId)
       : false
   )
+
+  // Read while the menu is open: opening re-renders, so the label is current.
+  const todoAt =
+    menuOpen && worktreeId && sessionId
+      ? findCachedSession(queryClient, worktreeId, sessionId)?.todo_at
+      : undefined
 
   const handleToggleTerminal = useCallback(() => {
     if (!worktreeId) return
@@ -893,7 +905,7 @@ export function MobileSettingsMenu({
             </DropdownMenuItem>
           )}
           {/* The phone has no reliable long-press on session rows, so the
-              open session's pin and star live here. */}
+              open session's pin, star and To-Do mark live here. */}
           {projectId && sessionId && worktreeId && (
             <>
               <DropdownMenuItem
@@ -929,6 +941,24 @@ export function MobileSettingsMenu({
                   <Star className="h-4 w-4" />
                 )}
                 {isStarred ? 'Unstar' : 'Star'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="mobile-session-todo-item"
+                onSelect={() =>
+                  void setSessionTodo({
+                    sessionId,
+                    worktreeId,
+                    todo: !todoAt,
+                    previousTodoAt: todoAt,
+                  })
+                }
+              >
+                {todoAt ? (
+                  <ListChecks className="h-4 w-4" />
+                ) : (
+                  <ListTodo className="h-4 w-4" />
+                )}
+                {todoAt ? 'Clear To-Do' : 'Mark as To-Do'}
               </DropdownMenuItem>
             </>
           )}
