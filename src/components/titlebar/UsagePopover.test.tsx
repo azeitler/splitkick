@@ -192,7 +192,8 @@ describe('UsagePopover', () => {
     const trigger = screen.getByRole('button', {
       name: 'Usage, Codex · Weekly 91%, 1 more backend',
     })
-    expect(trigger.querySelector('svg')).toHaveClass('text-destructive')
+    expect(trigger.querySelector('svg.text-destructive')).not.toBeNull()
+    expect(screen.getByTestId('titlebar-usage-header')).toBeInTheDocument()
   })
 
   it('uses the Claude account of the open session, not the active one', () => {
