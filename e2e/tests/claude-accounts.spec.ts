@@ -127,11 +127,11 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
   await mockPage.keyboard.press('Escape')
   const badge = mockPage.getByTestId('titlebar-usage')
   await expect(badge).toHaveText(/71%/)
-  await expect(badge).toHaveText(/\+1/)
+  await expect(mockPage.getByTestId('titlebar-usage-more')).toHaveText('+1')
   if (captureDir) {
     await mockPage
       .getByTestId('titlebar-usage')
-      .locator('..')
+      .locator('../..')
       .screenshot({ path: `${captureDir}/usage-badge-sidebar.png` })
   }
 })
