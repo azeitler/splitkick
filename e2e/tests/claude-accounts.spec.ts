@@ -110,15 +110,6 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
   await mockPage.getByTestId('toggle-left-sidebar').first().click()
   await mockPage.getByTestId('titlebar-usage').click()
 
-  const badge = mockPage.getByTestId('titlebar-usage')
-  await expect(badge).toHaveText(/71%/)
-  await expect(badge).toHaveText(/\+1/)
-  if (captureDir) {
-    await mockPage
-      .getByTestId('sidebar-column')
-      .screenshot({ path: `${captureDir}/usage-badge-sidebar.png` })
-  }
-
   const work = mockPage.getByTestId('claude-usage-account-acc-work')
   const root = mockPage.getByTestId('claude-usage-account-root')
   await expect(work.getByText('Active', { exact: true })).toBeVisible()
@@ -130,5 +121,17 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
     await mockPage
       .locator('[data-slot="popover-content"]')
       .screenshot({ path: `${captureDir}/usage-popover.png` })
+  }
+
+  // Dev builds load usage only while the popover is open; it stays cached.
+  await mockPage.keyboard.press('Escape')
+  const badge = mockPage.getByTestId('titlebar-usage')
+  await expect(badge).toHaveText(/71%/)
+  await expect(badge).toHaveText(/\+1/)
+  if (captureDir) {
+    await mockPage
+      .getByTestId('titlebar-usage')
+      .locator('..')
+      .screenshot({ path: `${captureDir}/usage-badge-sidebar.png` })
   }
 })
