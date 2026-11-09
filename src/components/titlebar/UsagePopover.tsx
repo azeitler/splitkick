@@ -215,9 +215,9 @@ export function UsagePopover() {
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-foreground">Usage</span>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-6 shrink-0 px-1.5 text-[11px]"
+            className="h-6 shrink-0 px-2 text-[11px]"
             onClick={openSettings}
           >
             Settings

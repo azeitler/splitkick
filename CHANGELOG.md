@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **A clearer usage popover.** Each Claude account is a card, the active one
+  has a strong border and a solid Active tag, and the buttons have outlines.
+  Each limit shows the time until it resets and the date, for example "Resets
+  in 2h (Mon, Nov 9, 3:44 PM)" (#90).
+
 ### Fixed
 
 - **A schedule into a deleted session pauses.** Archiving a session that

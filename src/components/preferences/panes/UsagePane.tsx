@@ -102,6 +102,22 @@ export function formatShortAge(atSeconds: number, nowMs = Date.now()): string {
   return formatShortDuration(Math.max(0, nowMs - targetMs))
 }
 
+/** `Resets in 2h (Mon, Nov 10, 2:00 PM)`, or `Reset 2h ago (…)` once past. */
+export function formatResetLine(atSeconds: number, nowMs = Date.now()): string {
+  const targetMs = atSeconds < 1_000_000_000_000 ? atSeconds * 1000 : atSeconds
+  const date = new Date(targetMs).toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  const relative = formatShortRelative(atSeconds, nowMs)
+  return targetMs >= nowMs
+    ? `Resets in ${relative} (${date})`
+    : `Reset ${relative} (${date})`
+}
+
 function getQueryErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -116,7 +132,7 @@ function getQueryErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-/** Single-line meter: label · bar · % · reset */
+/** Meter: label · bar · %, with the reset time and date below the bar. */
 const UsageRow: React.FC<{
   label: string
   usage: UsageWindow | null
@@ -124,16 +140,10 @@ const UsageRow: React.FC<{
   if (!usage) return null
 
   const usedPercent = clampPercent(usage.usedPercent)
-  const resetLabel = usage.resetsAt ? formatShortRelative(usage.resetsAt) : null
-  const absoluteReset = usage.resetsAt
-    ? new Date(usage.resetsAt * 1000).toLocaleString()
-    : undefined
+  const resetLine = usage.resetsAt ? formatResetLine(usage.resetsAt) : null
 
   return (
-    <div
-      className="grid grid-cols-[minmax(4.5rem,7rem)_minmax(0,1fr)_2.75rem_2.25rem] items-center gap-x-2"
-      title={absoluteReset ? `Resets ${absoluteReset}` : undefined}
-    >
+    <div className="grid grid-cols-[minmax(3.5rem,5rem)_minmax(0,1fr)_2.75rem] items-center gap-x-2 gap-y-0.5">
       <span className="truncate text-xs text-foreground">{label}</span>
       <div
         className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
@@ -154,9 +164,11 @@ const UsageRow: React.FC<{
       <span className="text-right text-xs tabular-nums text-muted-foreground">
         {usedPercent.toFixed(1)}%
       </span>
-      <span className="text-right text-[10px] tabular-nums text-muted-foreground/80">
-        {resetLabel ?? ''}
-      </span>
+      {resetLine ? (
+        <span className="col-span-2 col-start-2 truncate text-[11px] tabular-nums text-muted-foreground">
+          {resetLine}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -222,7 +234,7 @@ function ErrorLine({
     <div className="flex items-center justify-between gap-2">
       <InlineStatus tone="error">{message}</InlineStatus>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         className="h-6 shrink-0 px-2 text-xs"
         onClick={onRetry}
@@ -422,26 +434,29 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
       return only ? renderClaudeUsage(only) : null
     }
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {claudeAccounts.map((account, index) => {
           const query = claudeUsages[index]
           return (
             <div
               key={account.id}
-              className="space-y-1"
+              className={cn(
+                'space-y-2 rounded-lg border p-2.5',
+                account.isActive && 'border-2 border-primary'
+              )}
               data-testid={`claude-usage-account-${account.id}`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <div className="flex min-h-6 items-center justify-between gap-2 text-xs font-medium text-foreground">
                 <span className="truncate">{account.label}</span>
                 {account.isActive ? (
-                  <span className="rounded bg-muted px-1 text-xs font-normal text-muted-foreground">
-                    active
+                  <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">
+                    Active
                   </span>
                 ) : (
                   <Button
                     size="sm"
-                    variant="ghost"
-                    className="ml-auto h-6 px-2 text-xs font-normal"
+                    variant="outline"
+                    className="h-6 shrink-0 px-2 text-xs font-normal"
                     disabled={patchPreferences.isPending}
                     onClick={() => activateClaudeAccount(account)}
                   >
@@ -627,9 +642,9 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
           ) : null}
         </span>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-6 shrink-0 gap-1 px-1.5 text-[11px]"
+          className="h-6 shrink-0 gap-1 px-2 text-[11px]"
           onClick={handleRefresh}
           disabled={isRefreshing}
         >
