@@ -87,11 +87,11 @@ const change = (extra: Partial<GraphChange>): GraphChange => ({
 
 const handlers = { onSelectNode: vi.fn(), onOpenReview: vi.fn() }
 
-function renderDetail(changes: GraphChange[] = []) {
+function renderDetail(changes: GraphChange[] = [], data = graph) {
   render(
     <GraphNodeDetail
       graphId="g1"
-      detail={graph}
+      detail={data}
       nodeId="gs1"
       changes={changes}
       onClose={vi.fn()}
@@ -233,6 +233,22 @@ describe('GraphNodeDetail expert layer and relations', () => {
     expect(screen.getByText(/id gs1/)).toHaveTextContent('state committed')
   })
 
+  it('renders the description as Markdown', () => {
+    renderDetail(
+      [],
+      detail({
+        nodes: [
+          node('gs1', 'Graph support v1', {
+            description: '**Bold** and ![shot](docs/a.png)',
+          }),
+        ],
+      })
+    )
+    expect(screen.getByText('Bold').tagName).toBe('STRONG')
+    expect(screen.getByAltText('shot')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Description')).not.toBeInTheDocument()
+  })
+
   it('renders an issue attachment as a link', () => {
     renderDetail()
     expect(
@@ -287,6 +303,9 @@ describe('GraphNodeDetail expert layer and relations', () => {
 
   it('Escape restores the description and a property value', async () => {
     renderDetail()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit description' })
+    )
     const description = screen.getByLabelText('Description')
     await userEvent.clear(description)
     await userEvent.type(description, 'Draft{Escape}')

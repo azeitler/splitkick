@@ -75,20 +75,25 @@ export function ProjectsSidebar() {
             sidebarTab !== 'projects' && 'invisible'
           )}
         >
-          {/* Home stays put above the list that scrolls. Starred, Graphs,
-              Folders and Projects scroll in one list with a sticky stack: each
-              section header stays stuck once you scroll past it, and the
-              folder, project and worktree rows stick below them
-              (sidebar-sticky.ts). */}
+          {/* Home, Starred and Graphs stay put above the list that scrolls;
+              a long pinned area scrolls on its own. Folders and Projects scroll
+              in one list with a sticky stack: each section header stays stuck
+              once you scroll past it, and the folder, project and worktree rows
+              stick below them (sidebar-sticky.ts). */}
           <SidebarHomeRow />
+          <div
+            data-testid="sidebar-pinned-sections"
+            className="max-h-[40%] shrink-0 overflow-y-auto overflow-x-hidden border-b border-sidebar-border [scrollbar-gutter:stable]"
+          >
+            <SidebarStarredSection />
+            <SidebarGraphsSection />
+          </div>
           <div
             ref={scrollRef}
             data-testid="sidebar-projects-scroll"
             data-sidebar-sticky-scroll=""
             className="sidebar-sticky-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(var(--safe-area-bottom)+1.25rem)] [scrollbar-gutter:stable]"
           >
-            <SidebarStarredSection />
-            <SidebarGraphsSection />
             {isLoading ? (
               <div className="flex items-center justify-center p-4">
                 <span className="text-sm text-muted-foreground">

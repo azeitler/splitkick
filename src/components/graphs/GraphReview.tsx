@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Ban, Check, CheckCheck, Eye, Inbox, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Markdown } from '@/components/ui/markdown'
 import { Textarea } from '@/components/ui/textarea'
 import { formatRelativeTime } from '@/lib/relative-time'
 import { cn } from '@/lib/utils'
@@ -174,13 +175,13 @@ function RequestCard({
           {nodeTitle}
         </button>
       </div>
-      {request.body && (
-        <p className="text-sm whitespace-pre-wrap">{request.body}</p>
-      )}
+      {request.body && <Markdown className="text-sm">{request.body}</Markdown>}
       {request.evidence.length > 0 && (
         <ul className="list-disc pl-5 text-sm">
           {request.evidence.map(item => (
-            <li key={item}>{item}</li>
+            <li key={item}>
+              <Markdown>{item}</Markdown>
+            </li>
           ))}
         </ul>
       )}

@@ -233,8 +233,8 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 
 ## UI
 
-- Sidebar section **Graphs** between Starred and Folders (sticky slot
-  `--sb-graphs-top`, `data-sidebar-graphs`, collapse persisted as
+- Sidebar section **Graphs** below Starred, pinned above the scrolling
+  Folders and Projects list (collapse persisted as
   `graphs_section_collapsed` in UI state). Rows: title, `type · where`, counts.
 - Per-project **Graphs** row in the sidebar tree, beside Pinned (#99,
   `ProjectGraphsSection`): graphs stored in the project, then graphs from

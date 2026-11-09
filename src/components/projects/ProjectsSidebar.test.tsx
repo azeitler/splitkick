@@ -88,14 +88,16 @@ describe('ProjectsSidebar layout', () => {
     }
   })
 
-  it('pins Home above the list; Starred scrolls with the tree (#45)', () => {
+  it('pins Home, Starred and Graphs above the scrolling tree', () => {
     renderSidebar()
 
     const scroll = screen.getByTestId('sidebar-projects-scroll')
     expect(scroll).not.toContainElement(screen.getByTestId('sidebar-home-row'))
-    // One list, so its section headers can stack as a sticky header.
-    expect(scroll).toContainElement(
+    expect(scroll).not.toContainElement(
       screen.getByTestId('sidebar-starred-section')
+    )
+    expect(scroll).not.toContainElement(
+      screen.getByTestId('sidebar-graphs-section')
     )
     expect(scroll).toContainElement(screen.getByTestId('project-tree'))
     expect(scroll).toContainElement(screen.getByTestId('sidebar-archived-row'))

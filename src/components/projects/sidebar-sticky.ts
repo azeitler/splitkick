@@ -1,7 +1,7 @@
 /**
  * The sidebar's sticky stack (#45).
  *
- * Section headers (Starred, Folders, Projects) and the folder, project and
+ * Section headers (Folders, Projects) and the folder, project and
  * worktree rows are `position: sticky`; their `top` values come from CSS
  * variables on the scroller (`.sidebar-sticky-scroll` in App.css). Each row
  * sticks inside its own wrapper, so the end of a project or worktree pushes its
