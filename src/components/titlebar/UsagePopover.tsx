@@ -253,18 +253,28 @@ export function UsagePopover() {
                   .join(', ')}
                 data-testid="titlebar-usage"
                 className={cn(
-                  'h-6 gap-1 rounded-md bg-card px-1 text-[0.625rem] font-medium tabular-nums text-foreground/80 shadow-xs hover:bg-muted hover:text-foreground has-[>svg]:px-1',
+                  'h-6 rounded-md bg-card text-[0.625rem] font-medium tabular-nums text-foreground/80 shadow-xs hover:bg-muted hover:text-foreground',
+                  peak
+                    ? 'gap-0 overflow-hidden px-0 py-0'
+                    : 'gap-1 px-1 has-[>svg]:px-1',
                   open && 'bg-muted text-foreground'
                 )}
               >
                 {peak ? (
                   <>
-                    <UsageRing percent={peak.percent} />
-                    <span>{rounded}%</span>
-                    {createElement(getBackendIcon(backend), {
-                      className: 'size-3',
-                      'aria-hidden': true,
-                    })}
+                    <span
+                      data-testid="titlebar-usage-header"
+                      className="flex items-center self-stretch bg-border px-1 dark:bg-input"
+                    >
+                      {createElement(getBackendIcon(backend), {
+                        className: 'size-3',
+                        'aria-hidden': true,
+                      })}
+                    </span>
+                    <span className="flex items-center gap-1 px-1">
+                      <UsageRing percent={peak.percent} />
+                      <span>{rounded}%</span>
+                    </span>
                   </>
                 ) : (
                   <BarChart3 className="size-3.5" />
