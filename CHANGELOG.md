@@ -18,6 +18,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   repository. Use "Edit description" to change a description. `file`
   attachments are links, and all attachment links follow the chat rules.
 
+### Fixed
+
+- **Message search uses far less memory.** Search reads run logs line by line
+  instead of holding each whole log twice (833 MB → 89 MB for one search over
+  6.6 GB of sessions, 2.2 GB → 489 MB for ten at once) (#128).
+
 ## [1.5.6] - 2026-11-09
 
 Built on Jean 0.1.73.

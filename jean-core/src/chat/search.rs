@@ -165,15 +165,25 @@ fn run_logs_contain(
         if !path.exists() {
             continue;
         }
-        // A corrupt or unreadable log must not abort the whole search.
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        if raw.to_lowercase().contains(query_lower) {
+        if log_file_contains(&path, query_lower) {
             return true;
         }
     }
     false
+}
+
+/// Line by line, so a scan holds one line at a time and not the whole log
+/// twice: reading and lowercasing whole logs peaked at 833 MB per search over
+/// 6.6 GB of sessions, and overlapping searches added up (#128).
+///
+/// A corrupt or unreadable log must not abort the whole search.
+fn log_file_contains(path: &std::path::Path, query_lower: &str) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    std::io::BufRead::lines(std::io::BufReader::new(file))
+        .map_while(Result::ok)
+        .any(|line| line.to_lowercase().contains(query_lower))
 }
 
 /// A hit carried only by the session name, with no matching message.
@@ -403,6 +413,17 @@ pub async fn search_session_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_scan_is_case_insensitive_and_tolerates_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("run.jsonl");
+        std::fs::write(&path, "{\"a\":\"first\"}\n{\"a\":\"Needle HERE\"}\n").unwrap();
+
+        assert!(log_file_contains(&path, "needle here"));
+        assert!(!log_file_contains(&path, "absent"));
+        assert!(!log_file_contains(&dir.path().join("gone.jsonl"), "needle"));
+    }
 
     #[test]
     fn snippet_marks_both_cuts_and_keeps_the_match() {
