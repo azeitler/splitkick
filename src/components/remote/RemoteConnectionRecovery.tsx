@@ -12,11 +12,12 @@ import { focusMainWindow } from '@/lib/connection-windows'
 import { destroyAppWindow } from '@/lib/window-close'
 import { dismissTransientUi } from '@/lib/dismiss-transient-ui'
 import { isSsoProxyMessage } from '@/lib/remote-version'
+import { reloadApp } from '@/lib/web-reload-log'
 
 /** A reload keeps the query string, so a connection window stays pinned to
  * `?connection=<id>` across every retry. */
 function reloadPage() {
-  window.location.reload()
+  reloadApp('connection-recovery')
 }
 
 export function RemoteConnectionRecovery({

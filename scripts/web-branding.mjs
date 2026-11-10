@@ -6,8 +6,9 @@
  * The Tauri overlay (src-tauri/tauri.fork.conf.json) cannot reach any of this,
  * because these are frontend assets that Vite produces before Tauri runs.
  *
- * The hash is not cosmetic. index.html is the only file the HTTP server sends
- * with `no-store`; every other static asset gets
+ * The hash is not cosmetic. Only index.html and a few fixed-name files
+ * (jean-build.json, sw.js, the manifest) get `no-store`; every other static
+ * asset gets
  * `public, max-age=31536000, immutable` (try_static_filesystem_response in
  * jean-core/src/http_server/server.rs). New bytes at a fixed /favicon.png would
  * therefore never reach a browser that already cached it. Hashing the name and
@@ -15,7 +16,7 @@
  * back on a fixed filename.
  */
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export const WEB_ICONS = ['favicon.png', 'apple-touch-icon.png']
@@ -109,4 +110,50 @@ export function writeWebIcons(outDir, icons) {
     copyFileSync(icon.source, path.join(outDir, path.basename(icon.to)))
     copyFileSync(icon.source, path.join(outDir, path.basename(icon.from)))
   }
+}
+
+/**
+ * The web app manifest with the product name (the Home Screen label) and the
+ * hashed icon names. `public/manifest.webmanifest` stays as upstream has it.
+ * The server sends the manifest with `no-store`, so a change reaches every
+ * phone; iOS reads it only when the app is added to the Home Screen.
+ *
+ * @param {string} json
+ * @param {WebIcon[]} icons
+ * @param {string} [productName]
+ * @returns {string}
+ */
+export function rewriteWebManifest(json, icons, productName = PRODUCT_NAME) {
+  const manifest = JSON.parse(json)
+  for (const field of ['name', 'short_name']) {
+    if (manifest[field] !== UPSTREAM_PRODUCT_NAME) {
+      throw new Error(
+        `manifest.webmanifest ${field} is no longer "${UPSTREAM_PRODUCT_NAME}"`
+      )
+    }
+    manifest[field] = productName
+  }
+  manifest.icons = (manifest.icons ?? []).map(icon => {
+    const hashed = icons.find(entry => entry.from === icon.src)
+    return hashed ? { ...icon, src: hashed.to } : icon
+  })
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
+
+/**
+ * Writes the branded manifest into the build.
+ *
+ * @param {string} outDir
+ * @param {WebIcon[]} icons
+ */
+export function writeWebManifest(outDir, icons) {
+  const source = readFileSync(
+    path.resolve('public/manifest.webmanifest'),
+    'utf8'
+  )
+  mkdirSync(outDir, { recursive: true })
+  writeFileSync(
+    path.join(outDir, 'manifest.webmanifest'),
+    rewriteWebManifest(source, icons)
+  )
 }

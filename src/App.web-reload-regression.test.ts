@@ -15,8 +15,8 @@ describe('web access disconnect recovery', () => {
     expect(source).not.toMatch(
       /onEstablishedWsDisconnect\(\(\) => \{[\s\S]*?window\.location\.reload\(\)/
     )
-    // The captured modal state still covers a manual or stale-version reload.
-    expect(source).toContain('captureWebReloadState()')
+    // A full reload restores this browser's own view (#72).
+    expect(source).toContain('useWebDeviceViewPersistence()')
     expect(source).toContain('<JeanLoadingScreen />')
     // Preload path may also mount QuitConfirmationDialog so X/quit still works
     expect(source).toContain('QuitConfirmationDialog')

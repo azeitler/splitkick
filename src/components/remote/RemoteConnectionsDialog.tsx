@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { isNativeApp } from '@/lib/environment'
+import { reloadApp as reloadWebApp } from '@/lib/web-reload-log'
 import { cn } from '@/lib/utils'
 import {
   LOCAL_CONNECTION_ID,
@@ -94,7 +95,7 @@ type VersionState =
   | { status: 'error'; message: string }
 
 export function RemoteConnectionsDialog({
-  reloadApp = () => window.location.reload(),
+  reloadApp = () => reloadWebApp('connection-switch'),
 }: {
   reloadApp?: () => void
 }) {

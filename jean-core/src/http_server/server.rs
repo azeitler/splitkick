@@ -1288,11 +1288,11 @@ async fn try_static_filesystem_response(
 
     let canonical_index = index_path.canonicalize().unwrap_or(index_path);
     let is_index = canonical_path == canonical_index;
-    let cache_control = if is_index || canonical_path.ends_with("jean-build.json") {
-        "no-store"
-    } else {
-        "public, max-age=31536000, immutable"
-    };
+    let file_name = canonical_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let cache_control = static_cache_control(is_index, file_name);
 
     Some(
         Response::builder()
@@ -1305,6 +1305,20 @@ async fn try_static_filesystem_response(
             .unwrap()
             .into_response(),
     )
+}
+
+/// Files at a fixed name that must reach the browser fresh on every load:
+/// the build id, the service worker (a cached `sw.js` could never update
+/// itself, #72) and the web app manifest. Everything else in the bundle has
+/// a content-hashed name and is cached for a year.
+const NO_STORE_STATIC_FILES: &[&str] = &["jean-build.json", "sw.js", "manifest.webmanifest"];
+
+fn static_cache_control(is_index: bool, file_name: &str) -> &'static str {
+    if is_index || NO_STORE_STATIC_FILES.contains(&file_name) {
+        "no-store"
+    } else {
+        "public, max-age=31536000, immutable"
+    }
 }
 
 fn embedded_asset_path_for_request(raw_path: &str) -> &str {
@@ -1328,11 +1342,7 @@ fn embedded_static_response(raw_path: &str) -> Response {
     };
 
     let is_index = asset_path == "index.html";
-    let cache_control = if is_index || asset_path == "jean-build.json" {
-        "no-store"
-    } else {
-        "public, max-age=31536000, immutable"
-    };
+    let cache_control = static_cache_control(is_index, asset_path);
 
     Response::builder()
         .header(
@@ -1577,11 +1587,23 @@ mod tests {
     use super::{
         bind_host_option_label, bind_host_option_rank, display_host_for_bind_ip,
         display_ip_for_bind_ip_with_candidates, embedded_asset_path_for_request, format_http_url,
-        is_tailscale_ipv4, parse_bind_ip, path_is_in_known_roots, token_from_query_or_bearer,
-        validate_bind_host,
+        is_tailscale_ipv4, parse_bind_ip, path_is_in_known_roots, static_cache_control,
+        token_from_query_or_bearer, validate_bind_host,
     };
     use axum::http::{HeaderMap, HeaderValue};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn static_cache_control_keeps_fixed_name_files_fresh() {
+        for name in ["jean-build.json", "sw.js", "manifest.webmanifest"] {
+            assert_eq!(static_cache_control(false, name), "no-store", "{name}");
+        }
+        assert_eq!(static_cache_control(true, "index.html"), "no-store");
+        assert_eq!(
+            static_cache_control(false, "assets/index-abc123.js"),
+            "public, max-age=31536000, immutable"
+        );
+    }
 
     #[test]
     fn parse_bind_ip_accepts_localhost_and_ip_literals() {

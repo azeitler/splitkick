@@ -492,11 +492,11 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
 
       useUIStore.getState().setFileBrowserVisible(true)
       useUIStore.getState().setFileBrowserVisible(false)
-      useUIStore.getState().setZenMode(true)
+      useProjectsStore.getState().setProjectRailHidden(true)
 
       await waitFor(() => {
         expect(mockSaveUIState).toHaveBeenCalledWith(
-          expect.objectContaining({ zen_mode: true })
+          expect.objectContaining({ project_rail_hidden: true })
         )
       })
       for (const [saved] of mockSaveUIState.mock.calls) {
@@ -524,6 +524,8 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
   })
 
   it('debounces persistence when zen mode changes', async () => {
+    // The native app saves its own view; Web Access keeps the host's (#72).
+    nativeApp = true
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -1324,6 +1326,8 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
   })
 
   it('persists and restores the phone layout tab', async () => {
+    // The native app saves its own view; Web Access keeps the host's (#72).
+    nativeApp = true
     useUIStore.setState({ mobileActiveTab: 'home' })
     renderHook(() => useUIStatePersistence(), {
       wrapper: createWrapper(
@@ -1540,5 +1544,100 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
         })
       )
     })
+  })
+})
+
+describe('useUIStatePersistence — per-device view in Web Access (#72)', () => {
+  const hostView = {
+    active_project_id: 'desktop-project',
+    active_worktree_id: 'desktop-worktree',
+    active_worktree_path: '/repo/desktop-worktree',
+    mobile_active_tab: 'home' as const,
+    zen_mode: true,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    nativeApp = false
+    mockInvoke.mockResolvedValue([])
+    mockUseUIState.mockReturnValue({
+      data: buildUiState(hostView),
+      isSuccess: true,
+    })
+    mockUseProjects.mockReturnValue({
+      data: [
+        { id: 'desktop-project', name: 'Desktop', is_folder: false },
+        { id: 'phone-project', name: 'Phone', is_folder: false },
+      ],
+      isSuccess: true,
+    })
+    mockUseSaveUIState.mockReturnValue({ mutate: mockSaveUIState })
+    useUIStore.setState({
+      uiStateInitialized: false,
+      zenMode: false,
+      mobileActiveTab: 'home',
+    })
+    useProjectsStore.setState({ selectedProjectId: null })
+    useChatStore.setState({ activeWorktreeId: null, activeWorktreePath: null })
+    vi.mocked(localStorage.getItem).mockImplementation(key =>
+      key === 'jean:web-device-view:local'
+        ? JSON.stringify({
+            projectId: 'phone-project',
+            activeWorktreeId: null,
+            activeWorktreePath: null,
+            modalWorktreeId: null,
+            modalWorktreePath: null,
+            activeSessionId: null,
+            mobileTab: 'history',
+            zenMode: false,
+            savedAt: Date.now(),
+          })
+        : null
+    )
+  })
+
+  afterEach(() => {
+    vi.mocked(localStorage.getItem).mockImplementation(() => null)
+  })
+
+  const render = () =>
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+  it("opens this browser's view, not the host's", async () => {
+    render()
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+    expect(useProjectsStore.getState().selectedProjectId).toBe('phone-project')
+    expect(useChatStore.getState().activeWorktreeId).toBeNull()
+    expect(useUIStore.getState().mobileActiveTab).toBe('history')
+    expect(useUIStore.getState().zenMode).toBe(false)
+  })
+
+  it("writes the host's view back when it saves", async () => {
+    render()
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+    useUIStore.getState().setMobileActiveTab('starred')
+    useProjectsStore.getState().setProjectRailHidden(true)
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ project_rail_hidden: true })
+      )
+    })
+    expect(mockSaveUIState).toHaveBeenLastCalledWith(
+      expect.objectContaining(hostView)
+    )
   })
 })

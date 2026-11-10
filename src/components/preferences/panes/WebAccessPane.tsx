@@ -31,6 +31,7 @@ import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
 import { copyToClipboard } from '@/lib/clipboard'
 import { SettingsSection } from '../SettingsSection'
+import { WebAccessDeviceSection } from './WebAccessDeviceSection'
 
 const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::'])
@@ -629,6 +630,8 @@ export const WebAccessPane: React.FC = () => {
           )}
         </div>
       </SettingsSection>
+
+      <WebAccessDeviceSection />
     </div>
   )
 }

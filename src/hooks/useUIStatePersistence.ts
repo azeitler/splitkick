@@ -11,13 +11,15 @@ import {
 } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { browserBackend } from '@/hooks/useBrowserPane'
-import { isLocalBackend } from '@/lib/environment'
+import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import {
   getCurrentUIState,
   rememberHostFileBrowserVisible,
+  rememberHostView,
 } from '@/lib/ui-state-snapshot'
+import { peekWebDeviceView, withWebDeviceView } from '@/lib/web-device-view'
 import { isMobileViewport } from '@/hooks/use-mobile'
 import { flushUIState } from '@/lib/ui-state-flush'
 import { registerUIStateSaver } from '@/lib/ui-state-teardown'
@@ -84,7 +86,7 @@ function debounce<T extends (...args: Parameters<T>) => void>(
  * 3. Validates worktree still exists before restoring
  */
 export function useUIStatePersistence() {
-  const { data: uiState, isSuccess: uiStateLoaded } = useUIState()
+  const { data: persistedUIState, isSuccess: uiStateLoaded } = useUIState()
   const { data: projects = [], isSuccess: projectsLoaded } = useProjects()
   const { mutate: saveUIState } = useSaveUIState()
   const [isInitialized, setIsInitialized] = useState(false)
@@ -132,10 +134,16 @@ export function useUIStatePersistence() {
     return () => registerUIStateSaver(null)
   }, [])
 
+  // Web Access writes the host's view back unchanged (#72). Follow the
+  // host's blob each time it loads, so a later desktop view is not reverted.
+  useEffect(() => {
+    if (persistedUIState && !isNativeApp()) rememberHostView(persistedUIState)
+  }, [persistedUIState])
+
   // Step 1: Initialize stores from persisted state (once, when projects are loaded)
   useEffect(() => {
     // Wait for both UI state and projects to load before initializing
-    if (!uiStateLoaded || !uiState || isInitialized) return
+    if (!uiStateLoaded || !persistedUIState || isInitialized) return
 
     // Wait for projects to load (or confirm they're empty)
     // We need projects to validate the worktree and find its parent project
@@ -145,6 +153,15 @@ export function useUIStatePersistence() {
       logger.debug('Waiting for projects to load before restoring UI state')
       return
     }
+
+    // Web Access opens on this browser's own view, not the host's (#72).
+    const uiState = isNativeApp()
+      ? persistedUIState
+      : withWebDeviceView(
+          persistedUIState,
+          peekWebDeviceView(),
+          isMobileViewport()
+        )
 
     logger.info('Initializing UI state from persisted state', { uiState })
 
@@ -992,7 +1009,7 @@ export function useUIStatePersistence() {
     return () => {
       cancelled = true
     }
-  }, [uiStateLoaded, uiState, projects, projectsLoaded, isInitialized])
+  }, [uiStateLoaded, persistedUIState, projects, projectsLoaded, isInitialized])
 
   // Step 2: Subscribe to store changes and save (debounced)
   useEffect(() => {

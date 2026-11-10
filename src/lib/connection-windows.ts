@@ -12,6 +12,7 @@
  */
 
 import { isNativeApp } from './environment'
+import { reloadApp as reloadWebApp } from './web-reload-log'
 import {
   LOCAL_CONNECTION_ID,
   getRemoteConnections,
@@ -52,7 +53,7 @@ export async function closeConnectionWindow(
  */
 export async function activateConnection(
   connectionId: string,
-  reloadApp: () => void = () => window.location.reload()
+  reloadApp: () => void = () => reloadWebApp('connection-switch')
 ): Promise<void> {
   if (!isNativeApp()) {
     markConnectionSwitch()

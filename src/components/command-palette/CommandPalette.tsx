@@ -47,6 +47,7 @@ import {
   useRemoteConnections,
 } from '@/lib/remote-connections'
 import { activateConnection } from '@/lib/connection-windows'
+import { reloadApp as reloadWebApp } from '@/lib/web-reload-log'
 import {
   CommandDialog,
   CommandInput,
@@ -103,7 +104,7 @@ interface ConnectionCommand {
 }
 
 export function CommandPalette({
-  reloadApp = () => window.location.reload(),
+  reloadApp = () => reloadWebApp('palette'),
 }: {
   reloadApp?: () => void
 } = {}) {

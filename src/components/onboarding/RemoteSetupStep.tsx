@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { isNativeApp } from '@/lib/environment'
+import { reloadApp as reloadWebApp } from '@/lib/web-reload-log'
 import { cn } from '@/lib/utils'
 import {
   addRemoteConnection,
@@ -51,7 +52,7 @@ interface RemoteSetupStepProps {
 }
 
 export function RemoteSetupStep({
-  reloadApp = () => window.location.reload(),
+  reloadApp = () => reloadWebApp('remote-setup'),
 }: RemoteSetupStepProps) {
   const native = isNativeApp()
   const [addMode, setAddMode] = useState<AddMode>(native ? 'install' : 'url')

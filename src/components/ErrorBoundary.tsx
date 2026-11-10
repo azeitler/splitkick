@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { saveCrashState } from '@/lib/recovery'
 import { logger } from '@/lib/logger'
+import { reloadApp } from '@/lib/web-reload-log'
 import { copyToClipboard } from '@/lib/clipboard'
 
 interface Props {
@@ -75,7 +76,7 @@ export class ErrorBoundary extends Component<
   }
 
   private handleReload = () => {
-    window.location.reload()
+    reloadApp('error-screen')
   }
 
   private handleReset = () => {

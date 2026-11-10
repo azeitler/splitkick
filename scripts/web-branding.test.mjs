@@ -21,6 +21,7 @@ import {
   WEB_ICONS,
   resolveWebIcons,
   rewriteIndexHtml,
+  rewriteWebManifest,
   writeWebIcons,
 } from './web-branding.mjs'
 
@@ -144,6 +145,36 @@ describe('product name', () => {
     assert.throws(
       () => rewriteIndexHtml(unlinked, resolveWebIcons()),
       /no longer links \/favicon\.png/
+    )
+  })
+})
+
+describe('web app manifest', () => {
+  const json = readFileSync(join(root, 'public/manifest.webmanifest'), 'utf8')
+
+  it('names the Home Screen app Splitkick and links the hashed icon', () => {
+    const icons = resolveWebIcons()
+    const manifest = JSON.parse(rewriteWebManifest(json, icons))
+    const touchIcon = icons.find(icon => icon.from === '/apple-touch-icon.png')
+
+    assert.equal(manifest.name, 'Splitkick')
+    assert.equal(manifest.short_name, 'Splitkick')
+    assert.ok(
+      manifest.icons.some(icon => icon.src === touchIcon.to),
+      'hashed apple-touch-icon missing'
+    )
+    assert.equal(manifest.display, 'standalone')
+  })
+
+  it('fails loudly when the manifest stops naming the product', () => {
+    const renamed = json.replace(
+      '"short_name": "Jean"',
+      '"short_name": "Other"'
+    )
+
+    assert.throws(
+      () => rewriteWebManifest(renamed, resolveWebIcons()),
+      /short_name is no longer "Jean"/
     )
   })
 })

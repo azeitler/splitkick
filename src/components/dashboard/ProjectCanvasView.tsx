@@ -203,7 +203,7 @@ import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { hasBackendTransport } from '@/lib/environment'
-import { consumeWebReloadState } from '@/lib/web-reload-state'
+import { consumeWebDeviceModal } from '@/lib/web-device-view'
 import {
   shouldDisableWorktreeTextSelection,
   shouldShowWorktreeLabelContextMenu,
@@ -1813,7 +1813,7 @@ export function ProjectCanvasView({
   } | null>(null)
 
   useEffect(() => {
-    const reloadState = consumeWebReloadState(projectId)
+    const reloadState = consumeWebDeviceModal(projectId)
     if (!reloadState) return
 
     useChatStore

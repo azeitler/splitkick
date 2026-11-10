@@ -3,7 +3,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
-import { isLocalBackend } from '@/lib/environment'
+import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { isMobileViewport } from '@/hooks/use-mobile'
 import type { PendingImage, PendingTextFile } from '@/types/chat'
 import type {
@@ -71,6 +71,34 @@ let hostFileBrowserVisible = false
 
 export function rememberHostFileBrowserVisible(visible: boolean): void {
   hostFileBrowserVisible = visible
+}
+
+/**
+ * The host's view fields, as last loaded. Web Access keeps its own view in
+ * `localStorage` (`web-device-view.ts`) and writes these back unchanged, so
+ * a phone no longer moves the desktop's view (#72).
+ */
+type HostView = Pick<
+  UIState,
+  | 'active_worktree_id'
+  | 'active_worktree_path'
+  | 'last_active_worktree_id'
+  | 'active_project_id'
+  | 'mobile_active_tab'
+  | 'zen_mode'
+>
+
+let hostView: HostView | null = null
+
+export function rememberHostView(uiState: UIState): void {
+  hostView = {
+    active_worktree_id: uiState.active_worktree_id ?? null,
+    active_worktree_path: uiState.active_worktree_path ?? null,
+    last_active_worktree_id: uiState.last_active_worktree_id ?? null,
+    active_project_id: uiState.active_project_id ?? null,
+    mobile_active_tab: uiState.mobile_active_tab ?? null,
+    zen_mode: uiState.zen_mode,
+  }
 }
 
 export function getCurrentUIState(): UIState {
@@ -162,11 +190,18 @@ export function getCurrentUIState(): UIState {
     ])
   )
 
-  return {
+  const ownView: HostView = {
     active_worktree_id: activeWorktreeId,
     active_worktree_path: activeWorktreePath,
     last_active_worktree_id: lastActiveWorktreeId,
     active_project_id: selectedProjectId,
+    mobile_active_tab: mobileActiveTab,
+    zen_mode: zenMode,
+  }
+  const view = !isNativeApp() && hostView ? hostView : ownView
+
+  return {
+    ...view,
     expanded_project_ids: Array.from(expandedProjectIds),
     expanded_folder_ids: Array.from(expandedFolderIds),
     expanded_worktree_ids: Array.from(expandedWorktreeIds),
@@ -185,7 +220,6 @@ export function getCurrentUIState(): UIState {
     folders_section_collapsed: foldersSectionCollapsed,
     projects_section_collapsed: projectsSectionCollapsed,
     project_rail_hidden: projectRailHidden,
-    mobile_active_tab: mobileActiveTab,
     sidebar_tab: sidebarTab,
     archived_sort: archivedSort,
     left_sidebar_size: leftSidebarSize,
@@ -195,7 +229,6 @@ export function getCurrentUIState(): UIState {
       ? hostFileBrowserVisible
       : fileBrowserVisible,
     context_panel_tab: contextPanelTab,
-    zen_mode: zenMode,
     active_session_ids: activeSessionIds,
     input_drafts: inputDrafts,
     session_errors: Object.fromEntries(
