@@ -443,3 +443,8 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - 1.5.5: I cut the release from HEAD while the #38 session still ran. Before my next push (a test fix), that session committed M6. The push carried M6 into the 1.5.5 build, but the changelog listed it as Unreleased.
 - Rule: right before each push in a release, run `git log --oneline <last pushed>..HEAD` and read every commit. If another session's commit is in the range, either list it in the release section or hold the push.
 - Rule: when CI fails on a GitHub download (504 on Setup Bun, NSIS, etc.), rerun only after github.com answers 2xx/3xx three times in a row. A publish with a failed Windows build ships macOS only, and a rerun cannot publish again (the tag exists): add the Windows files and `latest.json` by hand from the run's `release-*` artifacts with `scripts/updater-manifest.mjs`.
+
+## Claude accounts are one global switch (2026-11-10)
+
+- I specified #90 with "a session keeps the account of its first run", to keep `--resume` working. Andreas wanted the opposite: Make active switches every session, also open and old ones, on its next run. An old session stayed on a full account (Vu3D at 100% on mb16) and could not continue.
+- Rule: when a technical constraint (here: transcripts live per account folder) changes what the user asked for, solve the constraint (copy or share the transcript) instead of narrowing the feature, and say it in the plan before building.
