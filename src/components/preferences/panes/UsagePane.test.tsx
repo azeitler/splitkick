@@ -346,6 +346,45 @@ describe('UsagePane', () => {
     expect(work).toHaveTextContent('77.0%')
   })
 
+  it('shows model limits such as Fable instead of the old Sonnet row', () => {
+    mocks.useClaudeUsage.mockReturnValue(
+      idleQuery({
+        planType: 'max',
+        session: null,
+        weekly: { usedPercent: 85, resetsAt: null },
+        sonnetWeekly: { usedPercent: 3, resetsAt: null },
+        limits: [
+          {
+            kind: 'weekly_scoped',
+            usedPercent: 100,
+            severity: 'critical',
+            resetsAt: null,
+            model: 'Fable',
+          },
+          {
+            kind: 'weekly_all',
+            usedPercent: 85,
+            severity: 'warning',
+            resetsAt: null,
+            model: null,
+          },
+        ],
+        extraUsageSpent: null,
+        extraUsageLimit: null,
+        fetchedAt: Math.floor(Date.now() / 1000),
+      })
+    )
+
+    render(<UsagePane />)
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Fable 100.0% used' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('progressbar', { name: /^Sonnet/ })
+    ).not.toBeInTheDocument()
+  })
+
   it('words the reset with the time left and the date', () => {
     const now = Date.UTC(2026, 10, 9, 12, 0, 0)
     const inTwoHours = now / 1000 + 2 * 3600

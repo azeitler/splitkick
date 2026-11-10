@@ -12,6 +12,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **The menu bar figure shows the active Claude account.** It showed the
   highest figure of all accounts, so an account not in use could show 98%.
   The menu still lists every account (#127).
+- **The usage popover shows model limits such as Fable.** Each account card
+  has a row per model limit (for example "Fable 100%"), with its reset time,
+  in place of the old Sonnet row. The sidebar badge counts it too, so a full
+  Fable limit shows as 100% (#126).
 
 ## [1.5.7] - 2026-11-10
 

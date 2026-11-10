@@ -14,6 +14,7 @@ import {
 import {
   UsagePane,
   clampPercent,
+  claudeModelLimits,
   usageSeverity,
   type UsageSeverity,
 } from '@/components/preferences/panes/UsagePane'
@@ -146,9 +147,15 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
   if (backend === 'claude' && claudeReady) {
     const prefix =
       claudeAccounts.length > 1 ? `Claude ${claudeAccount.label}` : 'Claude'
+    const data = claudeUsage.data
     candidates = [
-      { label: `${prefix} · Session`, usage: claudeUsage.data?.session },
-      { label: `${prefix} · Weekly`, usage: claudeUsage.data?.weekly },
+      { label: `${prefix} · Session`, usage: data?.session },
+      { label: `${prefix} · Weekly`, usage: data?.weekly },
+      // A full model limit (e.g. Fable) blocks that model's runs too.
+      ...(data ? claudeModelLimits(data) : []).map(limit => ({
+        label: `${prefix} · ${limit.label}`,
+        usage: limit.usage,
+      })),
     ]
   } else if (backend === 'codex' && codexReady) {
     candidates = [

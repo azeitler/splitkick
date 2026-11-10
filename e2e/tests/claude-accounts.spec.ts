@@ -12,6 +12,15 @@ const usage = (email: string, session: number, weekly: number) => ({
   session: { usedPercent: session, resetsAt: now() + 2 * 3600 },
   weekly: { usedPercent: weekly, resetsAt: now() + 3 * 86_400 },
   sonnetWeekly: { usedPercent: 4, resetsAt: now() + 3 * 86_400 },
+  limits: [
+    {
+      kind: 'weekly_scoped',
+      usedPercent: weekly === 71 ? 100 : 12,
+      severity: weekly === 71 ? 'critical' : 'normal',
+      resetsAt: now() + 3 * 86_400,
+      model: 'Fable',
+    },
+  ],
   extraUsageSpent: null,
   extraUsageLimit: null,
   fetchedAt: now() - 60,
@@ -126,7 +135,7 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
   // Dev builds load usage only while the popover is open; it stays cached.
   await mockPage.keyboard.press('Escape')
   const badge = mockPage.getByTestId('titlebar-usage')
-  await expect(badge).toHaveText(/71%/)
+  await expect(badge).toHaveText(/100%/)
   await expect(mockPage.getByTestId('titlebar-usage-more')).toHaveText('+1')
   if (captureDir) {
     await mockPage
