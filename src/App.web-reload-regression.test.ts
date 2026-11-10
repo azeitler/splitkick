@@ -17,7 +17,7 @@ describe('web access disconnect recovery', () => {
     )
     // A full reload restores this browser's own view (#72).
     expect(source).toContain('useWebDeviceViewPersistence()')
-    expect(source).toContain('<JeanLoadingScreen />')
+    expect(source).toContain('setAppSkeletonVisible(startGateClosed)')
     // Preload path may also mount QuitConfirmationDialog so X/quit still works
     expect(source).toContain('QuitConfirmationDialog')
     expect(source).not.toContain('WebReloadingOverlay')

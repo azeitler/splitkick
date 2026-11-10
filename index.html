@@ -36,10 +36,234 @@
         document.documentElement.style.colorScheme = resolvedTheme
       })()
     </script>
+    <style>
+      /* Start skeleton (#72): paints before any script runs, also from the
+         service worker's cached shell. App.tsx hides it when the app is up
+         (src/lib/app-skeleton.ts). Plain CSS: Tailwind classes would tie it
+         to the bundle. Breakpoint 768px = useIsMobile. */
+      #app-skeleton {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        background: var(--background, #fff);
+        overflow: hidden;
+        --sk-block: var(--accent, #ececec);
+        --sk-line: var(--border, #dedee0);
+      }
+      #app-skeleton[hidden] {
+        display: none;
+      }
+      #app-skeleton .sk {
+        background: var(--sk-block);
+        border-radius: 0.5rem;
+        animation: sk-pulse 1.6s ease-in-out infinite;
+      }
+      #app-skeleton .sk-phone,
+      #app-skeleton .sk-desktop {
+        position: absolute;
+        inset: 0;
+      }
+      #app-skeleton .sk-phone {
+        display: none;
+        padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem 0;
+      }
+      #app-skeleton .sk-title {
+        width: 40%;
+        height: 2.25rem;
+        margin-bottom: 1.5rem;
+      }
+      #app-skeleton .sk-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.875rem 0;
+        border-bottom: 1px solid var(--sk-line);
+      }
+      #app-skeleton .sk-line-a {
+        width: 70%;
+        height: 0.875rem;
+      }
+      #app-skeleton .sk-line-b {
+        width: 45%;
+        height: 0.75rem;
+      }
+      #app-skeleton .sk-tabbar {
+        position: absolute;
+        left: 1.25rem;
+        right: 1.25rem;
+        bottom: max(0.5rem, calc(env(safe-area-inset-bottom, 0px) - 0.75rem));
+        display: flex;
+        gap: 0.75rem;
+      }
+      #app-skeleton .sk-tabs {
+        flex: 1;
+        height: 4rem;
+        border-radius: 9999px;
+      }
+      #app-skeleton .sk-search {
+        width: 4rem;
+        height: 4rem;
+        border-radius: 9999px;
+      }
+      #app-skeleton .sk-desktop {
+        display: flex;
+        flex-direction: column;
+      }
+      #app-skeleton .sk-titlebar {
+        height: 3.25rem;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--sk-line);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0 1rem;
+      }
+      #app-skeleton .sk-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      #app-skeleton .sk-sidebar {
+        width: 16rem;
+        flex-shrink: 0;
+        background: var(--sidebar, #f5f5f7);
+        border-right: 1px solid var(--sk-line);
+        padding: 1rem 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      /* The sidebar is grey: its blocks need the darker line colour. */
+      #app-skeleton .sk-sidebar .sk {
+        background: var(--sk-line);
+      }
+      #app-skeleton .sk-main {
+        flex: 1;
+        padding: 1.5rem 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      #app-skeleton .sk-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1.75rem;
+        height: 1.75rem;
+        margin: -0.875rem 0 0 -0.875rem;
+        border-radius: 9999px;
+        border: 2.5px solid var(--sk-line);
+        border-top-color: var(--muted-foreground, #8e8e93);
+        animation: sk-spin 0.9s linear infinite;
+        /* A ring of background keeps it clear of the shapes under it. */
+        box-shadow: 0 0 0 0.5rem var(--background, #fff);
+        background: var(--background, #fff);
+      }
+      #app-skeleton .sk-hidden-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      @media (max-width: 767px) {
+        #app-skeleton .sk-phone {
+          display: block;
+        }
+        #app-skeleton .sk-desktop {
+          display: none;
+        }
+      }
+      @keyframes sk-pulse {
+        50% {
+          opacity: 0.5;
+        }
+      }
+      @keyframes sk-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #app-skeleton .sk {
+          animation: none;
+        }
+        #app-skeleton .sk-spinner {
+          animation-duration: 2.4s;
+        }
+      }
+    </style>
     <title>Jean</title>
   </head>
 
   <body>
+    <!-- Start skeleton (#72); styles above. Beside #root, not inside: React
+         replaces the children of #root on its first render. -->
+    <div id="app-skeleton" role="status" aria-live="polite">
+      <span class="sk-hidden-text">Loading…</span>
+      <div class="sk-phone" aria-hidden="true">
+        <div class="sk sk-title"></div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk sk-line-a"></div>
+          <div class="sk sk-line-b"></div>
+        </div>
+        <div class="sk-tabbar">
+          <div class="sk sk-tabs"></div>
+          <div class="sk sk-search"></div>
+        </div>
+      </div>
+      <div class="sk-desktop" aria-hidden="true">
+        <div class="sk-titlebar">
+          <div class="sk" style="width: 1.25rem; height: 1.25rem"></div>
+          <div class="sk" style="width: 7rem; height: 1rem"></div>
+        </div>
+        <div class="sk-body">
+          <div class="sk-sidebar">
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+            <div class="sk" style="height: 1.25rem"></div>
+          </div>
+          <div class="sk-main">
+            <div class="sk" style="width: 30%; height: 1.75rem"></div>
+            <div class="sk" style="height: 4rem"></div>
+            <div class="sk" style="height: 4rem"></div>
+            <div class="sk" style="width: 60%; height: 4rem"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sk-spinner" aria-hidden="true"></div>
+    </div>
+    <script>
+      // The desktop app (Tauri) starts from its local bundle and keeps its own
+      // start screen; Tauri injects __TAURI_INTERNALS__ before page scripts.
+      if (window.__TAURI_INTERNALS__)
+        document.getElementById('app-skeleton').remove()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
