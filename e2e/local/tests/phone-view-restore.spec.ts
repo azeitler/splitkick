@@ -41,8 +41,24 @@ test('the phone reopens its own session after the page ends (#72)', async ({
   await expect(modal).toBeVisible()
   await expect(modal.getByText(name, { exact: true }).first()).toBeVisible()
 
-  // The app goes to the background, then iOS ends it.
+  // The view saver has written the open session (it saves within 300 ms).
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('jean:web-device-view:local') ?? '{}')
+            .modalWorktreePath ?? null
+      )
+    )
+    .not.toBeNull()
+
+  // The app goes to the background, then iOS ends it. An iOS process end
+  // fires no pagehide; page.close() does, so block it here (verified in the
+  // iOS 27.2 simulator: hidden is the last event the page records).
   await page.evaluate(() => {
+    window.addEventListener('pagehide', e => e.stopImmediatePropagation(), {
+      capture: true,
+    })
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'hidden',

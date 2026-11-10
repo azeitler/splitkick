@@ -50,6 +50,17 @@
         --sk-block: var(--accent, #ececec);
         --sk-line: var(--border, #dedee0);
       }
+      /* --accent is almost white in light mode; mix a little text colour in
+         so the shapes read on a phone screen. */
+      @supports (color: color-mix(in oklab, red, blue)) {
+        #app-skeleton {
+          --sk-block: color-mix(
+            in oklab,
+            var(--foreground, #000) 7%,
+            var(--background, #fff)
+          );
+        }
+      }
       #app-skeleton[hidden] {
         display: none;
       }

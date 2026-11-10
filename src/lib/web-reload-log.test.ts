@@ -118,6 +118,23 @@ describe('installWebReloadLog', () => {
     expect(countStarts(getWebReloadLog(), 'background-end', 0)).toBe(1)
   })
 
+  it('keeps "unload" when "hidden" follows pagehide (a reload)', () => {
+    installWebReloadLog(1_000)
+    window.dispatchEvent(
+      new PageTransitionEvent('pagehide', { persisted: false })
+    )
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    })
+    expect(JSON.parse(store.get(KEY) ?? '{}').lastEvent.type).toBe('unload')
+  })
+
   it('marks reloads that the app starts', () => {
     reloadApp('palette')
     expect(reload).toHaveBeenCalledOnce()

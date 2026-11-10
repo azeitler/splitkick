@@ -182,7 +182,7 @@ export const navigationEntries: NavigationEntry[] = [
     id: 'web-access',
     name: 'Web Access',
     icon: Globe,
-    desktopOnly: true,
+    // On a phone the pane shows only "This device" (reload log, app cache).
   },
   {
     type: 'item',

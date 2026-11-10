@@ -32,6 +32,7 @@ import { openExternal } from '@/lib/platform'
 import { copyToClipboard } from '@/lib/clipboard'
 import { SettingsSection } from '../SettingsSection'
 import { WebAccessDeviceSection } from './WebAccessDeviceSection'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::'])
@@ -104,6 +105,14 @@ interface BindHostOption {
 }
 
 export const WebAccessPane: React.FC = () => {
+  // A phone gets only this device's section: the server switches below can
+  // cut the phone off from the server it is using (#72).
+  const isMobile = useIsMobile()
+  if (isMobile) return <WebAccessDeviceSection />
+  return <WebAccessServerPane />
+}
+
+const WebAccessServerPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
