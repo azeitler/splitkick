@@ -673,7 +673,7 @@ mod tests {
         assert_eq!(
             forked.claude_account_id.as_deref(),
             Some("acc-work"),
-            "--fork-session reads the source transcript, which only the source account has"
+            "the record of the last account is kept; the next send copies the transcript to the active account (#131)"
         );
         assert_eq!(forked.codex_thread_id, None);
         assert_eq!(forked.antigravity_session_id, None);

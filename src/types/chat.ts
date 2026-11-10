@@ -242,7 +242,7 @@ export interface Session {
   backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
-  /** Claude account its Claude runs use (`root` or an account id). Set by the backend. */
+  /** Claude account of the last Claude run (`root` or an account id). A record only: every run uses the active account. */
   claude_account_id?: string
   /** Codex CLI thread ID for resuming conversations */
   codex_thread_id?: string

@@ -168,6 +168,7 @@ import { ErrorBanner } from './ErrorBanner'
 import { LimitHitBanner } from './LimitHitBanner'
 import { RunErrorBanner } from './RunErrorBanner'
 import { openBackendLoginModal } from '@/lib/cli-auth'
+import { claudeAccountLabel } from '@/lib/claude-accounts'
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -2918,10 +2919,9 @@ export function ChatWindow({
     },
     [activeSessionId, sendTextMessage]
   )
-  const sessionClaudeAccountId = session?.claude_account_id
   const handleRunErrorLogin = useCallback(() => {
-    void openBackendLoginModal(resolvedBackend, sessionClaudeAccountId)
-  }, [resolvedBackend, sessionClaudeAccountId])
+    void openBackendLoginModal(resolvedBackend)
+  }, [resolvedBackend])
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
@@ -3711,6 +3711,10 @@ export function ChatWindow({
                     {session?.last_run_limit_hit && !isSending && (
                       <LimitHitBanner
                         limit={session.last_run_limit_hit}
+                        accountLabel={claudeAccountLabel(
+                          preferences,
+                          session.claude_account_id
+                        )}
                         onResume={handleResumeWithContinue}
                         onResumeWithMessage={handleResumeWithMessage}
                       />

@@ -15,13 +15,13 @@ describe('openBackendLoginModal (Claude accounts)', () => {
   beforeEach(() => {
     queryClient.setQueryData(preferencesQueryKeys.preferences(), {
       claude_accounts: [work],
-      claude_active_account: 'root',
+      claude_active_account: 'acc-work',
     })
   })
 
-  it("logs in to the session's account, not the active one (#112)", async () => {
+  it('logs in to the active account, the one every run uses (#131)', async () => {
     const open = vi.spyOn(useUIStore.getState(), 'openCliLoginModal')
-    expect(await openBackendLoginModal('claude', 'acc-work')).toBe(true)
+    expect(await openBackendLoginModal('claude')).toBe(true)
     expect(open).toHaveBeenCalledWith(
       'claude',
       'env',
@@ -30,7 +30,11 @@ describe('openBackendLoginModal (Claude accounts)', () => {
     )
   })
 
-  it('logs in to the active account without a session account', async () => {
+  it('logs in to the root install when it is active', async () => {
+    queryClient.setQueryData(preferencesQueryKeys.preferences(), {
+      claude_accounts: [work],
+      claude_active_account: 'root',
+    })
     const open = vi.spyOn(useUIStore.getState(), 'openCliLoginModal')
     expect(await openBackendLoginModal('claude')).toBe(true)
     expect(open).toHaveBeenCalledWith(

@@ -70,6 +70,8 @@ import {
   getBackendPlainLabel,
 } from '@/components/ui/backend-label'
 import type { RevertCommitResponse } from '@/types/projects'
+import { activeClaudeAccountTag } from '@/lib/claude-accounts'
+import { usePreferences } from '@/services/preferences'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -282,6 +284,11 @@ export const ChatToolbar = memo(function ChatToolbar({
       0
     ) > 1
 
+  // Every Claude run uses the active account (#131): show which one.
+  const { data: preferences } = usePreferences()
+  const claudeAccountTag =
+    selectedBackend === 'claude' ? activeClaudeAccountTag(preferences) : null
+
   const backendModelLabel = useMemo(
     () => (
       <>
@@ -290,6 +297,9 @@ export const ChatToolbar = memo(function ChatToolbar({
           badgeClassName="text-[9px] leading-3"
         />
         <span className="truncate">· {selectedModelLabel}</span>
+        {claudeAccountTag && (
+          <span className="shrink-0 truncate">· {claudeAccountTag}</span>
+        )}
         {getModelFastInfo(selectedBackend, selectedModel).isFast && (
           <Zap
             className="h-3 w-3 shrink-0 fill-current text-yellow-500"
@@ -298,12 +308,14 @@ export const ChatToolbar = memo(function ChatToolbar({
         )}
       </>
     ),
-    [selectedBackend, selectedModel, selectedModelLabel]
+    [selectedBackend, selectedModel, selectedModelLabel, claudeAccountTag]
   )
 
   const backendModelLabelText = useMemo(
-    () => `${getBackendPlainLabel(selectedBackend)} · ${selectedModelLabel}`,
-    [selectedBackend, selectedModelLabel]
+    () =>
+      `${getBackendPlainLabel(selectedBackend)} · ${selectedModelLabel}` +
+      (claudeAccountTag ? ` · ${claudeAccountTag}` : ''),
+    [selectedBackend, selectedModelLabel, claudeAccountTag]
   )
 
   const {

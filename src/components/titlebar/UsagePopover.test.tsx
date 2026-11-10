@@ -221,7 +221,7 @@ describe('UsagePopover', () => {
     expect(screen.getByTestId('titlebar-usage-header')).toBeInTheDocument()
   })
 
-  it('uses the Claude account of the open session, not the active one', () => {
+  it('uses the active Claude account, not the one the open session last ran on (#131)', () => {
     mocks.usePreferences.mockReturnValue({
       data: {
         claude_root_label: 'Personal',
@@ -244,7 +244,7 @@ describe('UsagePopover', () => {
 
     expect(
       screen.getByRole('button', {
-        name: 'Usage, Claude Personal · Session 35%',
+        name: 'Usage, Claude Work · Session 80%',
       })
     ).toBeInTheDocument()
   })
