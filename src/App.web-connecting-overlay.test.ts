@@ -22,27 +22,21 @@ describe('web connecting overlay', () => {
     expect(source).toContain('fixed inset-0 z-[80]')
   })
 
-  it('uses the same centered loading layout for opening and reconnecting', () => {
+  it('uses one start skeleton for opening and reconnecting (#72)', () => {
+    // index.html paints the skeleton before any script runs; App only shows
+    // or hides it, for the preload and the WS fallback alike.
     expect(source).toContain(
-      "import { JeanLoadingScreen } from './components/shared/JeanLoadingScreen'"
+      'const startGateClosed = isPreloading || blockOnWs'
     )
-    // One loading screen path (preload and WS-fallback share it) — no stacked phases
-    expect(source.match(/<JeanLoadingScreen \/>/g)).toHaveLength(1)
+    expect(source).toContain('setAppSkeletonVisible(startGateClosed)')
+    expect(source).not.toContain('<JeanLoadingScreen />')
     expect(source).toContain('connectTransport()')
-    expect(source).toContain('blockOnWs')
     expect(source).not.toContain('Jean is loading...')
     expect(source).not.toContain('Reconnecting to Jean...')
-    expect(loadingScreenSource).not.toContain('animate-spin')
-    expect(loadingScreenSource).not.toContain('size-[32px]')
-    expect(loadingScreenSource).toMatch(/<p\s+role="status"/)
+    // In-app fallbacks show the skeleton's spinning notch, not a text.
+    expect(loadingScreenSource).toContain('animate-spin')
+    expect(loadingScreenSource).toMatch(/<p role="status" className="sr-only"/)
     expect(loadingScreenSource).toContain('fixed inset-0 z-[70]')
-    expect(loadingScreenSource).not.toContain('h-screen w-full')
-  })
-
-  it('uses a stable system font while preferences load', () => {
-    expect(loadingScreenSource).toContain(
-      'fontFamily: \'system-ui, -apple-system, "Segoe UI", sans-serif\''
-    )
   })
 
   it('loads the server platform for both local and remote backends', () => {

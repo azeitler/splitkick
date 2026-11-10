@@ -18,6 +18,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   "Splitkick was updated" toast's Reload installs the new version. The API,
   the socket and previews are never cached. Settings → Web Access → This
   device shows whether the app cache is on and has Reset app cache.
+- **An app skeleton while Splitkick starts** (#72). Web Access shows the
+  outline of the app (phone: title, session rows, tab bar; desktop browser:
+  title bar, sidebar, content) with a spinning notch in the middle, in place
+  of the "Loading Splitkick…" text. It paints at once, before the app code
+  runs, and stays while the Mac cannot be reached. Views that load inside
+  the app show the same notch. The desktop app starts as before.
 - **Reload log for Web Access** (#72). Settings → Web Access → This device
   counts how often the page started again after it ended in the background
   (on an iPhone: iOS ended the app), with the last starts and Copy log.

@@ -276,6 +276,10 @@ reload. Three parts make that cheap, all in Web Access only:
 - `src/lib/web-device-view.ts` + `useWebDeviceViewPersistence` keep this
   browser's view in `localStorage`; `getCurrentUIState()` writes the host's
   view fields back (`rememberHostView`).
+- The start skeleton is static HTML/CSS in `index.html` (`#app-skeleton`,
+  beside `#root`), so it paints before any script runs. `App.tsx` shows or
+  hides it with the start gate (`setAppSkeletonVisible`, `src/lib/app-skeleton.ts`);
+  the desktop app removes it at once (`__TAURI_INTERNALS__`).
 - `scripts/web-service-worker.mjs` generates `dist/sw.js` (Vite plugin);
   `src/lib/service-worker.ts` registers it on HTTPS/localhost builds only.
   The server sends `sw.js` and the manifest with `no-store`

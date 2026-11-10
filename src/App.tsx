@@ -102,6 +102,7 @@ import { isWindows } from './lib/platform'
 import { checkWebClientVersion } from './lib/web-client-version'
 import { reloadApp } from './lib/web-reload-log'
 import { requestPersistentStorage } from './lib/service-worker'
+import { setAppSkeletonVisible } from './lib/app-skeleton'
 import {
   collectExecutionModes,
   collectWorktreePaths,
@@ -121,7 +122,6 @@ import { openConnectionWindow } from './lib/connection-windows'
 import { RemoteConnectionRecovery } from './components/remote/RemoteConnectionRecovery'
 import { getStartupOnboardingAction } from './lib/startup-onboarding'
 import { dismissTransientUi } from './lib/dismiss-transient-ui'
-import { JeanLoadingScreen } from './components/shared/JeanLoadingScreen'
 import { useJeanImportPending } from './services/jean-import'
 
 interface AutoFixStoppedEvent {
@@ -1761,11 +1761,16 @@ function App() {
   // on WS when preload failed and we have nothing to show.
   const blockOnWs =
     webBackend && !wsConnected && !wsAuthError && !hasPreloadedData()
+  const startGateClosed = isPreloading || blockOnWs
 
-  if (isPreloading || blockOnWs) {
+  // The start skeleton from index.html covers the app until it is up (#72).
+  useEffect(() => {
+    setAppSkeletonVisible(startGateClosed)
+  }, [startGateClosed])
+
+  if (startGateClosed) {
     return (
       <>
-        <JeanLoadingScreen />
         {webBackend && <WsAuthErrorOverlay />}
         {isNativeApp() && <QuitConfirmationDialog />}
       </>

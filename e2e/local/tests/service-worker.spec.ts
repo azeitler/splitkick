@@ -71,6 +71,8 @@ test.afterAll(() => {
 
 test('caches the app shell, never the API (#72)', async ({ page }) => {
   await openControlled(page)
+  // The start skeleton is hidden once the app is up.
+  await expect(page.locator('#app-skeleton')).toBeHidden()
 
   const { names, urls } = await cacheState(page)
   expect(names).toHaveLength(1)
@@ -157,9 +159,20 @@ test('opens the app when the server cannot be reached (#72)', async ({
   const started = Date.now()
   // Without a worker this navigation fails with a network error page.
   await offline.goto(instance.url)
-  await expect(offline.locator('#root > *').first()).toBeVisible()
+  // The start skeleton stays up while the app cannot connect.
+  await expect(offline.locator('#app-skeleton')).toBeVisible()
+  await expect(offline.locator('#app-skeleton .sk-desktop')).toBeVisible()
   const ms = Date.now() - started
   test.info().annotations.push({ type: 'shell-start-ms', description: `${ms}` })
   expect(await offline.title()).toBe('Splitkick')
   await shot(offline, 'sw-offline-shell')
+
+  // Phone size, dark theme: the phone layout of the skeleton.
+  const phone = await context.newPage()
+  await phone.setViewportSize({ width: 390, height: 844 })
+  await phone.addInitScript(() => localStorage.setItem('ui-theme', 'dark'))
+  await phone.goto(instance.url)
+  await expect(phone.locator('#app-skeleton .sk-phone')).toBeVisible()
+  await expect(phone.locator('#app-skeleton .sk-desktop')).toBeHidden()
+  await shot(phone, 'sw-offline-shell-phone-dark')
 })
