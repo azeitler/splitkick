@@ -7,6 +7,32 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The phone app starts fast and opens without the Mac** (#72). Web Access
+  on HTTPS (for example `tailscale serve`) now keeps the app on the device
+  with a service worker. After iOS ended the Home Screen app in the
+  background, the app frame shows at once, also on a slow link, and when the
+  Mac cannot be reached you see Splitkick's loading screen, not a Safari
+  error page. Sessions still need the server. After an update, the
+  "Splitkick was updated" toast's Reload installs the new version. The API,
+  the socket and previews are never cached. Settings → Web Access → This
+  device shows whether the app cache is on and has Reset app cache.
+- **Reload log for Web Access** (#72). Settings → Web Access → This device
+  counts how often the page started again after it ended in the background
+  (on an iPhone: iOS ended the app), with the last starts and Copy log.
+
+### Changed
+
+- **Each Web Access device keeps its own view** (#72). A phone or browser
+  reopens its own project, session and phone tab after a reload or after iOS
+  ended the app, not the last view of the desktop. It also no longer moves
+  the desktop's view: the open project, worktree, phone tab and zen mode in
+  the shared UI state stay the desktop's. A phone never opens the
+  full-screen chat route on start.
+- **The Home Screen app is named Splitkick.** Remove the icon and add it
+  again to see the new name.
+
 ## [1.5.8] - 2026-11-10
 
 Built on Jean 0.1.73.

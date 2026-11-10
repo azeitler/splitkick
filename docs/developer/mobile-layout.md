@@ -265,6 +265,22 @@ overscroll-behavior: none }` applies everywhere, because Chrome Android
 pull-to-refresh competes with Jean's swipe-down-opens-the-command-palette
 gesture, and the shell never scrolls the body anyway.
 
+### Reloads, the device view and the service worker (#72)
+
+iOS ends a Home Screen app in the background; the next open is a full
+reload. Three parts make that cheap, all in Web Access only:
+
+- `src/lib/web-reload-log.ts` counts starts by cause (Settings → Web Access →
+  This device). Reloads that the app starts go through `reloadApp(reason)`,
+  never a bare `window.location.reload()`, or they count as iOS reloads.
+- `src/lib/web-device-view.ts` + `useWebDeviceViewPersistence` keep this
+  browser's view in `localStorage`; `getCurrentUIState()` writes the host's
+  view fields back (`rememberHostView`).
+- `scripts/web-service-worker.mjs` generates `dist/sw.js` (Vite plugin);
+  `src/lib/service-worker.ts` registers it on HTTPS/localhost builds only.
+  The server sends `sw.js` and the manifest with `no-store`
+  (`static_cache_control` in `server.rs`).
+
 Keyboard-only affordances are native-desktop only: hide `<Kbd>` hints and
 disable the matching handlers in web access and on mobile (gate on
 `isNativeApp()` plus `useIsMobile()`).
@@ -289,6 +305,13 @@ _escape_ the mobile layout. The rest is covered by unit tests:
   `src/hooks/useVisualViewportBottomInset.test.ts` — soft keyboard
 - `MainWindowContent.mobile-swipe.test.tsx`, `src/hooks/useSwipeBack.test.tsx` —
   phone routing and gestures
+
+Web Access in WebKit against a real server (`bun run test:e2e:local`):
+
+- `e2e/local/tests/phone-view-restore.spec.ts` — the phone reopens its own
+  session after the page ends in the background, and the host's view stays
+- `e2e/local/tests/service-worker.spec.ts` — app shell cache, update through
+  the "Reload" toast, start with the server down
 
 Known gaps against the desktop layout are tracked in
 [`mobile-gap-analysis.md`](mobile-gap-analysis.md).

@@ -202,9 +202,11 @@ Additional systems (no dedicated docs yet):
 
   **Native remote clients keep the reload-free recovery UI they had**
   (`RemoteConnectionRecovery`) and never open a second socket. The current
-  canvas session modal and active session are still copied to short-lived
-  `sessionStorage` (`captureWebReloadState`), which covers a manual or
-  stale-version reload.
+  Every Web Access browser keeps its own view (project, session modal, active
+  session, phone tab, zen mode) in `localStorage` (`src/lib/web-device-view.ts`,
+  saved by `useWebDeviceViewPersistence`). A full reload — an iOS process end,
+  the Reload toast — opens that view, not the host's, and the browser writes the
+  host's view fields back into the shared UI state unchanged (#72).
   1. **Backend PTY registry** (`src-tauri/src/terminal/registry.rs`) keeps the
      real `portable_pty` process alive in `TERMINAL_SESSIONS` keyed by
      `terminal_id`. The frontend is a viewer; refresh never kills the PTY.

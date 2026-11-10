@@ -288,7 +288,9 @@ browser terminals can find tools installed by shell setup scripts (for example
 - Put TLS/auth in front of the container for internet exposure.
 - For Tailscale access from a browser, prefer `tailscale serve` (HTTPS) in front
   of `127.0.0.1` rather than plain `http://100.x.y.z` — browsers block the
-  clipboard API and other secure-context features on non-localhost HTTP.
+  clipboard API and other secure-context features on non-localhost HTTP,
+  including the app cache (service worker) that lets the phone app start
+  without the server. See `docs/userguide/phone-home-screen-app.md`.
 
 Example command:
 

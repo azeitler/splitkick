@@ -281,6 +281,9 @@ the steps to the user docs. The Cloudflare Tunnel URL is HTTPS already.
 **Phase 1 — smallest useful step: measure, then make the reload cheap.**
 All of it is frontend work that a native shell reuses.
 
+_Status 2026-11-10: steps 1–3 are built (reload log, device view, service
+worker; see `mobile-layout.md`). Step 4, the check on an iPhone, is open._
+
 1. **Reload log.** On `pagehide`, write a timestamp to `localStorage`. On start,
    record the navigation type and the time since the last hide. A start shortly
    after a hide without a user reload is an iOS process end. Show the count in
