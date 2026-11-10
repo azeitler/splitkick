@@ -9,6 +9,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Menu bar icon with your Claude usage** (macOS; on Windows in the tray).
+  It shows the usage of every Claude account (session, weekly and model
+  limits, with the time to reset), lets you switch the account (Use
+  account), refresh, open the window or quit. Turn it on or off in Settings
+  → General → Show in menu bar (#127).
+- **Schedules run after you close the window.** While an enabled schedule
+  exists, closing the last window keeps Splitkick running; the menu bar icon
+  is the way back. Cmd+Q and Quit in the menu still quit. Settings → General
+  → Open at login starts Splitkick when you log in, so a 07:00 schedule also
+  runs after a restart. The schedule dialogs now say that runs need
+  Splitkick to be running (#119).
+
 - **Mark sessions as To-Do** (#125). Use the session menu, the To-Do button in
   the chat header, the phone menu, or Cmd/Ctrl+Shift+L in the desktop app. A
   To-Do section in the sidebar and on Home lists the marked sessions of every
