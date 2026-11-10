@@ -114,12 +114,16 @@ fn rows(usage: &ClaudeUsageSnapshot) -> Vec<Row> {
     rows
 }
 
-/// The menu bar text: the highest usage of all accounts.
+/// The menu bar text: the highest limit of the active account, the one new
+/// runs use. The menu lists the other accounts.
 fn title(accounts: &[ClaudeAccountUsage]) -> Option<String> {
     let highest = accounts
         .iter()
-        .filter_map(|account| account.usage.as_ref())
-        .flat_map(rows)
+        .find(|account| account.active)?
+        .usage
+        .as_ref()
+        .map(rows)?
+        .into_iter()
         .max_by(|a, b| a.percent.total_cmp(&b.percent))?;
     let mark = if highest.severity > Severity::Normal {
         "⚠ "
@@ -494,14 +498,25 @@ mod tests {
         assert_eq!(lines, ["  Weekly   –"]);
     }
 
+    fn active(mut item: ClaudeAccountUsage) -> ClaudeAccountUsage {
+        item.active = true;
+        item
+    }
+
     #[test]
-    fn title_is_the_highest_usage_of_all_accounts() {
+    fn title_is_the_active_account_even_when_another_is_higher() {
         let accounts = [
-            account("A", Some(usage(Some(12.0), Some(40.0)))),
-            account("B", Some(usage(None, Some(60.0)))),
+            active(account("A", Some(usage(Some(12.0), Some(40.0))))),
+            account("B", Some(usage(None, Some(98.0)))),
             account("C", None),
         ];
-        assert_eq!(title(&accounts).as_deref(), Some("60%"));
+        assert_eq!(title(&accounts).as_deref(), Some("40%"));
+    }
+
+    #[test]
+    fn title_is_empty_without_an_active_account() {
+        let accounts = [account("A", Some(usage(None, Some(60.0))))];
+        assert_eq!(title(&accounts), None);
     }
 
     #[test]
@@ -509,14 +524,14 @@ mod tests {
         let mut snapshot = usage(None, Some(60.0));
         snapshot.limits = vec![limit("weekly_all", 60.0, "critical", None)];
         assert_eq!(
-            title(&[account("A", Some(snapshot))]).as_deref(),
+            title(&[active(account("A", Some(snapshot)))]).as_deref(),
             Some("⚠ 60%")
         );
     }
 
     #[test]
     fn title_is_empty_without_data() {
-        assert_eq!(title(&[account("A", None)]), None);
+        assert_eq!(title(&[active(account("A", None))]), None);
     }
 
     #[test]
@@ -526,7 +541,7 @@ mod tests {
             Some("Claude OAuth credentials missing. Run `claude` to authenticate.".into());
         assert_eq!(account_lines(&broken, 0), ["  ⚠ Not logged in"]);
         assert_eq!(
-            title(&[broken, account("B", Some(usage(None, Some(5.0))))]).as_deref(),
+            title(&[broken, active(account("B", Some(usage(None, Some(5.0)))))]).as_deref(),
             Some("5%")
         );
     }
