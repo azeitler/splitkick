@@ -1,11 +1,17 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ArchivedSessionEntry, Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import { useUIStore } from '@/store/ui-store'
+
+// A fixed noon: the fixtures are "1 hour ago" and "5 minutes ago", which
+// fall on the day before when the suite runs just after midnight.
+vi.useFakeTimers({ toFake: ['Date'] })
+vi.setSystemTime(new Date(2026, 10, 10, 12, 0, 0))
+afterAll(() => vi.useRealTimers())
 
 const nowSec = Math.floor(Date.now() / 1000)
 const DAY = 24 * 60 * 60
