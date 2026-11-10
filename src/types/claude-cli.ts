@@ -57,6 +57,17 @@ export interface ClaudeUsageWindowSnapshot {
   resetsAt: number | null
 }
 
+export interface ClaudeUsageLimitSnapshot {
+  /** `weekly_all`, `weekly_scoped`, … */
+  kind: string
+  usedPercent: number
+  /** `normal`, `warning` or `critical`. */
+  severity: string | null
+  resetsAt: number | null
+  /** Model of a `weekly_scoped` limit, for example "Fable". */
+  model: string | null
+}
+
 export interface ClaudeUsageSnapshot {
   planType: string | null
   /** Signed-in account email, when the backend exposes it. */
@@ -64,6 +75,11 @@ export interface ClaudeUsageSnapshot {
   session: ClaudeUsageWindowSnapshot | null
   weekly: ClaudeUsageWindowSnapshot | null
   sonnetWeekly: ClaudeUsageWindowSnapshot | null
+  /**
+   * The endpoint's `limits` list. `weekly_scoped` entries are model limits,
+   * for example a Fable weekly limit. Missing from older backends.
+   */
+  limits?: ClaudeUsageLimitSnapshot[]
   extraUsageSpent: number | null
   extraUsageLimit: number | null
   fetchedAt: number

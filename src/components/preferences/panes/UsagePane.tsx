@@ -118,6 +118,28 @@ export function formatResetLine(atSeconds: number, nowMs = Date.now()): string {
     : `Reset ${relative} (${date})`
 }
 
+/**
+ * Weekly limits of one model (`weekly_scoped`, for example Fable), labelled by
+ * the model. When the endpoint sends any, the old Sonnet field is replaced by
+ * them, as in the menu bar (#126).
+ */
+export function claudeModelLimits(
+  data: ClaudeUsageSnapshot
+): { label: string; usage: UsageWindow }[] {
+  const scoped = (data.limits ?? []).filter(
+    limit => limit.kind === 'weekly_scoped'
+  )
+  if (scoped.length === 0) {
+    return data.sonnetWeekly
+      ? [{ label: 'Sonnet', usage: data.sonnetWeekly }]
+      : []
+  }
+  return scoped.map(limit => ({
+    label: limit.model ?? 'Model',
+    usage: { usedPercent: limit.usedPercent, resetsAt: limit.resetsAt },
+  }))
+}
+
 function getQueryErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -419,7 +441,13 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
         <div className="space-y-1.5">
           <UsageRow label="Session" usage={data.session} />
           <UsageRow label="Weekly" usage={data.weekly} />
-          <UsageRow label="Sonnet" usage={data.sonnetWeekly} />
+          {claudeModelLimits(data).map(limit => (
+            <UsageRow
+              key={limit.label}
+              label={limit.label}
+              usage={limit.usage}
+            />
+          ))}
         </div>
       </div>
     )

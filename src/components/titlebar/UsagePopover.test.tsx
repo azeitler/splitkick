@@ -183,6 +183,31 @@ describe('UsagePopover', () => {
     )
   })
 
+  it('counts a full model limit such as Fable', () => {
+    mocks.useClaudeUsage.mockReturnValue(
+      idleQuery({
+        session: null,
+        weekly: { usedPercent: 85, resetsAt: null },
+        limits: [
+          {
+            kind: 'weekly_scoped',
+            usedPercent: 100,
+            severity: 'critical',
+            resetsAt: null,
+            model: 'Fable',
+          },
+        ],
+        fetchedAt: 0,
+      })
+    )
+
+    render(<UsagePopover />)
+
+    expect(
+      screen.getByRole('button', { name: 'Usage, Claude · Fable 100%' })
+    ).toBeInTheDocument()
+  })
+
   it('follows the backend of the open session', () => {
     signInCodex()
     openSession('codex')
