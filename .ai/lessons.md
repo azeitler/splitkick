@@ -448,3 +448,8 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 
 - I specified #90 with "a session keeps the account of its first run", to keep `--resume` working. Andreas wanted the opposite: Make active switches every session, also open and old ones, on its next run. An old session stayed on a full account (Vu3D at 100% on mb16) and could not continue.
 - Rule: when a technical constraint (here: transcripts live per account folder) changes what the user asked for, solve the constraint (copy or share the transcript) instead of narrowing the feature, and say it in the plan before building.
+
+## A push that changes a workflow file needs SSH (2026-11-10)
+
+- The gh token has no `workflow` scope, so an HTTPS push of a commit that touches `.github/workflows/*` is rejected ("refusing to allow an OAuth App to create or update workflow"). 1.5.9 had a CI step added by the #72 session.
+- Before a release push, run `git diff <last pushed>..HEAD --stat -- .github/`. If it lists a file, review the change and push with `git push git@github.com:azeitler/splitkick.git main:main` (1Password SSH agent; it works when 1Password is unlocked).
