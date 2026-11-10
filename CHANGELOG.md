@@ -16,6 +16,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   has a row per model limit (for example "Fable 100%"), with its reset time,
   in place of the old Sonnet row. The sidebar badge counts it too, so a full
   Fable limit shows as 100% (#126).
+- **Make active switches the Claude account for every session.** Old and
+  open sessions use the active account on their next send, too; a session
+  no longer stays on the account of its first run. Splitkick copies the
+  Claude transcript into the active account's folder first, so the
+  conversation continues. The model chip shows the account, the limit
+  banner names it ("Vu3D: …"), the sidebar badge and MCP `get_usage` follow
+  the active account (#131).
 
 ## [1.5.7] - 2026-11-10
 

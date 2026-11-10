@@ -3340,30 +3340,38 @@ pub async fn send_chat_message(
         .as_deref()
         .filter(|sid| *sid != session_id)
         .map(ToOwned::to_owned);
-    // Claude account of this session (#90): the recorded one, the root install
-    // for a session from before accounts, else the active account. Recorded now,
-    // so resume, fork and move keep using the folder that holds the transcript.
+    // Every Claude run uses the active account (#131). The session records it
+    // as the account of its last run; the record never chooses. Before a resume,
+    // the transcript is copied into the active account's folder when another
+    // account wrote it; without one anywhere the history handoff below replays.
     let claude_account_dir: Option<String> = if effective_backend == Backend::Claude {
+        let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
+        let account = crate::claude_cli::accounts::active_account(&prefs);
         let recorded = sessions
             .find_session(&session_id)
             .and_then(|s| s.claude_account_id.clone());
-        let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
-        let account_id = crate::claude_cli::accounts::session_account_id(
-            recorded.as_deref(),
-            claude_session_id.is_some(),
-            &crate::claude_cli::accounts::active_account(&prefs).id,
-        );
-        if recorded.as_deref() != Some(account_id.as_str()) {
+        if recorded.as_deref() != Some(account.id.as_str()) {
             if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                 if let Some(session) = sessions.find_session_mut(&session_id) {
-                    session.claude_account_id = Some(account_id.clone());
+                    session.claude_account_id = Some(account.id.clone());
                 }
                 Ok(())
             }) {
                 log::warn!("Failed to record Claude account for session {session_id}: {e}");
             }
         }
-        crate::claude_cli::accounts::resolve_account(&prefs, Some(&account_id)).config_dir
+        if let Some(sid) = claude_session_id.as_deref() {
+            let sync = super::claude::sync_transcript_to_active_account(
+                &prefs,
+                sid,
+                custom_profile_name.as_deref(),
+            );
+            log::debug!(
+                "[SendChat] Claude transcript {sid} for account {}: {sync:?}",
+                account.id
+            );
+        }
+        account.config_dir
     } else {
         None
     };
@@ -9525,6 +9533,8 @@ pub async fn resume_session(
         };
         let output_file = session_dir.join(format!("{run_id}.jsonl"));
         let custom_profile_name = run.custom_profile_name.clone();
+        // A running turn finishes on the account it started with (#131): the
+        // send recorded that account, and this tails that process.
         let claude_account_dir =
             crate::claude_cli::accounts::load_account(&app, metadata.claude_account_id.as_deref())
                 .config_dir;

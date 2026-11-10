@@ -822,9 +822,8 @@ pub struct Session {
     /// Claude CLI session ID for resuming conversations
     #[serde(default)]
     pub claude_session_id: Option<String>,
-    /// Claude account (`claude_cli::accounts`) this session's Claude runs use.
-    /// Set on the first Claude run; `None` with a `claude_session_id` is a
-    /// session from before accounts existed and runs on the root install.
+    /// Claude account (`claude_cli::accounts`) of this session's last Claude run.
+    /// A record only: every run uses the active account (#131).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_account_id: Option<String>,
     /// Codex CLI thread ID for resuming conversations
@@ -1848,7 +1847,7 @@ pub struct SessionMetadata {
     /// Claude CLI session ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
-    /// Claude account its Claude runs use. See [`Session::claude_account_id`].
+    /// Claude account of the last Claude run. See [`Session::claude_account_id`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_account_id: Option<String>,
     /// Codex CLI thread ID for resuming conversations

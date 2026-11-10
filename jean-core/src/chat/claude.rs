@@ -307,8 +307,8 @@ pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_na
 /// Whether Claude CLI already has a transcript for `claude_session_id`.
 ///
 /// Claude keeps one `<config dir>/projects/<escaped cwd>/<id>.jsonl` per
-/// conversation. Looks in the profile's `CLAUDE_CONFIG_DIR`, then the session's
-/// Claude account folder (`account_config_dir`), or for the root install the
+/// conversation. Looks in the profile's `CLAUDE_CONFIG_DIR`, then the active
+/// Claude account's folder (`account_config_dir`), or for the root install the
 /// process `CLAUDE_CONFIG_DIR` and `~/.claude`. A miss is not fatal: the CLI then
 /// rejects `--session-id` as "already in use" and the caller retries with
 /// `--resume`.
@@ -394,6 +394,151 @@ fn find_transcript_in_projects_dir(
         .flatten()
         .map(|entry| entry.path().join(file_name))
         .find(|path| path.is_file())
+}
+
+/// What [`sync_transcript_to_account`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranscriptSync {
+    /// The target account already has the newest copy (or shares the folder).
+    Present,
+    /// Copied from another account's folder.
+    Copied,
+    /// No configured account has the transcript.
+    NotFound,
+}
+
+/// Make a Claude transcript resumable under the account in `target_dir` (#131).
+///
+/// Claude keeps a conversation in `<config dir>/projects/<cwd slug>/<id>.jsonl`,
+/// subagent and tool-result files in `<id>/` next to it, and `--resume` only
+/// looks in the folder of the running account
+/// (https://code.claude.com/docs/en/claude-directory). Looks for the newest copy
+/// in `source_dirs` (every configured account) and copies it, with its `<id>/`
+/// folder, into the target when the target copy is missing or older. Sources are
+/// only read. Folders that resolve to the target's `projects/` (a symlink) are
+/// skipped: they share the files already.
+pub fn sync_transcript_to_account(
+    claude_session_id: &str,
+    target_dir: &std::path::Path,
+    source_dirs: &[std::path::PathBuf],
+) -> TranscriptSync {
+    let file_name = format!("{claude_session_id}.jsonl");
+    let target_projects = target_dir.join("projects");
+    let target_real = std::fs::canonicalize(&target_projects).ok();
+    let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+
+    let target_file = find_transcript_in_projects_dir(&target_projects, &file_name);
+    let newest_source = source_dirs
+        .iter()
+        .map(|dir| dir.join("projects"))
+        .filter(|projects| {
+            target_real.is_none() || std::fs::canonicalize(projects).ok() != target_real
+        })
+        .filter_map(|projects| find_transcript_in_projects_dir(&projects, &file_name))
+        .filter_map(|path| modified(&path).map(|time| (path, time)))
+        .max_by_key(|(_, time)| *time);
+
+    let Some((source, source_time)) = newest_source else {
+        return if target_file.is_some() {
+            TranscriptSync::Present
+        } else {
+            TranscriptSync::NotFound
+        };
+    };
+    if let Some(target) = &target_file {
+        if modified(target).is_some_and(|time| time >= source_time) {
+            return TranscriptSync::Present;
+        }
+    }
+    // Overwrite the target's own copy in place; a second copy under another
+    // slug would make `--resume` report "No conversation found".
+    let destination = target_file.unwrap_or_else(|| {
+        let slug = source
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        target_projects.join(slug).join(&file_name)
+    });
+    match copy_transcript(&source, &destination, claude_session_id) {
+        Ok(()) => {
+            log::info!(
+                "Copied Claude transcript {claude_session_id} from {} to {}",
+                source.display(),
+                destination.display()
+            );
+            TranscriptSync::Copied
+        }
+        Err(e) => {
+            log::warn!(
+                "Could not copy Claude transcript {claude_session_id} to {}: {e}",
+                destination.display()
+            );
+            if destination.is_file() {
+                TranscriptSync::Present
+            } else {
+                TranscriptSync::NotFound
+            }
+        }
+    }
+}
+
+/// Copy `<id>.jsonl` (through a temp file, so Claude never reads half a file)
+/// and the `<id>/` folder next to it.
+fn copy_transcript(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    claude_session_id: &str,
+) -> std::io::Result<()> {
+    let dest_dir = destination
+        .parent()
+        .ok_or_else(|| std::io::Error::other("transcript has no folder"))?;
+    std::fs::create_dir_all(dest_dir)?;
+    let tmp = dest_dir.join(format!(".{claude_session_id}.jsonl.splitkick-tmp"));
+    std::fs::copy(source, &tmp)?;
+    std::fs::rename(&tmp, destination)?;
+    if let Some(source_side) = source.parent().map(|p| p.join(claude_session_id)) {
+        if source_side.is_dir() {
+            copy_dir_newer(&source_side, &dest_dir.join(claude_session_id))?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy every file of `from` into `to` that is missing there or older.
+fn copy_dir_newer(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)?.flatten() {
+        let path = entry.path();
+        let dest = to.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_dir_newer(&path, &dest)?;
+        } else if file_type.is_file() {
+            let source_time = entry.metadata()?.modified()?;
+            let dest_time = std::fs::metadata(&dest).and_then(|m| m.modified()).ok();
+            if dest_time.is_none_or(|time| time < source_time) {
+                std::fs::copy(&path, &dest)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// [`sync_transcript_to_account`] for the active account, searching every
+/// configured account (and a profile's `CLAUDE_CONFIG_DIR`).
+pub fn sync_transcript_to_active_account(
+    prefs: &crate::AppPreferences,
+    claude_session_id: &str,
+    custom_profile_name: Option<&str>,
+) -> TranscriptSync {
+    let accounts = crate::claude_cli::accounts::all_accounts(prefs);
+    let Some(target) = crate::claude_cli::accounts::active_account(prefs).config_path() else {
+        return TranscriptSync::NotFound;
+    };
+    let mut sources: Vec<std::path::PathBuf> = claude_config_dirs(custom_profile_name, None);
+    sources.extend(accounts.iter().filter_map(|a| a.config_path()));
+    sync_transcript_to_account(claude_session_id, &target, &sources)
 }
 
 /// How long Jean waits for Claude to write a blocking tool call to its own
@@ -3078,6 +3223,189 @@ mod tests {
 
     fn fs_skills(dir: &std::path::Path) {
         std::fs::create_dir_all(dir.join("skills")).unwrap();
+    }
+
+    fn write_transcript(config: &std::path::Path, sid: &str, body: &str) -> std::path::PathBuf {
+        let project = config.join("projects").join("-tmp-project");
+        std::fs::create_dir_all(&project).unwrap();
+        let file = project.join(format!("{sid}.jsonl"));
+        std::fs::write(&file, body).unwrap();
+        file
+    }
+
+    fn set_mtime(path: &std::path::Path, secs_ago: u64) {
+        let time = std::time::SystemTime::now() - std::time::Duration::from_secs(secs_ago);
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(time)
+            .unwrap();
+    }
+
+    #[test]
+    fn transcript_sync_copies_a_missing_transcript_with_its_subagents() {
+        let root = tempfile::tempdir().unwrap();
+        let active = tempfile::tempdir().unwrap();
+        let source = write_transcript(root.path(), "sid-1", "root history\n");
+        let subagents = source.parent().unwrap().join("sid-1").join("subagents");
+        std::fs::create_dir_all(&subagents).unwrap();
+        std::fs::write(subagents.join("agent-a.jsonl"), "sub\n").unwrap();
+
+        let sync = sync_transcript_to_account(
+            "sid-1",
+            active.path(),
+            &[root.path().to_path_buf(), active.path().to_path_buf()],
+        );
+
+        assert_eq!(sync, TranscriptSync::Copied);
+        let copied = active.path().join("projects/-tmp-project/sid-1.jsonl");
+        assert_eq!(std::fs::read_to_string(&copied).unwrap(), "root history\n");
+        assert_eq!(
+            std::fs::read_to_string(
+                active
+                    .path()
+                    .join("projects/-tmp-project/sid-1/subagents/agent-a.jsonl")
+            )
+            .unwrap(),
+            "sub\n"
+        );
+        // The source is never moved or deleted.
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "root history\n");
+        assert!(claude_transcript_exists(
+            "sid-1",
+            None,
+            Some(&active.path().to_string_lossy())
+        ));
+        // A second send finds the copy current.
+        assert_eq!(
+            sync_transcript_to_account("sid-1", active.path(), &[root.path().to_path_buf()]),
+            TranscriptSync::Present
+        );
+    }
+
+    #[test]
+    fn transcript_sync_replaces_an_older_copy_and_keeps_a_newer_one() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let in_a = write_transcript(a.path(), "sid-2", "a: turns 1-3\n");
+        let in_b = write_transcript(b.path(), "sid-2", "b: turn 1\n");
+        set_mtime(&in_b, 600);
+        set_mtime(&in_a, 60);
+
+        assert_eq!(
+            sync_transcript_to_account("sid-2", b.path(), &[a.path().to_path_buf()]),
+            TranscriptSync::Copied
+        );
+        assert_eq!(std::fs::read_to_string(&in_b).unwrap(), "a: turns 1-3\n");
+
+        // Now B is the newer one: switching back to B again copies nothing.
+        std::fs::write(&in_b, "b: turns 1-4\n").unwrap();
+        set_mtime(&in_a, 600);
+        assert_eq!(
+            sync_transcript_to_account("sid-2", b.path(), &[a.path().to_path_buf()]),
+            TranscriptSync::Present
+        );
+        assert_eq!(std::fs::read_to_string(&in_b).unwrap(), "b: turns 1-4\n");
+        assert_eq!(std::fs::read_to_string(&in_a).unwrap(), "a: turns 1-3\n");
+    }
+
+    #[test]
+    fn transcript_sync_overwrites_the_target_copy_in_its_own_slug() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let in_a = write_transcript(a.path(), "sid-3", "new\n");
+        let moved = b.path().join("projects/-tmp-moved");
+        std::fs::create_dir_all(&moved).unwrap();
+        std::fs::write(moved.join("sid-3.jsonl"), "old\n").unwrap();
+        set_mtime(&moved.join("sid-3.jsonl"), 600);
+        set_mtime(&in_a, 1);
+
+        assert_eq!(
+            sync_transcript_to_account("sid-3", b.path(), &[a.path().to_path_buf()]),
+            TranscriptSync::Copied
+        );
+        assert_eq!(
+            std::fs::read_to_string(moved.join("sid-3.jsonl")).unwrap(),
+            "new\n"
+        );
+        // One copy only, or `--resume` reports "No conversation found".
+        assert_eq!(
+            claude_transcript_count("sid-3", None, Some(&b.path().to_string_lossy())),
+            1
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transcript_sync_skips_shared_project_folders() {
+        // mb14: ~/.claude-profiles/vu3d/projects -> ~/.claude/projects.
+        let root = tempfile::tempdir().unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let source = write_transcript(root.path(), "sid-4", "shared\n");
+        std::os::unix::fs::symlink(
+            root.path().join("projects"),
+            profile.path().join("projects"),
+        )
+        .unwrap();
+        set_mtime(&source, 1);
+
+        assert_eq!(
+            sync_transcript_to_account("sid-4", profile.path(), &[root.path().to_path_buf()]),
+            TranscriptSync::Present
+        );
+        let entries: Vec<_> = std::fs::read_dir(root.path().join("projects/-tmp-project"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(entries, vec!["sid-4.jsonl".to_string()]);
+    }
+
+    #[test]
+    fn send_copies_an_old_transcript_into_the_active_account() {
+        // An old session wrote its transcript under account X; Y is active now.
+        let x = tempfile::tempdir().unwrap();
+        let y = tempfile::tempdir().unwrap();
+        let sid = format!("sid-{}", uuid::Uuid::new_v4());
+        write_transcript(x.path(), &sid, "history on X\n");
+        let account = |id: &str, dir: &tempfile::TempDir| crate::claude_cli::ClaudeAccount {
+            id: id.to_string(),
+            label: id.to_string(),
+            config_dir: dir.path().to_string_lossy().to_string(),
+        };
+        let prefs = crate::AppPreferences {
+            claude_accounts: vec![account("acc-x", &x), account("acc-y", &y)],
+            claude_active_account: Some("acc-y".to_string()),
+            ..crate::AppPreferences::default()
+        };
+
+        assert_eq!(
+            sync_transcript_to_active_account(&prefs, &sid, None),
+            TranscriptSync::Copied
+        );
+        assert!(claude_transcript_exists(
+            &sid,
+            None,
+            Some(&y.path().to_string_lossy())
+        ));
+    }
+
+    #[test]
+    fn transcript_sync_reports_a_transcript_no_account_has() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        assert_eq!(
+            sync_transcript_to_account("sid-none", b.path(), &[a.path().to_path_buf()]),
+            TranscriptSync::NotFound
+        );
+        // The send then replays Jean's history (HandoffKind::LostContext).
+        assert!(!claude_transcript_exists(
+            "sid-none",
+            None,
+            Some(&b.path().to_string_lossy())
+        ));
+        assert!(!b.path().join("projects").exists());
     }
 
     #[test]

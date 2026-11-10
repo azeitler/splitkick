@@ -325,7 +325,7 @@ mod tests {
         assert_eq!(
             metadata.claude_account_id.as_deref(),
             Some("acc-work"),
-            "a moved session resumes in the account folder that has its transcript"
+            "the record of the last account is kept; it does not choose the account (#131)"
         );
         assert_eq!(metadata.codex_thread_id, None);
         let from_path = temp.path().join("worktrees").join("wt-a");

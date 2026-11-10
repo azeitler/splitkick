@@ -44,3 +44,30 @@ describe('LimitHitBanner', () => {
     expect(onResumeWithMessage).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('LimitHitBanner account (#131)', () => {
+  it('names the account that hit the limit', () => {
+    render(
+      <LimitHitBanner
+        limit={{}}
+        accountLabel="Vu3D"
+        onResume={vi.fn()}
+        onResumeWithMessage={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('limit-hit-banner')).toHaveTextContent(
+      'Vu3D: Session limit hit'
+    )
+  })
+
+  it('shows no account with a single Claude account', () => {
+    render(
+      <LimitHitBanner
+        limit={{}}
+        onResume={vi.fn()}
+        onResumeWithMessage={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('limit-hit-banner')).not.toHaveTextContent(':')
+  })
+})

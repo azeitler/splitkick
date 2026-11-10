@@ -1,4 +1,4 @@
-# Several Claude accounts (#90, proof of concept)
+# Several Claude accounts (#90, proof of concept; global switch #131)
 
 ## Claude CLI behaviour (verified 2026-11-06, Claude Code 2.1.277, macOS)
 
@@ -43,6 +43,20 @@ session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
   code read that item and got the account's own limits and email
   (`reports_real_usage_of_an_extra_account`, ignored test); a `-p` run wrote its
   transcript only into `<dir>/projects`, and `--resume` worked there.
+- **Resume across folders works once the file is copied** (2026-11-10,
+  Claude Code 2.1.277, throwaway folders A and B, a local fake API via
+  `ANTHROPIC_BASE_URL`, no real account). A turn under A wrote
+  `A/projects/<slug>/<id>.jsonl`. `CLAUDE_CONFIG_DIR=B claude -p --resume <id>`
+  failed with `No conversation found`. After `cp` of the file into
+  `B/projects/<slug>/`, the same command continued: the request carried the
+  first turn's text, and Claude appended to B's copy; A's stayed unchanged.
+  Docs: `CLAUDE_CONFIG_DIR` moves settings, history and login
+  (https://code.claude.com/docs/en/env-vars,
+  https://code.claude.com/docs/en/authentication); transcripts are
+  `projects/<cwd slug>/<id>.jsonl` with `<id>/subagents/` and
+  `<id>/tool-results/` next to them
+  (https://code.claude.com/docs/en/claude-directory,
+  https://code.claude.com/docs/en/sessions).
 
 ## Design
 
@@ -65,20 +79,37 @@ session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
     checkpoint restore), `claude auth status`, `claude mcp list`, plugin
     install: the **active** account;
   - login: the frontend's `claudeLoginCommand()` (`src/lib/claude-accounts.ts`).
-- **Sessions record their account.** `Session`/`SessionMetadata.claude_account_id`.
-  `send_chat_message` decides with `accounts::session_account_id`: the recorded
-  id wins; no record but a `claude_session_id` means a session from before
-  accounts → root; else the active account, recorded at once. Transcript
-  lookups (`claude_transcript_exists`/`_count`, the blocking-tool flush wait)
-  search only the account's folder for a non-root account. Crash recovery
-  (`resume_session`) tails with the recorded account.
-  - **Fork** and **move** copy the metadata, so the account goes with them
-    (`--fork-session` and `--resume` need the source folder).
-  - **Transfer** to another machine clears it: ids are machine-local and the
-    import is a handoff that needs no transcript.
+- **One global switch (#131).** Every Claude run uses the active account
+  (`accounts::active_account`): new, open and old sessions, resume, forks,
+  moves, one-shots, the auth check and login. Make active (Settings, usage
+  popover, menu bar) takes effect on the next send of every session; a running
+  turn finishes on its account. (#90 bound a session to the account of its
+  first run; that was wrong and is gone.)
+  - `Session`/`SessionMetadata.claude_account_id` is a **record** of the
+    account of the last run, written at each send. It never chooses. Crash
+    recovery (`resume_session`) tails a still-running turn with it. The limit
+    banner names it ("Vu3D: Session limit hit"). Fork and move copy it;
+    transfer clears it (ids are machine-local).
+  - **Transcript copy before resume.** `send_chat_message` calls
+    `claude::sync_transcript_to_active_account` when the session has a
+    `claude_session_id`: it finds the newest `<id>.jsonl` in every configured
+    account folder (plus a profile's `CLAUDE_CONFIG_DIR`) and copies it, with
+    its `<id>/` folder (subagents, tool results), into the active account's
+    `projects/` when the copy there is missing or older. It overwrites the
+    target's own copy in place (a second slug would make `--resume` report
+    "not found"), writes through a temp file, and never moves or deletes a
+    source. Folders whose `projects/` resolves to the target's (a symlink, as
+    on mb14) are skipped. With no transcript anywhere, the existing
+    lost-context handoff replays Jean's history.
+  - Transcript lookups (`claude_transcript_exists`/`_count`, the blocking-tool
+    flush wait) search only the active account's folder for a non-root
+    account.
+  - Prompt cache is per account: the first turn after a switch costs more.
 - **Usage per account.** `get_claude_usage(accountId?)` (`None` = root),
   `get_claude_accounts_usage` (all, root first; used by MCP `get_usage` as
-  `claude_accounts`). Keychain service, `.credentials.json`, `.claude.json`
+  `claude_accounts`). MCP `get_usage`'s top-level `claude` is the active
+  account. The titlebar badge (`useUsageBadge`) and the model chip show the
+  active account for Claude sessions. Keychain service, `.credentials.json`, `.claude.json`
   email and the 5-minute cache file (`claude-<hash>.json`) are per folder. The
   frontend has one TanStack query per account (`accountUsage(id)`) with the
   `usage-timing.ts` rules; the background refresh walks the accounts one by
@@ -95,6 +126,6 @@ session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
   they are. Same result for ASCII paths.
 - "Resume in terminal" (`claude --resume <id>`) and the native CLI session list
   still use the root install.
-- Removing an account keeps its folder and Keychain item. Sessions recorded on
-  it fall back to the root install, and Jean replays their history
-  (lost-context handoff) because the transcript is not there.
+- Removing an account keeps its folder and Keychain item. Its transcripts are
+  no longer searched, so a session whose newest transcript lived only there
+  gets Jean's history replayed (lost-context handoff).

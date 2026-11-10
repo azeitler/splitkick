@@ -4,6 +4,7 @@ import { render, screen, within } from '@/test/test-utils'
 import { DesktopBackendModelPicker } from './DesktopBackendModelPicker'
 import type * as EnvironmentModule from '@/lib/environment'
 import type * as ModelCatalogModule from '@/services/model-catalog'
+import type * as PreferencesModule from '@/services/preferences'
 
 class ResizeObserverMock {
   observe() {
@@ -42,6 +43,15 @@ vi.mock('@/services/model-catalog', async importOriginal => ({
   useModelCatalog: () => ({ data: undefined }),
 }))
 
+const prefsMock = vi.hoisted(() => ({
+  data: undefined as Record<string, unknown> | undefined,
+}))
+
+vi.mock('@/services/preferences', async importOriginal => ({
+  ...(await importOriginal<typeof PreferencesModule>()),
+  usePreferences: () => ({ data: prefsMock.data }),
+}))
+
 vi.mock('@/lib/environment', async importOriginal => ({
   ...(await importOriginal<typeof EnvironmentModule>()),
   isNativeApp: () => envMocks.isNativeApp,
@@ -75,6 +85,7 @@ vi.mock('@/services/pi-cli', () => ({
 }))
 
 beforeEach(() => {
+  prefsMock.data = undefined
   envMocks.isNativeApp = true
   envMocks.isMobile = false
   modelMocks.opencodeModels = ['openai/gpt-5.4', 'groq/compound-mini']
@@ -104,6 +115,37 @@ beforeEach(() => {
 })
 
 describe('DesktopBackendModelPicker', () => {
+  const renderClaude = () =>
+    render(
+      <DesktopBackendModelPicker
+        selectedBackend="claude"
+        selectedModel="claude-opus-4-8[1m]"
+        selectedProvider={null}
+        installedBackends={['claude']}
+        customCliProfiles={[]}
+        onModelChange={vi.fn()}
+        onBackendModelChange={vi.fn()}
+      />
+    )
+
+  it('shows the active Claude account, the one every run uses (#131)', () => {
+    prefsMock.data = {
+      claude_root_label: 'Vu3D',
+      claude_accounts: [
+        { id: 'acc-a6x', label: 'A6X', config_dir: '/u/.claude-a6x' },
+      ],
+      claude_active_account: 'acc-a6x',
+    }
+    renderClaude()
+    expect(screen.getByTestId('claude-account-tag')).toHaveTextContent('A6X')
+  })
+
+  it('shows no account with only the root install', () => {
+    prefsMock.data = { claude_root_label: 'Vu3D' }
+    renderClaude()
+    expect(screen.queryByTestId('claude-account-tag')).toBeNull()
+  })
+
   it('hides the chevron when there is only one selectable backend/model choice', () => {
     modelMocks.opencodeModels = ['openai/gpt-5.4']
 

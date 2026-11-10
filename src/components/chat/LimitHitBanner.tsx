@@ -6,6 +6,8 @@ import { formatLimitHit } from './limit-hit'
 
 interface LimitHitBannerProps {
   limit: LimitHit
+  /** Claude account of the run that hit the limit, e.g. "Vu3D" (#131) */
+  accountLabel?: string | null
   /** Sends "continue" so Claude picks up where it stopped */
   onResume: () => void
   /** Focuses the composer so the user can write their own follow-up */
@@ -18,6 +20,7 @@ interface LimitHitBannerProps {
  */
 export const LimitHitBanner = memo(function LimitHitBanner({
   limit,
+  accountLabel,
   onResume,
   onResumeWithMessage,
 }: LimitHitBannerProps) {
@@ -28,7 +31,10 @@ export const LimitHitBanner = memo(function LimitHitBanner({
         className="flex flex-wrap items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400"
       >
         <Zap className="h-4 w-4 shrink-0 fill-current" />
-        <p className="min-w-0 flex-1 font-medium">{formatLimitHit(limit)}</p>
+        <p className="min-w-0 flex-1 font-medium">
+          {accountLabel ? `${accountLabel}: ` : ''}
+          {formatLimitHit(limit)}
+        </p>
         <div className="flex shrink-0 gap-2">
           <Button size="sm" variant="outline" onClick={onResumeWithMessage}>
             Resume with message

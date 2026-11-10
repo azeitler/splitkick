@@ -4,7 +4,8 @@ import {
   activeClaudeAccountId,
   claudeLoginCommand,
   listClaudeAccounts,
-  sessionClaudeAccount,
+  activeClaudeAccountTag,
+  claudeAccountLabel,
 } from './claude-accounts'
 
 const work = { id: 'acc-work', label: 'Work', config_dir: '/u/.claude-work' }
@@ -31,13 +32,30 @@ describe('claude-accounts', () => {
     expect(activeClaudeAccount(undefined).label).toBe('Default')
   })
 
-  it("resolves a session's recorded account, else the active one", () => {
-    const prefs = { claude_accounts: [work], claude_active_account: 'root' }
-    expect(sessionClaudeAccount(prefs, 'acc-work').configDir).toBe(
-      '/u/.claude-work'
-    )
-    expect(sessionClaudeAccount(prefs, undefined).id).toBe('root')
-    expect(sessionClaudeAccount(prefs, 'gone').id).toBe('root')
+  it('tags the chip with the active account only when there are several', () => {
+    expect(activeClaudeAccountTag({ claude_root_label: 'Vu3D' })).toBeNull()
+    expect(
+      activeClaudeAccountTag({
+        claude_root_label: 'Vu3D',
+        claude_accounts: [work],
+        claude_active_account: 'acc-work',
+      })
+    ).toBe('Work')
+    expect(
+      activeClaudeAccountTag({
+        claude_root_label: 'Vu3D',
+        claude_accounts: [work],
+      })
+    ).toBe('Vu3D')
+  })
+
+  it('labels a recorded account, null for unknown ids or a single account', () => {
+    const prefs = { claude_root_label: 'Vu3D', claude_accounts: [work] }
+    expect(claudeAccountLabel(prefs, 'root')).toBe('Vu3D')
+    expect(claudeAccountLabel(prefs, 'acc-work')).toBe('Work')
+    expect(claudeAccountLabel(prefs, 'gone')).toBeNull()
+    expect(claudeAccountLabel(prefs, undefined)).toBeNull()
+    expect(claudeAccountLabel({ claude_root_label: 'Vu3D' }, 'root')).toBeNull()
   })
 
   it('logs a non-root account in through env CLAUDE_CONFIG_DIR', () => {

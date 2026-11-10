@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 
 use crate::AppPreferences;
 
-/// Id of the root install. Recorded on sessions whose runs used it.
+/// Id of the root install.
 pub const ROOT_ACCOUNT_ID: &str = "root";
 
 /// Label of the root install when the user did not set one.
@@ -103,7 +103,9 @@ pub fn resolve_account(prefs: &AppPreferences, id: Option<&str>) -> ResolvedClau
     }
 }
 
-/// The account every new Claude run uses.
+/// The account every Claude run uses (#131): new and old sessions, resume, forks,
+/// moves, one-shot prompts, the auth check and login. A session's recorded
+/// `claude_account_id` is only a record of its last run; it never chooses.
 pub fn active_account(prefs: &AppPreferences) -> ResolvedClaudeAccount {
     resolve_account(prefs, prefs.claude_active_account.as_deref())
 }
@@ -141,26 +143,6 @@ pub fn load_active_account(app: &tauri::AppHandle) -> ResolvedClaudeAccount {
 /// [`all_accounts`] with the saved preferences.
 pub fn load_all_accounts(app: &tauri::AppHandle) -> Vec<ResolvedClaudeAccount> {
     all_accounts(&load_prefs(app))
-}
-
-/// Which account a session's next Claude run uses.
-///
-/// A recorded account always wins: the Claude transcript only exists in that
-/// account's folder. A session with Claude history but no record is from before
-/// accounts existed and ran on the root install. A fresh session takes the active
-/// account, and the caller records it.
-pub fn session_account_id(
-    recorded: Option<&str>,
-    has_claude_history: bool,
-    active_id: &str,
-) -> String {
-    if let Some(recorded) = recorded.filter(|id| !id.is_empty()) {
-        return recorded.to_string();
-    }
-    if has_claude_history {
-        return ROOT_ACCOUNT_ID.to_string();
-    }
-    active_id.to_string()
 }
 
 /// The macOS Keychain service Claude Code stores this folder's login under.
@@ -386,16 +368,29 @@ mod tests {
     }
 
     #[test]
-    fn session_account_recorded_wins_then_legacy_root_then_active() {
+    fn old_session_on_a_full_root_account_runs_on_the_active_account() {
+        // mb16, 2026-11-10: root = Vu3D at 100 %, active = A6X. A session from
+        // before #90 (no recorded account, Claude history) must run on A6X.
+        let prefs = AppPreferences {
+            claude_root_label: Some("Vu3D".to_string()),
+            claude_accounts: vec![ClaudeAccount {
+                id: "acc-a6x".to_string(),
+                label: "A6X".to_string(),
+                config_dir: "/Users/alice/.claude-profiles/a6x".to_string(),
+            }],
+            claude_active_account: Some("acc-a6x".to_string()),
+            ..AppPreferences::default()
+        };
+        let account = active_account(&prefs);
+        assert_eq!(account.id, "acc-a6x");
+        assert_eq!(account.label, "A6X");
         assert_eq!(
-            session_account_id(Some("acc-work"), true, "root"),
-            "acc-work"
+            account.env(),
+            Some((
+                "CLAUDE_CONFIG_DIR",
+                "/Users/alice/.claude-profiles/a6x".to_string()
+            ))
         );
-        assert_eq!(session_account_id(Some("root"), false, "acc-work"), "root");
-        // Old session: ran before accounts existed, its transcript is in ~/.claude.
-        assert_eq!(session_account_id(None, true, "acc-work"), "root");
-        // Fresh session: takes the active account.
-        assert_eq!(session_account_id(None, false, "acc-work"), "acc-work");
     }
 
     #[test]

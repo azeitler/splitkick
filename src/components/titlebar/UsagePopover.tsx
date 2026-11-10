@@ -75,8 +75,9 @@ export interface UsageBadge {
 }
 
 /**
- * What the usage badge shows: the backend and Claude account of the open
- * session, or the default backend and the active account without one. The
+ * What the usage badge shows: the backend of the open session (else the
+ * default backend) and, for Claude, the active account: every Claude run uses
+ * it, old sessions too (#131). The
  * figure is the fuller of that account's session and weekly windows. Shares
  * its query keys with the Usage pane, so it adds no backend calls of its own.
  */
@@ -105,9 +106,7 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
     'claude'
 
   const claudeAccounts = listClaudeAccounts(preferences)
-  const claudeAccount =
-    claudeAccounts.find(account => account.id === session?.claude_account_id) ??
-    activeClaudeAccount(preferences)
+  const claudeAccount = activeClaudeAccount(preferences)
   const claudeStatus = useClaudeCliStatus()
   const claudeAuth = useClaudeAccountAuth(claudeAccount.id, {
     enabled: !!claudeStatus.data?.installed,

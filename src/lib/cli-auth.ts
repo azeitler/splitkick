@@ -13,7 +13,7 @@ import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences, CliBackend } from '@/types/preferences'
 import { queryClient } from '@/lib/query-client'
 import { preferencesQueryKeys } from '@/services/preferences'
-import { claudeLoginCommand, sessionClaudeAccount } from '@/lib/claude-accounts'
+import { activeClaudeAccount, claudeLoginCommand } from '@/lib/claude-accounts'
 import { getBackendPlainLabel } from '@/components/ui/backend-label'
 
 /** True when a backend error indicates the user needs to re-authenticate. */
@@ -139,12 +139,10 @@ const STATUS_COMMANDS: Partial<
 /**
  * Resolve the binary path for a backend and open the CLI login modal.
  * Returns false if the backend is not installed / path is unknown.
- * `claudeAccountId`: the Claude account to log in (a session's recorded
- * account, #90); the active account when not given.
+ * Claude logs in to the active account: every Claude run uses it (#131).
  */
 export async function openBackendLoginModal(
-  backend: CliBackend,
-  claudeAccountId?: string | null
+  backend: CliBackend
 ): Promise<boolean> {
   const statusCmd = STATUS_COMMANDS[backend]
   if (!statusCmd) {
@@ -188,15 +186,14 @@ export async function openBackendLoginModal(
       return false
     }
     if (backend === 'claude') {
-      // Log in to the session's account, else the active one
-      // (Settings → Claude → Accounts).
+      // Log in to the active account (Settings → Claude → Accounts).
       const preferences = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
       )
       const login = claudeLoginCommand(
         path,
         args,
-        sessionClaudeAccount(preferences, claudeAccountId).configDir
+        activeClaudeAccount(preferences).configDir
       )
       useUIStore
         .getState()

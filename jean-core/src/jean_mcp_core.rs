@@ -493,7 +493,7 @@ fn tool_registry_session() -> Value {
         {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
         {"name":"cancel_schedule","description":"Delete one Splitkick schedule by id (from list_schedules or create_schedule). Returns whether it existed.","inputSchema":{"type":"object","properties":{"scheduleId":{"type":"string"}},"required":["scheduleId"],"additionalProperties":false}},
         {"name":"add_artifact","description":"Register a file or URL you produced that the user should look at (report, screenshot, generated doc, HTML page, preview URL) in the Artifacts tab of a Splitkick session. Not for every edited source file: only outputs worth opening. Register it again with the same target after you change the file: Splitkick keeps a copy of the file per version, so the user can open and compare versions; pass change to say what changed. Unchanged content adds no version. Omit sessionId to target the calling session. Returns sessionId and the artifact with its versions.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1,"description":"Short name shown in the list."},"target":{"type":"string","minLength":1,"description":"Absolute path, path relative to the worktree, or http(s)/file URL."},"note":{"type":"string","description":"What the artifact is, one line. Omit it for a new version: the current note stays (a different note on a new version is stored as its change)."},"change":{"type":"string","description":"What changed since the last version, one short line (e.g. \"Added the Q3 table\"). Pass it every time you register a changed file. Also adds a version for a URL."},"sessionId":{"type":"string","description":"Session whose list gets the artifact. Defaults to the calling session."}},"required":["title","target"],"additionalProperties":false}},
-        {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the root Claude install; claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
+        {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the active Claude account (the one every Claude run uses); claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), agentId and graphPermission (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
@@ -4285,7 +4285,8 @@ async fn get_usage_snapshots(app: &AppHandle, backend_filter: &str) -> Result<Va
     let mut errors = serde_json::Map::new();
 
     if want_all || backend_filter == "claude" {
-        match dispatch_command(app, "get_claude_usage", json!({})).await {
+        let prefs = crate::load_preferences_sync(app).unwrap_or_default();
+        match dispatch_command(app, "get_claude_usage", active_claude_usage_args(&prefs)).await {
             Ok(usage) => {
                 result.insert("claude".to_string(), usage);
             }
@@ -4295,7 +4296,7 @@ async fn get_usage_snapshots(app: &AppHandle, backend_filter: &str) -> Result<Va
             }
         }
         // Every Claude account with its label, root first (#90). `claude` above
-        // stays the root install for older callers.
+        // is the active account, the one every Claude run uses (#131).
         match dispatch_command(app, "get_claude_accounts_usage", json!({})).await {
             Ok(accounts) => {
                 result.insert("claude_accounts".to_string(), accounts);
@@ -4335,6 +4336,11 @@ async fn get_usage_snapshots(app: &AppHandle, backend_filter: &str) -> Result<Va
     }
 
     Ok(Value::Object(result))
+}
+
+/// `get_claude_usage` args for the active Claude account (#131).
+fn active_claude_usage_args(prefs: &crate::AppPreferences) -> Value {
+    json!({ "accountId": crate::claude_cli::accounts::active_account(prefs).id })
 }
 
 fn require_value_str(value: &Value, key: &str) -> Result<String, ToolError> {
@@ -5050,6 +5056,27 @@ mod tests {
         assert!(
             RATE_LIMITED_TOOLS.contains(&"start_run_environment"),
             "starting a process must be rate-limited"
+        );
+    }
+
+    #[test]
+    fn get_usage_claude_is_the_active_account() {
+        let prefs = crate::AppPreferences {
+            claude_accounts: vec![crate::claude_cli::ClaudeAccount {
+                id: "acc-a6x".to_string(),
+                label: "A6X".to_string(),
+                config_dir: "/x/a6x".to_string(),
+            }],
+            claude_active_account: Some("acc-a6x".to_string()),
+            ..crate::AppPreferences::default()
+        };
+        assert_eq!(
+            active_claude_usage_args(&prefs),
+            json!({ "accountId": "acc-a6x" })
+        );
+        assert_eq!(
+            active_claude_usage_args(&crate::AppPreferences::default()),
+            json!({ "accountId": "root" })
         );
     }
 

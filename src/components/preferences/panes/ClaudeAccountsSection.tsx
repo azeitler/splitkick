@@ -132,8 +132,9 @@ export function ClaudeAccountsSection() {
       description={
         <>
           Each account is its own Claude config folder (
-          <code>CLAUDE_CONFIG_DIR</code>). New Claude runs use the active
-          account. A session keeps the account of its first run. MCP servers,
+          <code>CLAUDE_CONFIG_DIR</code>). Every Claude run uses the active
+          account, also in open and old sessions: a switch takes effect on the
+          next send, a running turn finishes on its account. MCP servers,
           plugins, skills and settings are separate per folder.
         </>
       }

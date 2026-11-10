@@ -66,18 +66,26 @@ export function activeClaudeAccount(
 }
 
 /**
- * Account a session's Claude runs use: its recorded account, else the active
- * one. Mirrors the backend: an id that is not configured any more is root.
+ * Label of the active account, the one every Claude run uses (#131), for the
+ * model chip. Null with only the root install: nothing to tell apart.
  */
-export function sessionClaudeAccount(
+export function activeClaudeAccountTag(
+  prefs?: Partial<AccountPrefs>
+): string | null {
+  if (!prefs?.claude_accounts?.length) return null
+  return activeClaudeAccount(prefs).label
+}
+
+/**
+ * Label of a configured account by id, e.g. the account of the run that hit
+ * a limit. Null with only the root install, or for an unknown id.
+ */
+export function claudeAccountLabel(
   prefs: Partial<AccountPrefs> | undefined,
   accountId: string | null | undefined
-): ClaudeAccountView {
-  if (!accountId) return activeClaudeAccount(prefs)
-  const accounts = listClaudeAccounts(prefs)
-  return (
-    accounts.find(a => a.id === accountId) ?? (accounts[0] as ClaudeAccountView)
-  )
+): string | null {
+  if (!accountId || !prefs?.claude_accounts?.length) return null
+  return listClaudeAccounts(prefs).find(a => a.id === accountId)?.label ?? null
 }
 
 /**

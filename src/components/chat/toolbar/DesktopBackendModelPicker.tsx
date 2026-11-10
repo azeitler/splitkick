@@ -36,6 +36,8 @@ import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDeri
 import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isNativeApp } from '@/lib/environment'
+import { activeClaudeAccountTag } from '@/lib/claude-accounts'
+import { usePreferences } from '@/services/preferences'
 
 interface DesktopBackendModelPickerProps {
   disabled?: boolean
@@ -191,6 +193,11 @@ export function DesktopBackendModelPicker({
     selectedModel,
   ])
 
+  // Every Claude run uses the active account (#131): show which one.
+  const { data: preferences } = usePreferences()
+  const claudeAccountTag =
+    selectedBackend === 'claude' ? activeClaudeAccountTag(preferences) : null
+
   const selectableChoiceCount = useMemo(() => {
     const installedBackendsSet = new Set(installedBackends)
     return backendModelSections
@@ -227,6 +234,15 @@ export function DesktopBackendModelPicker({
                   badgeClassName="text-[9px] leading-3"
                 />
                 <span className="truncate">· {selectedModelLabel}</span>
+                {claudeAccountTag && (
+                  <span
+                    className="shrink-0 truncate"
+                    data-testid="claude-account-tag"
+                    title="Claude account every run of this session uses"
+                  >
+                    · {claudeAccountTag}
+                  </span>
+                )}
                 {getModelFastInfo(selectedBackend, selectedModel).isFast && (
                   <Zap
                     className="h-3 w-3 shrink-0 fill-current text-yellow-500"
