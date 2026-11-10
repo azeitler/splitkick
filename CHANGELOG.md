@@ -26,7 +26,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the app show the same notch. The desktop app starts as before.
 - **Reload log for Web Access** (#72). Settings → Web Access → This device
   counts how often the page started again after it ended in the background
-  (on an iPhone: iOS ended the app), with the last starts and Copy log.
+  (on an iPhone: iOS ended the app), with the last starts and Copy log. A
+  phone now lists Web Access in its Settings, with only this section; the
+  server switches stay on the desktop.
 
 ### Changed
 

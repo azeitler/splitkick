@@ -453,7 +453,13 @@ describe('MobileTabShell', () => {
       expect(
         screen.queryByTestId('mobile-settings-pane-keybindings')
       ).toBeNull()
-      expect(screen.queryByTestId('mobile-settings-pane-web-access')).toBeNull()
+    })
+
+    it('lists Web Access for the reload log and app cache (#72)', async () => {
+      await openSettings()
+      expect(
+        screen.getByTestId('mobile-settings-pane-web-access')
+      ).toBeInTheDocument()
     })
 
     it('marks a pending update on the gear and lists it', async () => {

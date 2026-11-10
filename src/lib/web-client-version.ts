@@ -55,3 +55,19 @@ export function checkWebClientVersion(serverInfo: ServerBuildInfo): boolean {
 
   return true
 }
+
+/**
+ * The same check against this page's own server, for a start without the
+ * HTTP preload (the server was down; the service worker served the cached
+ * app). `jean-build.json` needs no token and is never cached (#72).
+ */
+export async function checkWebClientVersionFromOrigin(): Promise<boolean> {
+  if (isNativeApp()) return false
+  try {
+    const response = await fetch('/jean-build.json', { cache: 'no-store' })
+    if (!response.ok) return false
+    return checkWebClientVersion((await response.json()) as ServerBuildInfo)
+  } catch {
+    return false
+  }
+}

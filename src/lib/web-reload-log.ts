@@ -145,15 +145,24 @@ export function installWebReloadLog(now = Date.now()): WebStartEntry | null {
     },
   })
 
+  // An unload fires `pagehide` first and `visibilitychange` (hidden) after
+  // it (HTML spec; seen in iOS Safari on a reload). Without this flag the
+  // later "hidden" would turn every reload into a background end.
+  let unloading = false
   document.addEventListener('visibilitychange', () => {
+    if (unloading) return
     recordEvent(document.visibilityState === 'hidden' ? 'hidden' : 'visible')
   })
   // A page kept in the back/forward cache is not unloaded.
   window.addEventListener('pagehide', event => {
-    if (!event.persisted) recordEvent('unload')
+    if (event.persisted) return
+    unloading = true
+    recordEvent('unload')
   })
   window.addEventListener('pageshow', event => {
-    if (event.persisted) recordEvent('visible')
+    if (!event.persisted) return
+    unloading = false
+    recordEvent('visible')
   })
   return entry
 }

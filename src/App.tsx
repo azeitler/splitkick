@@ -99,7 +99,10 @@ import {
 } from './lib/session-state-hydration'
 import { scheduleIdleWork } from './lib/idle'
 import { isWindows } from './lib/platform'
-import { checkWebClientVersion } from './lib/web-client-version'
+import {
+  checkWebClientVersion,
+  checkWebClientVersionFromOrigin,
+} from './lib/web-client-version'
 import { reloadApp } from './lib/web-reload-log'
 import { requestPersistentStorage } from './lib/service-worker'
 import { setAppSkeletonVisible } from './lib/app-skeleton'
@@ -1029,6 +1032,9 @@ function App() {
         'WebSocket connected without preloaded data, invalidating all queries'
       )
       queryClient.invalidateQueries()
+      // No preload means no version check yet: the app may be an older copy
+      // from the app cache, started while the server was down (#72).
+      void checkWebClientVersionFromOrigin()
     }
   }, [wsConnected, queryClient, webBackend])
 
