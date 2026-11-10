@@ -100,13 +100,16 @@ import {
 import { scheduleIdleWork } from './lib/idle'
 import { isWindows } from './lib/platform'
 import { checkWebClientVersion } from './lib/web-client-version'
+import { reloadApp } from './lib/web-reload-log'
+import { requestPersistentStorage } from './lib/service-worker'
 import {
   collectExecutionModes,
   collectWorktreePaths,
 } from './lib/initial-data-cache'
 import { useExternalLinkInterceptor } from './hooks/useExternalLinkInterceptor'
 import { WebAccessAuthScreen } from './components/web/WebAccessAuthScreen'
-import { peekWebReloadState, saveWebReloadState } from './lib/web-reload-state'
+import { peekWebDeviceView, webDeviceProjectId } from './lib/web-device-view'
+import { useWebDeviceViewPersistence } from './hooks/useWebDeviceViewPersistence'
 import {
   clearConnectionSwitch,
   getActiveRemoteConnection,
@@ -130,7 +133,7 @@ interface AutoFixStoppedEvent {
 
 function handleWsAuthTokenSubmit(token: string) {
   localStorage.setItem('jean-http-token', token)
-  window.location.reload()
+  reloadApp('token')
 }
 
 /** Full-screen auth error overlay for web access mode. */
@@ -159,6 +162,11 @@ function App() {
   const wsAuthError = useWsAuthError()
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(webBackend)
+  // The server's build info from the preload. Checked once the main window
+  // is up: its <Toaster> mounts with it, and a toast sent earlier is lost.
+  const preloadedBuildInfoRef = useRef<
+    Parameters<typeof checkWebClientVersion>[0] | null
+  >(null)
   const [platformVersion, setPlatformVersion] = useState(0)
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
@@ -174,24 +182,8 @@ function App() {
   // silently ignore close while an async handler is registered.
   useNativeWindowCloseGuard()
 
-  const captureWebReloadState = useCallback(() => {
-    const { sessionChatModalOpen, sessionChatModalWorktreeId } =
-      useUIStore.getState()
-    if (!sessionChatModalOpen || !sessionChatModalWorktreeId) return
-
-    const { selectedProjectId } = useProjectsStore.getState()
-    const { activeSessionIds, worktreePaths } = useChatStore.getState()
-    const activeSessionId = activeSessionIds[sessionChatModalWorktreeId]
-    const modalWorktreePath = worktreePaths[sessionChatModalWorktreeId]
-    if (!selectedProjectId || !activeSessionId || !modalWorktreePath) return
-
-    saveWebReloadState({
-      projectId: selectedProjectId,
-      modalWorktreeId: sessionChatModalWorktreeId,
-      modalWorktreePath,
-      activeSessionId,
-    })
-  }, [])
+  // Web Access keeps its own view across reloads and iOS process ends (#72).
+  useWebDeviceViewPersistence()
 
   // Prevent a stray file drop from navigating the webview to file:// (which
   // would lock the whole window). Always-on catch-all for views without their
@@ -760,8 +752,7 @@ function App() {
       if (data.uiState) {
         queryClient.setQueryData(['ui-state'], data.uiState)
         const uiState = data.uiState as { active_project_id?: string | null }
-        const activeProjectId =
-          peekWebReloadState()?.projectId ?? uiState.active_project_id
+        const activeProjectId = webDeviceProjectId(uiState.active_project_id)
         if (activeProjectId) {
           const { selectedProjectId, expandProject, selectProject } =
             useProjectsStore.getState()
@@ -817,7 +808,7 @@ function App() {
     }
 
     const initialSelectedProjectId =
-      peekWebReloadState()?.projectId ??
+      peekWebDeviceView()?.projectId ??
       useProjectsStore.getState().selectedProjectId
     preloadInitialData(initialSelectedProjectId)
       .then(data => {
@@ -825,8 +816,10 @@ function App() {
           logger.info('Preloaded initial data via HTTP', {
             projects: Array.isArray(data.projects) ? data.projects.length : 0,
           })
-          checkWebClientVersion(data)
+          preloadedBuildInfoRef.current = data
           seedCache(data)
+          // Logged in: ask iOS to keep the token, view and app cache (#72).
+          void requestPersistentStorage()
           ingestBootstrapEvents(data.replayEvents ?? [])
         }
       })
@@ -837,6 +830,13 @@ function App() {
         setIsPreloading(false)
       })
   }, [queryClient, seedCache, webBackend])
+
+  // Runs after MainWindow (and its <Toaster>) mounted: child effects first.
+  useEffect(() => {
+    if (isPreloading || !preloadedBuildInfoRef.current) return
+    checkWebClientVersion(preloadedBuildInfoRef.current)
+    preloadedBuildInfoRef.current = null
+  }, [isPreloading])
 
   // One-shot migration: before connection windows the desktop shell kept the
   // active remote in localStorage and swapped it into this window. Reopen that
@@ -954,7 +954,8 @@ function App() {
   // time it suspends a background tab, and reloading there would discard the
   // composer draft, the scroll position and every open modal whenever the user
   // switches app. The transport reconnects and the effect below re-bootstraps.
-  // The captured modal state still covers a manual or stale-version reload.
+  // A full reload (iOS process end, the Reload toast) restores this browser's
+  // own view from useWebDeviceViewPersistence.
   useEffect(() => {
     if (!webBackend) return
 
@@ -964,9 +965,8 @@ function App() {
         return
       }
       logger.info('WebSocket disconnected, reconnecting web app in place')
-      captureWebReloadState()
     })
-  }, [captureWebReloadState, webBackend])
+  }, [webBackend])
 
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)

@@ -131,6 +131,9 @@ jobs:
       - name: Web branding tests
         run: bun run test:web-branding
 
+      - name: Web service worker tests
+        run: bun run test:web-service-worker
+
       - name: Branding check
         run: bun run check:branding
 

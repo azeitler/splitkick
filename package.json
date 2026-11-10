@@ -63,7 +63,8 @@
     "release:cut": "node scripts/release-cut.mjs",
     "test:release-cut": "node --test scripts/release-cut.test.mjs",
     "test:updater-manifest": "node --test scripts/updater-manifest.test.mjs",
-    "test:web-branding": "node --test scripts/web-branding.test.mjs"
+    "test:web-branding": "node --test scripts/web-branding.test.mjs",
+    "test:web-service-worker": "node --test scripts/web-service-worker.test.mjs"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",

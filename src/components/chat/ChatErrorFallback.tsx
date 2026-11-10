@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/chat-store'
 import { copyToClipboard } from '@/lib/clipboard'
+import { reloadApp } from '@/lib/web-reload-log'
 import { AlertTriangle, Copy, Check } from 'lucide-react'
 
 interface ChatErrorFallbackProps {
@@ -45,7 +46,7 @@ export function ChatErrorFallback({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => window.location.reload()}
+          onClick={() => reloadApp('chat-error')}
         >
           Reload
         </Button>

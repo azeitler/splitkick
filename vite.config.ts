@@ -8,7 +8,12 @@ import {
   resolveWebIcons,
   rewriteIndexHtml,
   writeWebIcons,
+  writeWebManifest,
 } from './scripts/web-branding.mjs'
+import {
+  precacheUrlsFromIndexHtml,
+  renderServiceWorker,
+} from './scripts/web-service-worker.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 const host = process.env.TAURI_DEV_HOST
@@ -94,7 +99,33 @@ function jeanWebBrandingPlugin(): Plugin {
       return rewriteIndexHtml(html, icons)
     },
     writeBundle(options) {
-      writeWebIcons(path.resolve(String(options.dir ?? 'dist')), icons)
+      const outDir = path.resolve(String(options.dir ?? 'dist'))
+      writeWebIcons(outDir, icons)
+      writeWebManifest(outDir, icons)
+    },
+  }
+}
+
+/**
+ * Writes `dist/sw.js`, the Web Access service worker (#72), with this
+ * build's id and the files that index.html loads. Build only: the dev server
+ * has no stable asset names, and `src/lib/service-worker.ts` never registers
+ * a worker in dev.
+ */
+function jeanServiceWorkerPlugin(): Plugin {
+  return {
+    name: 'jean-service-worker',
+    apply: 'build',
+    writeBundle(options) {
+      const outDir = path.resolve(String(options.dir ?? 'dist'))
+      const html = readFileSync(path.join(outDir, 'index.html'), 'utf8')
+      writeFileSync(
+        path.join(outDir, 'sw.js'),
+        renderServiceWorker({
+          buildId: webBuildInfo.webBuildId,
+          precacheUrls: precacheUrlsFromIndexHtml(html),
+        })
+      )
     },
   }
 }
@@ -106,6 +137,7 @@ export default defineConfig(async () => ({
     tailwindcss(),
     jeanWebBuildInfoPlugin(),
     jeanWebBrandingPlugin(),
+    jeanServiceWorkerPlugin(),
   ],
   define: {
     __JEAN_WEB_BUILD_INFO__: JSON.stringify(webBuildInfo),

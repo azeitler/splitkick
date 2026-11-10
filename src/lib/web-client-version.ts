@@ -6,6 +6,8 @@ import {
 } from '@/lib/build-info'
 import { isNativeApp } from '@/lib/environment'
 import { logger } from '@/lib/logger'
+import { getActiveRemoteConnection } from '@/lib/remote-connections'
+import { updateServiceWorkerAndReload } from '@/lib/service-worker'
 
 interface ServerBuildInfo {
   webBuildId?: string | null
@@ -23,6 +25,10 @@ export function checkWebClientVersion(serverInfo: ServerBuildInfo): boolean {
 
   const serverBuildId = serverInfo.webBuildId
   if (!serverBuildId || serverBuildId === CLIENT_WEB_BUILD_ID) return false
+  // Web Access on a remote connection runs this page's frontend against
+  // another server. A reload loads this host's frontend again, so it cannot
+  // close the gap; the toast would come back after each reload.
+  if (getActiveRemoteConnection()) return false
 
   if (notifiedServerBuildId === serverBuildId) return true
   notifiedServerBuildId = serverBuildId
@@ -43,7 +49,7 @@ export function checkWebClientVersion(serverInfo: ServerBuildInfo): boolean {
     closeButton: false,
     action: {
       label: 'Reload',
-      onClick: () => window.location.reload(),
+      onClick: () => void updateServiceWorkerAndReload(),
     },
   })
 

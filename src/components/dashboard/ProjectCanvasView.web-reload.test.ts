@@ -8,7 +8,7 @@ describe('ProjectCanvasView web reload recovery', () => {
   )
 
   it('restores the open session modal and active session', () => {
-    expect(source).toContain('consumeWebReloadState(projectId)')
+    expect(source).toContain('consumeWebDeviceModal(projectId)')
     expect(source).toContain('setActiveSession(')
     expect(source).toContain('setSelectedWorktreeModal({')
   })
