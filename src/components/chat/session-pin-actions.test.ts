@@ -15,7 +15,7 @@ vi.mock('sonner', () => ({
   },
 }))
 
-const { togglePinnedSession, toggleStarredSession } =
+const { moveStarredSession, togglePinnedSession, toggleStarredSession } =
   await import('./session-pin-actions')
 
 const target = {
@@ -156,5 +156,42 @@ describe('session pin and star actions', () => {
     expect(invalidate).not.toHaveBeenCalled()
 
     invalidate.mockRestore()
+  })
+
+  describe('moveStarredSession', () => {
+    const starOf = (sessionId: string) => ({ ...star, sessionId })
+    const ids = () => stars().map(s => s.sessionId)
+
+    beforeEach(() => {
+      useProjectsStore.setState({
+        starredSessions: [starOf('a'), starOf('b'), starOf('c')],
+      })
+    })
+
+    it('moves the star and persists the new order', async () => {
+      await moveStarredSession('a', 'c', 'after')
+
+      expect(ids()).toEqual(['b', 'c', 'a'])
+      expect(flushUIStateMock).toHaveBeenCalledTimes(1)
+      expect(toastErrorMock).not.toHaveBeenCalled()
+    })
+
+    it('writes nothing when the order does not change', async () => {
+      await moveStarredSession('a', 'b', 'before')
+
+      expect(flushUIStateMock).not.toHaveBeenCalled()
+    })
+
+    it('restores the old order and reports a failed write', async () => {
+      flushUIStateMock.mockRejectedValueOnce(new Error('disk full'))
+
+      await moveStarredSession('a', 'c', 'after')
+
+      expect(ids()).toEqual(['a', 'b', 'c'])
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Failed to reorder starred sessions',
+        { description: 'disk full' }
+      )
+    })
   })
 })

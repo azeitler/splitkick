@@ -17,10 +17,10 @@ export interface SessionNavigationOptions {
    * Expand the target's folders, project and workspace, and scroll its row
    * into view. Defaults to true.
    *
-   * Pass false from a shortcut row that already sits in the sidebar (Pinned,
-   * Starred). A shortcut exists so the user does not have to find the session
-   * in the tree; revealing the original row would scroll the tree away from
-   * the row they clicked.
+   * Pass false from a shortcut row inside the project tree (a workspace's
+   * Pinned rows): revealing the original row would scroll the tree away from
+   * the row they clicked. Starred and To-Do sit above the tree and scroll on
+   * their own, so they reveal.
    */
   revealInSidebar?: boolean
   /**

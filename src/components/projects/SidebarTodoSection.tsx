@@ -56,14 +56,12 @@ export function SidebarTodoSection() {
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      navigateToSession(
-        {
-          projectId: shortcut.projectId,
-          worktreeId: shortcut.worktreeId,
-          sessionId: shortcut.sessionId,
-        },
-        { revealInSidebar: false }
-      )
+      // As in Starred: the section scrolls on its own, the tree follows.
+      navigateToSession({
+        projectId: shortcut.projectId,
+        worktreeId: shortcut.worktreeId,
+        sessionId: shortcut.sessionId,
+      })
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }

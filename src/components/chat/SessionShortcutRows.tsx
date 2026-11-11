@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type DragEvent, type ReactNode } from 'react'
+import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
 import { AgentBadge } from '@/components/graphs/AgentBadge'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -8,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { isNativeApp } from '@/lib/environment'
 import type { Session } from '@/types/chat'
 import { DraftGlyph } from './DraftGlyph'
 import { LimitGlyph } from './limit-hit'
@@ -77,6 +80,41 @@ interface SessionShortcutRowsProps {
   /** The open session, highlighted like its row in the tree. */
   activeSessionId?: string | null
   onOpen: (shortcut: SessionShortcut) => void
+  /**
+   * Makes the rows reorderable (Starred): drag and drop, Move Up / Move Down
+   * in the context menu, and Alt+Arrow on a focused row (native desktop).
+   */
+  onReorder?: (
+    sessionId: string,
+    targetSessionId: string,
+    position: 'before' | 'after'
+  ) => void
+}
+
+/** Drag payload type, so a drop from anywhere else is ignored. */
+const SHORTCUT_DRAG_TYPE = 'application/x-splitkick-session-shortcut'
+
+interface ShortcutDragState {
+  draggingId: string | null
+  targetId: string | null
+  edge: 'top' | 'bottom' | null
+}
+
+const noDrag: ShortcutDragState = {
+  draggingId: null,
+  targetId: null,
+  edge: null,
+}
+
+/** Focus a row again after a keyboard move; React may re-insert its node. */
+function focusShortcutRow(sessionId: string): void {
+  requestAnimationFrame(() => {
+    document
+      .querySelector<HTMLElement>(
+        `[data-shortcut-row-id="${CSS.escape(sessionId)}"]`
+      )
+      ?.focus()
+  })
 }
 
 /**
@@ -100,7 +138,12 @@ export function SessionShortcutRows({
   layout = 'inline',
   activeSessionId = null,
   onOpen,
+  onReorder,
 }: SessionShortcutRowsProps) {
+  const isMobile = useIsMobile()
+  // Keyboard moves and their hint are native desktop only.
+  const desktopKeys = !isMobile && isNativeApp()
+  const [drag, setDrag] = useState<ShortcutDragState>(noDrag)
   const { data: preferences } = usePreferences()
   const { archive, remove } = useSessionRemoval(preferences?.removal_behavior)
   const {
@@ -149,9 +192,55 @@ export function SessionShortcutRows({
     : SIDEBAR_ROW_SHAPE
   const isStacked = layout === 'stacked'
 
+  const moveBy = (index: number, step: -1 | 1) => {
+    const neighbour = shortcuts[index + step]
+    const shortcut = shortcuts[index]
+    if (!onReorder || !neighbour || !shortcut) return
+    onReorder(
+      shortcut.sessionId,
+      neighbour.sessionId,
+      step === -1 ? 'before' : 'after'
+    )
+    focusShortcutRow(shortcut.sessionId)
+  }
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, id: string) => {
+    if (!drag.draggingId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (drag.draggingId === id) {
+      if (drag.targetId) setDrag({ ...drag, targetId: null, edge: null })
+      return
+    }
+    // Only this list's own rows; files or other drags pass through.
+    if (!event.dataTransfer.types.includes(SHORTCUT_DRAG_TYPE)) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const edge = event.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom'
+    // The gap right above or below the dragged row would not move it, so
+    // it gets no indicator.
+    const from = shortcuts.findIndex(s => s.sessionId === drag.draggingId)
+    const to = shortcuts.findIndex(s => s.sessionId === id)
+    const noMove = to + (edge === 'top' ? -1 : 1) === from
+    const next = noMove
+      ? { targetId: null, edge: null }
+      : { targetId: id, edge: edge as 'top' | 'bottom' }
+    if (drag.targetId === next.targetId && drag.edge === next.edge) return
+    setDrag({ ...drag, ...next })
+  }
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!drag.draggingId) return
+    event.preventDefault()
+    const { draggingId, targetId, edge } = drag
+    setDrag(noDrag)
+    if (onReorder && targetId && edge) {
+      onReorder(draggingId, targetId, edge === 'top' ? 'before' : 'after')
+    }
+  }
+
   return (
     <>
-      {shortcuts.map(shortcut => {
+      {shortcuts.map((shortcut, index) => {
         const { session, card } = shortcut
         const config = statusConfig[card.status]
         const isRenaming = renamingSessionId === shortcut.sessionId
@@ -321,7 +410,20 @@ export function SessionShortcutRows({
               ) : (
                 <button
                   type="button"
+                  data-shortcut-row-id={shortcut.sessionId}
                   onClick={() => onOpen(shortcut)}
+                  onKeyDown={
+                    onReorder && desktopKeys
+                      ? e => {
+                          if (!e.altKey || e.metaKey || e.ctrlKey) return
+                          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+                            return
+                          }
+                          e.preventDefault()
+                          moveBy(index, e.key === 'ArrowUp' ? -1 : 1)
+                        }
+                      : undefined
+                  }
                   onContextMenuCapture={closeOpenSessionContextMenus}
                   title={`${session.name} — ${shortcut.context}`}
                   aria-current={isActive ? 'page' : undefined}
@@ -345,9 +447,56 @@ export function SessionShortcutRows({
               }}
               onArchive={sessionId => archive({ sessionId, ...target })}
               onDelete={sessionId => remove({ sessionId, ...target })}
+              reorder={
+                onReorder
+                  ? {
+                      onMoveUp: index > 0 ? () => moveBy(index, -1) : undefined,
+                      onMoveDown:
+                        index < shortcuts.length - 1
+                          ? () => moveBy(index, 1)
+                          : undefined,
+                      showShortcutHint: desktopKeys,
+                    }
+                  : undefined
+              }
             />
           </ContextMenu>
         )
+        if (onReorder) {
+          const isDragging = drag.draggingId === shortcut.sessionId
+          return (
+            <div
+              key={shortcut.sessionId}
+              data-testid="session-shortcut-draggable"
+              // Not while renaming: a drag would start from the input.
+              draggable={!isRenaming}
+              onDragStart={event => {
+                event.dataTransfer.effectAllowed = 'move'
+                // WebKit starts a drag only when it carries data.
+                event.dataTransfer.setData(
+                  SHORTCUT_DRAG_TYPE,
+                  shortcut.sessionId
+                )
+                setDrag({ ...noDrag, draggingId: shortcut.sessionId })
+              }}
+              onDragOver={event => handleDragOver(event, shortcut.sessionId)}
+              onDrop={handleDrop}
+              onDragEnd={() => setDrag(noDrag)}
+              className={cn('relative', isDragging && 'opacity-40')}
+            >
+              <DropIndicator
+                edge={drag.targetId === shortcut.sessionId ? drag.edge : null}
+                insetClassName="left-1 right-2"
+              />
+              {row}
+              {renderAction && (
+                <div className="absolute inset-y-0 right-3 flex items-center">
+                  {renderAction(shortcut)}
+                </div>
+              )}
+            </div>
+          )
+        }
         if (!renderAction) return row
         return (
           <div key={shortcut.sessionId} className="relative">

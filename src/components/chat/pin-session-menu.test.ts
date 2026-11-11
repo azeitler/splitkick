@@ -76,20 +76,21 @@ describe('pin session to project', () => {
     }
   })
 
-  // A pinned or starred row in the sidebar is a shortcut: opening it must not
-  // expand the original workspace and scroll the tree to its row (#18). The
-  // canvas and Home rows sit outside the tree and keep the reveal.
-  it('opens sidebar shortcut rows without revealing the original row', () => {
+  // Pinned rows sit inside the tree: revealing the original row would scroll
+  // the tree away from the click (#18). Starred and To-Do sit above the tree
+  // and scroll on their own, so the tree follows them (2026-11-11).
+  it('opens tree shortcut rows in place, and reveals from Starred and To-Do', () => {
+    const pinned = read('src/components/projects/WorktreeList.tsx').match(
+      /navigateToSession\(([\s\S]*?)\n\s{6}\)/
+    )
+    expect(pinned?.[1]).toContain('revealInSidebar: false')
+
     for (const path of [
-      'src/components/projects/WorktreeList.tsx',
       'src/components/projects/SidebarStarredSection.tsx',
+      'src/components/projects/SidebarTodoSection.tsx',
+      'src/components/dashboard/ProjectCanvasView.tsx',
     ]) {
-      const call = read(path).match(/navigateToSession\(([\s\S]*?)\n\s{6}\)/)
-
-      expect(call?.[1]).toContain('revealInSidebar: false')
+      expect(read(path)).not.toContain('revealInSidebar: false')
     }
-
-    const canvas = read('src/components/dashboard/ProjectCanvasView.tsx')
-    expect(canvas).not.toContain('revealInSidebar: false')
   })
 })

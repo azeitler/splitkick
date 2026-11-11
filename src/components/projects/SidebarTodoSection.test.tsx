@@ -113,10 +113,12 @@ describe('SidebarTodoSection', () => {
 
     await user.click(screen.getByTitle('Review PR — Jean / main'))
 
-    expect(mocks.navigateToSession).toHaveBeenCalledWith(
-      { projectId: 'id-Jean', worktreeId: 'id-main', sessionId: 's-1' },
-      { revealInSidebar: false }
-    )
+    // Default options: the tree below reveals the session's row.
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'id-Jean',
+      worktreeId: 'id-main',
+      sessionId: 's-1',
+    })
   })
 
   it('the check clears the mark without opening the session', async () => {
