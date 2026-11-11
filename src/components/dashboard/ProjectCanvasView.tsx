@@ -2855,12 +2855,17 @@ export function ProjectCanvasView({
   )
 
   const handleLabelColorChange = useCallback(
-    async (labelName: string, newColor: string) => {
+    async (labelName: string, newColor: string, newName = labelName) => {
       useProjectsStore
         .getState()
         .setProjectCanvasLabels(
           projectId,
-          updateWorktreeLabelsByName(projectLabels, labelName, newColor)
+          updateWorktreeLabelsByName(
+            projectLabels,
+            labelName,
+            newColor,
+            newName
+          )
         )
 
       if (
@@ -2872,7 +2877,7 @@ export function ProjectCanvasView({
           projectId,
           projectPinnedLabels.map(label =>
             label.name.toLowerCase() === labelName.toLowerCase()
-              ? { ...label, color: newColor }
+              ? { ...label, name: newName, color: newColor }
               : label
           )
         )
@@ -2896,7 +2901,8 @@ export function ProjectCanvasView({
             labels: updateWorktreeLabelsByName(
               getWorktreeLabels(wt),
               labelName,
-              newColor
+              newColor,
+              newName
             ),
           })
         )
@@ -2904,7 +2910,9 @@ export function ProjectCanvasView({
 
       const failures = results.filter(r => r.status === 'rejected')
       if (failures.length > 0) {
-        toast.error(`Failed to update color for ${failures.length} worktree(s)`)
+        toast.error(
+          `Failed to update the label of ${failures.length} worktree(s)`
+        )
       }
 
       queryClient.invalidateQueries({

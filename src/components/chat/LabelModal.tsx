@@ -36,8 +36,15 @@ interface LabelModalProps {
   onApplyLabels?: (labels: LabelData[]) => void
   /** Additional labels to include in the custom labels list (e.g. worktree labels) */
   extraLabels?: LabelData[]
-  /** Callback when a label's color is edited (e.g. to propagate to worktree labels) */
-  onColorChange?: (labelName: string, newColor: string) => void
+  /**
+   * Callback when a label is edited: its color, and a new name when it was
+   * renamed (e.g. to propagate to worktree labels).
+   */
+  onColorChange?: (
+    labelName: string,
+    newColor: string,
+    newName?: string
+  ) => void
   /** Callback when a label is pinned/unpinned as a project filter tab. */
   onPinnedChange?: (label: LabelData, pinned: boolean) => void
   /** Callback when a custom label should be deleted from the project. */
@@ -62,6 +69,8 @@ export function LabelModal({
   const [selectedColor, setSelectedColor] = useState(DEFAULT_LABEL_COLOR)
   const [isCreatingCustom, setIsCreatingCustom] = useState(false)
   const [editingLabelName, setEditingLabelName] = useState<string | null>(null)
+  // The new name while an existing label is edited.
+  const [editName, setEditName] = useState('')
   const [focusedIndex, setFocusedIndex] = useState(0)
   const [colorOverrides, setColorOverrides] = useState<Record<string, string>>(
     {}
@@ -99,14 +108,14 @@ export function LabelModal({
     [labelSources]
   )
 
-  // Update all sessions that use a given label name to use a new color
+  // Update all sessions that use a given label name to a new color and name
   const updateAllSessionsWithLabel = useCallback(
-    (labelName: string, newColor: string) => {
+    (labelName: string, newColor: string, newName: string = labelName) => {
       const { sessionLabels: allLabels, setSessionLabel } =
         useChatStore.getState()
       for (const [sid, label] of Object.entries(allLabels)) {
         if (label.name === labelName) {
-          setSessionLabel(sid, { name: labelName, color: newColor })
+          setSessionLabel(sid, { name: newName, color: newColor })
         }
       }
     },
@@ -143,20 +152,34 @@ export function LabelModal({
     (labelData: LabelData, e: React.MouseEvent) => {
       e.stopPropagation()
       setEditingLabelName(labelData.name)
+      setEditName(labelData.name)
       setSelectedColor(labelData.color)
     },
     []
   )
 
-  // Save the edited color for a label
+  // A new name must not be empty or belong to another label.
+  const trimmedEditName = editName.trim()
+  const editNameTaken =
+    !!editingLabelName &&
+    trimmedEditName.toLowerCase() !== editingLabelName.toLowerCase() &&
+    allLabelNames.some(
+      name => name.toLowerCase() === trimmedEditName.toLowerCase()
+    )
+  const canSaveEdit = !!trimmedEditName && !editNameTaken
+
+  // Save the edited name and color of a label
   const saveEditedColor = useCallback(() => {
-    if (!editingLabelName) return
-    updateAllSessionsWithLabel(editingLabelName, selectedColor)
-    onColorChange?.(editingLabelName, selectedColor)
-    setColorOverrides(prev => ({ ...prev, [editingLabelName]: selectedColor }))
+    if (!editingLabelName || !canSaveEdit) return
+    const newName = trimmedEditName
+    updateAllSessionsWithLabel(editingLabelName, selectedColor, newName)
+    onColorChange?.(editingLabelName, selectedColor, newName)
+    setColorOverrides(prev => ({ ...prev, [newName]: selectedColor }))
     setEditingLabelName(null)
   }, [
     editingLabelName,
+    canSaveEdit,
+    trimmedEditName,
     selectedColor,
     updateAllSessionsWithLabel,
     onColorChange,
@@ -174,6 +197,8 @@ export function LabelModal({
             const trimmed = inputValue.trim()
             if (trimmed) {
               applyLabel({ name: trimmed, color: selectedColor })
+              setIsCreatingCustom(false)
+              setInputValue('')
             }
           }
         } else if (e.key === 'Escape') {
@@ -232,6 +257,9 @@ export function LabelModal({
     const trimmed = inputValue.trim()
     if (trimmed) {
       applyLabel({ name: trimmed, color: selectedColor })
+      // Multi mode keeps the dialog open: go back to the list.
+      setIsCreatingCustom(false)
+      setInputValue('')
     }
   }, [inputValue, selectedColor, applyLabel])
 
@@ -282,7 +310,7 @@ export function LabelModal({
           </DialogTitle>
           <DialogDescription>
             {editingLabelName
-              ? `Choose a color for "${editingLabelName}".`
+              ? `Change the name or color of "${editingLabelName}".`
               : isCreatingCustom
                 ? 'Choose a color for your label.'
                 : 'Pick labels or create a custom one.'}
@@ -303,9 +331,26 @@ export function LabelModal({
                 Preview
               </span>
               <span className="text-sm text-muted-foreground">
-                {editingLabelName || inputValue.trim() || 'Label name'}
+                {(editingLabelName ? trimmedEditName : inputValue.trim()) ||
+                  'Label name'}
               </span>
             </div>
+            {editingLabelName ? (
+              <div className="flex flex-col gap-1">
+                <Input
+                  aria-label="Label name"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  autoFocus
+                  className="h-8"
+                />
+                {editNameTaken ? (
+                  <p className="text-xs text-destructive">
+                    A label with this name exists.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-5 gap-2">
               {LABEL_COLORS.map(color => (
@@ -349,7 +394,7 @@ export function LabelModal({
                 onClick={
                   editingLabelName ? saveEditedColor : handleCreateCustom
                 }
-                disabled={!editingLabelName && !inputValue.trim()}
+                disabled={editingLabelName ? !canSaveEdit : !inputValue.trim()}
               >
                 {editingLabelName ? 'Save' : 'Create'}
               </button>
@@ -409,6 +454,8 @@ export function LabelModal({
                         <Pencil
                           className="h-3 w-3 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1"
                           onClick={e => startEditColor(labelData, e)}
+                          role="button"
+                          aria-label={`Edit label ${labelData.name}`}
                         />
                       </>
                     )}
