@@ -21,7 +21,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Check for Updates always answers.** It shows "Checking for updates…"
   at once, then the result; it gives up with an error after 30 seconds; and
-  every manual check and its result is written to the app log (#135).
+  every step of a manual check is written to the app log: the menu click and
+  the window it went to, the event, any early exit, and the result (#135).
 
 ## [1.5.10] - 2026-11-11
 

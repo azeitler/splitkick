@@ -309,14 +309,24 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
         // window the user is looking at. `listenMenu` in `src/lib/transport.ts`
         // registers for this label — a listener with no target would receive
         // every emit regardless of the filter.
+        let had_focus = focused.is_some();
         let label = focused
             .map(|window| window.label().to_string())
             .unwrap_or_else(|| crate::connection_window::MAIN_WINDOW.to_string());
-        let _ = app.emit_to(
+        if event.id().as_ref() == "check-updates" {
+            // #135: a click that shows nothing must leave a trace.
+            log::info!(
+                "Update check (manual): menu click -> window '{label}' (focused: {had_focus}, webview: {})",
+                app.get_webview_window(&label).is_some()
+            );
+        }
+        if let Err(error) = app.emit_to(
             tauri::EventTarget::webview_window(label),
             frontend_event,
             payload,
-        );
+        ) {
+            log::warn!("Menu event {frontend_event} not sent: {error}");
+        }
     });
 }
 
