@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.11] - 2026-11-11
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Live usage for Claude accounts that are not active.** When such an
@@ -2828,7 +2832,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.10...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.11...HEAD
+[1.5.11]: https://github.com/azeitler/jean/compare/splitkick-v1.5.10...splitkick-v1.5.11
 [1.5.10]: https://github.com/azeitler/jean/compare/splitkick-v1.5.9...splitkick-v1.5.10
 [1.5.9]: https://github.com/azeitler/jean/compare/splitkick-v1.5.8...splitkick-v1.5.9
 [1.5.8]: https://github.com/azeitler/jean/compare/splitkick-v1.5.7...splitkick-v1.5.8
