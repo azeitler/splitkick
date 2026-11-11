@@ -1,3 +1,4 @@
+import { useNow } from '@/hooks/useNow'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
@@ -128,6 +129,8 @@ export function ScheduledList({
   const { data: sessions } = useAllSessions()
   const [busy, setBusy] = useState<string | null>(null)
   const [editing, setEditing] = useState<Schedule | null>(null)
+  // "in 2h" / "5m ago" tick without a refetch (#123).
+  const now = useNow()
 
   // Active ones first (soonest first, as the backend sends them), then paused.
   const ordered = useMemo(() => {
@@ -199,7 +202,7 @@ export function ScheduledList({
         )}
         {ordered.map(schedule => {
           const where = resolveWhere(schedule, sessions)
-          const lastRun = lastRunText(schedule)
+          const lastRun = lastRunText(schedule, now)
           const lastSessionName = schedule.last_session_id
             ? where.sessionNames.get(schedule.last_session_id)
             : undefined
@@ -252,7 +255,7 @@ export function ScheduledList({
                       : 'Once'}
                   </dd>
                   <dt className="text-muted-foreground">Next</dt>
-                  <dd>{nextRunText(schedule)}</dd>
+                  <dd>{nextRunText(schedule, now)}</dd>
                   {lastRun && (
                     <>
                       <dt className="text-muted-foreground">Last</dt>

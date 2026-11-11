@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Schedule times keep counting.** "in 2h" and "5m ago" in the Scheduled
+  view and the chat banner changed only after a refresh. They now update every
+  minute (#123).
 - **An HTML preview opens in view.** Preview on an HTML or SVG block in the
   last message opened below it, hidden under the input bar. The preview now
   scrolls into view above the input bar when it opens (#81).
