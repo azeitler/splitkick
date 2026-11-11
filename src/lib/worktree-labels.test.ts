@@ -45,6 +45,17 @@ describe('getWorktreeLabels', () => {
 })
 
 describe('updateWorktreeLabelsByName', () => {
+  it('renames the label when a new name is given', () => {
+    expect(
+      updateWorktreeLabelsByName(
+        [{ name: 'Bug', color: '#000' }],
+        'bug',
+        '#fff',
+        'Defect'
+      )
+    ).toEqual([{ name: 'Defect', color: '#fff' }])
+  })
+
   it('preserves pinned metadata when changing a label color', () => {
     expect(
       updateWorktreeLabelsByName(

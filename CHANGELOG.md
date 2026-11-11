@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Labels can be renamed.** Manage labels → the pencil on a label now edits
+  its name as well as its color; the new name reaches every session,
+  worktree and pinned filter tab with that label. A name that another label
+  has is refused. After Create in the worktree label dialog, the dialog goes
+  back to the list instead of staying on the create view.
 - **The usage badge counts only the limit of the session's model.** A full
   Fable limit showed 100% also in an Opus session, where it does not block
   anything. The badge now counts a model limit only when the open session (or

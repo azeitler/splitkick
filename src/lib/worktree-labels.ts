@@ -30,14 +30,18 @@ export function getWorktreeLabels(
   return result
 }
 
+/** Set the color, and optionally a new name, of the label called `labelName`. */
 export function updateWorktreeLabelsByName(
   labels: LabelData[],
   labelName: string,
-  newColor: string
+  newColor: string,
+  newName: string = labelName
 ): LabelData[] {
   const target = labelName.toLowerCase()
   return labels.map(label =>
-    label.name.toLowerCase() === target ? { ...label, color: newColor } : label
+    label.name.toLowerCase() === target
+      ? { ...label, name: newName, color: newColor }
+      : label
   )
 }
 
