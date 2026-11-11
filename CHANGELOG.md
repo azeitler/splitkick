@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Check for Updates always answers.** It shows "Checking for updates…"
+  at once, then the result; it gives up with an error after 30 seconds; and
+  every manual check and its result is written to the app log (#135).
+
 ## [1.5.10] - 2026-11-11
 
 Built on Jean 0.1.73.

@@ -13,7 +13,8 @@
  */
 
 import { isNativeApp } from '@/lib/environment'
-import { logNativeError } from '@/lib/native-log'
+import { toast } from 'sonner'
+import { logNativeError, logNativeInfo } from '@/lib/native-log'
 import { notify } from '@/lib/notifications'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
@@ -114,6 +115,9 @@ export async function describeUpdateCheckFailure(
  * (`menu-check-updates`) and the sidebar's more menu, which is the only entry
  * on Windows and Linux (#100). Native desktop app only.
  */
+/** A manual check that gets no answer ends with an error, not in silence. */
+export const MANUAL_CHECK_TIMEOUT_MS = 30_000
+
 export async function checkForUpdatesManually(): Promise<void> {
   if (!isNativeApp()) return
   if (!(await updateChecksEnabledForThisApp())) {
@@ -134,10 +138,16 @@ export async function checkForUpdatesManually(): Promise<void> {
     notify('Update download already in progress', undefined, { type: 'info' })
     return
   }
+  // Visible at once, and every result is logged: a click that shows nothing
+  // could not be told apart from a check that found nothing (Nigel, 1.5.9).
+  logNativeInfo('Update check (manual): started')
+  const checking = toast.loading('Checking for updates…')
   try {
     const { check } = await import('@tauri-apps/plugin-updater')
-    const update = await check()
+    const update = await check({ timeout: MANUAL_CHECK_TIMEOUT_MS })
+    toast.dismiss(checking)
     if (update) {
+      logNativeInfo(`Update check (manual): ${update.version} available`)
       // Pass update object to App.tsx for installation handling
       window.dispatchEvent(
         new CustomEvent('update-available', { detail: update })
@@ -145,11 +155,13 @@ export async function checkForUpdatesManually(): Promise<void> {
       // Show the update modal (same as auto-check on startup)
       useUIStore.getState().setUpdateModalVersion(update.version)
     } else {
+      logNativeInfo('Update check (manual): no newer version')
       notify('You are running the latest version', undefined, {
         type: 'success',
       })
     }
   } catch (error) {
+    toast.dismiss(checking)
     const message = await describeUpdateCheckFailure(error)
     notify(`Failed to check for updates: ${message}`, undefined, {
       type: 'error',
