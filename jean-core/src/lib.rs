@@ -85,8 +85,8 @@ pub use version::{app_version, release_version, set_app_version, set_release_ver
 pub use chat::open_file_in_default_app;
 pub use chat::schedules::{set_run_notifier, ScheduledRunNotice};
 pub use claude_cli::{
-    get_claude_accounts_usage, refresh_claude_accounts_usage, ClaudeAccountUsage,
-    ClaudeUsageLimitSnapshot, ClaudeUsageSnapshot, ClaudeUsageWindowSnapshot,
+    claude_usage_renews_settled, get_claude_accounts_usage, refresh_claude_accounts_usage,
+    ClaudeAccountUsage, ClaudeUsageLimitSnapshot, ClaudeUsageSnapshot, ClaudeUsageWindowSnapshot,
 };
 pub use platform::open_url_in_browser;
 pub use projects::open_path_in_default_app;

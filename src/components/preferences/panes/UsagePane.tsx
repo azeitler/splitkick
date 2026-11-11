@@ -436,8 +436,12 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
         claudeUsage.error,
         'Failed to load Claude usage.'
       )
-      // An account that is not active and has no stored usage yet: not an error.
-      if (message.startsWith('Not used recently')) {
+      // An account that is not active and has no stored usage yet, or whose
+      // token the Claude CLI renews now (#134): not an error.
+      if (
+        message.startsWith('Not used recently') ||
+        message.startsWith('Updating')
+      ) {
         return <InlineStatus>{message}</InlineStatus>
       }
       return (
@@ -464,6 +468,7 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
             data.planType ?? 'Unknown',
             extra,
             staleUsageLabel(data.fetchedAt),
+            data.renewing ? 'Updating…' : null,
           ]}
         />
         <div className="space-y-1.5">

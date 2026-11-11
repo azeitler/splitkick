@@ -181,6 +181,28 @@ export function useClaudeAccountAuth(
   })
 }
 
+/** How often a usage card checks again while its token is renewed (#134). */
+export const CLAUDE_USAGE_RENEW_POLL_MS = 3000
+
+/**
+ * True while the Claude CLI renews an idle account's token (#134): stored
+ * figures with `renewing`, or the "Updating usage…" message when none are
+ * stored yet.
+ */
+export function isClaudeUsageRenewing(
+  data: ClaudeUsageSnapshot | undefined,
+  error: unknown
+): boolean {
+  if (data?.renewing) return true
+  const message =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : ''
+  return message.startsWith('Updating')
+}
+
 /**
  * Usage query of one account. Every account polls on the usage-timing rules
  * (5 minutes, stale backoff) under its own key, so accounts do not share or
@@ -199,8 +221,12 @@ function claudeUsageQuery(accountId: string, enabled: boolean) {
     staleTime: (query: { state: { data?: ClaudeUsageSnapshot } }) =>
       getUsageStaleTime(query.state.data),
     gcTime: 1000 * 60 * 10,
-    refetchInterval: (query: { state: { data?: ClaudeUsageSnapshot } }) =>
-      getUsageRefetchInterval(query.state.data),
+    refetchInterval: (query: {
+      state: { data?: ClaudeUsageSnapshot; error?: unknown }
+    }) =>
+      isClaudeUsageRenewing(query.state.data, query.state.error)
+        ? CLAUDE_USAGE_RENEW_POLL_MS
+        : getUsageRefetchInterval(query.state.data),
   }
 }
 
