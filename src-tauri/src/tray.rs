@@ -64,6 +64,9 @@ struct Row {
     percent: f64,
     resets_at: Option<u64>,
     severity: Severity,
+    /// The model a model limit belongs to ("Fable"); `None` for session and
+    /// weekly, which count for every model.
+    model: Option<String>,
 }
 
 /// Session only when the endpoint sends it; model-scoped limits by model name.
@@ -75,6 +78,7 @@ fn rows(usage: &ClaudeUsageSnapshot) -> Vec<Row> {
             percent: session.used_percent,
             resets_at: session.resets_at,
             severity: Severity::of(None, session.used_percent),
+            model: None,
         });
     }
     if let Some(weekly) = &usage.weekly {
@@ -88,6 +92,7 @@ fn rows(usage: &ClaudeUsageSnapshot) -> Vec<Row> {
             percent: weekly.used_percent,
             resets_at: weekly.resets_at,
             severity: Severity::of(severity, weekly.used_percent),
+            model: None,
         });
     }
     let scoped: Vec<_> = usage
@@ -101,6 +106,7 @@ fn rows(usage: &ClaudeUsageSnapshot) -> Vec<Row> {
             percent: limit.used_percent,
             resets_at: limit.resets_at,
             severity: Severity::of(limit.severity.as_deref(), limit.used_percent),
+            model: Some(limit.model.clone().unwrap_or_else(|| "Model".to_string())),
         });
     }
     if let (true, Some(sonnet)) = (scoped.is_empty(), &usage.sonnet_weekly) {
@@ -109,14 +115,17 @@ fn rows(usage: &ClaudeUsageSnapshot) -> Vec<Row> {
             percent: sonnet.used_percent,
             resets_at: sonnet.resets_at,
             severity: Severity::of(None, sonnet.used_percent),
+            model: Some("Sonnet".to_string()),
         });
     }
     rows
 }
 
 /// The menu bar text: the highest limit of the active account, the one new
-/// runs use. The menu lists the other accounts.
-fn title(accounts: &[ClaudeAccountUsage]) -> Option<String> {
+/// runs use. A model limit counts only for `model`, the default Claude model
+/// (a full Fable limit does not block Opus). The menu lists every limit.
+fn title(accounts: &[ClaudeAccountUsage], model: &str) -> Option<String> {
+    let model = model.to_lowercase();
     let highest = accounts
         .iter()
         .find(|account| account.active)?
@@ -124,6 +133,11 @@ fn title(accounts: &[ClaudeAccountUsage]) -> Option<String> {
         .as_ref()
         .map(rows)?
         .into_iter()
+        .filter(|row| {
+            row.model
+                .as_ref()
+                .is_none_or(|limit| model.contains(&limit.to_lowercase()))
+        })
         .max_by(|a, b| a.percent.total_cmp(&b.percent))?;
     let mark = if highest.severity > Severity::Normal {
         "⚠ "
@@ -301,7 +315,12 @@ pub(crate) async fn refresh(app: &AppHandle, skip_cache: bool) -> Result<(), Str
     };
     let menu = build_menu(app, &accounts).map_err(|e| e.to_string())?;
     tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
-    tray.set_title(title(&accounts)).map_err(|e| e.to_string())
+    let model = preferences
+        .get("selected_model")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    tray.set_title(title(&accounts, model))
+        .map_err(|e| e.to_string())
 }
 
 fn refresh_in_background(app: &AppHandle, skip_cache: bool) {
@@ -519,13 +538,25 @@ mod tests {
             account("B", Some(usage(None, Some(98.0)))),
             account("C", None),
         ];
-        assert_eq!(title(&accounts).as_deref(), Some("40%"));
+        assert_eq!(title(&accounts, "claude-fable-5-1").as_deref(), Some("40%"));
+    }
+
+    #[test]
+    fn title_counts_a_model_limit_only_for_the_default_model() {
+        let mut snapshot = usage(None, Some(70.0));
+        snapshot.limits = vec![limit("weekly_scoped", 100.0, "critical", Some("Fable"))];
+        let accounts = [active(account("A", Some(snapshot)))];
+        assert_eq!(
+            title(&accounts, "claude-fable-5-1").as_deref(),
+            Some("⚠ 100%")
+        );
+        assert_eq!(title(&accounts, "claude-opus-5-5").as_deref(), Some("70%"));
     }
 
     #[test]
     fn title_is_empty_without_an_active_account() {
         let accounts = [account("A", Some(usage(None, Some(60.0))))];
-        assert_eq!(title(&accounts), None);
+        assert_eq!(title(&accounts, "claude-fable-5-1"), None);
     }
 
     #[test]
@@ -533,14 +564,17 @@ mod tests {
         let mut snapshot = usage(None, Some(60.0));
         snapshot.limits = vec![limit("weekly_all", 60.0, "critical", None)];
         assert_eq!(
-            title(&[active(account("A", Some(snapshot)))]).as_deref(),
+            title(&[active(account("A", Some(snapshot)))], "claude-fable-5-1").as_deref(),
             Some("⚠ 60%")
         );
     }
 
     #[test]
     fn title_is_empty_without_data() {
-        assert_eq!(title(&[active(account("A", None))]), None);
+        assert_eq!(
+            title(&[active(account("A", None))], "claude-fable-5-1"),
+            None
+        );
     }
 
     #[test]
@@ -550,7 +584,11 @@ mod tests {
             Some("Claude OAuth credentials missing. Run `claude` to authenticate.".into());
         assert_eq!(account_lines(&broken, 0), ["  ⚠ Not logged in"]);
         assert_eq!(
-            title(&[broken, active(account("B", Some(usage(None, Some(5.0)))))]).as_deref(),
+            title(
+                &[broken, active(account("B", Some(usage(None, Some(5.0)))))],
+                "claude-fable-5-1"
+            )
+            .as_deref(),
             Some("5%")
         );
     }

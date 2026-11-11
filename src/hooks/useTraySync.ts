@@ -20,6 +20,8 @@ export function useTraySync(): void {
             preferences.show_in_menu_bar,
             preferences.claude_active_account,
             preferences.claude_accounts,
+            // The title counts the default model's limit only.
+            preferences.selected_model,
           ])
         : null,
     [preferences]
