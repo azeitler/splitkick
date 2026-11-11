@@ -194,6 +194,9 @@ const updater = vi.hoisted(() => ({
   native: true,
   check: vi.fn(),
   notify: vi.fn(),
+  logInfo: vi.fn(),
+  loading: vi.fn(() => 'checking-toast'),
+  dismiss: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/app', () => ({
@@ -205,7 +208,13 @@ vi.mock('@/lib/environment', async importOriginal => ({
   isNativeApp: () => updater.native,
 }))
 vi.mock('@/lib/notifications', () => ({ notify: updater.notify }))
-vi.mock('@/lib/native-log', () => ({ logNativeError: vi.fn() }))
+vi.mock('@/lib/native-log', () => ({
+  logNativeError: vi.fn(),
+  logNativeInfo: updater.logInfo,
+}))
+vi.mock('sonner', () => ({
+  toast: { loading: updater.loading, dismiss: updater.dismiss },
+}))
 
 describe('checkForUpdatesManually (#100)', () => {
   // Fresh modules each test: the enabled flag is cached per module instance.
@@ -229,6 +238,26 @@ describe('checkForUpdatesManually (#100)', () => {
     updater.native = true
     updater.check.mockReset()
     updater.notify.mockReset()
+    updater.logInfo.mockReset()
+    updater.loading.mockClear()
+    updater.dismiss.mockReset()
+  })
+
+  it('shows that it checks, logs the result and uses a timeout', async () => {
+    updater.check.mockResolvedValue(null)
+    const { checkForUpdatesManually } = await load()
+
+    await checkForUpdatesManually()
+
+    expect(updater.loading).toHaveBeenCalledWith('Checking for updates…')
+    expect(updater.dismiss).toHaveBeenCalledWith('checking-toast')
+    expect(updater.check).toHaveBeenCalledWith({ timeout: 30_000 })
+    expect(updater.logInfo).toHaveBeenCalledWith(
+      'Update check (manual): started'
+    )
+    expect(updater.logInfo).toHaveBeenCalledWith(
+      'Update check (manual): no newer version'
+    )
   })
 
   it('does nothing outside the native app', async () => {
