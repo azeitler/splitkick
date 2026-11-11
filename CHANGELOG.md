@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.14] - 2026-11-11
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Reorder starred sessions.** Drag a row in the sidebar's Starred section
@@ -2889,7 +2893,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.13...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...HEAD
+[1.5.14]: https://github.com/azeitler/jean/compare/splitkick-v1.5.13...splitkick-v1.5.14
 [1.5.13]: https://github.com/azeitler/jean/compare/splitkick-v1.5.12...splitkick-v1.5.13
 [1.5.12]: https://github.com/azeitler/jean/compare/splitkick-v1.5.11...splitkick-v1.5.12
 [1.5.11]: https://github.com/azeitler/jean/compare/splitkick-v1.5.10...splitkick-v1.5.11
