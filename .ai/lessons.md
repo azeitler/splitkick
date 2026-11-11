@@ -453,3 +453,8 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 
 - The gh token has no `workflow` scope, so an HTTPS push of a commit that touches `.github/workflows/*` is rejected ("refusing to allow an OAuth App to create or update workflow"). 1.5.9 had a CI step added by the #72 session.
 - Before a release push, run `git diff <last pushed>..HEAD --stat -- .github/`. If it lists a file, review the change and push with `git push git@github.com:azeitler/splitkick.git main:main` (1Password SSH agent; it works when 1Password is unlocked).
+
+## A release run stuck in the queue after a GitHub outage (2026-11-11)
+
+- 1.5.13: the push run stayed `queued` through a GitHub Actions outage and afterwards; cancel said "completed", rerun said "already running".
+- Fix: `gh workflow run ci-build.yml --repo azeitler/splitkick --ref main`. The workflow has `workflow_dispatch`, publishes the same way (`publishFlavor: true`), and its concurrency group cancels the stuck run. A later run of the stuck one skips publishing, because the tag then exists.
