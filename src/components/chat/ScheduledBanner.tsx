@@ -1,3 +1,4 @@
+import { useNow } from '@/hooks/useNow'
 import { useCallback, useMemo, useState } from 'react'
 import { Clock, Repeat, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -50,6 +51,8 @@ export function ScheduledBanner({ sessionId }: ScheduledBannerProps) {
   const queryClient = useQueryClient()
   const { data: schedules } = useSchedules()
   const [deleting, setDeleting] = useState<string | null>(null)
+  // "next in 2h" / "last 5m ago" tick without a refetch (#123).
+  const now = useNow()
 
   const pending = useMemo(
     () => (schedules ?? []).filter(s => s.session_id === sessionId),
@@ -89,7 +92,7 @@ export function ScheduledBanner({ sessionId }: ScheduledBannerProps) {
           )}
           <div className="min-w-0 flex-1">
             <div className="text-xs font-medium text-muted-foreground">
-              {scheduleHeadline(schedule)}
+              {scheduleHeadline(schedule, now)}
             </div>
             <div className="truncate text-foreground">{schedule.prompt}</div>
           </div>
