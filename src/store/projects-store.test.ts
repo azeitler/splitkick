@@ -350,6 +350,33 @@ describe('ProjectsStore', () => {
       ).toEqual(['b', 'a'])
     })
 
+    it('moves a star before or after another one', () => {
+      useProjectsStore.setState({
+        starredSessions: [star('a'), star('b'), star('c')],
+      })
+      const ids = () =>
+        useProjectsStore.getState().starredSessions.map(s => s.sessionId)
+      const { moveStarredSession } = useProjectsStore.getState()
+
+      moveStarredSession('c', 'a', 'before')
+      expect(ids()).toEqual(['c', 'a', 'b'])
+
+      moveStarredSession('c', 'b', 'after')
+      expect(ids()).toEqual(['a', 'b', 'c'])
+    })
+
+    it('keeps the same reference when a move changes nothing', () => {
+      useProjectsStore.setState({ starredSessions: [star('a'), star('b')] })
+      const before = useProjectsStore.getState().starredSessions
+      const { moveStarredSession } = useProjectsStore.getState()
+
+      moveStarredSession('a', 'b', 'before')
+      moveStarredSession('a', 'a', 'after')
+      moveStarredSession('a', 'missing', 'after')
+
+      expect(useProjectsStore.getState().starredSessions).toBe(before)
+    })
+
     it('keeps the same reference when the session is already starred', () => {
       const { starSession } = useProjectsStore.getState()
       starSession(star('a'))

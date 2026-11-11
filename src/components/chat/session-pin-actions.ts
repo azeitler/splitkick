@@ -118,3 +118,28 @@ export async function toggleStarredSession({
     return true
   })
 }
+
+/**
+ * Move a starred session above or below another star, and persist the order.
+ *
+ * On failure the old order comes back, unless a newer change has already
+ * replaced the order this move made.
+ */
+export async function moveStarredSession(
+  sessionId: string,
+  targetSessionId: string,
+  position: 'before' | 'after'
+): Promise<void> {
+  const before = useProjectsStore.getState().starredSessions
+  useProjectsStore
+    .getState()
+    .moveStarredSession(sessionId, targetSessionId, position)
+  const moved = useProjectsStore.getState().starredSessions
+  if (moved === before) return
+
+  await persistOrRevert('reorder starred sessions', () => {
+    if (useProjectsStore.getState().starredSessions !== moved) return false
+    useProjectsStore.getState().setStarredSessions(before)
+    return true
+  })
+}

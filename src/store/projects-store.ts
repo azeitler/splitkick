@@ -134,6 +134,12 @@ interface ProjectsUIState {
   starSession: (star: StarredSessionRef) => void
   unstarSession: (sessionId: string) => void
   setStarredSessions: (stars: StarredSessionRef[]) => void
+  /** Move a star next to another one: above it, or below it. */
+  moveStarredSession: (
+    sessionId: string,
+    targetSessionId: string,
+    position: 'before' | 'after'
+  ) => void
   toggleStarredSectionCollapsed: () => void
   setStarredSectionCollapsed: (collapsed: boolean) => void
   toggleTodoSectionCollapsed: () => void
@@ -380,6 +386,33 @@ export const useProjectsStore = create<ProjectsUIState>()(
 
       setStarredSessions: stars =>
         set({ starredSessions: stars }, undefined, 'setStarredSessions'),
+
+      moveStarredSession: (sessionId, targetSessionId, position) =>
+        set(
+          state => {
+            const stars = state.starredSessions
+            const moving = stars.find(s => s.sessionId === sessionId)
+            if (!moving || sessionId === targetSessionId) return state
+            const rest = stars.filter(s => s.sessionId !== sessionId)
+            const targetIndex = rest.findIndex(
+              s => s.sessionId === targetSessionId
+            )
+            if (targetIndex === -1) return state
+            const insertAt =
+              position === 'after' ? targetIndex + 1 : targetIndex
+            const next = [
+              ...rest.slice(0, insertAt),
+              moving,
+              ...rest.slice(insertAt),
+            ]
+            // Guard: dropped where it already was, so keep the same reference.
+            return next.every((s, i) => s === stars[i])
+              ? state
+              : { starredSessions: next }
+          },
+          undefined,
+          'moveStarredSession'
+        ),
 
       toggleStarredSectionCollapsed: () =>
         set(

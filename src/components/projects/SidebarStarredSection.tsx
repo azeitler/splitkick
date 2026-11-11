@@ -9,6 +9,7 @@ import {
 } from '@/components/chat/SessionShortcutRows'
 import { resolveStarredSessions } from '@/components/home/home-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { moveStarredSession } from '@/components/chat/session-pin-actions'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
@@ -57,20 +58,29 @@ export function SidebarStarredSection() {
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      // The row already sits in the sidebar, so the tree stays put.
-      navigateToSession(
-        {
-          projectId: shortcut.projectId,
-          worktreeId: shortcut.worktreeId,
-          sessionId: shortcut.sessionId,
-        },
-        { revealInSidebar: false }
-      )
+      // The Starred section scrolls on its own, so revealing the session's
+      // row in the tree below never moves the row that was clicked.
+      navigateToSession({
+        projectId: shortcut.projectId,
+        worktreeId: shortcut.worktreeId,
+        sessionId: shortcut.sessionId,
+      })
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }
     },
     [isMobile]
+  )
+
+  const handleReorder = useCallback(
+    (
+      sessionId: string,
+      targetSessionId: string,
+      position: 'before' | 'after'
+    ) => {
+      void moveStarredSession(sessionId, targetSessionId, position)
+    },
+    []
   )
 
   if (shortcuts.length === 0) return null
@@ -99,6 +109,7 @@ export function SidebarStarredSection() {
             showStarGlyph={false}
             activeSessionId={activeSessionId}
             onOpen={handleOpen}
+            onReorder={handleReorder}
           />
         </div>
       )}

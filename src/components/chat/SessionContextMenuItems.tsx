@@ -1,5 +1,7 @@
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   Copy,
   FolderInput,
   GitBranchPlus,
@@ -26,6 +28,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
 } from '@/components/ui/context-menu'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -41,6 +44,7 @@ import {
   useIsSessionLinked,
 } from '@/services/chat'
 import type { Session } from '@/types/chat'
+import { formatShortcutDisplay } from '@/types/keybindings'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
 import {
   togglePinnedSession,
@@ -73,6 +77,16 @@ interface SessionContextMenuItemsProps {
   contentClassName?: string
   /** Project owning the session's worktree. Omit to hide the pin and star items. */
   projectId?: string
+  /**
+   * Move Up / Move Down items, for a list the user can reorder (Starred).
+   * Omit to hide them; a missing direction shows the item disabled.
+   */
+  reorder?: {
+    onMoveUp?: () => void
+    onMoveDown?: () => void
+    /** Show the Alt+Arrow hint (native desktop only). */
+    showShortcutHint: boolean
+  }
 }
 
 /**
@@ -93,6 +107,7 @@ export function SessionContextMenuItems({
   openInNativeClientDisabled = false,
   contentClassName = 'w-64',
   projectId,
+  reorder,
 }: SessionContextMenuItemsProps) {
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
@@ -197,6 +212,34 @@ export function SessionContextMenuItems({
             </>
           )}
         </ContextMenuItem>
+      )}
+      {reorder && (
+        <>
+          <ContextMenuItem
+            disabled={!reorder.onMoveUp}
+            onSelect={() => reorder.onMoveUp?.()}
+          >
+            <ArrowUp className="mr-2 h-4 w-4" />
+            Move Up
+            {reorder.showShortcutHint && (
+              <ContextMenuShortcut>
+                {formatShortcutDisplay('alt+arrowup')}
+              </ContextMenuShortcut>
+            )}
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!reorder.onMoveDown}
+            onSelect={() => reorder.onMoveDown?.()}
+          >
+            <ArrowDown className="mr-2 h-4 w-4" />
+            Move Down
+            {reorder.showShortcutHint && (
+              <ContextMenuShortcut>
+                {formatShortcutDisplay('alt+arrowdown')}
+              </ContextMenuShortcut>
+            )}
+          </ContextMenuItem>
+        </>
       )}
       {/* On the session itself, so it shows in every client and to agents. */}
       <ContextMenuItem

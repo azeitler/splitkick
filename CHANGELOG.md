@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Reorder starred sessions.** Drag a row in the sidebar's Starred section
+  to a new place, or use Move Up / Move Down in its context menu
+  (Alt+Arrow on a focused row in the desktop app). The order is saved and
+  shared with Web Access.
+
+### Changed
+
+- **A star opens in the project tree too.** A click on a session in the
+  Starred or To-Do section now also expands its project and workspace and
+  scrolls the tree below to its row, once.
+
 ## [1.5.13] - 2026-11-11
 
 Built on Jean 0.1.73.
