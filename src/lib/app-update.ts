@@ -126,16 +126,14 @@ export async function checkForUpdatesManually(): Promise<void> {
     return
   }
   const ui = useUIStore.getState()
-  // Package already downloaded this session — prompt restart, don't re-offer download
+  // Package already downloaded this session: show the restart prompt, no new download
   if (ui.updateReadyVersion) {
     logNativeInfo(
       `Update check (manual): ${ui.updateReadyVersion} already downloaded`
     )
-    notify(
-      `Update ${ui.updateReadyVersion} is ready — restart to apply`,
-      undefined,
-      { type: 'success' }
-    )
+    // Open the restart prompt again: a dismissed prompt must come back
+    // when the user asks (a toast alone had no Restart button).
+    ui.setUpdateModalVersion(ui.updateReadyVersion)
     return
   }
   if (ui.isUpdateInstalling) {

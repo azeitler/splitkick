@@ -280,17 +280,14 @@ describe('checkForUpdatesManually (#100)', () => {
     )
   })
 
-  it('asks for a restart when an update is ready', async () => {
-    const { checkForUpdatesManually } = await load({
+  it('opens the restart prompt again when an update is ready', async () => {
+    const { checkForUpdatesManually, useUIStore } = await load({
       updateReadyVersion: '1.2.3',
     })
     await checkForUpdatesManually()
     expect(updater.check).not.toHaveBeenCalled()
-    expect(updater.notify).toHaveBeenCalledWith(
-      'Update 1.2.3 is ready — restart to apply',
-      undefined,
-      { type: 'success' }
-    )
+    expect(useUIStore.getState().updateModalVersion).toBe('1.2.3')
+    expect(updater.notify).not.toHaveBeenCalled()
   })
 
   it('does not check again while a download runs', async () => {
