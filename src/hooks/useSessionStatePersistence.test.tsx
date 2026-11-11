@@ -202,6 +202,68 @@ describe('useSessionStatePersistence', () => {
     )
   })
 
+  it('takes answers given on another client while the session is open', async () => {
+    useChatStore.setState({
+      answeredQuestions: { 'session-1': new Set(['local-q']) },
+      submittedAnswers: {},
+    })
+    const base = {
+      id: 'session-1',
+      name: 'Coordinator',
+      order: 0,
+      created_at: 1,
+      updated_at: 2,
+      messages: [],
+      backend: 'claude' as const,
+    }
+    let sessionsData: WorktreeSessions = {
+      worktree_id: 'worktree-1',
+      active_session_id: 'session-1',
+      version: 1,
+      sessions: [base],
+    }
+    mockUseSessions.mockImplementation(() => ({ data: sessionsData }))
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const { rerender } = renderHook(() => useSessionStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+    await waitFor(() => {
+      expect(useChatStore.getState().answeredQuestions['session-1']).toEqual(
+        new Set(['local-q'])
+      )
+    })
+
+    // Web access answered toolu_web; the refetch brings it to this client.
+    const webAnswer = [{ questionIndex: 0, selectedOptions: [1] }]
+    sessionsData = {
+      ...sessionsData,
+      version: 2,
+      sessions: [
+        {
+          ...base,
+          updated_at: 3,
+          answered_questions: ['toolu_web'],
+          submitted_answers: { toolu_web: webAnswer },
+        },
+      ],
+    }
+    rerender()
+
+    await waitFor(() => {
+      expect(useChatStore.getState().answeredQuestions['session-1']).toEqual(
+        new Set(['local-q', 'toolu_web'])
+      )
+    })
+    expect(useChatStore.getState().submittedAnswers['session-1']).toEqual({
+      toolu_web: webAnswer,
+    })
+  })
+
   it('hydrates review results when an already-open review session completes', async () => {
     const completedReview: ReviewResponse = {
       summary: 'One issue found.',

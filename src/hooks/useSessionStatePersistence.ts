@@ -352,6 +352,38 @@ export function useSessionStatePersistence() {
       statusUpdates.reviewSidebarVisible = true
     }
 
+    // Answers given on another client (web access, a phone) arrive here by
+    // refetch while this client has the session open. Add them, so the
+    // question stops being interactive. Answers are only ever added, so a
+    // local answer that is not saved yet is never lost.
+    const serverAnswered = session.answered_questions ?? []
+    const localAnswered = statusCurrentState.answeredQuestions[activeSessionId]
+    const newlyAnswered = serverAnswered.filter(id => !localAnswered?.has(id))
+    if (newlyAnswered.length > 0) {
+      statusUpdates.answeredQuestions = {
+        ...statusCurrentState.answeredQuestions,
+        [activeSessionId]: new Set([
+          ...(localAnswered ?? []),
+          ...newlyAnswered,
+        ]),
+      }
+    }
+    const serverSubmitted = session.submitted_answers ?? {}
+    const localSubmitted =
+      statusCurrentState.submittedAnswers[activeSessionId] ?? {}
+    const newlySubmitted = Object.keys(serverSubmitted).filter(
+      id => !(id in localSubmitted)
+    )
+    if (newlySubmitted.length > 0) {
+      const added = Object.fromEntries(
+        newlySubmitted.map(id => [id, serverSubmitted[id]])
+      ) as typeof localSubmitted
+      statusUpdates.submittedAnswers = {
+        ...statusCurrentState.submittedAnswers,
+        [activeSessionId]: { ...localSubmitted, ...added },
+      }
+    }
+
     if (Object.keys(statusUpdates).length > 0) {
       beginSessionStateHydration()
       try {

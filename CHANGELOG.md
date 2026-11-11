@@ -14,6 +14,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **An answered question closes on every device.** A question answered in
+  web access (or on the desktop) stayed open and clickable on the other
+  client while the next turn ran. Every client now takes the answer as soon
+  as it arrives (#133).
 - **A session name given at create time is kept.** Auto-naming renamed
   sessions that were created with a name (MCP `create_session` with `name`, or
   the app) after their first turn, for example "BÜRKLE Coordinator" became
