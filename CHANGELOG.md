@@ -13,7 +13,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   Fable limit showed 100% also in an Opus session, where it does not block
   anything. The badge now counts a model limit only when the open session (or
   the default, with no session) uses that model; the weekly limit for all
-  models always counts. The popover still lists every limit.
+  models always counts. The popover still lists every limit. The menu bar
+  figure uses the same rule with the default Claude model.
 
 ## [1.5.11] - 2026-11-11
 
