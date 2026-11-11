@@ -121,12 +121,16 @@ export const MANUAL_CHECK_TIMEOUT_MS = 30_000
 export async function checkForUpdatesManually(): Promise<void> {
   if (!isNativeApp()) return
   if (!(await updateChecksEnabledForThisApp())) {
+    logNativeInfo('Update check (manual): off for this build')
     notify('Updates are off in development builds', undefined, { type: 'info' })
     return
   }
   const ui = useUIStore.getState()
   // Package already downloaded this session — prompt restart, don't re-offer download
   if (ui.updateReadyVersion) {
+    logNativeInfo(
+      `Update check (manual): ${ui.updateReadyVersion} already downloaded`
+    )
     notify(
       `Update ${ui.updateReadyVersion} is ready — restart to apply`,
       undefined,
@@ -135,6 +139,7 @@ export async function checkForUpdatesManually(): Promise<void> {
     return
   }
   if (ui.isUpdateInstalling) {
+    logNativeInfo('Update check (manual): download already running')
     notify('Update download already in progress', undefined, { type: 'info' })
     return
   }

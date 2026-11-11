@@ -31,6 +31,7 @@ import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { checkForUpdatesManually } from '@/lib/app-update'
+import { logNativeInfo } from '@/lib/native-log'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { UnreadBell } from '@/components/unread/UnreadBell'
@@ -137,7 +138,12 @@ function MoreMenu() {
           </span>
         </DropdownMenuItem>
         {canCheckForUpdates && (
-          <DropdownMenuItem onSelect={() => void checkForUpdatesManually()}>
+          <DropdownMenuItem
+            onSelect={() => {
+              logNativeInfo('Update check (manual): sidebar menu')
+              void checkForUpdatesManually()
+            }}
+          >
             <RefreshCw />
             Check for Updates…
           </DropdownMenuItem>

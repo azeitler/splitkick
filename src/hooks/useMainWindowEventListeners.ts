@@ -40,6 +40,7 @@ import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
 import { handleSessionMoved, type SessionMovedEvent } from '@/lib/session-move'
 import { checkForUpdatesManually } from '@/lib/app-update'
+import { logNativeInfo } from '@/lib/native-log'
 import {
   eventToShortcutString,
   isModKeyEvent,
@@ -1226,7 +1227,7 @@ export function useMainWindowEventListeners() {
         }),
 
         listenMenu('menu-check-updates', () => {
-          logger.debug('Check for updates menu event received')
+          logNativeInfo('Update check (manual): menu event received')
           void checkForUpdatesManually()
         }),
 
