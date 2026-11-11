@@ -9,10 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **Check for Updates brings back the restart prompt.** After an update was
-  downloaded and its "Update Ready" prompt was closed, Check for Updates only
-  showed a short message without a Restart button. It now opens the prompt
-  again with Restart Now (#135).
+- **Check for Updates always shows its answer.** The answer was a toast,
+  which did not appear on two machines, so the check looked dead. It is now a
+  dialog: "You are running the latest version (…)", the error with its cause,
+  or a note that an update is downloading. When an update is already
+  downloaded, it opens the "Update Ready" prompt again with Restart Now,
+  also after you closed it before (#135).
 
 ## [1.5.12] - 2026-11-11
 
