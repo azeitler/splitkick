@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The schedules file is private.** `schedules.json` keeps the MCP config of
+  each schedule, with the servers' tokens; it was readable by every user of
+  the Mac. It is now written readable by the owner only, and an older file is
+  tightened at start. Storing no tokens at all is still open (#122).
 - **No "--" for a missing 5-hour limit.** The floating dock and the burger
   menu showed "--|93%" for accounts without a 5-hour limit (verified Ultra).
   They now show "93%" (#126).
