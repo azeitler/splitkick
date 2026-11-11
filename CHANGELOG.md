@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Check for Updates brings back the restart prompt.** After an update was
+  downloaded and its "Update Ready" prompt was closed, Check for Updates only
+  showed a short message without a Restart button. It now opens the prompt
+  again with Restart Now (#135).
+
 ## [1.5.12] - 2026-11-11
 
 Built on Jean 0.1.73.
