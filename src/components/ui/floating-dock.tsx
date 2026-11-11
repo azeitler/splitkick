@@ -1,3 +1,4 @@
+import { formatUsagePair } from '@/lib/usage-pair'
 import {
   Fragment,
   useState,
@@ -302,12 +303,11 @@ export function FloatingDock() {
     null
 
   const usageBadge = (() => {
-    const session = activeUsageEntry?.session ?? null
-    const weekly = activeUsageEntry?.weekly ?? null
-    const sessionText = session === null ? '--' : `${Math.round(session)}`
-    const weeklyText = weekly === null ? '--' : `${Math.round(weekly)}`
     return {
-      text: `${sessionText}|${weeklyText}%`,
+      text: formatUsagePair(
+        activeUsageEntry?.session ?? null,
+        activeUsageEntry?.weekly ?? null
+      ),
     }
   })()
 
@@ -626,10 +626,6 @@ export function FloatingDock() {
             onEscapeKeyDown={e => e.stopPropagation()}
           >
             {usageEntries.map(entry => {
-              const sessionText =
-                entry.session === null ? '--' : `${Math.round(entry.session)}`
-              const weeklyText =
-                entry.weekly === null ? '--' : `${Math.round(entry.weekly)}`
               const planText =
                 entry.plan && entry.plan.trim().length > 0 ? entry.plan : '--'
               return (
@@ -647,7 +643,7 @@ export function FloatingDock() {
                     </span>
                   </div>
                   <DropdownMenuShortcut>
-                    {sessionText}|{weeklyText}%
+                    {formatUsagePair(entry.session, entry.weekly)}
                   </DropdownMenuShortcut>
                 </DropdownMenuItem>
               )
