@@ -224,19 +224,40 @@ fn read_file(app: &AppHandle) -> Result<Vec<Schedule>, String> {
     if !path.exists() {
         return Ok(Vec::new());
     }
+    restrict_to_owner(&path);
     let contents = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read schedules file: {e}"))?;
     serde_json::from_str(&contents).map_err(|e| format!("Failed to parse schedules file: {e}"))
 }
 
-/// Atomic write: temp file + rename.
+/// Atomic write: temp file + rename, readable by the owner only. Schedule
+/// templates hold the MCP config of their creation time, with the servers'
+/// env (tokens), so the file must not be world-readable (#122).
 fn write_file(app: &AppHandle, schedules: &[Schedule]) -> Result<(), String> {
     let path = schedules_path(app)?;
     let json = serde_json::to_string_pretty(schedules)
         .map_err(|e| format!("Failed to serialize schedules: {e}"))?;
+    write_private_json(&path, &json)
+}
+
+/// A file written before #122 was world-readable; tighten it on load.
+fn restrict_to_owner(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            log::warn!("Could not make {} private: {e}", path.display());
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+fn write_private_json(path: &std::path::Path, json: &str) -> Result<(), String> {
     let temp_path = path.with_extension("tmp");
-    std::fs::write(&temp_path, json).map_err(|e| format!("Failed to write schedules: {e}"))?;
-    std::fs::rename(&temp_path, &path).map_err(|e| format!("Failed to finalize schedules: {e}"))
+    super::run_secrets::write_private_file(&temp_path, json.as_bytes())
+        .map_err(|e| format!("Failed to write schedules: {e}"))?;
+    std::fs::rename(&temp_path, path).map_err(|e| format!("Failed to finalize schedules: {e}"))
 }
 
 /// Change the list and save it, under one lock. The file is written only
@@ -1268,6 +1289,31 @@ pub fn list_pending() -> Vec<PendingWakeupEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn schedules_file_is_readable_by_the_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("schedules.json");
+        // An older file was world-readable; a stale temp file too.
+        std::fs::write(&path, "[]").unwrap();
+        std::fs::write(path.with_extension("tmp"), "x").unwrap();
+        for file in [&path, &path.with_extension("tmp")] {
+            std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        write_private_json(&path, "[]").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        restrict_to_owner(&path);
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "[]");
+    }
     use crate::runtime::RuntimeContext;
 
     // The in-memory list is process-wide and tests run in parallel, so each
