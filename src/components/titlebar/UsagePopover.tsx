@@ -39,6 +39,7 @@ import { useSession } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { getBackendIcon } from '@/components/ui/backend-label'
+import { resolveSelectedModelForBackend } from '@/lib/session-defaults'
 import type { CliBackend } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 
@@ -96,6 +97,9 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
   const selectedBackend = useChatStore(state =>
     sessionId ? state.selectedBackends[sessionId] : undefined
   )
+  const toolbarModel = useChatStore(state =>
+    sessionId ? state.selectedModels[sessionId] : undefined
+  )
   const { data: session } = useSession(sessionId, worktreeId, worktreePath)
   const { data: preferences } = usePreferences()
 
@@ -104,6 +108,14 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
     selectedBackend ??
     preferences?.default_backend ??
     'claude'
+  // The model the open session uses (toolbar choice first, as the chat does).
+  // A model limit counts only for its own model: a full Fable limit does not
+  // block an Opus session.
+  const model = resolveSelectedModelForBackend(
+    backend,
+    toolbarModel ?? session?.selected_model,
+    preferences
+  )
 
   const claudeAccounts = listClaudeAccounts(preferences)
   const claudeAccount = activeClaudeAccount(preferences)
@@ -151,10 +163,12 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
       { label: `${prefix} · Session`, usage: data?.session },
       { label: `${prefix} · Weekly`, usage: data?.weekly },
       // A full model limit (e.g. Fable) blocks that model's runs too.
-      ...(data ? claudeModelLimits(data) : []).map(limit => ({
-        label: `${prefix} · ${limit.label}`,
-        usage: limit.usage,
-      })),
+      ...(data ? claudeModelLimits(data) : [])
+        .filter(limit => limitAppliesToModel(limit.label, model))
+        .map(limit => ({
+          label: `${prefix} · ${limit.label}`,
+          usage: limit.usage,
+        })),
     ]
   } else if (backend === 'codex' && codexReady) {
     candidates = [
@@ -169,6 +183,17 @@ export function useUsageBadge(fetchEnabled: boolean): UsageBadge {
   }
 
   return { backend, peak: findPeakUsage(candidates), otherBackends }
+}
+
+/**
+ * Whether a model limit ("Fable", "Sonnet") applies to `model`
+ * (`claude-fable-5-1`, `fable`, `claude-sonnet-4-6[1m]`).
+ */
+export function limitAppliesToModel(
+  limitLabel: string,
+  model: string
+): boolean {
+  return model.toLowerCase().includes(limitLabel.toLowerCase())
 }
 
 /** The badge figure alone, for the mobile tab icon. */

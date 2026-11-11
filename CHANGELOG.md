@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The usage badge counts only the limit of the session's model.** A full
+  Fable limit showed 100% also in an Opus session, where it does not block
+  anything. The badge now counts a model limit only when the open session (or
+  the default, with no session) uses that model; the weekly limit for all
+  models always counts. The popover still lists every limit.
+
 ## [1.5.11] - 2026-11-11
 
 Built on Jean 0.1.73.

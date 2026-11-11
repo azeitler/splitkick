@@ -2,7 +2,11 @@ import type * as PreferencesService from '@/services/preferences'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
-import { UsagePopover, findPeakUsage } from './UsagePopover'
+import {
+  UsagePopover,
+  findPeakUsage,
+  limitAppliesToModel,
+} from './UsagePopover'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
@@ -78,6 +82,7 @@ describe('UsagePopover', () => {
       activeWorktreeId: null,
       activeSessionIds: {},
       selectedBackends: {},
+      selectedModels: {},
       worktreePaths: {},
     })
     mocks.useSession.mockReturnValue({ data: undefined })
@@ -183,23 +188,59 @@ describe('UsagePopover', () => {
     )
   })
 
-  it('counts a full model limit such as Fable', () => {
-    mocks.useClaudeUsage.mockReturnValue(
-      idleQuery({
-        session: null,
-        weekly: { usedPercent: 85, resetsAt: null },
-        limits: [
-          {
-            kind: 'weekly_scoped',
-            usedPercent: 100,
-            severity: 'critical',
-            resetsAt: null,
-            model: 'Fable',
-          },
-        ],
-        fetchedAt: 0,
-      })
-    )
+  const fableFullUsage = () =>
+    idleQuery({
+      session: null,
+      weekly: { usedPercent: 85, resetsAt: null },
+      limits: [
+        {
+          kind: 'weekly_scoped',
+          usedPercent: 100,
+          severity: 'critical',
+          resetsAt: null,
+          model: 'Fable',
+        },
+      ],
+      fetchedAt: 0,
+    })
+
+  const openClaudeSession = (selectedModel: string) => {
+    useChatStore.setState({
+      activeWorktreeId: 'wt',
+      activeSessionIds: { wt: 'sess' },
+      worktreePaths: { wt: '/repo' },
+    })
+    mocks.useSession.mockReturnValue({
+      data: { backend: 'claude', selected_model: selectedModel },
+    })
+  }
+
+  it('counts the Fable limit in a Fable session', () => {
+    mocks.useClaudeUsage.mockReturnValue(fableFullUsage())
+    openClaudeSession('claude-fable-5-1')
+
+    render(<UsagePopover />)
+
+    expect(
+      screen.getByRole('button', { name: 'Usage, Claude · Fable 100%' })
+    ).toBeInTheDocument()
+  })
+
+  it('ignores the Fable limit in an Opus session', () => {
+    mocks.useClaudeUsage.mockReturnValue(fableFullUsage())
+    openClaudeSession('claude-opus-5-5')
+
+    render(<UsagePopover />)
+
+    expect(
+      screen.getByRole('button', { name: 'Usage, Claude · Weekly 85%' })
+    ).toBeInTheDocument()
+  })
+
+  it('uses the toolbar model before the saved one', () => {
+    mocks.useClaudeUsage.mockReturnValue(fableFullUsage())
+    openClaudeSession('claude-opus-5-5')
+    useChatStore.setState({ selectedModels: { sess: 'claude-fable-5-1' } })
 
     render(<UsagePopover />)
 
@@ -317,6 +358,15 @@ describe('UsagePopover', () => {
 
     const trigger = screen.getByRole('button', { name: 'Usage' })
     expect(trigger).not.toHaveTextContent('%')
+  })
+})
+
+describe('limitAppliesToModel', () => {
+  it('matches a model limit to model ids and aliases', () => {
+    expect(limitAppliesToModel('Fable', 'claude-fable-5-1')).toBe(true)
+    expect(limitAppliesToModel('Fable', 'fable')).toBe(true)
+    expect(limitAppliesToModel('Fable', 'claude-opus-5-5')).toBe(false)
+    expect(limitAppliesToModel('Sonnet', 'claude-sonnet-4-6[1m]')).toBe(true)
   })
 })
 
