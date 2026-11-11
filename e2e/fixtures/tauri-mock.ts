@@ -223,8 +223,14 @@ export const test = base.extend<TauriMockFixtures>({
             const byAccount = (
               data as { __byAccountId: Record<string, unknown> }
             ).__byAccountId
-            handlers[cmd] = args =>
-              structuredClone(byAccount[args?.accountId ?? 'root'] ?? null)
+            handlers[cmd] = args => {
+              const value = byAccount[args?.accountId ?? 'root'] ?? null
+              // `{ __error: '…' }` makes this account's call fail.
+              if (value && typeof value === 'object' && '__error' in value) {
+                throw new Error(String((value as { __error: unknown }).__error))
+              }
+              return structuredClone(value)
+            }
           } else if (overrideSet.has(cmd)) {
             // If explicitly overridden, use static response (override wins over dynamic)
             handlers[cmd] = () => structuredClone(data)

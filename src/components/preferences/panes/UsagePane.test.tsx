@@ -2,7 +2,7 @@ import type * as PreferencesService from '@/services/preferences'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
-import { formatResetLine, UsagePane } from './UsagePane'
+import { formatResetLine, staleUsageLabel, UsagePane } from './UsagePane'
 
 const mocks = vi.hoisted(() => ({
   useClaudeCliStatus: vi.fn(),
@@ -383,6 +383,31 @@ describe('UsagePane', () => {
     expect(
       screen.queryByRole('progressbar', { name: /^Sonnet/ })
     ).not.toBeInTheDocument()
+  })
+
+  it('labels stored usage older than 15 minutes with its age', () => {
+    const now = Date.UTC(2026, 10, 11, 12, 0, 0)
+    expect(staleUsageLabel(now / 1000 - 60, now)).toBeNull()
+    expect(staleUsageLabel(now / 1000 - 9 * 3600, now)).toMatch(
+      /^as of 9h ago \(.*Nov.*\)$/
+    )
+    expect(staleUsageLabel(null, now)).toBeNull()
+  })
+
+  it('shows an account that was not used recently as a note, not an error', () => {
+    mocks.useClaudeUsage.mockReturnValue({
+      ...idleQuery(undefined),
+      isError: true,
+      error: new Error(
+        'Not used recently. Usage shows after the next run with this account.'
+      ),
+    })
+
+    render(<UsagePane />)
+
+    const note = screen.getByText(/^Not used recently/)
+    expect(note).not.toHaveClass('text-destructive')
+    expect(screen.queryByRole('button', { name: /Retry/i })).toBeNull()
   })
 
   it('words the reset with the time left and the date', () => {
