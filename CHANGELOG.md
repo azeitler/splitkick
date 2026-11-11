@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **MCP tool `rename_session`.** An agent can rename a session (its own or
+  another one); a renamed session is never auto-named afterwards (#132).
+
+### Fixed
+
+- **A session name given at create time is kept.** Auto-naming renamed
+  sessions that were created with a name (MCP `create_session` with `name`, or
+  the app) after their first turn, for example "BÜRKLE Coordinator" became
+  "BÜRKLE coordinator charter setup". Now only a session with its placeholder
+  name ("Session 3") is auto-named, and a rename while auto-naming runs is
+  kept (#132).
+
 ## [1.5.9] - 2026-11-10
 
 Built on Jean 0.1.73.

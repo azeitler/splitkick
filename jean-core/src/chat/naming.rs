@@ -34,6 +34,10 @@ pub struct NamingRequest {
     pub backend_override: Option<String>,
     /// Per-operation reasoning effort override (None = use default)
     pub reasoning_effort: Option<String>,
+    /// Auto-naming only: the session's name when the task started. The
+    /// generated name is applied only while the session still has it, so a
+    /// rename during the task is kept (#132). `None` for "Regenerate name".
+    pub replace_only_name: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -1029,6 +1033,12 @@ fn validate_branch_name(name: &str) -> Result<String, String> {
     Ok(final_name)
 }
 
+/// Whether a generated name replaces `current`: not when it is the same, and
+/// not when the session was renamed after auto-naming started (#132).
+fn should_apply_session_name(current: &str, generated: &str, replace_only: Option<&str>) -> bool {
+    current != generated && replace_only.is_none_or(|expected| expected == current)
+}
+
 /// Apply session name to storage
 fn apply_session_name(
     app: &AppHandle,
@@ -1045,7 +1055,11 @@ fn apply_session_name(
 
         let old_name = session.name.clone();
 
-        if old_name == new_name_owned {
+        if !should_apply_session_name(
+            &old_name,
+            &new_name_owned,
+            request.replace_only_name.as_deref(),
+        ) {
             return Ok(SessionNameResult {
                 session_id: request.session_id.clone(),
                 worktree_id: request.worktree_id.clone(),
@@ -1251,6 +1265,18 @@ pub fn spawn_naming_task(app: AppHandle, request: NamingRequest) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_rename_during_auto_naming_is_kept() {
+        use super::should_apply_session_name as apply;
+        // Auto-naming of "Session 2": applies while the name is unchanged …
+        assert!(apply("Session 2", "Fix login", Some("Session 2")));
+        // … but not after the user or an agent renamed it meanwhile.
+        assert!(!apply("Titan Coordinator", "Fix login", Some("Session 2")));
+        // "Regenerate name" always applies, unless nothing changes.
+        assert!(apply("Titan Coordinator", "Fix login", None));
+        assert!(!apply("Fix login", "Fix login", None));
+    }
+
     use super::*;
 
     #[test]

@@ -92,6 +92,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "run_review",
     "send_chat_message",
     "set_session_model",
+    "rename_session",
     "set_session_status",
     "set_session_todo",
     "start_run_environment",
@@ -486,6 +487,7 @@ fn tool_registry_session() -> Value {
         {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Splitkick found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"read_session_messages","description":"Read the most recent messages of one session, in chronological order. Keep the output small: role \"user\" returns only the user prompts (the cheapest way to see what a session was for), excludeTools drops tool calls, and maxCharsPerMessage cuts long messages. Use list_all_sessions or search_sessions first to pick the session.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50,"description":"Maximum number of messages returned, counted from the end of the session."},"role":{"type":"string","enum":["user","assistant","all"],"default":"all","description":"user reads the prompts from session metadata and never touches a run log."},"excludeTools":{"type":"boolean","default":false,"description":"Drop tool calls. Tool payloads are most of the bytes in a normal session."},"maxCharsPerMessage":{"type":"integer","minimum":100,"maximum":20000,"description":"Cut each message to this many characters."}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Splitkick session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Splitkick infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Splitkick (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
+        {"name":"rename_session","description":"Rename a Splitkick session. Omit sessionId to rename the calling session. A renamed session is never auto-named afterwards, so this also undoes a wrong auto-name. Returns sessionId and name.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to rename. Defaults to the calling session."},"name":{"type":"string","description":"The new name."}},"required":["name"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
         {"name":"set_session_todo","description":"Mark a Splitkick session as To-Do for the user, or clear the mark. The To-Do list in the sidebar and on Home shows every marked session, newest mark first, until the user clears it. Use it when the user must come back to a session, e.g. to review your work (\"I marked this for you to review\"). Omit sessionId to target the calling session. Marking a marked session keeps its first time. Returns sessionId and todoAt (unix seconds, null when cleared).","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"todo":{"type":"boolean","description":"true marks the session as To-Do, false clears the mark."}},"required":["todo"],"additionalProperties":false}},
@@ -1496,6 +1498,41 @@ async fn run_tool(
                 "sessionId": session_id,
                 "model": model,
                 "backend": backend,
+            }))
+        }
+        "rename_session" => {
+            let name = require_str(&args, "name")?;
+            if !crate::chat::is_given_session_name(Some(&name)) {
+                return Err(ToolError::invalid_params("'name' must not be empty"));
+            }
+            let name = name.trim().to_string();
+            let session_id = match optional_str(&args, "sessionId") {
+                Some(id) => id,
+                None => {
+                    if source == "anon" {
+                        return Err(no_current_context_error(source));
+                    }
+                    source.to_string()
+                }
+            };
+            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
+
+            dispatch_command(
+                app,
+                "rename_session",
+                json!({
+                    "sessionId": session_id.clone(),
+                    "worktreeId": worktree_id,
+                    "worktreePath": worktree_path,
+                    "newName": name.clone(),
+                }),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+
+            Ok(json!({
+                "sessionId": session_id,
+                "name": name,
             }))
         }
         "set_session_status" => {
@@ -4532,9 +4569,14 @@ async fn reuse_untouched_default_session(
             return Ok(None);
         };
         let (id, order) = (old.id.clone(), old.order);
-        let name = name.map_or_else(|| old.name.clone(), str::to_string);
+        let name_given = crate::chat::is_given_session_name(name);
+        let name = name
+            .filter(|_| name_given)
+            .map_or_else(|| old.name.clone(), str::to_string);
         let mut session = crate::chat::types::Session::new(name, order, backend);
         session.id = id.clone();
+        // A name given at create time is final (#132).
+        session.session_naming_completed = name_given;
         session.selected_model = model;
         if let Some(slot) = sessions.find_session_mut(&id) {
             *slot = session.clone();
@@ -7378,6 +7420,100 @@ mod tests {
         assert_eq!(created_session_id(&session), default_id);
         assert_eq!(session["name"], "Session 1");
         assert_eq!(fresh_session_ids(&app).len(), 1);
+    }
+
+    fn naming_completed(app: &AppHandle, session_id: &str) -> bool {
+        crate::chat::storage::load_sessions(app, "", "fresh-wt")
+            .unwrap()
+            .sessions
+            .iter()
+            .find(|s| s.id == session_id)
+            .expect("session")
+            .session_naming_completed
+    }
+
+    fn call_with_stack(app: &AppHandle, name: &str, args: Value) -> Value {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || call_as(app, name, args, "tool-s1"))
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_name_given_at_create_time_is_never_auto_named() {
+        // #132: the reused default session …
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        let session = create_in_fresh_worktree(&app, json!({ "name": "BÜRKLE Coordinator" }));
+        assert_eq!(created_session_id(&session), default_id);
+        assert!(naming_completed(&app, &default_id));
+
+        // … and a new session next to a used default.
+        let (_temp2, app2, default2, _serves2) = fresh_worktree_fixture();
+        edit_metadata(&app2, &default2, |m| {
+            m["queued_messages"] = json!([{ "id": "q1" }]);
+        });
+        let session = create_in_fresh_worktree(&app2, json!({ "name": "INDEX Coordinator" }));
+        let new_id = created_session_id(&session);
+        assert_ne!(new_id, default2);
+        assert_eq!(session["name"], "INDEX Coordinator");
+        assert!(naming_completed(&app2, &new_id));
+    }
+
+    #[test]
+    fn an_unnamed_or_blank_session_is_still_auto_named() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        let session = create_in_fresh_worktree(&app, json!({ "name": "   " }));
+        assert_eq!(created_session_id(&session), default_id);
+        assert_eq!(session["name"], "Session 1");
+        assert!(!naming_completed(&app, &default_id));
+    }
+
+    #[test]
+    fn rename_session_tool_renames_and_stops_auto_naming() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        // A real session always has its metadata file; the fixture's default has none yet.
+        edit_metadata(&app, &default_id, |_| {});
+        assert!(!naming_completed(&app, &default_id));
+
+        let result = call_with_stack(
+            &app,
+            "rename_session",
+            json!({ "sessionId": default_id, "name": "  Titan Coordinator  " }),
+        );
+
+        assert_eq!(result["name"], "Titan Coordinator");
+        let sessions = crate::chat::storage::load_sessions(&app, "", "fresh-wt").unwrap();
+        assert_eq!(sessions.sessions[0].name, "Titan Coordinator");
+        assert!(naming_completed(&app, &default_id));
+        assert!(RATE_LIMITED_TOOLS.contains(&"rename_session"));
+    }
+
+    #[test]
+    fn rename_session_tool_refuses_an_empty_name() {
+        let (_temp, app, default_id, _serves) = fresh_worktree_fixture();
+        // A real session always has its metadata file; the fixture's default has none yet.
+        edit_metadata(&app, &default_id, |_| {});
+        let result = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    call_as(
+                        &app,
+                        "rename_session",
+                        json!({ "sessionId": default_id, "name": " " }),
+                        "tool-s1",
+                    )
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        });
+        assert!(result.is_err());
     }
 
     #[test]
