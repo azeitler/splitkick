@@ -1129,6 +1129,10 @@ pub async fn create_session(
 
     let backend_enum = resolve_session_backend(&app, &worktree_id, backend.as_deref());
 
+    // A name given here is final; only "Session N" gets an auto-name (#132).
+    let name_given = is_given_session_name(name.as_deref());
+    let name = name.filter(|_| name_given);
+
     let session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Generate name if not provided
         let session_number = sessions.next_session_number();
@@ -1139,6 +1143,7 @@ pub async fn create_session(
             sessions.sessions.len() as u32,
             backend_enum.clone(),
         );
+        session.session_naming_completed = name_given;
         session.primary_surface = primary_surface.clone();
         session.terminal_command = terminal_command.clone();
         session.terminal_command_args = terminal_command_args.clone().unwrap_or_default();
@@ -1723,6 +1728,12 @@ fn append_refs(message: String, refs: String) -> String {
 }
 
 /// Rename a session tab
+/// Whether a session gets a name on purpose (a non-empty name at create time).
+/// Such a session is never auto-named (#132).
+pub(crate) fn is_given_session_name(name: Option<&str>) -> bool {
+    name.is_some_and(|name| !name.trim().is_empty())
+}
+
 pub async fn rename_session(
     app: AppHandle,
     worktree_id: String,
@@ -1735,6 +1746,8 @@ pub async fn rename_session(
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.name = new_name;
+            // A manual rename is final: auto-naming must not overwrite it (#132).
+            session.session_naming_completed = true;
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))
@@ -1779,6 +1792,7 @@ pub async fn regenerate_session_name(
         worktree_id,
         worktree_path: std::path::PathBuf::from(&worktree_path),
         first_message,
+        replace_only_name: None,
         model: naming_model,
         existing_branch_names: Vec::new(),
         generate_session_name: true,
@@ -2838,6 +2852,9 @@ pub async fn trigger_terminal_session_naming(
     let generate_session_candidate = sessions
         .find_session(&session_id)
         .is_some_and(|session| !session.session_naming_completed);
+    let current_session_name = sessions
+        .find_session(&session_id)
+        .map(|session| session.name.clone());
     if !generate_branch_candidate && !generate_session_candidate {
         return;
     }
@@ -2863,6 +2880,7 @@ pub async fn trigger_terminal_session_naming(
             app.clone(),
             NamingRequest {
                 session_id: session_id.clone(),
+                replace_only_name: current_session_name.clone(),
                 worktree_id: worktree_id.clone(),
                 worktree_path: PathBuf::from(&worktree_path),
                 first_message: first_prompt,
@@ -3085,6 +3103,9 @@ pub async fn send_chat_message(
 
                     let request = NamingRequest {
                         session_id: session_id.clone(),
+                        replace_only_name: session_for_naming
+                            .as_ref()
+                            .map(|session| session.name.clone()),
                         worktree_id: worktree_id.clone(),
                         worktree_path: PathBuf::from(&worktree_path),
                         first_message: message.clone(),
