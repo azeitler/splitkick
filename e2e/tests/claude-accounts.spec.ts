@@ -135,7 +135,9 @@ test('the usage popover shows each account as a card', async ({ mockPage }) => {
   // Dev builds load usage only while the popover is open; it stays cached.
   await mockPage.keyboard.press('Escape')
   const badge = mockPage.getByTestId('titlebar-usage')
-  await expect(badge).toHaveText(/100%/)
+  // The mock's default model is Sonnet, so Work's full Fable limit does not
+  // count: the badge shows Work's weekly 71%.
+  await expect(badge).toHaveText(/71%/)
   await expect(mockPage.getByTestId('titlebar-usage-more')).toHaveText('+1')
   if (captureDir) {
     await mockPage
