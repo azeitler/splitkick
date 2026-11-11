@@ -18,6 +18,11 @@ Built on Jean 0.1.73.
 
 ### Fixed
 
+- **Claude accounts that are not active no longer show a red error.** Their
+  token expires because only the active account runs, so the usage popover
+  showed "Claude access token expired". It now shows the account's last
+  usage with its age ("as of 9h ago"), or a grey "Not used recently" note
+  when there is none (#134).
 - **A half-typed answer to a question is kept.** Text typed and options
   picked in a question form were lost when you switched to another session
   and back. The form now keeps them until you answer or skip (while the app

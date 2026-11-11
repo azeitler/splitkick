@@ -140,6 +140,27 @@ export function claudeModelLimits(
   }))
 }
 
+/**
+ * "as of 9h ago (Tue, Nov 10, 2:00 PM)" for stored usage older than 15
+ * minutes: an account that is not active keeps its last figures (#131).
+ */
+export function staleUsageLabel(
+  fetchedAt: number | null | undefined,
+  nowMs = Date.now()
+): string | null {
+  if (!fetchedAt) return null
+  const fetchedMs = fetchedAt < 1_000_000_000_000 ? fetchedAt * 1000 : fetchedAt
+  if (nowMs - fetchedMs < 15 * 60 * 1000) return null
+  const date = new Date(fetchedMs).toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  return `as of ${formatShortAge(fetchedAt, nowMs)} ago (${date})`
+}
+
 function getQueryErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -411,14 +432,16 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
       return <LoadingLine label="Loading usage…" />
     }
     if (claudeUsage.isError) {
+      const message = getQueryErrorMessage(
+        claudeUsage.error,
+        'Failed to load Claude usage.'
+      )
+      // An account that is not active and has no stored usage yet: not an error.
+      if (message.startsWith('Not used recently')) {
+        return <InlineStatus>{message}</InlineStatus>
+      }
       return (
-        <ErrorLine
-          message={getQueryErrorMessage(
-            claudeUsage.error,
-            'Failed to load Claude usage.'
-          )}
-          onRetry={() => claudeUsage.refetch()}
-        />
+        <ErrorLine message={message} onRetry={() => claudeUsage.refetch()} />
       )
     }
     if (!claudeUsage.data) {
@@ -436,7 +459,12 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
     return (
       <div className="space-y-2">
         <MetaLine
-          items={[data.accountEmail, data.planType ?? 'Unknown', extra]}
+          items={[
+            data.accountEmail,
+            data.planType ?? 'Unknown',
+            extra,
+            staleUsageLabel(data.fetchedAt),
+          ]}
         />
         <div className="space-y-1.5">
           <UsageRow label="Session" usage={data.session} />

@@ -49,6 +49,12 @@ const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_USAGE_CACHE_TTL_SECS: u64 = 5 * 60;
 /// Stale cache is still served on 429 / transient API failures (OpenUsage pattern).
 const CLAUDE_USAGE_STALE_CACHE_MAX_SECS: u64 = 6 * 60 * 60;
+
+/// Shown for an account whose token expired and that has no stored usage yet.
+/// Not an error: the account was simply not used recently. The frontend
+/// matches the "Not used recently" prefix to show it as a note.
+pub const CLAUDE_TOKEN_IDLE_MESSAGE: &str =
+    "Not used recently. Usage shows after the next run with this account.";
 const CLAUDE_USAGE_USER_AGENT: &str = "claude-code/2.1.69";
 static CLAUDE_USAGE_FETCH_LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
 
@@ -1119,6 +1125,17 @@ fn load_stale_cached_claude_usage(
     None
 }
 
+/// The last stored usage of any age. For an expired token: an account that is
+/// not active gets no `claude` run, so its token is not refreshed for days,
+/// and old figures (with their age and reset times) beat an error.
+fn load_any_cached_claude_usage(
+    cache_path: Option<&std::path::Path>,
+) -> Option<ClaudeUsageSnapshot> {
+    let content = std::fs::read_to_string(cache_path?).ok()?;
+    let entry: ClaudeUsageCacheEntry = serde_json::from_str(&content).ok()?;
+    Some(entry.snapshot)
+}
+
 fn save_cached_claude_usage(
     cache_path: Option<&std::path::Path>,
     snapshot: &ClaudeUsageSnapshot,
@@ -1405,16 +1422,13 @@ async fn fetch_claude_usage(
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     if token_is_expired(&oauth, now_ms) {
-        if let Some(stale) = load_stale_cached_claude_usage(cache_path, now_secs) {
+        if let Some(stale) = load_any_cached_claude_usage(cache_path) {
             log::trace!(
                 "Claude access token expired; serving stale cache until Claude refreshes it (source={request_source})"
             );
             return Ok(stale);
         }
-        return Err(
-            "Claude access token expired. Usage updates after the next `claude` run refreshes it."
-                .to_string(),
-        );
+        return Err(CLAUDE_TOKEN_IDLE_MESSAGE.to_string());
     }
 
     let response = claude_usage_request(&usage_client, usage_url, &access_token)
@@ -1583,6 +1597,31 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_expired_token_serves_stored_usage_of_any_age() {
+        // An account that is not active is not refreshed for days (#131).
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude-acc.json");
+        let snapshot = ClaudeUsageSnapshot {
+            plan_type: Some("max".into()),
+            account_email: None,
+            session: None,
+            weekly: None,
+            sonnet_weekly: None,
+            limits: vec![],
+            extra_usage_spent: None,
+            extra_usage_limit: None,
+            fetched_at: 1_000,
+        };
+        save_cached_claude_usage(Some(&path), &snapshot, 1_000);
+        let two_days_later = 1_000 + 2 * 24 * 60 * 60;
+
+        assert!(load_stale_cached_claude_usage(Some(&path), two_days_later).is_none());
+        let served = load_any_cached_claude_usage(Some(&path)).expect("stored usage");
+        assert_eq!(served.fetched_at, 1_000);
+        assert!(load_any_cached_claude_usage(Some(&dir.path().join("none.json"))).is_none());
+    }
 
     #[test]
     fn email_from_claude_config_reads_oauth_account() {
