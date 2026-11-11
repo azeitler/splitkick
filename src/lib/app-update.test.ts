@@ -195,13 +195,16 @@ const updater = vi.hoisted(() => ({
   check: vi.fn(),
   notify: vi.fn(),
   logInfo: vi.fn(),
+  message: vi.fn(() => Promise.resolve()),
   loading: vi.fn(() => 'checking-toast'),
   dismiss: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/app', () => ({
   getIdentifier: () => Promise.resolve(updater.identifier),
+  getVersion: () => Promise.resolve('1.5.12'),
 }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ message: updater.message }))
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: updater.check }))
 vi.mock('@/lib/environment', async importOriginal => ({
   ...(await importOriginal<object>()),
@@ -239,6 +242,7 @@ describe('checkForUpdatesManually (#100)', () => {
     updater.check.mockReset()
     updater.notify.mockReset()
     updater.logInfo.mockReset()
+    updater.message.mockClear()
     updater.loading.mockClear()
     updater.dismiss.mockReset()
   })
@@ -273,10 +277,9 @@ describe('checkForUpdatesManually (#100)', () => {
     const { checkForUpdatesManually } = await load()
     await checkForUpdatesManually()
     expect(updater.check).not.toHaveBeenCalled()
-    expect(updater.notify).toHaveBeenCalledWith(
-      'Updates are off in development builds',
-      undefined,
-      { type: 'info' }
+    expect(updater.message).toHaveBeenCalledWith(
+      'Updates are off in development builds.',
+      { title: 'Check for Updates', kind: 'info' }
     )
   })
 
@@ -296,10 +299,9 @@ describe('checkForUpdatesManually (#100)', () => {
     })
     await checkForUpdatesManually()
     expect(updater.check).not.toHaveBeenCalled()
-    expect(updater.notify).toHaveBeenCalledWith(
-      'Update download already in progress',
-      undefined,
-      { type: 'info' }
+    expect(updater.message).toHaveBeenCalledWith(
+      'An update is downloading. Splitkick asks you to restart when it is ready.',
+      { title: 'Check for Updates', kind: 'info' }
     )
   })
 
@@ -323,11 +325,11 @@ describe('checkForUpdatesManually (#100)', () => {
     updater.check.mockResolvedValue(null)
     const { checkForUpdatesManually } = await load()
     await checkForUpdatesManually()
-    expect(updater.notify).toHaveBeenCalledWith(
-      'You are running the latest version',
-      undefined,
-      { type: 'success' }
+    expect(updater.message).toHaveBeenCalledWith(
+      'You are running the latest version (1.5.12).',
+      { title: 'Check for Updates', kind: 'info' }
     )
+    expect(updater.notify).not.toHaveBeenCalled()
   })
 
   it('reports a failed check', async () => {
@@ -335,10 +337,9 @@ describe('checkForUpdatesManually (#100)', () => {
     vi.mocked(invoke).mockResolvedValue('could not reach github.com: timeout')
     const { checkForUpdatesManually } = await load()
     await checkForUpdatesManually()
-    expect(updater.notify).toHaveBeenCalledWith(
-      'Failed to check for updates: Error: offline (could not reach github.com: timeout)',
-      undefined,
-      { type: 'error' }
+    expect(updater.message).toHaveBeenCalledWith(
+      'The update check failed: Error: offline (could not reach github.com: timeout)',
+      { title: 'Check for Updates', kind: 'error' }
     )
   })
 })
