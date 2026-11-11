@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Live usage for Claude accounts that are not active.** When such an
+  account's token has expired, opening the usage popover or the Settings usage
+  pane, or Refresh in the menu bar, asks the Claude CLI to renew it with one
+  tiny request (Haiku, about 600 tokens), then shows the live figures. While
+  that runs, the card shows the stored figures with "Updating…". Never for the
+  active account, never while a `claude` process of that account runs, and at
+  most once per token (#134).
+
 ### Fixed
 
 - **Check for Updates always answers.** It shows "Checking for updates…"

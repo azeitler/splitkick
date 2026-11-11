@@ -114,6 +114,21 @@ session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
   frontend has one TanStack query per account (`accountUsage(id)`) with the
   `usage-timing.ts` rules; the background refresh walks the accounts one by
   one through their caches, so there is no request storm.
+- **Live usage of accounts that are not active (#134).** Their access token
+  expires, because only the active account runs. Splitkick never refreshes a
+  token (refresh tokens are single-use). On an on-demand read (`get_claude_usage`
+  from the popover / Settings pane, or `refresh_claude_accounts_usage` from the
+  menu bar's Refresh), `claude_cli/usage_renew.rs` lets the Claude CLI renew it:
+  `claude -p ok --model haiku --safe-mode --tools "" --no-session-persistence …`
+  under the account's `CLAUDE_CONFIG_DIR`, in an empty work folder, 90 s timeout.
+  The read returns the stored figures with `renewing: true` (or the "Updating
+  usage…" message when none are stored); the frontend polls every 3 s while
+  that holds. Rules: not for the active account, not without a refresh token,
+  not while `<config>/sessions/<pid>.json` names a live process, one attempt
+  per token expiry, single-flight per account. The background refresh and the
+  menu bar's 5-minute loop never renew. Measured 2026-11-11 (CLI 2.1.322):
+  575 input + 6 output tokens (USD 0.00012); the new token lives 8 hours.
+  `--bare` cannot be used: it never reads the Keychain.
 
 ## Limits of the proof of concept
 

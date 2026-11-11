@@ -83,4 +83,9 @@ export interface ClaudeUsageSnapshot {
   extraUsageSpent: number | null
   extraUsageLimit: number | null
   fetchedAt: number
+  /**
+   * Stored figures while the Claude CLI renews the expired token of an
+   * account that is not active (#134). Missing from older backends.
+   */
+  renewing?: boolean
 }

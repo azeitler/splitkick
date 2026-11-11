@@ -27,7 +27,7 @@ portable-pty = "0.8"
 which = "7"
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "compression-br", "compression-gzip"] }
-tokio = { version = "1", features = ["sync", "macros", "net", "io-util", "fs", "rt-multi-thread", "time", "signal"] }
+tokio = { version = "1", features = ["sync", "macros", "net", "io-util", "fs", "rt-multi-thread", "time", "signal", "process"] }
 futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 # zune-core 0.5.2 made warn!/error! expand to empty tokens (not expressions).

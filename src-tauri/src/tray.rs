@@ -310,6 +310,14 @@ fn refresh_in_background(app: &AppHandle, skip_cache: bool) {
         if let Err(error) = refresh(&app, skip_cache).await {
             log::warn!("Failed to update the menu bar icon: {error}");
         }
+        // Refresh may have asked the Claude CLI to renew an idle account's
+        // token (#134): show its live figures once that is done.
+        if skip_cache {
+            jean_core::claude_usage_renews_settled().await;
+            if let Err(error) = refresh(&app, false).await {
+                log::warn!("Failed to update the menu bar icon: {error}");
+            }
+        }
     });
 }
 
@@ -447,6 +455,7 @@ mod tests {
             extra_usage_spent: None,
             extra_usage_limit: None,
             fetched_at: 0,
+            renewing: false,
         }
     }
 

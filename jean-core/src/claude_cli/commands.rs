@@ -55,6 +55,9 @@ const CLAUDE_USAGE_STALE_CACHE_MAX_SECS: u64 = 6 * 60 * 60;
 /// matches the "Not used recently" prefix to show it as a note.
 pub const CLAUDE_TOKEN_IDLE_MESSAGE: &str =
     "Not used recently. Usage shows after the next run with this account.";
+/// Shown for such an account while the Claude CLI renews its token (#134). The
+/// frontend matches the "Updating" prefix and checks again soon.
+pub const CLAUDE_TOKEN_RENEWING_MESSAGE: &str = "Updating usage…";
 const CLAUDE_USAGE_USER_AGENT: &str = "claude-code/2.1.69";
 static CLAUDE_USAGE_FETCH_LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
 
@@ -652,6 +655,9 @@ pub struct ClaudeUsageSnapshot {
     pub extra_usage_spent: Option<f64>,
     pub extra_usage_limit: Option<f64>,
     pub fetched_at: u64,
+    /// Stored figures while the Claude CLI renews this account's token (#134).
+    #[serde(default)]
+    pub renewing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1285,8 +1291,98 @@ pub async fn get_claude_usage(
     app: AppHandle,
     account_id: Option<String>,
 ) -> Result<ClaudeUsageSnapshot, String> {
-    let account = accounts::load_account(&app, account_id.as_deref());
-    get_claude_usage_with_source("ui", &account).await
+    let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
+    let account = accounts::resolve_account(&prefs, account_id.as_deref());
+    // The frontend asks only while the popover or the Settings pane is open.
+    let renew = renew_request(&app, &account, &accounts::active_account(&prefs));
+    let config_dir = account.config_dir.as_deref();
+    let cache_path = get_claude_usage_cache_path(config_dir);
+    fetch_claude_usage(
+        "ui",
+        config_dir,
+        CLAUDE_USAGE_URL,
+        cache_path.as_deref(),
+        false,
+        renew.as_ref(),
+    )
+    .await
+}
+
+/// Lets the Claude CLI renew an expired token of an account that is not active
+/// (#134). Only for on-demand reads: the usage popover, the Settings pane and
+/// Refresh. Never for background loops.
+struct RenewRequest {
+    cli_path: PathBuf,
+    account: ResolvedClaudeAccount,
+    is_active: bool,
+}
+
+fn renew_request(
+    app: &AppHandle,
+    account: &ResolvedClaudeAccount,
+    active: &ResolvedClaudeAccount,
+) -> Option<RenewRequest> {
+    // In WSL the account's process list lives inside the distro; skip.
+    if crate::platform::get_wsl_config().enabled {
+        return None;
+    }
+    Some(RenewRequest {
+        cli_path: resolve_cli_binary(app),
+        account: account.clone(),
+        is_active: account.id == active.id,
+    })
+}
+
+/// Starts the CLI renew when the rules allow it. True while a renew of this
+/// account runs (started now or before).
+fn maybe_renew(
+    renew: Option<&RenewRequest>,
+    config_dir: Option<&str>,
+    oauth: &ClaudeOauthCredentials,
+    now_ms: u64,
+) -> bool {
+    use super::usage_renew;
+    let Some(request) = renew else {
+        return usage_renew::is_renewing(config_dir);
+    };
+    let expires_at = oauth_expires_at_ms(oauth).unwrap_or(0);
+    let inputs = usage_renew::RenewInputs {
+        expired: token_is_expired(oauth, now_ms),
+        has_refresh_token: oauth
+            .refresh_token
+            .as_deref()
+            .is_some_and(|token| !token.trim().is_empty()),
+        is_active: request.is_active,
+        claude_running: request
+            .account
+            .config_path()
+            .is_some_and(|path| usage_renew::claude_running(&path)),
+        already_tried: usage_renew::already_tried(config_dir, expires_at),
+    };
+    match usage_renew::renew_decision(inputs) {
+        Ok(()) if request.cli_path.exists() => {
+            if usage_renew::try_begin(config_dir, expires_at) {
+                log::info!(
+                    "Claude account {} token expired; asking the Claude CLI to renew it",
+                    request.account.id
+                );
+                let work_dir = get_usage_cache_dir()
+                    .unwrap_or_else(std::env::temp_dir)
+                    .join("renew");
+                usage_renew::spawn_renew(
+                    request.cli_path.clone(),
+                    request.account.clone(),
+                    work_dir,
+                );
+            }
+        }
+        Ok(()) => log::trace!("No token renew: Claude CLI not installed"),
+        Err(reason) => log::trace!(
+            "No token renew for Claude account {}: {reason}",
+            request.account.id
+        ),
+    }
+    usage_renew::is_renewing(config_dir)
 }
 
 /// Usage of one Claude account, for the all-accounts list.
@@ -1318,16 +1414,22 @@ async fn accounts_usage(
     skip_cache: bool,
 ) -> Result<Vec<ClaudeAccountUsage>, String> {
     let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
-    let active_id = accounts::active_account(&prefs).id;
+    let active = accounts::active_account(&prefs);
+    let active_id = active.id.clone();
     let mut result = Vec::new();
     for account in accounts::all_accounts(&prefs) {
         let cache_path = get_claude_usage_cache_path(account.config_dir.as_deref());
+        // Only the explicit Refresh may renew; the menu bar's 5-minute loop not.
+        let renew = skip_cache
+            .then(|| renew_request(&app, &account, &active))
+            .flatten();
         let fetched = fetch_claude_usage(
             "accounts",
             account.config_dir.as_deref(),
             CLAUDE_USAGE_URL,
             cache_path.as_deref(),
             skip_cache,
+            renew.as_ref(),
         )
         .await;
         result.push(ClaudeAccountUsage {
@@ -1367,6 +1469,7 @@ pub(crate) async fn get_claude_usage_with_source(
         CLAUDE_USAGE_URL,
         cache_path.as_deref(),
         false,
+        None,
     )
     .await
 }
@@ -1377,6 +1480,7 @@ async fn fetch_claude_usage(
     usage_url: &str,
     cache_path: Option<&std::path::Path>,
     skip_cache: bool,
+    renew: Option<&RenewRequest>,
 ) -> Result<ClaudeUsageSnapshot, String> {
     // Serialize usage fetches so UI + background polls share one request and cache write.
     let _usage_lock = claude_usage_fetch_lock().lock().await;
@@ -1422,13 +1526,21 @@ async fn fetch_claude_usage(
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     if token_is_expired(&oauth, now_ms) {
-        if let Some(stale) = load_any_cached_claude_usage(cache_path) {
+        // The Claude CLI may renew it (#134); until then the stored figures stay.
+        let renewing = maybe_renew(renew, config_dir, &oauth, now_ms);
+        if let Some(mut stale) = load_any_cached_claude_usage(cache_path) {
             log::trace!(
                 "Claude access token expired; serving stale cache until Claude refreshes it (source={request_source})"
             );
+            stale.renewing = renewing;
             return Ok(stale);
         }
-        return Err(CLAUDE_TOKEN_IDLE_MESSAGE.to_string());
+        return Err(if renewing {
+            CLAUDE_TOKEN_RENEWING_MESSAGE
+        } else {
+            CLAUDE_TOKEN_IDLE_MESSAGE
+        }
+        .to_string());
     }
 
     let response = claude_usage_request(&usage_client, usage_url, &access_token)
@@ -1518,6 +1630,7 @@ async fn fetch_claude_usage(
         extra_usage_spent,
         extra_usage_limit,
         fetched_at,
+        renewing: false,
     };
 
     save_cached_claude_usage(cache_path, &snapshot, fetched_at);
@@ -1613,6 +1726,7 @@ mod tests {
             extra_usage_spent: None,
             extra_usage_limit: None,
             fetched_at: 1_000,
+            renewing: false,
         };
         save_cached_claude_usage(Some(&path), &snapshot, 1_000);
         let two_days_later = 1_000 + 2 * 24 * 60 * 60;
@@ -2017,6 +2131,7 @@ attributes:
                     &url,
                     Some(cache),
                     false,
+                    None,
                 ))
                 .unwrap()
         };
@@ -2038,6 +2153,180 @@ attributes:
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
+    /// An expired idle account: the stored figures come back with `renewing`,
+    /// and the Claude CLI (a fake that counts its calls) runs once (#134).
+    #[cfg(unix)]
+    #[test]
+    fn an_expired_idle_account_is_renewed_once_by_the_cli() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let calls = temp.path().join("calls.log");
+        let cli = temp.path().join("claude");
+        std::fs::write(
+            &cli,
+            format!(
+                "#!/bin/sh\necho \"$CLAUDE_CONFIG_DIR $*\" >> '{}'\nsleep 1\necho '{{\"is_error\":false,\"usage\":{{\"input_tokens\":5,\"output_tokens\":1}}}}'\n",
+                calls.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let account_dir = temp.path().join("idle");
+        std::fs::create_dir_all(&account_dir).unwrap();
+        let dir = account_dir.to_string_lossy().to_string();
+        let expired_creds = |refresh: Option<&str>| {
+            serde_json::json!({
+                "claudeAiOauth": {
+                    "accessToken": "expired-token",
+                    "refreshToken": refresh,
+                    "expiresAt": 1_700_000_000_000u64,
+                    "scopes": ["user:inference", "user:profile"]
+                }
+            })
+            .to_string()
+        };
+        std::fs::write(
+            account_dir.join(".credentials.json"),
+            expired_creds(Some("r")),
+        )
+        .unwrap();
+        let cache = temp.path().join("cache.json");
+        let stored = ClaudeUsageSnapshot {
+            plan_type: Some("max".into()),
+            account_email: None,
+            session: None,
+            weekly: None,
+            sonnet_weekly: None,
+            limits: vec![],
+            extra_usage_spent: None,
+            extra_usage_limit: None,
+            fetched_at: 1_000,
+            renewing: false,
+        };
+        save_cached_claude_usage(Some(&cache), &stored, 1_000);
+
+        let (url, hits) = spawn_usage_server();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let request = |is_active: bool| RenewRequest {
+            cli_path: cli.clone(),
+            account: ResolvedClaudeAccount {
+                id: "acc-idle".into(),
+                label: "Idle".into(),
+                config_dir: Some(dir.clone()),
+            },
+            is_active,
+        };
+        let fetch = |renew: &RenewRequest| {
+            runtime.block_on(fetch_claude_usage(
+                "test",
+                Some(&dir),
+                &url,
+                Some(&cache),
+                true,
+                Some(renew),
+            ))
+        };
+        let call_count = || {
+            std::fs::read_to_string(&calls)
+                .map(|text| text.lines().count())
+                .unwrap_or(0)
+        };
+
+        // Active account: its runs renew it, Jean does not.
+        let active = fetch(&request(true)).unwrap();
+        assert!(!active.renewing);
+
+        // Idle: stored figures with `renewing`, one CLI call; a second read
+        // while it runs starts no second one (single-flight).
+        let first = fetch(&request(false)).unwrap();
+        assert!(first.renewing);
+        assert_eq!(first.fetched_at, 1_000);
+        let second = fetch(&request(false)).unwrap();
+        assert!(second.renewing);
+        runtime.block_on(super::super::usage_renew::claude_usage_renews_settled());
+        assert_eq!(call_count(), 1);
+        let line = std::fs::read_to_string(&calls).unwrap();
+        assert!(
+            line.starts_with(&dir),
+            "runs under the account's CLAUDE_CONFIG_DIR"
+        );
+        assert!(line.contains("--safe-mode") && line.contains("--no-session-persistence"));
+
+        // The CLI did not write a new token (fake): this token was tried, so
+        // no retry loop, and the stored figures stay without the hint.
+        let after = fetch(&request(false)).unwrap();
+        assert!(!after.renewing);
+        assert_eq!(call_count(), 1);
+        // No usage request with an expired token.
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    /// Not logged in (no refresh token) or a running `claude` process: no renew.
+    #[cfg(unix)]
+    #[test]
+    fn no_renew_without_refresh_token_or_while_claude_runs() {
+        let temp = tempfile::tempdir().unwrap();
+        let cli = temp.path().join("claude-missing-marker");
+        std::fs::write(&cli, "").unwrap();
+        for (name, refresh, running) in [("no-refresh", None, false), ("running", Some("r"), true)]
+        {
+            let account_dir = temp.path().join(name);
+            std::fs::create_dir_all(account_dir.join("sessions")).unwrap();
+            if running {
+                std::fs::write(
+                    account_dir
+                        .join("sessions")
+                        .join(format!("{}.json", std::process::id())),
+                    "{}",
+                )
+                .unwrap();
+            }
+            std::fs::write(
+                account_dir.join(".credentials.json"),
+                serde_json::json!({
+                    "claudeAiOauth": {
+                        "accessToken": "expired-token",
+                        "refreshToken": refresh,
+                        "expiresAt": 1_700_000_000_000u64,
+                        "scopes": ["user:profile"]
+                    }
+                })
+                .to_string(),
+            )
+            .unwrap();
+            let dir = account_dir.to_string_lossy().to_string();
+            let renew = RenewRequest {
+                cli_path: cli.clone(),
+                account: ResolvedClaudeAccount {
+                    id: name.into(),
+                    label: name.into(),
+                    config_dir: Some(dir.clone()),
+                },
+                is_active: false,
+            };
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(fetch_claude_usage(
+                    "test",
+                    Some(&dir),
+                    "http://127.0.0.1:9/unused",
+                    Some(&temp.path().join(format!("{name}.json"))),
+                    true,
+                    Some(&renew),
+                ));
+            // No stored figures and no renew: the grey note of 1.5.10.
+            assert_eq!(result.unwrap_err(), CLAUDE_TOKEN_IDLE_MESSAGE, "{name}");
+            assert!(!super::super::usage_renew::is_renewing(Some(&dir)));
+        }
+    }
+
     #[test]
     fn usage_of_a_signed_out_account_fails_without_a_request() {
         let temp = tempfile::tempdir().unwrap();
@@ -2054,6 +2343,7 @@ attributes:
             &url,
             Some(&temp.path().join("cache.json")),
             false,
+            None,
         ));
         assert!(result.is_err());
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -2082,6 +2372,7 @@ attributes:
                 CLAUDE_USAGE_URL,
                 Some(&cache_path),
                 false,
+                None,
             ))
             .expect("usage of the extra account");
         println!(

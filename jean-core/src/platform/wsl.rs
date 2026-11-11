@@ -945,6 +945,10 @@ mod tests {
         let cmd = wsl_aware_command("git", Some(cwd));
         let program = format!("{:?}", cmd.get_program());
 
+        // Restore before the asserts: the config is process-wide, and a test that
+        // reads an extra Claude account fails while WSL mode is on.
+        init_wsl_config(false, String::new());
+
         assert!(program.contains("git"));
         assert!(!program.contains("wsl.exe"));
         assert_eq!(cmd.get_current_dir(), Some(cwd));

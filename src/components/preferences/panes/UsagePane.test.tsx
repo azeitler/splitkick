@@ -410,6 +410,63 @@ describe('UsagePane', () => {
     expect(screen.queryByRole('button', { name: /Retry/i })).toBeNull()
   })
 
+  it('keeps stored figures with their age and shows Updating while the token renews', () => {
+    mocks.useClaudeUsage.mockReturnValue(
+      idleQuery({
+        planType: 'max',
+        session: { usedPercent: 40, resetsAt: null },
+        weekly: { usedPercent: 12, resetsAt: null },
+        sonnetWeekly: null,
+        extraUsageSpent: null,
+        extraUsageLimit: null,
+        fetchedAt: Math.floor(Date.now() / 1000) - 9 * 3600,
+        renewing: true,
+      })
+    )
+
+    render(<UsagePane />)
+
+    expect(screen.getByText('Updating…')).toBeInTheDocument()
+    expect(screen.getByText(/^as of 9h ago/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('progressbar', { name: 'Session 40.0% used' })
+    ).toBeInTheDocument()
+  })
+
+  it('drops the Updating hint once live figures arrive', () => {
+    mocks.useClaudeUsage.mockReturnValue(
+      idleQuery({
+        planType: 'max',
+        session: { usedPercent: 41, resetsAt: null },
+        weekly: { usedPercent: 12, resetsAt: null },
+        sonnetWeekly: null,
+        extraUsageSpent: null,
+        extraUsageLimit: null,
+        fetchedAt: Math.floor(Date.now() / 1000),
+        renewing: false,
+      })
+    )
+
+    render(<UsagePane />)
+
+    expect(screen.queryByText('Updating…')).toBeNull()
+    expect(screen.queryByText(/^as of/)).toBeNull()
+  })
+
+  it('shows a renew with no stored figures as a note, not an error', () => {
+    mocks.useClaudeUsage.mockReturnValue({
+      ...idleQuery(undefined),
+      isError: true,
+      error: 'Updating usage…',
+    })
+
+    render(<UsagePane />)
+
+    const note = screen.getByText('Updating usage…')
+    expect(note).not.toHaveClass('text-destructive')
+    expect(screen.queryByRole('button', { name: /Retry/i })).toBeNull()
+  })
+
   it('words the reset with the time left and the date', () => {
     const now = Date.UTC(2026, 10, 9, 12, 0, 0)
     const inTwoHours = now / 1000 + 2 * 3600
