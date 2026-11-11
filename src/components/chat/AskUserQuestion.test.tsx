@@ -55,7 +55,9 @@ describe('AskUserQuestion', () => {
     )
 
     expect(
-      screen.getByText('Before I commit, I need two decisions in this worktree.')
+      screen.getByText(
+        'Before I commit, I need two decisions in this worktree.'
+      )
     ).toBeInTheDocument()
     expect(
       screen.getByText(/its options did not arrive\. Answer in the message box/)
@@ -75,7 +77,9 @@ describe('AskUserQuestion', () => {
       />
     )
 
-    expect(screen.queryByText(/its options did not arrive/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/its options did not arrive/)
+    ).not.toBeInTheDocument()
   })
 
   it('shows persisted answer labels in the collapsed summary and expanded content', () => {
@@ -182,5 +186,66 @@ describe('AskUserQuestion', () => {
     expect(onSubmit).toHaveBeenCalledWith('tool-1', [
       { questionIndex: 0, selectedOptions: [], customText: 'shhh' },
     ])
+  })
+
+  // Switching sessions unmounts the form; the draft must come back.
+  it('keeps typed text and picked options across a remount', () => {
+    const view = render(
+      <AskUserQuestion
+        toolCallId="tool-draft"
+        questions={questions}
+        onSubmit={noopSubmit}
+      />
+    )
+    const [firstInput] = screen.getAllByPlaceholderText(
+      'Or type your own answer...'
+    )
+    const toneRadio = screen.getAllByRole('radio')[3]
+    if (!firstInput || !toneRadio) throw new Error('form not rendered')
+    fireEvent.change(firstInput, { target: { value: 'Owls at night' } })
+    fireEvent.click(toneRadio)
+    view.unmount()
+
+    render(
+      <AskUserQuestion
+        toolCallId="tool-draft"
+        questions={questions}
+        onSubmit={noopSubmit}
+      />
+    )
+    expect(
+      screen.getAllByPlaceholderText('Or type your own answer...')[0]
+    ).toHaveValue('Owls at night')
+    expect(screen.getAllByRole('radio')[3]).toBeChecked()
+  })
+
+  it('drops the draft once the answer is sent', () => {
+    const onSubmit = vi.fn()
+    const view = render(
+      <AskUserQuestion
+        toolCallId="tool-draft-sent"
+        questions={questions}
+        onSubmit={onSubmit}
+      />
+    )
+    const [input] = screen.getAllByPlaceholderText('Or type your own answer...')
+    if (!input) throw new Error('form not rendered')
+    fireEvent.change(input, { target: { value: 'Owls' } })
+    fireEvent.click(screen.getByText('Answer'))
+    expect(onSubmit).toHaveBeenCalledWith('tool-draft-sent', [
+      { questionIndex: 0, selectedOptions: [], customText: 'Owls' },
+    ])
+    view.unmount()
+
+    render(
+      <AskUserQuestion
+        toolCallId="tool-draft-sent"
+        questions={questions}
+        onSubmit={noopSubmit}
+      />
+    )
+    expect(
+      screen.getAllByPlaceholderText('Or type your own answer...')[0]
+    ).toHaveValue('')
   })
 })

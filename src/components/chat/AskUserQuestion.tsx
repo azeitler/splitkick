@@ -17,12 +17,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import {
-  AlertTriangle,
-  ChevronRight,
-  CheckCircle2,
-  Circle,
-} from 'lucide-react'
+import { AlertTriangle, ChevronRight, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import type { Question, QuestionAnswer } from '@/types/chat'
@@ -51,6 +46,14 @@ interface AskUserQuestionProps {
 }
 
 /**
+ * Unsent answers per question tool call. The form unmounts when the user
+ * switches sessions; this keeps typed text and picked options until it
+ * remounts. A plain Map, not Zustand: it changes on every keystroke and no
+ * other component reads it.
+ */
+const draftAnswers = new Map<string, Map<number, QuestionAnswer>>()
+
+/**
  * Renders interactive questions from Claude's AskUserQuestion tool
  * Styled to match Claude Code CLI's question prompts
  */
@@ -68,8 +71,21 @@ export function AskUserQuestion({
 }: AskUserQuestionProps) {
   // Local state for answers
   // Structure: answers[questionIndex] = { selectedOptions: [0, 2], customText: 'foo' }
-  const [answers, setAnswers] = useState<Map<number, QuestionAnswer>>(
-    () => new Map()
+  const [answers, setAnswersState] = useState<Map<number, QuestionAnswer>>(
+    () => draftAnswers.get(toolCallId) ?? new Map()
+  )
+  // Every edit also goes to the draft cache, so it survives an unmount
+  const setAnswers = useCallback(
+    (
+      update: (prev: Map<number, QuestionAnswer>) => Map<number, QuestionAnswer>
+    ) => {
+      setAnswersState(prev => {
+        const next = update(prev)
+        draftAnswers.set(toolCallId, next)
+        return next
+      })
+    },
+    [toolCallId]
   )
   // Collapsed state for read-only answered questions
   const [isExpanded, setIsExpanded] = useState(false)
@@ -142,7 +158,7 @@ export function AskUserQuestion({
         return newAnswers
       })
     },
-    []
+    [setAnswers]
   )
 
   // Select single option (radio mode)
@@ -164,7 +180,7 @@ export function AskUserQuestion({
         return newAnswers
       })
     },
-    []
+    [setAnswers]
   )
 
   // Update custom text
@@ -186,13 +202,14 @@ export function AskUserQuestion({
         return newAnswers
       })
     },
-    []
+    [setAnswers]
   )
 
   // Submit answers
   const handleSubmit = useCallback(() => {
     const answersArray = Array.from(answers.values())
     setLocalSubmittedAnswers(answersArray) // Preserve for display when transitioning to read-only
+    draftAnswers.delete(toolCallId)
     onSubmit(toolCallId, answersArray)
   }, [toolCallId, answers, onSubmit])
 
@@ -495,7 +512,10 @@ export function AskUserQuestion({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onSkip(toolCallId)}
+                onClick={() => {
+                  draftAnswers.delete(toolCallId)
+                  onSkip(toolCallId)
+                }}
                 className="text-muted-foreground"
               >
                 Skip
