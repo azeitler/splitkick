@@ -14,6 +14,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A half-typed answer to a question is kept.** Text typed and options
+  picked in a question form were lost when you switched to another session
+  and back. The form now keeps them until you answer or skip (while the app
+  runs).
 - **An answered question closes on every device.** A question answered in
   web access (or on the desktop) stayed open and clickable on the other
   client while the next turn ran. Every client now takes the answer as soon
