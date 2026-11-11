@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **An HTML preview opens in view.** Preview on an HTML or SVG block in the
+  last message opened below it, hidden under the input bar. The preview now
+  scrolls into view above the input bar when it opens (#81).
 - **The schedules file is private.** `schedules.json` keeps the MCP config of
   each schedule, with the servers' tokens; it was readable by every user of
   the Mac. It is now written readable by the owner only, and an older file is
