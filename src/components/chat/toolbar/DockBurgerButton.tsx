@@ -1,3 +1,4 @@
+import { formatUsagePair } from '@/lib/usage-pair'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Archive,
@@ -50,18 +51,7 @@ interface DockBurgerButtonProps {
   className?: string
 }
 
-function formatUsagePair(
-  session: number | null | undefined,
-  weekly: number | null | undefined
-) {
-  const sessionText = session == null ? '--' : `${Math.round(session)}`
-  const weeklyText = weekly == null ? '--' : `${Math.round(weekly)}`
-  return `${sessionText}|${weeklyText}%`
-}
-
-export function DockBurgerButton({
-  className,
-}: DockBurgerButtonProps = {}) {
+export function DockBurgerButton({ className }: DockBurgerButtonProps = {}) {
   const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
 

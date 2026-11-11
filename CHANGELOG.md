@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **No "--" for a missing 5-hour limit.** The floating dock and the burger
+  menu showed "--|93%" for accounts without a 5-hour limit (verified Ultra).
+  They now show "93%" (#126).
 - **Check for Updates always shows its answer.** The answer was a toast,
   which did not appear on two machines, so the check looked dead. It is now a
   dialog: "You are running the latest version (…)", the error with its cause,
