@@ -58,7 +58,7 @@ export function dismissTransientUi(): void {
     contextViewerOpen: false,
     featureTourOpen: false,
     jeanMcpIntroOpen: false,
-    chatSearchOpen: false,
+    chatSearchBySession: {},
     githubDashboardOpen: false,
     viewingFilePath: null,
     // App update prompt is non-critical during connection recovery.

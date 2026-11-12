@@ -890,13 +890,9 @@ function executeKeybindingAction(
       break
     case 'search_chat': {
       logger.debug('Keybinding: search_chat')
-      const uiStoreSearch = useUIStore.getState()
-      if (!uiStoreSearch.chatSearchOpen) {
-        uiStoreSearch.setChatSearchOpen(true)
-      } else {
-        // If open, dispatch event so the component can decide to close or re-focus
-        window.dispatchEvent(new CustomEvent('chat-search-toggle'))
-      }
+      // The mounted find bar opens, re-focuses or closes itself for its
+      // own session (state is per session).
+      window.dispatchEvent(new CustomEvent('chat-search-toggle'))
       break
     }
     case 'open_github_dashboard':

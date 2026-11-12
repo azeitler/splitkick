@@ -1324,6 +1324,13 @@ export function ChatWindow({
   // Review sidebar panel ref for imperative collapse/expand
   const reviewPanelRef = useRef<ImperativePanelHandle>(null)
 
+  // In-chat find bar on a match: the view stays on it (no auto-scroll).
+  const findBarHoldsMatch = useUIStore(state =>
+    deferredSessionId
+      ? (state.chatSearchBySession[deferredSessionId]?.matchCount ?? 0) > 0
+      : false
+  )
+
   // Scroll management hook - handles scroll state and callbacks
   const {
     scrollViewportRef,
@@ -1345,6 +1352,7 @@ export function ChatWindow({
     contentReady:
       !isLoading && !isSessionsLoading && !isSessionSwitching && !!session,
     isSending,
+    holdPosition: findBarHoldsMatch,
   })
 
   // Keep the tail visible when the soft keyboard shrinks the message area.
@@ -1354,6 +1362,8 @@ export function ChatWindow({
   isAtBottomForKeyboardRef.current = isAtBottom
   useEffect(() => {
     if (!keyboardOpen || !isAtBottomForKeyboardRef.current) return
+    // Focusing the find bar opens the keyboard too; do not pull to the tail.
+    if (document.activeElement?.closest('[data-chat-search-bar]')) return
     const timer = setTimeout(() => scrollToBottom(), 50)
     return () => clearTimeout(timer)
   }, [keyboardOpen, scrollToBottom])
@@ -3195,7 +3205,13 @@ export function ChatWindow({
                           )}
                         </div>
                       )}
-                      <ChatSearchBar scrollContainerRef={scrollViewportRef} />
+                      {deferredSessionId && (
+                        <ChatSearchBar
+                          key={deferredSessionId}
+                          sessionId={deferredSessionId}
+                          scrollContainerRef={scrollViewportRef}
+                        />
+                      )}
                       {/* Bottom fade gradient so messages don't hard-cut at the input area */}
                       <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
                       <ScrollArea
@@ -3364,7 +3380,9 @@ export function ChatWindow({
                                     areQuestionsSkipped={areQuestionsSkipped}
                                     isFindingFixed={isFindingFixed}
                                     onCopyToInput={handleCopyToInput}
-                                    shouldScrollToBottom={isAtBottom}
+                                    shouldScrollToBottom={
+                                      isAtBottom && !findBarHoldsMatch
+                                    }
                                     onScrollToBottomHandled={
                                       handleScrollToBottomHandled
                                     }
@@ -3444,7 +3462,9 @@ export function ChatWindow({
                                     areQuestionsSkipped={areQuestionsSkipped}
                                     isFindingFixed={isFindingFixed}
                                     onCopyToInput={handleCopyToInput}
-                                    shouldScrollToBottom={isAtBottom}
+                                    shouldScrollToBottom={
+                                      isAtBottom && !findBarHoldsMatch
+                                    }
                                     onScrollToBottomHandled={
                                       handleScrollToBottomHandled
                                     }

@@ -53,6 +53,7 @@ interface SetupHookOptions {
   contentReady?: boolean
   messages?: ChatMessage[]
   scrollHeight?: number
+  holdPosition?: boolean
 }
 
 function makeMessages(count: number): ChatMessage[] {
@@ -82,6 +83,7 @@ function setupHook({
   contentReady = true,
   messages = [],
   scrollHeight = 2000,
+  holdPosition = false,
 }: SetupHookOptions = {}) {
   const virtualizedListRef = { current: null }
   // Keep latest values for rerenderSession defaults
@@ -90,17 +92,20 @@ function setupHook({
   let currentMessages = messages
   let currentSending = isSending
   let currentScrollHeight = scrollHeight
+  let currentHold = holdPosition
 
   function TestHarness({
     sessionId,
     ready,
     msgs,
     sending,
+    hold,
   }: {
     sessionId: string
     ready: boolean
     msgs: ChatMessage[]
     sending: boolean
+    hold: boolean
   }) {
     const { isAtBottom, scrollViewportRef, handleScroll } = useScrollManagement(
       {
@@ -109,6 +114,7 @@ function setupHook({
         activeSessionId: sessionId,
         contentReady: ready,
         isSending: sending,
+        holdPosition: hold,
       }
     )
 
@@ -137,6 +143,7 @@ function setupHook({
       ready={contentReady}
       msgs={messages}
       sending={isSending}
+      hold={holdPosition}
     />
   )
   const viewport = renderResult.getByTestId('viewport')
@@ -156,18 +163,21 @@ function setupHook({
         ready: boolean
         msgs: ChatMessage[]
         sending: boolean
+        hold: boolean
       }>
     ) => {
       currentSessionId = next.sessionId ?? currentSessionId
       currentReady = next.ready ?? currentReady
       currentMessages = next.msgs ?? currentMessages
       currentSending = next.sending ?? currentSending
+      currentHold = next.hold ?? currentHold
       renderResult.rerender(
         <TestHarness
           sessionId={currentSessionId}
           ready={currentReady}
           msgs={currentMessages}
           sending={currentSending}
+          hold={currentHold}
         />
       )
     },
@@ -284,6 +294,38 @@ describe('useScrollManagement streaming auto-scroll', () => {
     await triggerResize()
 
     expect(viewport.scrollTop).toBe(2000)
+  })
+
+  it('does not follow the streaming tail while the find bar holds a match', async () => {
+    isMobile = true
+    const { viewport, rerenderSession } = setupHook()
+    // Find bar scrolls to a match programmatically (no wheel/touch gesture).
+    rerenderSession({ hold: true })
+    viewport.scrollTop = 500
+    await triggerResize()
+
+    expect(viewport.scrollTop).toBe(500)
+  })
+
+  it('does not pin to the bottom when a turn ends while the find bar holds a match', async () => {
+    isMobile = true
+    const { viewport, rerenderSession } = setupHook({ holdPosition: true })
+    viewport.scrollTop = 500
+    await act(async () => {
+      rerenderSession({ sending: false })
+    })
+
+    expect(viewport.scrollTop).toBe(500)
+  })
+
+  it('does not jump to the tail after the find bar closes', async () => {
+    isMobile = true
+    const { viewport, rerenderSession } = setupHook({ holdPosition: true })
+    viewport.scrollTop = 500
+    rerenderSession({ hold: false })
+    await triggerResize()
+
+    expect(viewport.scrollTop).toBe(500)
   })
 
   it('keeps non-scrollable chats at bottom after upward wheel gestures', () => {
