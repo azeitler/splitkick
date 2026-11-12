@@ -7,25 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.15] - 2026-11-13
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **"Edit connection" works when a remote is unreachable.** The "Couldn't
   connect" screen replaces the app, including the sidebar where the Server
   connections dialog lives, so its "Edit connection" button did nothing. The
   screen now opens the connection's settings.
-
-### Changed
-
-- **Remote install is off for now.** Server connections and the onboarding
-  no longer offer "Install via SSH"; a remote is added with its Web Access
-  URL. The install code stays and can be turned back on.
-
-## [1.5.15] - 2026-11-12
-
-Built on Jean 0.1.73.
-
-### Fixed
-
 - **Notifications show again in the desktop app, and updates can be
   installed (#135).** Since 1.5.9 every toast of the desktop app sat below
   the bottom edge of the window: the app's security policy blocked the
@@ -50,6 +41,9 @@ Built on Jean 0.1.73.
 
 ### Changed
 
+- **Remote install is off for now.** Server connections and the onboarding
+  no longer offer "Install via SSH"; a remote is added with its Web Access
+  URL. The install code stays and can be turned back on.
 - **Find in chat is per session.** Each session keeps its own find bar:
   switching to another session hides it, and coming back shows the same
   search on the same match. Esc or × closes it for that session only.
