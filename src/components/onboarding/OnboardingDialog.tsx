@@ -8,6 +8,7 @@
 /* eslint-disable no-console */
 const dbg = (...args: unknown[]) => console.debug('[ONBOARDING]', ...args)
 
+import { REMOTE_SERVER_ENABLED } from '@/lib/remote-install'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { loginArgsForBackend } from '@/lib/cli-auth'
@@ -2477,15 +2478,27 @@ function OnboardingDialogContent() {
     },
   })
 
-  const continueAfterLocalChoice = useCallback(() => {
-    if (isServerWindows() && preferences && !preferences.wsl_mode_chosen) {
-      dbg('local chosen → wsl-setup')
-      setStep('wsl-setup')
-      return
-    }
-    dbg('local chosen → backend-select')
-    setStep('backend-select')
-  }, [preferences, setStep])
+  const continueAfterLocalChoice = useCallback(
+    (options?: { replace?: boolean }) => {
+      if (isServerWindows() && preferences && !preferences.wsl_mode_chosen) {
+        dbg('local chosen → wsl-setup')
+        setStep('wsl-setup', options)
+        return
+      }
+      dbg('local chosen → backend-select')
+      setStep('backend-select', options)
+    },
+    [preferences, setStep]
+  )
+
+  // With the remote server off, "Local or Remote" has nothing to choose:
+  // continue as Local. Replace the history entry, so Back does not loop.
+  useEffect(() => {
+    if (REMOTE_SERVER_ENABLED || step !== 'usage-mode') return
+    // On Windows the WSL choice depends on the preferences: wait for them.
+    if (isServerWindows() && !preferences) return
+    continueAfterLocalChoice({ replace: true })
+  }, [step, preferences, continueAfterLocalChoice])
 
   const handleUsageModeSelect = useCallback(
     (mode: OnboardingUsageMode) => {
@@ -2510,7 +2523,7 @@ function OnboardingDialogContent() {
 
     if (dialogStep === 'remote-setup') {
       return {
-        title: 'Connect to a remote Jean server',
+        title: 'Connect to another Splitkick',
         description: 'Connect with the Web Access URL of the other Splitkick.',
       }
     }

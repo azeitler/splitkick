@@ -8,6 +8,14 @@ import type * as EnvironmentModule from '@/lib/environment'
 import type * as CliSetupComponentsModule from './CliSetupComponents'
 import { AI_BACKENDS, CursorSetupState } from './OnboardingDialog'
 
+const remoteServer = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/lib/remote-install', () => ({
+  REMOTE_INSTALL_ENABLED: true,
+  get REMOTE_SERVER_ENABLED() {
+    return remoteServer.enabled
+  },
+}))
+
 const mocks = vi.hoisted(() => ({
   nativeApp: true,
   cursorInstalled: false,
@@ -216,6 +224,7 @@ vi.mock('./CliSetupComponents', async importOriginal => {
 
 describe('OnboardingDialog backends', () => {
   beforeEach(() => {
+    remoteServer.enabled = true
     mocks.nativeApp = true
     mocks.cursorInstalled = false
     mocks.cursorAuthenticated = false
@@ -275,6 +284,20 @@ describe('OnboardingDialog backends', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Local/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Remote/i })).toBeInTheDocument()
+  })
+
+  it('goes straight to the local setup while the remote server is off', async () => {
+    remoteServer.enabled = false
+    const { OnboardingDialog } = await import('./OnboardingDialog')
+    render(<OnboardingDialog />)
+
+    expect(
+      await screen.findByText(/Select additional AI backends to install/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('How will you use Splitkick?')
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Jean server/i)).not.toBeInTheDocument()
   })
 
   it('skips local vs remote selection in Jean Server Web Access', async () => {
