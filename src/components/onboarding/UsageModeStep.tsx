@@ -2,7 +2,7 @@
  * First onboarding step: local Jean vs remote control.
  *
  * Local continues into WSL (Windows) / CLI setup.
- * Remote continues into jean-server install or existing Web Access URL.
+ * Remote continues into the Web Access URL of another Splitkick.
  */
 
 import { PRODUCT_NAME } from '@/lib/build-info'
@@ -26,8 +26,8 @@ export function UsageModeStep({ onSelect }: UsageModeStepProps) {
           How will you use {PRODUCT_NAME}?
         </h3>
         <p className="text-muted-foreground text-sm">
-          Use this computer for development, or connect to a Jean server
-          elsewhere. You can add more connections later from the title bar.
+          Use this computer for development, or connect to another Splitkick
+          elsewhere. You can add more connections later in Server connections.
         </p>
       </div>
 

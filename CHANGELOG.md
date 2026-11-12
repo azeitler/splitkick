@@ -49,6 +49,10 @@ Built on Jean 0.1.73.
 
 ### Changed
 
+- **No server choice in the first-start setup for now.** The onboarding no
+  longer asks "Local or Remote" or mentions a Jean server; it goes straight
+  to the local setup. Remote connections can still be added later in Server
+  connections.
 - **Remote install is off for now.** Server connections and the onboarding
   no longer offer "Install via SSH"; a remote is added with its Web Access
   URL. The install code stays and can be turned back on.
