@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.15] - 2026-11-12
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **Notifications show again in the desktop app, and updates can be
@@ -22,8 +26,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   To get this version from 1.5.9 to 1.5.14: after the download, restart
   with the Updates button in the sidebar footer (or Check for Updates… in
   1.5.13 and 1.5.14), or install the DMG.
-- **A host update keeps its button in the toolbar,** as its notification
-  says, also with the sidebar hidden.
+- **A host update keeps its button in the toolbar.** Its notification
+  says so, and the button stays there also with the sidebar hidden.
 
 - **Find in chat stays on the match.** The chat no longer jumps back to the
   first match or to the bottom while a turn streams, new messages arrive or
@@ -2923,7 +2927,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...HEAD
+[1.5.15]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...splitkick-v1.5.15
 [1.5.14]: https://github.com/azeitler/jean/compare/splitkick-v1.5.13...splitkick-v1.5.14
 [1.5.13]: https://github.com/azeitler/jean/compare/splitkick-v1.5.12...splitkick-v1.5.13
 [1.5.12]: https://github.com/azeitler/jean/compare/splitkick-v1.5.11...splitkick-v1.5.12
