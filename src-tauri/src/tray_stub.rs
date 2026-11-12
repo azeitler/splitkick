@@ -15,3 +15,11 @@ pub(crate) fn has_way_back() -> bool {
 pub(crate) async fn refresh_tray(_app: AppHandle) -> Result<(), String> {
     Ok(())
 }
+
+#[tauri::command]
+pub(crate) async fn set_tray_update_ready(
+    _app: AppHandle,
+    _version: Option<String>,
+) -> Result<(), String> {
+    Ok(())
+}

@@ -12,7 +12,9 @@
  * the UI re-offers "Update available" and can re-download in a loop (#507).
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { isNativeApp } from '@/lib/environment'
+import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { logNativeError, logNativeInfo } from '@/lib/native-log'
 import { notify } from '@/lib/notifications'
@@ -73,6 +75,56 @@ export function resolveInstallPendingAction(state: {
   if (state.updateReadyVersion) return 'relaunch'
   if (state.hasPendingUpdateObject) return 'install'
   return 'noop'
+}
+
+/** localStorage key: the last version the "ready" notification was sent for. */
+export const READY_NOTIFIED_KEY = 'splitkick.update-ready-notified'
+
+/**
+ * The download finished. Record the ready state and open the "Update Ready"
+ * prompt (Restart Now / Later). The restart must never depend on a toast:
+ * from 1.5.9 to 1.5.14 every toast of the desktop app was off screen, so
+ * the only Restart button could not be seen and no update was applied
+ * (#135). Also sends a native notification once per version, and adds
+ * "Restart to update" to the menu bar (tray) menu.
+ */
+export function markAppUpdateReady(version: string): void {
+  const store = useUIStore.getState()
+  store.setIsUpdateInstalling(false)
+  store.setUpdateReadyVersion(version)
+  store.setPendingUpdateVersion(null)
+  store.setUpdateModalVersion(version)
+  logNativeInfo(`Update ${version} downloaded; restart prompt shown`)
+
+  if (readNotifiedVersion() !== version) {
+    writeNotifiedVersion(version)
+    void notify(
+      `${PRODUCT_NAME} ${version} is ready`,
+      'Restart to install it.',
+      { native: true }
+    )
+  }
+  void invoke('set_tray_update_ready', { version }).catch(error => {
+    logger.warn('Failed to add the update to the menu bar icon', {
+      error: String(error),
+    })
+  })
+}
+
+function readNotifiedVersion(): string | null {
+  try {
+    return localStorage.getItem(READY_NOTIFIED_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeNotifiedVersion(version: string): void {
+  try {
+    localStorage.setItem(READY_NOTIFIED_KEY, version)
+  } catch {
+    // Storage may be unavailable; at worst the notification comes again
+  }
 }
 
 /**

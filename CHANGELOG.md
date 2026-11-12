@@ -9,6 +9,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Notifications show again in the desktop app, and updates can be
+  installed (#135).** Since 1.5.9 every toast of the desktop app sat below
+  the bottom edge of the window: the app's security policy blocked the
+  toast styles. Update downloads therefore ended with a Restart button that
+  could not be seen. Toasts are visible again, and a finished download now
+  opens the "Update Ready" prompt (Restart Now / Later), shows "Restart to
+  update" in the toolbar and in the menu bar icon, and sends a system
+  notification once per version. An update that was not installed is
+  offered again at the next start. The updater cannot install on a normal
+  quit: the package is kept only in the running app.
+  To get this version from 1.5.9 to 1.5.14: after the download, restart
+  with the Updates button in the sidebar footer (or Check for Updates… in
+  1.5.13 and 1.5.14), or install the DMG.
+- **A host update keeps its button in the toolbar,** as its notification
+  says, also with the sidebar hidden.
+
 - **Find in chat stays on the match.** The chat no longer jumps back to the
   first match or to the bottom while a turn streams, new messages arrive or
   older messages load. Enter / Shift+Enter (and the arrow keys or buttons)

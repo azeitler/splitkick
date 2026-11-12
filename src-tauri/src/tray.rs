@@ -7,26 +7,30 @@
 //! Windows only: on Linux the tray needs a system library that may be missing.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use chrono::TimeZone;
 use jean_core::{ClaudeAccountUsage, ClaudeUsageSnapshot};
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
-use crate::connection_window::recreate_main_window;
+use crate::connection_window::{recreate_main_window, MAIN_WINDOW};
 use crate::CoreRuntime;
 
 const TRAY_ID: &str = "main";
 const USE_ACCOUNT_PREFIX: &str = "tray-use-account:";
 const REFRESH_SECS: u64 = 300;
+const RESTART_TO_UPDATE_ID: &str = "tray-restart-update";
 
 /// False when the user turned the icon off. Windows has no Dock, so the app
 /// must not stay running there without an icon.
 static TRAY_VISIBLE: AtomicBool = AtomicBool::new(true);
 /// The user chose Quit in the tray, so nothing may keep the app running.
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+/// The app update the main window has downloaded and waits to install (#135).
+static UPDATE_READY: Mutex<Option<String>> = Mutex::new(None);
 
 pub(crate) fn quit_requested() -> bool {
     QUIT_REQUESTED.load(Ordering::SeqCst)
@@ -224,9 +228,24 @@ fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
+fn restart_to_update_label(version: &str) -> String {
+    format!("Restart to update to {version}")
+}
+
 fn build_menu(app: &AppHandle, accounts: &[ClaudeAccountUsage]) -> tauri::Result<Menu<Wry>> {
     let now = now_unix();
     let menu = Menu::new(app)?;
+    let update_ready = UPDATE_READY.lock().ok().and_then(|ready| ready.clone());
+    if let Some(version) = update_ready {
+        menu.append(&MenuItem::with_id(
+            app,
+            RESTART_TO_UPDATE_ID,
+            restart_to_update_label(&version),
+            true,
+            None::<&str>,
+        )?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
     for account in accounts {
         menu.append(&MenuItem::new(
             app,
@@ -367,6 +386,26 @@ fn use_account(app: &AppHandle, account_id: String) {
     });
 }
 
+/// The main window holds the downloaded package, so it installs it and
+/// relaunches, the same as its own "Restart Now".
+fn restart_to_update(app: &AppHandle) {
+    open_window(app);
+    if let Err(error) = app.emit_to(MAIN_WINDOW, "tray-restart-to-update", ()) {
+        log::warn!("Failed to ask the main window to restart for the update: {error}");
+    }
+}
+
+/// The main window reports a downloaded update (`Some`), or that it has none
+/// (`None`, on start). Rebuilds the menu with or without "Restart to update".
+#[tauri::command]
+pub(crate) async fn set_tray_update_ready(
+    app: AppHandle,
+    version: Option<String>,
+) -> Result<(), String> {
+    *UPDATE_READY.lock().map_err(|e| e.to_string())? = version;
+    refresh(&app, false).await
+}
+
 fn quit(app: &AppHandle) {
     if !jean_core::has_nonsurvivable_running_sessions() {
         QUIT_REQUESTED.store(true, Ordering::SeqCst);
@@ -400,6 +439,7 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
             "tray-refresh" => refresh_in_background(app, true),
             "tray-open" => open_window(app),
             "tray-quit" => quit(app),
+            RESTART_TO_UPDATE_ID => restart_to_update(app),
             id => {
                 if let Some(account_id) = id.strip_prefix(USE_ACCOUNT_PREFIX) {
                     use_account(app, account_id.to_string());
@@ -455,6 +495,14 @@ pub(crate) async fn refresh_tray(app: AppHandle) -> Result<(), String> {
 mod tests {
     use super::*;
     use jean_core::{ClaudeUsageLimitSnapshot, ClaudeUsageWindowSnapshot};
+
+    #[test]
+    fn restart_to_update_names_the_version() {
+        assert_eq!(
+            restart_to_update_label("1.5.15"),
+            "Restart to update to 1.5.15"
+        );
+    }
 
     fn window(used_percent: f64) -> Option<ClaudeUsageWindowSnapshot> {
         Some(ClaudeUsageWindowSnapshot {

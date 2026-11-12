@@ -6,11 +6,34 @@ Automatic update checking and installation system using Tauri's updater plugin, 
 
 ### Current Behavior
 
-- Checks for updates 5 seconds after app launch
-- Shows browser `confirm()` dialog when update is available
-- Downloads and installs update in background
-- Offers to restart app when installation completes
-- Fails silently if network issues occur
+- Only the released app (`app.splitkick.desktop`) checks: 5 s after launch,
+  then every 30 minutes (`App.tsx`, `src/lib/app-update.ts`).
+- An update opens the "Update Available" prompt (`UpdateAvailableModal`).
+  Update Now downloads it; a toast shows the progress.
+- When the download is done, `markAppUpdateReady()` opens the same prompt
+  as "Update Ready" (Restart Now / Later), shows "Restart to update" in the
+  window toolbar, adds "Restart to update to X" to the menu bar (tray) menu
+  (`set_tray_update_ready`, `src-tauri/src/tray.rs`), and sends one system
+  notification per version.
+- The package is installed only right before the relaunch
+  (`installAndRelaunch`): a bundle replaced under a running process loses
+  its macOS folder access. It stays in the webview's memory (a private
+  tauri-plugin-updater resource), so it cannot be installed on a normal
+  quit. The next start checks again and offers the update before any new
+  download.
+
+**Rules (#135):**
+
+- Never offer the restart (or any other must-do action) only in a toast.
+  From 1.5.9 to 1.5.14 every toast of the desktop app was off screen and
+  no update could be applied.
+- Keep `"dangerousDisableAssetCspModification": ["style-src"]` in
+  `tauri.conf.json`. Without it Tauri adds a nonce to `style-src` as soon
+  as `index.html` has a `<style>`, the browser then ignores
+  `'unsafe-inline'`, and every `<style>` a library injects (sonner,
+  react-remove-scroll) is blocked. Guards: `src/tauri-csp-config.test.ts`,
+  `e2e/tests/toast-visibility.spec.ts` and `e2e/tests/app-update-flow.spec.ts`
+  (Chromium and WebKit, `bun run test:e2e:release-guards`, run by Preflight).
 
 ### Manual Update Check
 

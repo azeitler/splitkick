@@ -209,6 +209,7 @@ export function UpdateIndicator() {
             window.dispatchEvent(new Event('install-pending-update'))
           }}
           disabled={isInstalling && !readyVersion}
+          data-testid="app-update-indicator"
           className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-default"
         >
           <ArrowUpCircle className="size-3.5" />

@@ -26,6 +26,10 @@ import {
   type KeybindingAction,
 } from '@/types/keybindings'
 import { UnreadBell } from '@/components/unread/UnreadBell'
+import {
+  ServerUpdateIndicator,
+  UpdateIndicator,
+} from '@/components/titlebar/update-indicators'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useContextPanelShown } from '@/components/layout/use-context-panel-shown'
 import { LinuxWindowControls } from '@/components/titlebar/LinuxWindowControls'
@@ -213,6 +217,7 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
   const sidebarVisible = useUIStore(state => state.leftSidebarVisible)
+  const updateReady = useUIStore(state => state.updateReadyVersion !== null)
   const hasTitle = useToolbarHasTitle()
   const titleRef = useToolbarSlotRef('title')
   const subtitleRef = useToolbarSlotRef('subtitle')
@@ -276,6 +281,12 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
       )}
 
       <div {...drag} className="h-full min-w-4 flex-1" />
+
+      {/* A downloaded update keeps its restart in sight, also with the
+          sidebar (and its Updates button) hidden and in zen; so does a host
+          update, which its toast promises (#135). */}
+      {updateReady && <UpdateIndicator />}
+      <ServerUpdateIndicator />
 
       {zenMode ? (
         <>

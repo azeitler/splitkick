@@ -70,6 +70,7 @@ import type { HostInstallPhase } from './store/ui-store'
 import {
   resolveInstallPendingAction,
   describeUpdateCheckFailure,
+  markAppUpdateReady,
   shouldOfferUpdateCheck,
   installAndRelaunch,
   updateChecksEnabledForThisApp,
@@ -317,25 +318,9 @@ function App() {
         // instead of re-downloading.
         downloadedUpdateRef.current = update
         pendingUpdateRef.current = null
-        const store = useUIStore.getState()
-        store.setIsUpdateInstalling(false)
-        store.setUpdateReadyVersion(update.version)
-        store.setUpdateModalVersion(null)
-        store.setPendingUpdateVersion(null)
-
-        toast.success(
-          `Update ${update.version} is ready. Restart to install it.`,
-          {
-            id: toastId,
-            duration: Infinity,
-            action: {
-              label: 'Restart',
-              onClick: () => {
-                void relaunchApp()
-              },
-            },
-          }
-        )
+        // The "Update Ready" prompt carries the restart, not a toast (#135).
+        toast.dismiss(toastId)
+        markAppUpdateReady(update.version)
         return true
       } catch (updateError) {
         const errorStr = String(updateError)
@@ -1512,6 +1497,20 @@ function App() {
     }
     window.addEventListener('install-pending-update', handleInstallPending)
 
+    // "Restart to update" in the menu bar (tray) menu (#135). A new window
+    // has no downloaded package, so it clears a stale entry first.
+    let unlistenTrayRestart: (() => void) | undefined
+    if (isNativeApp() && !isConnectionWindow()) {
+      invoke('set_tray_update_ready', { version: null }).catch(() => {
+        // The icon may be off or missing (Linux)
+      })
+      listen('tray-restart-to-update', () => {
+        window.dispatchEvent(new Event('install-pending-update'))
+      }).then(fn => {
+        unlistenTrayRestart = fn
+      })
+    }
+
     // Listen for update object from manual "Check for Updates" menu
     const handleUpdateAvailable = (e: Event) => {
       pendingUpdateRef.current = (e as CustomEvent).detail
@@ -1726,6 +1725,7 @@ function App() {
       clearInterval(updateInterval)
       window.removeEventListener('install-pending-update', handleInstallPending)
       window.removeEventListener('update-available', handleUpdateAvailable)
+      unlistenTrayRestart?.()
     }
   }, [webBackend])
 

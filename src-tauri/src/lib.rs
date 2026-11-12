@@ -496,6 +496,7 @@ pub fn run() {
             dock::set_dock_badge,
             dock::set_dock_sessions,
             tray::refresh_tray,
+            tray::set_tray_update_ready,
             desktop_commands::get_open_at_login,
             desktop_commands::set_open_at_login,
             desktop_commands::send_native_notification,
