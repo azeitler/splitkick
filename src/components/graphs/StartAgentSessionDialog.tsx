@@ -167,7 +167,7 @@ export function StartAgentSessionForm({
               useUIStore.getState().openAgentEditor(null)
             }}
           >
-            Create one in Settings → Agents
+            Create one from a template in Settings → Agents
           </button>
           .
         </p>

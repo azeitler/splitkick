@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Agent templates.** While no agent exists, Settings → Agents offers four
+  templates to start from: Vision keeper (manage), Project manager (write),
+  Worker (read) and Reviewer (read). A click saves the template as a new
+  agent with its persona prompt, ready to edit. The New Session and Start
+  session dialogs point to them.
+
 ## [1.5.15] - 2026-11-13
 
 Built on Jean 0.1.73.

@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Copy, Play, Plus, Trash2 } from 'lucide-react'
 import {
   AGENT_COLORS,
+  AGENT_TEMPLATES,
   GRAPH_PERMISSIONS,
   PERMISSION_DESCRIPTIONS,
+  profileFromTemplate,
 } from '@/components/graphs/agent-utils'
 import { ServesPicker } from '@/components/graphs/ServesPicker'
 import {
@@ -139,10 +141,41 @@ export function AgentsPane() {
             }}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            No agents yet. An agent is a saved profile: a persona prompt, a
-            graph permission and a default model. Start sessions from it.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              No agents yet. An agent is a saved profile: a persona prompt, a
+              graph permission and a default model. Start sessions from it.
+              Start from a template, then change it as you need.
+            </p>
+            <div
+              className="grid gap-2 sm:grid-cols-2"
+              data-testid="agent-templates"
+            >
+              {AGENT_TEMPLATES.map(template => (
+                <button
+                  key={template.name}
+                  type="button"
+                  disabled={patchPreferences.isPending}
+                  onClick={() => add(profileFromTemplate(template))}
+                  className="flex flex-col gap-1 rounded-md border px-3 py-2 text-left hover:bg-accent/50 disabled:opacity-50"
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <span
+                      className="size-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: template.color }}
+                    />
+                    {template.name}
+                    <span className="ml-auto rounded-full border px-1.5 text-[10px] font-normal text-muted-foreground">
+                      {template.permission}
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {template.summary}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
