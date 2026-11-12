@@ -49,6 +49,28 @@ describe('AgentsPane', () => {
     })
   })
 
+  it('offers templates while no agent exists', async () => {
+    render(<AgentsPane />)
+    expect(screen.getByTestId('agent-templates')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Vision keeper/ }))
+    const saved = mocks.patch.mock.calls[0]?.[0].agent_profiles
+    expect(saved).toEqual([
+      expect.objectContaining({
+        name: 'Vision keeper',
+        permission: 'manage',
+        id: expect.any(String),
+        persona: expect.stringContaining('vision keeper'),
+      }),
+    ])
+    expect(saved[0]).not.toHaveProperty('summary')
+  })
+
+  it('hides the templates once an agent exists', () => {
+    mocks.profiles = [keeper]
+    render(<AgentsPane />)
+    expect(screen.queryByTestId('agent-templates')).not.toBeInTheDocument()
+  })
+
   it('saves edits to the selected agent', async () => {
     mocks.profiles = [keeper]
     render(<AgentsPane />)

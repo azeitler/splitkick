@@ -615,7 +615,7 @@ function AgentChoices({
       {agents.length === 0 ? (
         <div className="text-xs text-muted-foreground">
           No agents yet. An agent gives a session a persona, a graph permission
-          and a default model.
+          and a default model. Edit Agents… offers templates to start from.
         </div>
       ) : (
         <div
