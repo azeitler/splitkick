@@ -2511,8 +2511,7 @@ function OnboardingDialogContent() {
     if (dialogStep === 'remote-setup') {
       return {
         title: 'Connect to a remote Jean server',
-        description:
-          'Install jean-server over SSH, or connect with an existing Web Access URL.',
+        description: 'Connect with the Web Access URL of the other Splitkick.',
       }
     }
 

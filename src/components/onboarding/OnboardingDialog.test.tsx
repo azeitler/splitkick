@@ -299,7 +299,7 @@ describe('OnboardingDialog backends', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(
-      await screen.findByText(/Install jean-server over SSH/i)
+      await screen.findByText(/Web Access URL of the other Splitkick/i)
     ).toBeInTheDocument()
   })
 

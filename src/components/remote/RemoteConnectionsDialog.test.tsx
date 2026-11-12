@@ -3,6 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
 
+const remoteInstall = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/lib/remote-install', () => ({
+  get REMOTE_INSTALL_ENABLED() {
+    return remoteInstall.enabled
+  },
+}))
+
 const {
   addRemoteConnection,
   selectConnection,
@@ -95,6 +102,7 @@ vi.mock('@/lib/transport', () => ({
 
 describe('RemoteConnectionsDialog', () => {
   beforeEach(() => {
+    remoteInstall.enabled = true
     vi.clearAllMocks()
     fetchRemoteServerInfo.mockResolvedValue({
       ok: true,
@@ -365,5 +373,14 @@ describe('RemoteConnectionsDialog', () => {
     expect(
       screen.getByRole('button', { name: 'Save & Connect' })
     ).toBeInTheDocument()
+  })
+
+  it('offers only an existing URL while remote install is off', async () => {
+    remoteInstall.enabled = false
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
+    expect(screen.queryByText('Install via SSH')).toBeNull()
+    expect(screen.queryByText('Install & Connect')).toBeNull()
   })
 })

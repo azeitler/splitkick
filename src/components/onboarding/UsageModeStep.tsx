@@ -63,7 +63,7 @@ export function UsageModeStep({ onSelect }: UsageModeStepProps) {
           <div className="text-center">
             <div className="font-medium">Remote</div>
             <div className="text-muted-foreground mt-1 text-xs">
-              Control a jean-server via SSH install or Web Access URL
+              Control another Splitkick through its Web Access URL
             </div>
           </div>
         </button>
