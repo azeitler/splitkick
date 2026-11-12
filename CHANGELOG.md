@@ -13,6 +13,10 @@ Built on Jean 0.1.73.
 
 ### Fixed
 
+- **"Edit connection" works when a remote is unreachable.** The "Couldn't
+  connect" screen replaces the app, including the sidebar where the Server
+  connections dialog lives, so its "Edit connection" button did nothing. The
+  screen now opens the connection's settings.
 - **Notifications show again in the desktop app, and updates can be
   installed (#135).** Since 1.5.9 every toast of the desktop app sat below
   the bottom edge of the window: the app's security policy blocked the

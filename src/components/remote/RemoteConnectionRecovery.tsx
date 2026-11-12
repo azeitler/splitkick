@@ -13,6 +13,7 @@ import { destroyAppWindow } from '@/lib/window-close'
 import { dismissTransientUi } from '@/lib/dismiss-transient-ui'
 import { isSsoProxyMessage } from '@/lib/remote-version'
 import { reloadApp } from '@/lib/web-reload-log'
+import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
 
 /** A reload keeps the query string, so a connection window stays pinned to
  * `?connection=<id>` across every retry. */
@@ -90,6 +91,9 @@ export function RemoteConnectionRecovery({
           </Button>
         </div>
       </div>
+      {/* This screen replaces the app and its sidebar, where the dialog
+          normally lives; without this copy "Edit connection" did nothing. */}
+      <RemoteConnectionsDialog showTrigger={false} />
     </div>
   )
 }

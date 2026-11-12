@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
@@ -382,5 +382,26 @@ describe('RemoteConnectionsDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     expect(screen.queryByText('Install via SSH')).toBeNull()
     expect(screen.queryByText('Install & Connect')).toBeNull()
+  })
+
+  it('opens the edit form without its button (connection recovery screen)', async () => {
+    connections.list = [
+      { id: 'remote-1', name: 'Lab', url: 'https://lab.example', token: 'tok' },
+    ]
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} showTrigger={false} />)
+    expect(
+      screen.queryByRole('button', { name: 'Server connections' })
+    ).toBeNull()
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('open-remote-connections', {
+          detail: { id: 'remote-1' },
+        })
+      )
+    })
+
+    expect(await screen.findByDisplayValue('Lab')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('https://lab.example')).toBeInTheDocument()
   })
 })
