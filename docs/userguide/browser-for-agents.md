@@ -5,7 +5,7 @@ forms. Splitkick adds the browser as an MCP server to every CLI you installed
 (Claude, Codex, OpenCode, Cursor, Grok, Kimi, Antigravity), so you do not edit
 their config files yourself.
 
-Open **Settings → MCP Servers → Browser for agents** and choose an engine.
+Open **Settings → Web Browser → Browser for agents** and choose an engine.
 
 | Engine                          | What the agent drives                                                                                      | Good for                                           |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -66,3 +66,10 @@ other tool needs it.
 In Web Access, and in a desktop window connected to another instance, the
 setting is read-only. You see the engine and whether a token is saved, but not
 the token. Change the engine in the desktop app on the host.
+
+## Claude in Chrome
+
+The same pane has a second switch, **Chrome browser integration**. It adds
+`--chrome` to Claude runs, so Claude uses Anthropic's Claude in Chrome
+extension (beta). Only Claude uses it, and it is off by default. Use Browser
+for agents instead: it works for every CLI.

@@ -72,7 +72,7 @@ async function openSection(page: Page, desktop = true) {
   await footer.getByRole('button', { name: 'Settings' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 3000 })
-  await dialog.getByRole('button', { name: 'MCP Servers' }).click()
+  await dialog.getByRole('button', { name: 'Web Browser' }).click()
   const section = dialog.locator('#pref-mcp-section-agent-browser')
   await expect(section.getByText('Browser for agents')).toBeVisible()
   await section.scrollIntoViewIfNeeded()
@@ -105,6 +105,17 @@ test.describe('Browser for agents', () => {
         section.getByText(/agent-browser 0\.9\.1 installed/)
       ).toBeVisible()
       await capture(section, 'browser-engine-agent-browser')
+
+      // Claude in Chrome shares the Web Browser pane and is off by default.
+      const chrome = mockPage.locator('#pref-web-browser-section-claude-chrome')
+      await expect(
+        chrome.getByRole('switch', { name: 'Chrome browser integration' })
+      ).not.toBeChecked()
+      await expect(chrome.getByTestId('claude-chrome-hint')).toBeVisible()
+      await capture(
+        mockPage.locator('#pref-pane-web-browser'),
+        'web-browser-pane'
+      )
     })
   })
 

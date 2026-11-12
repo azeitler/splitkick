@@ -1,6 +1,6 @@
 # Browser for agents (#104)
 
-Settings → MCP Servers → **Browser for agents** picks which browser MCP server
+Settings → **Web Browser** → **Browser for agents** picks which browser MCP server
 Splitkick writes into the CLI backends. User guide:
 `docs/userguide/browser-for-agents.md`. Agent Browser details:
 `docs/developer/server-agent-browser.md`.

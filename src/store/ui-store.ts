@@ -42,6 +42,7 @@ export type PreferencePane =
   | 'integrations'
   | 'experimental'
   | 'web-access'
+  | 'web-browser'
   | 'opinionated'
 
 /** Presets of the "Start session from agent" dialog. */
