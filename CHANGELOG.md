@@ -37,6 +37,9 @@ Built on Jean 0.1.73.
 
 ### Changed
 
+- **Remote install is off for now.** Server connections and the onboarding
+  no longer offer "Install via SSH"; a remote is added with its Web Access
+  URL. The install code stays and can be turned back on.
 - **Find in chat is per session.** Each session keeps its own find bar:
   switching to another session hides it, and coming back shows the same
   search on the same match. Esc or × closes it for that session only.

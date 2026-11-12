@@ -4,6 +4,7 @@
  * (if needed) continues against the remote.
  */
 
+import { REMOTE_INSTALL_ENABLED } from '@/lib/remote-install'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { useEffect, useState, type FormEvent } from 'react'
 import { HardDriveDownload, Link2, Loader2 } from 'lucide-react'
@@ -55,7 +56,9 @@ export function RemoteSetupStep({
   reloadApp = () => reloadWebApp('remote-setup'),
 }: RemoteSetupStepProps) {
   const native = isNativeApp()
-  const [addMode, setAddMode] = useState<AddMode>(native ? 'install' : 'url')
+  const [addMode, setAddMode] = useState<AddMode>(
+    native && REMOTE_INSTALL_ENABLED ? 'install' : 'url'
+  )
   const [form, setForm] = useState(EMPTY_URL_FORM)
   const [installForm, setInstallForm] = useState(EMPTY_INSTALL_FORM)
   const [error, setError] = useState<string | null>(null)
@@ -202,7 +205,7 @@ export function RemoteSetupStep({
 
   const busy = connecting || installing
 
-  if (addMode === 'install' && native) {
+  if (addMode === 'install' && native && REMOTE_INSTALL_ENABLED) {
     return (
       <form className="space-y-4" onSubmit={handleInstallSubmit}>
         <AddModeTabs
@@ -338,7 +341,7 @@ export function RemoteSetupStep({
 
   return (
     <form className="space-y-4" onSubmit={handleUrlSubmit}>
-      {native && (
+      {native && REMOTE_INSTALL_ENABLED && (
         <AddModeTabs
           mode={addMode}
           onChange={mode => {

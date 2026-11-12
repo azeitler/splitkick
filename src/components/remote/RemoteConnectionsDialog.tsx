@@ -1,3 +1,4 @@
+import { REMOTE_INSTALL_ENABLED } from '@/lib/remote-install'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
@@ -257,7 +258,7 @@ export function RemoteConnectionsDialog({
 
   const beginAdd = () => {
     setEditingId('new')
-    setAddMode(native ? 'install' : 'url')
+    setAddMode(native && REMOTE_INSTALL_ENABLED ? 'install' : 'url')
     setForm(EMPTY_URL_FORM)
     setInstallForm(EMPTY_INSTALL_FORM)
     setError(null)
@@ -524,7 +525,7 @@ export function RemoteConnectionsDialog({
         {editingId ? (
           showInstallForm ? (
             <form className="space-y-4" onSubmit={handleInstallSubmit}>
-              {native && (
+              {native && REMOTE_INSTALL_ENABLED && (
                 <AddModeTabs
                   mode={addMode}
                   onChange={mode => {
@@ -666,7 +667,7 @@ export function RemoteConnectionsDialog({
             </form>
           ) : (
             <form className="space-y-4" onSubmit={handleUrlSubmit}>
-              {isNew && native && (
+              {isNew && native && REMOTE_INSTALL_ENABLED && (
                 <AddModeTabs
                   mode={addMode}
                   onChange={mode => {

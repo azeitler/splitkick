@@ -2,6 +2,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteSetupStep } from './RemoteSetupStep'
 
+const remoteInstall = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/lib/remote-install', () => ({
+  get REMOTE_INSTALL_ENABLED() {
+    return remoteInstall.enabled
+  },
+}))
+
 const {
   addRemoteConnection,
   selectConnection,
@@ -71,6 +78,7 @@ vi.mock('@/lib/transport', () => ({
 
 describe('RemoteSetupStep', () => {
   beforeEach(() => {
+    remoteInstall.enabled = true
     vi.clearAllMocks()
     isNativeApp.mockReturnValue(true)
     fetchRemoteServerInfo.mockResolvedValue({
@@ -183,5 +191,12 @@ describe('RemoteSetupStep', () => {
       'open_connection_window',
       expect.anything()
     )
+  })
+
+  it('offers only an existing URL while remote install is off', () => {
+    remoteInstall.enabled = false
+    render(<RemoteSetupStep reloadApp={vi.fn()} />)
+    expect(screen.queryByText('Install via SSH')).toBeNull()
+    expect(screen.queryByText('Install & Connect')).toBeNull()
   })
 })
