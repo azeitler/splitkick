@@ -20,6 +20,13 @@ export default defineConfig({
       name: 'chromium',
       use: { browserName: 'chromium' },
     },
+    // WebKit is the desktop app's engine on macOS. Specs that guard what only
+    // the desktop app showed wrong run here too (#135).
+    {
+      name: 'webkit',
+      use: { browserName: 'webkit' },
+      testMatch: /(toast-visibility|app-update-flow)\.spec\.ts$/,
+    },
   ],
 
   webServer: {
