@@ -97,8 +97,15 @@ type VersionState =
 
 export function RemoteConnectionsDialog({
   reloadApp = () => reloadWebApp('connection-switch'),
+  showTrigger = true,
 }: {
   reloadApp?: () => void
+  /**
+   * False mounts only the dialog, opened by the `open-remote-connections`
+   * event: the connection-recovery screen replaces the app (and the sidebar
+   * button), so it mounts its own copy for "Edit connection".
+   */
+  showTrigger?: boolean
 }) {
   const connections = useRemoteConnections()
   // The connection this window drives. On the desktop this is `local` in the
@@ -495,24 +502,26 @@ export function RemoteConnectionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            <Button
-              aria-label="Server connections"
-              variant="ghost"
-              size="icon"
-              className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-            >
-              <Server className="size-3.5" />
-              {remoteActive && (
-                <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
-              )}
-            </Button>
-          </DialogTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Server connections</TooltipContent>
-      </Tooltip>
+      {showTrigger && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button
+                aria-label="Server connections"
+                variant="ghost"
+                size="icon"
+                className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+              >
+                <Server className="size-3.5" />
+                {remoteActive && (
+                  <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
+                )}
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Server connections</TooltipContent>
+        </Tooltip>
+      )}
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>

@@ -27,6 +27,34 @@ vi.mock('@/lib/remote-connections', () => ({
   selectConnection: vi.fn(),
 }))
 
+// The real dialog needs the full connection store; a stub that answers the
+// open event proves the recovery screen mounts one.
+vi.mock('./RemoteConnectionsDialog', async () => {
+  const { useEffect, useState } = await import('react')
+  return {
+    RemoteConnectionsDialog: ({ showTrigger }: { showTrigger?: boolean }) => {
+      const [openId, setOpenId] = useState<string | null>(null)
+      useEffect(() => {
+        const onOpen = (event: Event) =>
+          setOpenId(
+            (event as CustomEvent<{ id?: string }>).detail?.id ?? 'none'
+          )
+        window.addEventListener('open-remote-connections', onOpen)
+        return () =>
+          window.removeEventListener('open-remote-connections', onOpen)
+      }, [])
+      return (
+        <div
+          data-testid="connections-dialog"
+          data-trigger={String(showTrigger)}
+        >
+          {openId ? `editing ${openId}` : null}
+        </div>
+      )
+    },
+  }
+})
+
 describe('RemoteConnectionRecovery', () => {
   beforeEach(() => {
     dismissTransientUi.mockClear()
@@ -119,5 +147,24 @@ describe('RemoteConnectionRecovery', () => {
 
     unmount()
     setIntervalSpy.mockRestore()
+  })
+
+  it('opens the connection editor from "Edit connection"', () => {
+    render(
+      <RemoteConnectionRecovery
+        connection={{
+          id: 'remote-1',
+          name: 'Lab',
+          url: 'https://lab.example',
+          token: 'tok',
+        }}
+        error="Connection to the selected Jean server was lost."
+      />
+    )
+
+    const dialog = screen.getByTestId('connections-dialog')
+    expect(dialog).toHaveAttribute('data-trigger', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit connection' }))
+    expect(dialog).toHaveTextContent('editing remote-1')
   })
 })
