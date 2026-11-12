@@ -3414,7 +3414,7 @@ function PrerequisiteSetupState({
           Git is required by {PRODUCT_NAME}. Node.js and npm are shared
           prerequisites for
           {PRODUCT_NAME}-managed npm tools such as Grok, PI, Command Code, Kimi
-          Code, agent-browser, and Playwright MCP (Settings → MCP Servers →
+          Code, agent-browser, and Playwright MCP (Settings → Web Browser →
           Browser for agents).
         </p>
       </div>

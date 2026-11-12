@@ -15,6 +15,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   agent with its persona prompt, ready to edit. The New Session and Start
   session dialogs point to them.
 
+### Changed
+
+- **Settings → Web Browser.** A new pane holds Browser for agents (was in MCP
+  Servers) and Claude in Chrome (was in Claude). Claude in Chrome is off by
+  default for new installs, with a hint to use Browser for agents.
+
 ## [1.5.15] - 2026-11-13
 
 Built on Jean 0.1.73.

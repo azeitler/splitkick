@@ -10,6 +10,7 @@ import {
   Puzzle,
   FlaskConical,
   Globe,
+  AppWindow,
   Github,
   Rabbit,
   Sparkles,
@@ -183,6 +184,12 @@ export const navigationEntries: NavigationEntry[] = [
     name: 'Web Access',
     icon: Globe,
     // On a phone the pane shows only "This device" (reload log, app cache).
+  },
+  {
+    type: 'item',
+    id: 'web-browser',
+    name: 'Web Browser',
+    icon: AppWindow,
   },
   {
     type: 'item',

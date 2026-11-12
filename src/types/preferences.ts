@@ -2517,7 +2517,7 @@ export const defaultPreferences: AppPreferences = {
   has_seen_jean_mcp_intro: false, // Default: not seen
   jean_import_offer_dismissed: false, // Default: offer the import
   has_seen_external_display_zoom_tip: false, // Default: show tip once on 1× + non-100% zoom
-  chrome_enabled: true, // Default: enabled
+  chrome_enabled: false, // Default: off (Browser for agents is recommended)
   zoom_level: ZOOM_LEVEL_DEFAULT,
   mobile_zoom_level: ZOOM_LEVEL_DEFAULT,
   sync_zoom_levels: true,

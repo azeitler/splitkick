@@ -81,6 +81,9 @@ vi.mock('./panes/ExperimentalPane', () => ({
 vi.mock('./panes/WebAccessPane', () => ({
   WebAccessPane: () => <div>Web access pane</div>,
 }))
+vi.mock('./panes/WebBrowserPane', () => ({
+  WebBrowserPane: () => <div>Web browser pane</div>,
+}))
 
 describe('PreferencesDialog', () => {
   beforeEach(() => {
@@ -160,6 +163,7 @@ describe('PreferencesDialog', () => {
       'Opinionated',
       'Providers',
       'Web Access',
+      'Web Browser',
       'MCP Servers',
       'Integrations',
       'Usage',

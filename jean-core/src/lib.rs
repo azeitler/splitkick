@@ -746,7 +746,7 @@ fn default_keep_ai_servers_warm() -> bool {
 }
 
 fn default_chrome_enabled() -> bool {
-    true // Enabled by default
+    false // Off by default; Browser for agents is the recommended browser
 }
 
 fn default_auto_update_ai_backends() -> bool {
@@ -986,6 +986,16 @@ mod tests {
         let mut preferences = AppPreferences::default();
         preferences.theme = "dark".to_string();
         preferences.favorite_models = vec!["codex:gpt-5.6-sol".to_string()];
+    #[test]
+    fn claude_in_chrome_is_off_by_default_and_keeps_a_saved_value() {
+        assert!(!AppPreferences::default().chrome_enabled);
+        let fresh: AppPreferences = serde_json::from_value(json!({ "theme": "system" })).unwrap();
+        assert!(!fresh.chrome_enabled);
+        let saved: AppPreferences =
+            serde_json::from_value(json!({ "theme": "system", "chrome_enabled": true })).unwrap();
+        assert!(saved.chrome_enabled);
+    }
+
         preferences.linear_api_key = Some("secret".to_string());
         preferences.http_server_token = Some("token".to_string());
 

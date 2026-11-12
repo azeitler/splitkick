@@ -11,6 +11,7 @@ import {
   Puzzle,
   FlaskConical,
   Globe,
+  AppWindow,
   Github,
   Rabbit,
   Sparkles,
@@ -88,6 +89,7 @@ import { UsagePane } from './panes/UsagePane'
 import { IntegrationsPane } from './panes/IntegrationsPane'
 import { ExperimentalPane } from './panes/ExperimentalPane'
 import { WebAccessPane } from './panes/WebAccessPane'
+import { WebBrowserPane } from './panes/WebBrowserPane'
 import { OpinionatedPane } from './panes/OpinionatedPane'
 import {
   searchPreferenceEntries,
@@ -125,6 +127,7 @@ const paneIconMap: Record<PreferencePane, LucideIcon> = {
   integrations: Puzzle,
   experimental: FlaskConical,
   'web-access': Globe,
+  'web-browser': AppWindow,
 }
 
 const getPaneTitle = (pane: PreferencePane): string => {
@@ -171,6 +174,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Opinionated'
     case 'web-access':
       return 'Web Access'
+    case 'web-browser':
+      return 'Web Browser'
     default:
       return 'General'
   }
@@ -784,6 +789,11 @@ export function PreferencesDialog() {
               {activePane === 'agents' && (
                 <div id="pref-pane-agents" className="min-w-0 max-w-full">
                   <AgentsPane />
+                </div>
+              )}
+              {activePane === 'web-browser' && (
+                <div id="pref-pane-web-browser" className="min-w-0 max-w-full">
+                  <WebBrowserPane />
                 </div>
               )}
               {activePane === 'mcp-servers' && (

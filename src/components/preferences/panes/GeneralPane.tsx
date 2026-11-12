@@ -3142,22 +3142,6 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 </Select>
               </InlineField>
             )}
-
-            <InlineField
-              label="Chrome browser integration"
-              description="Enable browser automation via Chrome extension"
-            >
-              <Switch
-                checked={preferences?.chrome_enabled ?? true}
-                onCheckedChange={checked => {
-                  if (preferences) {
-                    patchPreferences.mutate({
-                      chrome_enabled: checked,
-                    })
-                  }
-                }}
-              />
-            </InlineField>
           </div>
         </SettingsSection>
       )}

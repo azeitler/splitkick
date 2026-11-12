@@ -112,7 +112,7 @@ MCP entry shape (Claude):
 
 ## UI
 
-Settings → **MCP Servers** → **Browser for agents** → engine **Agent Browser**
+Settings → **Web Browser** → **Browser for agents** → engine **Agent Browser**
 (`BrowserForAgentsSection.tsx` + `AgentBrowserPanel.tsx`; engines: `browser-for-agents.md`):
 
 - Status (installed / missing binary; Jean-managed vs PATH)
@@ -165,7 +165,7 @@ Settings → **MCP Servers** → **Browser for agents** → engine **Agent Brows
 
 ## Operator quick start
 
-**Preferred:** Settings → **MCP Servers** → **Agent Browser** → **Install agent-browser**
+**Preferred:** Settings → **Web Browser** → **Browser for agents** → **Agent Browser** → **Install agent-browser**
 (requires `npm` on the server PATH; installs under app data and runs Chromium setup).
 
 Manual fallback:
