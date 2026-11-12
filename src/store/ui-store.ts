@@ -137,6 +137,15 @@ export const CONTEXT_PANEL_TABS: readonly ContextPanelTab[] = [
   'artifacts',
 ]
 
+/** Find-bar state of one session (`chatSearchBySession`). */
+export interface ChatSearchState {
+  query: string
+  /** Current match, 0-based. */
+  activeIndex: number
+  /** Matches found by the last search of the rendered chat. */
+  matchCount: number
+}
+
 interface UIState {
   leftSidebarVisible: boolean
   leftSidebarSize: number // Width in pixels, persisted across sessions
@@ -452,8 +461,14 @@ interface UIState {
   setPendingServerUpdate: (update: PendingServerUpdate | null) => void
   setAvailableCliUpdates: (updates: PendingCliUpdate[]) => void
   dismissCliUpdateNotice: (type: PendingCliUpdate['type']) => void
-  chatSearchOpen: boolean
-  setChatSearchOpen: (open: boolean) => void
+  /**
+   * In-chat find bar per session. An entry means the bar is open in that
+   * session. In memory only (not persisted).
+   */
+  chatSearchBySession: Record<string, ChatSearchState>
+  openChatSearch: (sessionId: string) => void
+  updateChatSearch: (sessionId: string, patch: Partial<ChatSearchState>) => void
+  closeChatSearch: (sessionId: string) => void
   githubDashboardOpen: boolean
   setGitHubDashboardOpen: (open: boolean) => void
   /**
@@ -569,7 +584,7 @@ export const useUIStore = create<UIState>()(
       isUpdateInstalling: false,
       pendingServerUpdate: null,
       availableCliUpdates: [],
-      chatSearchOpen: false,
+      chatSearchBySession: {},
       githubDashboardOpen: false,
       zenMode: false,
       toggleZenMode: () => {
@@ -1710,14 +1725,48 @@ export const useUIStore = create<UIState>()(
           'dismissCliUpdateNotice'
         ),
 
-      setChatSearchOpen: (open: boolean) =>
+      openChatSearch: (sessionId: string) =>
         set(
           state => {
-            if (state.chatSearchOpen === open) return state
-            return { chatSearchOpen: open }
+            if (state.chatSearchBySession[sessionId]) return state
+            return {
+              chatSearchBySession: {
+                ...state.chatSearchBySession,
+                [sessionId]: { query: '', activeIndex: 0, matchCount: 0 },
+              },
+            }
           },
           undefined,
-          'setChatSearchOpen'
+          'openChatSearch'
+        ),
+
+      updateChatSearch: (sessionId: string, patch: Partial<ChatSearchState>) =>
+        set(
+          state => {
+            const current = state.chatSearchBySession[sessionId]
+            if (!current) return state
+            const keys = Object.keys(patch) as (keyof ChatSearchState)[]
+            if (keys.every(key => current[key] === patch[key])) return state
+            return {
+              chatSearchBySession: {
+                ...state.chatSearchBySession,
+                [sessionId]: { ...current, ...patch },
+              },
+            }
+          },
+          undefined,
+          'updateChatSearch'
+        ),
+
+      closeChatSearch: (sessionId: string) =>
+        set(
+          state => {
+            if (!state.chatSearchBySession[sessionId]) return state
+            const { [sessionId]: _closed, ...rest } = state.chatSearchBySession
+            return { chatSearchBySession: rest }
+          },
+          undefined,
+          'closeChatSearch'
         ),
 
       setGitHubDashboardOpen: (open: boolean) =>

@@ -35,6 +35,11 @@ interface UseScrollManagementOptions {
   contentReady?: boolean
   /** Whether a message is currently being streamed — enables ResizeObserver auto-scroll */
   isSending?: boolean
+  /**
+   * True while the in-chat find bar shows a match. The view must stay on the
+   * match: no tail-following, no pin-to-bottom, no deferred scroll restore.
+   */
+  holdPosition?: boolean
 }
 
 interface UseScrollManagementReturn {
@@ -92,6 +97,7 @@ export function useScrollManagement({
   activeSessionId,
   contentReady = true,
   isSending,
+  holdPosition = false,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const isMobile = useIsMobile()
   const scrollViewportRef = useRef<HTMLDivElement>(null)
@@ -190,6 +196,19 @@ export function useScrollManagement({
     const viewport = scrollViewportRef.current
     rememberScroll(viewport?.scrollTop ?? lastKnownScrollRef.current.scrollTop, false)
   }, [rememberScroll])
+
+  // Find bar on a match: stop following the tail and drop any pending
+  // restore, so neither moves the view away from the match. Tail-following
+  // stays off after the bar closes — the user resumes it by scrolling to the
+  // bottom or with the Bottom button.
+  const holdPositionRef = useRef(holdPosition)
+  useEffect(() => {
+    holdPositionRef.current = holdPosition
+    if (!holdPosition) return
+    pendingRestoreRef.current = false
+    clearPendingRestoreRetry()
+    stopFollowingTail()
+  }, [holdPosition, stopFollowingTail, clearPendingRestoreRetry])
 
   // Cleanup scroll timeout on unmount
   useEffect(() => {
@@ -453,6 +472,8 @@ export function useScrollManagement({
       setIsAtBottom(prev => (prev ? prev : true))
     }
 
+    if (holdPositionRef.current) return
+
     if (pendingRestoreRef.current && contentReady && activeSessionId) {
       if (pendingRestoreAttemptsRef.current < MAX_PENDING_RESTORE_ATTEMPTS) {
         pendingRestoreAttemptsRef.current += 1
@@ -534,6 +555,7 @@ export function useScrollManagement({
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId)
       rafId = requestAnimationFrame(() => {
+        if (holdPositionRef.current) return
         // Respect cooldown after user scrolled up
         if (Date.now() < userScrollUpUntilRef.current) return
         // Don't scroll if user has intentionally scrolled away from the stream
@@ -580,12 +602,18 @@ export function useScrollManagement({
       // FloatingButtons' "Bottom" button is the manual escape hatch.
       if (
         viewport &&
+        !holdPositionRef.current &&
         isFollowingTailRef.current &&
         !isAutoScrollingRef.current
       ) {
         let cancelled = false
         requestAnimationFrame(() => {
-          if (cancelled || !isFollowingTailRef.current) return
+          if (
+            cancelled ||
+            holdPositionRef.current ||
+            !isFollowingTailRef.current
+          )
+            return
           isAutoScrollingRef.current = true
           viewport.scrollTo({
             top: viewport.scrollHeight,
@@ -624,7 +652,7 @@ export function useScrollManagement({
       let cancelled = false
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (cancelled) return
+          if (cancelled || holdPositionRef.current) return
           const viewport = scrollViewportRef.current
           if (viewport && isFollowingTailRef.current) {
             const { scrollTop, scrollHeight, clientHeight } = viewport

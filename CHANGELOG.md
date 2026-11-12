@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Find in chat stays on the match.** The chat no longer jumps back to the
+  first match or to the bottom while a turn streams, new messages arrive or
+  older messages load. Enter / Shift+Enter (and the arrow keys or buttons)
+  move only to the next or previous match, and the match itself is centred,
+  also inside long paragraphs and code blocks.
+
+### Changed
+
+- **Find in chat is per session.** Each session keeps its own find bar:
+  switching to another session hides it, and coming back shows the same
+  search on the same match. Esc or × closes it for that session only.
+
 ## [1.5.14] - 2026-11-11
 
 Built on Jean 0.1.73.
