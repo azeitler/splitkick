@@ -45,6 +45,7 @@
     "tauri:check": "bun run typecheck && bun run tauri build --check",
     "dev:e2e": "vite --config e2e/vite.config.e2e.ts --port 1421",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:release-guards": "playwright test --config e2e/playwright.config.ts app-update-flow toast-visibility",
     "test:e2e:local": "bun run build && cargo build --manifest-path src-tauri/Cargo.toml && bun run test:e2e:local:only",
     "test:e2e:local:only": "playwright test --config e2e/local/playwright.config.ts",
     "test:all": "bun run test:run && bun run rust:test",

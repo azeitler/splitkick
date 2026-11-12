@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@/lib/transport'
 import { logNativeError } from '@/lib/native-log'
+import { useUIStore as staticUIStore } from '@/store/ui-store'
 import {
   RELEASE_IDENTIFIER,
   type AppUpdateGuardState,
   describeUpdateCheckFailure,
   installAndRelaunch,
   isUpdateCheckEnabled,
+  markAppUpdateReady,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
 } from './app-update'
@@ -341,5 +343,69 @@ describe('checkForUpdatesManually (#100)', () => {
       'The update check failed: Error: offline (could not reach github.com: timeout)',
       { title: 'Check for Updates', kind: 'error' }
     )
+  })
+})
+
+describe('markAppUpdateReady (#135)', () => {
+  async function load() {
+    // The modules imported at the top: earlier blocks reset the registry.
+    const useUIStore = staticUIStore
+    useUIStore.setState({
+      updateReadyVersion: null,
+      isUpdateInstalling: true,
+      pendingUpdateVersion: '2.0.0',
+      updateModalVersion: null,
+    })
+    vi.mocked(invoke).mockReset()
+    vi.mocked(invoke).mockResolvedValue(undefined)
+    return { useUIStore }
+  }
+
+  beforeEach(() => {
+    // The shared test setup's localStorage stores nothing.
+    const stored = new Map<string, string>()
+    vi.spyOn(localStorage, 'getItem').mockImplementation(
+      key => stored.get(key) ?? null
+    )
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      stored.set(key, value)
+    })
+    updater.notify.mockReset()
+  })
+
+  it('opens the "Update Ready" prompt, not only a toast', async () => {
+    const { useUIStore } = await load()
+
+    markAppUpdateReady('2.0.0')
+
+    const state = useUIStore.getState()
+    expect(state.updateModalVersion).toBe('2.0.0')
+    expect(state.updateReadyVersion).toBe('2.0.0')
+    expect(state.isUpdateInstalling).toBe(false)
+    expect(state.pendingUpdateVersion).toBeNull()
+  })
+
+  it('sends the native notification once per version', async () => {
+    await load()
+
+    markAppUpdateReady('2.0.0')
+    markAppUpdateReady('2.0.0')
+    expect(updater.notify).toHaveBeenCalledTimes(1)
+    expect(updater.notify).toHaveBeenCalledWith(
+      expect.stringContaining('2.0.0 is ready'),
+      'Restart to install it.',
+      { native: true }
+    )
+
+    markAppUpdateReady('2.0.1')
+    expect(updater.notify).toHaveBeenCalledTimes(2)
+  })
+
+  it('adds "Restart to update" to the menu bar icon', async () => {
+    await load()
+    markAppUpdateReady('2.0.0')
+    expect(invoke).toHaveBeenCalledWith('set_tray_update_ready', {
+      version: '2.0.0',
+    })
   })
 })

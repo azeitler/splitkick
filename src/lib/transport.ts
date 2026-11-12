@@ -184,6 +184,7 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'set_dock_badge',
   'set_dock_sessions',
   'refresh_tray',
+  'set_tray_update_ready',
   'get_open_at_login',
   'set_open_at_login',
   'open_connection_window',
@@ -249,6 +250,7 @@ const LOCAL_SHELL_COMMANDS = new Set([
   'set_dock_badge',
   'set_dock_sessions',
   'refresh_tray',
+  'set_tray_update_ready',
   'get_open_at_login',
   'set_open_at_login',
   // Windows belong to this desktop shell, so a connection window opening

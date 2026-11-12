@@ -122,6 +122,16 @@ jobs:
       - name: Frontend tests
         run: bun run test:run
 
+      # The update flow and toast visibility, in Chromium and in WebKit (the
+      # desktop app's engine on macOS), under the desktop app's CSP. From
+      # 1.5.9 to 1.5.14 every toast was off screen and no update could be
+      # applied, with all other checks green (#135).
+      - name: Update and toast e2e tests
+        if: ${{ matrix.platform == 'macos-latest' }}
+        run: |
+          bunx playwright install chromium webkit
+          bun run test:e2e:release-guards
+
       - name: Release version tests
         run: bun run test:splitkick-version
 
