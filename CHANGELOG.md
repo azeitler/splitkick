@@ -24,6 +24,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Artifacts also show in the chat reply.** The `add_artifact` MCP tool
+  (description and result) now tells the model that the Artifacts tab does not
+  replace its answer: it also embeds the image, quotes the key content or links
+  the file in the reply.
 - **Starred stays selected.** A click on a starred session opens it and keeps
   the Starred tab selected. The tree behind the Projects tab still expands to
   the session, so it shows there when you switch.
