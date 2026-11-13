@@ -32,6 +32,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **GitHub CLI is optional.** Setup is complete as soon as one AI backend
+  is ready. The GitHub CLI step has "Skip, I don't use GitHub", and the
+  "Setup incomplete" banner and the startup wizard no longer ask for `gh`.
+  Without `gh` (not installed or not logged in), GitHub features show
+  "GitHub CLI is not set up" with a Set up action instead of a raw CLI error.
+  Push to a linked PR falls back to a plain push, and background PR polling
+  stays quiet.
 - **Settings → Web Browser.** A new pane holds Browser for agents (was in MCP
   Servers) and Claude in Chrome (was in Claude). Claude in Chrome is off by
   default for new installs, with a hint to use Browser for agents.
