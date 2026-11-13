@@ -353,6 +353,53 @@ describe('OnboardingDialog backends', () => {
     expect(screen.getByText('Cursor CLI: Installed')).toBeInTheDocument()
   })
 
+  it('moves step by step to Done, then hands over to the feature tour', async () => {
+    const user = userEvent.setup()
+    useUIStore.setState({ featureTourOpen: false, onboardingEngaged: false })
+    const { OnboardingDialog } = await import('./OnboardingDialog')
+    render(<OnboardingDialog />)
+
+    expect(
+      await screen.findByText('How will you use Splitkick?')
+    ).toBeInTheDocument()
+    expect(useUIStore.getState().onboardingEngaged).toBe(false)
+    await chooseLocalAndContinue(user)
+    // Past the first screen, App must not close the dialog mid-flow
+    expect(useUIStore.getState().onboardingEngaged).toBe(true)
+    await user.click(
+      await screen.findByRole('checkbox', { name: /cursor cli/i })
+    )
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    // Steps in order: install, login, GitHub CLI, Done
+    await user.click(
+      await screen.findByRole('button', { name: /^Install Cursor Agent/ })
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Complete Cursor install' })
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Complete Cursor login' })
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Use GitHub CLI from PATH' })
+    )
+    expect(await screen.findByText('Setup Complete')).toBeInTheDocument()
+    expect(useUIStore.getState().featureTourOpen).toBe(false)
+
+    await user.click(
+      screen.getByRole('button', { name: /^Continue to Splitkick/ })
+    )
+
+    await waitFor(() =>
+      expect(useUIStore.getState().onboardingOpen).toBe(false)
+    )
+    expect(useUIStore.getState().onboardingEngaged).toBe(false)
+    await waitFor(() =>
+      expect(useUIStore.getState().featureTourOpen).toBe(true)
+    )
+  })
+
   it('returns to backend selection after a failed Cursor install check and Back', async () => {
     const user = userEvent.setup()
     mocks.cursorInstallSucceeds = false

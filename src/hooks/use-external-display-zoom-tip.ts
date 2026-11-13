@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { isNativeApp } from '@/lib/environment'
 import { useClientZoom } from '@/lib/client-zoom'
+import { useFirstStartIdle } from '@/lib/first-start-gate'
 
 export const EXTERNAL_DISPLAY_ZOOM_TIP_TOAST_ID = 'external-display-zoom-tip'
 
@@ -53,9 +54,11 @@ export function useExternalDisplayZoomTip() {
   const { zoom_level: zoomLevel, sync_zoom_levels: syncZoomLevels, updateZoom } =
     useClientZoom(zoomSeed)
   const hasSeenTip = preferences?.has_seen_external_display_zoom_tip ?? false
+  // Queued while the setup dialog or the feature tour runs
+  const firstStartIdle = useFirstStartIdle()
 
   useEffect(() => {
-    if (!isNativeApp() || preferences == null) return
+    if (!isNativeApp() || preferences == null || !firstStartIdle) return
 
     const markSeen = () => {
       if (hasSeenTip) return
@@ -153,6 +156,7 @@ export function useExternalDisplayZoomTip() {
       window.removeEventListener('resize', onResize)
     }
   }, [
+    firstStartIdle,
     hasSeenTip,
     patchPreferences,
     preferences,

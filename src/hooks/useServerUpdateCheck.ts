@@ -22,6 +22,8 @@ import { isLocalBackend } from '@/lib/environment'
 import { logger } from '@/lib/logger'
 import { useUIStore, type HostInstallPhase } from '@/store/ui-store'
 import { hostUpdateLabel } from '@/lib/host-update-badge'
+import { PRODUCT_NAME } from '@/lib/build-info'
+import { useFirstStartIdle } from '@/lib/first-start-gate'
 
 export type { HostInstallPhase }
 export type HostUpdateChannel = 'server' | 'desktop'
@@ -180,11 +182,21 @@ export async function applyServerUpdate(version: string): Promise<void> {
 
 export function useServerUpdateCheck() {
   const toastShownForVersionRef = useRef<string | null>(null)
+  // The toast waits while the setup dialog or the feature tour runs; the
+  // title-bar badge is set at once.
+  const firstStartIdle = useFirstStartIdle()
+  const firstStartIdleRef = useRef(firstStartIdle)
+  const deferredStatusRef = useRef<ServerUpdateStatus | null>(null)
 
   const presentUpdate = useCallback((status: ServerUpdateStatus) => {
     applyStatusToStore(status)
 
     if (!status.updateAvailable || !status.latestVersion) return
+
+    if (!firstStartIdleRef.current) {
+      deferredStatusRef.current = status
+      return
+    }
 
     const version = status.latestVersion
     const channel = status.channel ?? 'server'
@@ -198,7 +210,7 @@ export function useServerUpdateCheck() {
     const title =
       channel === 'desktop'
         ? `Version ${version} is available on the host`
-        : `jean-server ${version} is available`
+        : `${PRODUCT_NAME} server ${version} is available`
 
     if (!status.canUpdate) {
       toast.info(title, {
@@ -223,6 +235,14 @@ export function useServerUpdateCheck() {
       },
     })
   }, [])
+
+  useEffect(() => {
+    firstStartIdleRef.current = firstStartIdle
+    const deferred = deferredStatusRef.current
+    if (!firstStartIdle || !deferred) return
+    deferredStatusRef.current = null
+    presentUpdate(deferred)
+  }, [firstStartIdle, presentUpdate])
 
   useEffect(() => {
     if (isLocalBackend()) {

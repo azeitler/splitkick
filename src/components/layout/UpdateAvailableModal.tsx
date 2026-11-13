@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
+import { useFirstStartIdle } from '@/lib/first-start-gate'
 
 function handleUpdateLater() {
   const modalVersion = useUIStore.getState().updateModalVersion
@@ -24,7 +25,10 @@ export function UpdateAvailableModal() {
   const version = useUIStore(state => state.updateModalVersion)
   const readyVersion = useUIStore(state => state.updateReadyVersion)
   const isInstalling = useUIStore(state => state.isUpdateInstalling)
-  const isOpen = version !== null
+  // Queued while the setup dialog, the feature tour or the MCP intro runs
+  const firstStartIdle = useFirstStartIdle()
+  const mcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
+  const isOpen = version !== null && firstStartIdle && !mcpIntroOpen
 
   const handleUpdate = () => {
     const targetVersion = version

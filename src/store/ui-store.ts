@@ -173,6 +173,8 @@ interface UIState {
   onboardingDismissed: boolean
   onboardingManuallyTriggered: boolean
   onboardingStartStep: OnboardingStartStep
+  /** The user moved past the first setup screen (see startup-onboarding.ts) */
+  onboardingEngaged: boolean
   openInModalOpen: boolean
   remotePickerOpen: boolean
   remotePickerRepoPath: string | null
@@ -514,6 +516,7 @@ export const useUIStore = create<UIState>()(
       onboardingDismissed: false,
       onboardingManuallyTriggered: false,
       onboardingStartStep: null,
+      onboardingEngaged: false,
       openInModalOpen: false,
       remotePickerOpen: false,
       remotePickerRepoPath: null,

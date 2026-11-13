@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useFirstStartIdle } from '@/lib/first-start-gate'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
@@ -167,12 +168,14 @@ export function useCliVersionCheck() {
 
   // Defer version fetches (GitHub API) by 10s — they're only for update checks,
   // no reason to compete with startup-critical queries.
+  // Update toasts (with actions) wait until the first-start flow has ended.
+  const firstStartIdle = useFirstStartIdle()
   const [versionCheckReady, setVersionCheckReady] = useState(false)
   useEffect(() => {
-    if (!shouldCheck) return
+    if (!shouldCheck || !firstStartIdle) return
     const timer = setTimeout(() => setVersionCheckReady(true), 10_000)
     return () => clearTimeout(timer)
-  }, [shouldCheck])
+  }, [shouldCheck, firstStartIdle])
 
   const { data: claudeStatus, isLoading: claudeLoading } = useClaudeCliStatus({
     enabled: shouldCheck && versionCheckReady,

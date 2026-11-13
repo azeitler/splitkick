@@ -53,6 +53,22 @@ describe('getStartupOnboardingAction', () => {
     ).toBe('close')
   })
 
+  it('lets an engaged onboarding finish on its own Done step', () => {
+    expect(
+      getStartupOnboardingAction({
+        aiStatuses: [missingStatus, readyStatus, missingStatus],
+        aiAuth: [undefined, authenticated, undefined],
+        ghStatus: readyStatus,
+        ghAuth: authenticated,
+        onboardingOpen: true,
+        onboardingDismissed: false,
+        onboardingManuallyTriggered: false,
+        onboardingEngaged: true,
+        requiresWslChoice: false,
+      })
+    ).toBe('none')
+  })
+
   it('reports ready setup without opening onboarding', () => {
     expect(
       getStartupOnboardingAction({

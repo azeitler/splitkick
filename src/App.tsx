@@ -24,6 +24,7 @@ import {
 import { useNativeWindowCloseGuard } from '@/hooks/useNativeWindowCloseGuard'
 import { QuitConfirmationDialog } from '@/components/layout/QuitConfirmationDialog'
 import { setServerPlatform } from '@/lib/platform'
+import { useFirstStartIdle } from '@/lib/first-start-gate'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import { mergeWorktreesPreservingOptimistic } from '@/lib/worktree-list-cache'
@@ -176,6 +177,10 @@ function App() {
   const { data: preferences } = usePreferences()
   const onboardingOpen = useUIStore(state => state.onboardingOpen)
   const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  const firstStartIdle = useFirstStartIdle()
+  const updatePromptPending = useUIStore(
+    state => state.updateModalVersion !== null
+  )
   // The import-from-Jean offer comes first; onboarding waits for it.
   const jeanImportPending = useJeanImportPending()
   const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
@@ -1152,6 +1157,7 @@ function App() {
       onboardingOpen: onboarding.onboardingOpen,
       onboardingDismissed: onboarding.onboardingDismissed,
       onboardingManuallyTriggered: onboarding.onboardingManuallyTriggered,
+      onboardingEngaged: onboarding.onboardingEngaged,
       requiresWslChoice,
     })
 
@@ -1250,6 +1256,9 @@ function App() {
     if (jeanImportPending) return
     if (preferences.has_seen_jean_mcp_intro) return
     if (onboardingOpen || featureTourOpen || jeanMcpIntroOpen) return
+    // One dialog at a time: wait until the tour has closed and settled, and
+    // until a pending update prompt is answered
+    if (!firstStartIdle || updatePromptPending) return
 
     const aiStatuses = [
       claudeStatus,
@@ -1311,6 +1320,8 @@ function App() {
     preferences,
     onboardingOpen,
     featureTourOpen,
+    firstStartIdle,
+    updatePromptPending,
     jeanMcpIntroOpen,
     claudeStatus,
     codexStatus,
