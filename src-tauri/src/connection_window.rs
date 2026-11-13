@@ -11,7 +11,7 @@
 //! frontend falls back to it if the query string is ever lost.
 
 use tauri::{
-    AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder,
 };
 
@@ -182,13 +182,34 @@ pub async fn open_connection_window(
     Ok(label)
 }
 
-/// Bring the local window to the front, recreating it when it was closed.
-#[tauri::command]
-pub async fn focus_main_window(app: AppHandle) -> Result<(), String> {
+/// Bring `main` to the front, rebuilding it when it was closed.
+pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
     match app.get_webview_window(MAIN_WINDOW) {
         Some(window) => focus(&window),
-        None => recreate_main_window(&app),
+        None => recreate_main_window(app),
     }
+}
+
+/// Event that opens the Server connections dialog in the main window.
+const OPEN_CONNECTIONS_EVENT: &str = "connections:open";
+
+/// Bring the local window to the front, recreating it when it was closed.
+///
+/// `open_connections` also opens the Server connections dialog there: a
+/// connection window shows only its own server and hands list management to
+/// `main`. A freshly recreated `main` has not loaded yet and misses the event;
+/// it still comes to the front.
+#[tauri::command]
+pub async fn focus_main_window(
+    app: AppHandle,
+    open_connections: Option<bool>,
+) -> Result<(), String> {
+    show_main_window(&app)?;
+    if open_connections == Some(true) {
+        app.emit_to(MAIN_WINDOW, OPEN_CONNECTIONS_EVENT, ())
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 /// Ids of the connections that currently have a window open.

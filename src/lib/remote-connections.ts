@@ -278,6 +278,77 @@ export async function hydrateRemoteConnections(): Promise<void> {
   )
 }
 
+/**
+ * URL and token fields after the user typed or pasted `rawUrl`. A link with
+ * `token=` (the one Web Access shows) loses the token from the URL field, and
+ * the token goes into the token field. Text that is no URL yet, or has no
+ * token, stays as typed and keeps `currentToken`.
+ */
+export function withTokenFromUrl(
+  rawUrl: string,
+  currentToken: string
+): { url: string; token: string } {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl.trim())
+  } catch {
+    return { url: rawUrl, token: currentToken }
+  }
+  const token = parsed.searchParams.get('token')?.trim()
+  if (!token) return { url: rawUrl, token: currentToken }
+  parsed.searchParams.delete('token')
+  return { url: parsed.toString(), token }
+}
+
+/** Fields a `splitkick://connect` link fills into "Add remote". */
+export interface ConnectionLinkPrefill {
+  name: string
+  url: string
+  token: string
+}
+
+/**
+ * A link that opens "Add remote" filled in on another machine:
+ * `splitkick://connect?url=<Web Access URL>&token=<token>[&name=<name>]`.
+ * The OS hands it to Splitkick (src-tauri/src/deep_link.rs).
+ */
+export function connectionLink(url: string, token: string, name?: string) {
+  const params = new URLSearchParams({ url })
+  if (token) params.set('token', token)
+  if (name) params.set('name', name)
+  return `splitkick://connect?${params.toString()}`
+}
+
+/** Read a connect link. `null` for any other link or a link without a URL. */
+export function parseConnectionLink(
+  link: string
+): ConnectionLinkPrefill | null {
+  let parsed: URL
+  try {
+    parsed = new URL(link)
+  } catch {
+    return null
+  }
+  // A custom scheme puts `connect` in the host, or in the path when the
+  // engine treats the URL as opaque (`splitkick:connect?…`).
+  const target = (parsed.host || parsed.pathname.replace(/^\/+/, ''))
+    .replace(/\/+$/, '')
+    .toLowerCase()
+  if (target !== 'connect') return null
+  const rawUrl = parsed.searchParams.get('url')?.trim()
+  if (!rawUrl) return null
+  // A Web Access URL with its own ?token= works too.
+  const fields = withTokenFromUrl(
+    rawUrl,
+    parsed.searchParams.get('token')?.trim() ?? ''
+  )
+  return {
+    name: parsed.searchParams.get('name')?.trim() ?? '',
+    url: fields.url,
+    token: fields.token,
+  }
+}
+
 export function parseRemoteConnectionInput(
   rawUrl: string,
   rawToken: string

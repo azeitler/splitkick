@@ -40,6 +40,20 @@ export async function focusMainWindow(): Promise<void> {
   await invoke('focus_main_window')
 }
 
+/**
+ * Bring the main window up with its Server connections dialog open. A
+ * connection window shows only its own server; the list lives in `main`.
+ */
+export async function showConnectionsInMainWindow(): Promise<void> {
+  await invoke('focus_main_window', { openConnections: true })
+}
+
+/** Event the Rust side sends to `main` for {@link showConnectionsInMainWindow}. */
+export const OPEN_CONNECTIONS_EVENT = 'connections:open'
+
+/** Sent to `main` when a splitkick://connect link arrived (deep_link.rs). */
+export const CONNECTION_LINK_EVENT = 'connections:link'
+
 export async function closeConnectionWindow(
   connectionId: string
 ): Promise<void> {

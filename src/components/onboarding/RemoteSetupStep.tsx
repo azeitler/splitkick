@@ -19,6 +19,7 @@ import {
   addRemoteConnection,
   parseOptionalSshPort,
   parseRemoteConnectionInput,
+  withTokenFromUrl,
 } from '@/lib/remote-connections'
 import { activateConnection } from '@/lib/connection-windows'
 import {
@@ -373,7 +374,7 @@ export function RemoteSetupStep({
           onChange={event =>
             setForm(current => ({
               ...current,
-              url: event.target.value,
+              ...withTokenFromUrl(event.target.value, current.token),
             }))
           }
           placeholder="https://jean.example.com/?token=..."
@@ -393,7 +394,7 @@ export function RemoteSetupStep({
               token: event.target.value,
             }))
           }
-          placeholder="Optional when included in the URL"
+          placeholder="Filled in from a URL with ?token="
           disabled={busy}
         />
       </div>

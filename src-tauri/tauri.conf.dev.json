@@ -32,6 +32,11 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["splitkick-dev"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/azeitler/splitkick/releases/latest/download/latest.json"

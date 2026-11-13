@@ -176,6 +176,8 @@ function containNativeUnlisten(
 }
 
 const DESKTOP_ONLY_COMMANDS = new Set([
+  // A splitkick://connect link waiting for the main window (deep_link.rs).
+  'take_pending_connection_link',
   'webview_liveness_pong',
   'take_webview_recovery',
   'set_window_vibrancy',

@@ -87,6 +87,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["jean"]
+      }
+    },
     "updater": {
       "active": true,
       "endpoints": [

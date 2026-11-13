@@ -2,6 +2,7 @@ import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   Copy,
+  Link2,
   Eye,
   EyeOff,
   ExternalLink,
@@ -30,6 +31,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
 import { copyToClipboard } from '@/lib/clipboard'
+import { connectionLink } from '@/lib/remote-connections'
 import { SettingsSection } from '../SettingsSection'
 import { WebAccessDeviceSection } from './WebAccessDeviceSection'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -227,6 +229,21 @@ const WebAccessServerPane: React.FC = () => {
       try {
         await copyToClipboard(fullUrl)
         toast.success('URL copied to clipboard')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
+    },
+    [serverStatus?.token, tokenRequired]
+  )
+
+  const handleCopyConnectionLink = useCallback(
+    async (url: string) => {
+      const token = tokenRequired ? (serverStatus?.token ?? '') : ''
+      try {
+        await copyToClipboard(connectionLink(url, token))
+        toast.success('Connection link copied', {
+          description: `Open it on another computer to add this server in ${PRODUCT_NAME}.`,
+        })
       } catch (error) {
         toast.error(getErrorMessage(error))
       }
@@ -631,6 +648,21 @@ const WebAccessServerPane: React.FC = () => {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Copy URL</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Copy connection link"
+                          onClick={() => handleCopyConnectionLink(boundUrl)}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Copy connection link for another {PRODUCT_NAME}
+                      </TooltipContent>
                     </Tooltip>
                   </div>
                 )}

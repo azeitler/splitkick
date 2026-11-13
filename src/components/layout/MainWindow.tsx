@@ -15,6 +15,7 @@ import { WindowToolbar } from '@/components/toolbar/WindowToolbar'
 import { ToolbarSlotsProvider } from '@/components/toolbar/toolbar-slots'
 import { SidebarHeader } from '@/components/sidebar/SidebarHeader'
 import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
+import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeDown } from '@/hooks/useSwipeDown'
@@ -676,6 +677,11 @@ export function MainWindow() {
       )}
     >
       {isNativeApp() && isLinux && <WindowResizeHandles />}
+
+      {/* One Server connections dialog per window, mounted here and not in the
+          sidebar: a hidden sidebar must not drop "Manage all connections" or
+          a splitkick://connect link. The sidebar button only opens it. */}
+      {isNativeApp() && <RemoteConnectionsDialog showTrigger={false} />}
 
       {/* Touch swipe-down pull indicator */}
       {isTouch && swipeDown.isSwiping && (

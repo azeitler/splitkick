@@ -36,6 +36,18 @@ const {
 }))
 
 vi.mock('@/lib/remote-connections', () => ({
+  withTokenFromUrl: (rawUrl: string, currentToken: string) => {
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl.trim())
+    } catch {
+      return { url: rawUrl, token: currentToken }
+    }
+    const token = parsed.searchParams.get('token')?.trim()
+    if (!token) return { url: rawUrl, token: currentToken }
+    parsed.searchParams.delete('token')
+    return { url: parsed.toString(), token }
+  },
   getRemoteConnections: () => [],
   LOCAL_CONNECTION_ID: 'local',
   addRemoteConnection,
@@ -152,8 +164,8 @@ describe('RemoteSetupStep', () => {
     await waitFor(() => {
       expect(addRemoteConnection).toHaveBeenCalledWith({
         name: 'Build server',
-        url: 'https://jean.example.com/?token=secret',
-        token: '',
+        url: 'https://jean.example.com/',
+        token: 'secret',
         sshUser: undefined,
         sshHost: undefined,
         sshPort: 22,
