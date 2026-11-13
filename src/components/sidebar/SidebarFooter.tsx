@@ -36,7 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { UsagePopover } from '@/components/titlebar/UsagePopover'
-import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
+import { RemoteConnectionsTrigger } from '@/components/remote/RemoteConnectionsDialog'
 import {
   CliUpdatesIndicator,
   ServerUpdateIndicator,
@@ -183,7 +183,7 @@ export function SidebarFooter() {
           )}
         </TooltipContent>
       </Tooltip>
-      {isNativeApp() && <RemoteConnectionsDialog />}
+      {isNativeApp() && <RemoteConnectionsTrigger />}
       <UsagePopover className="ml-1.5" />
       <div className="flex-1" />
       <UpdatesButton />

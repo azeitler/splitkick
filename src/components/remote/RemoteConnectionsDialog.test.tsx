@@ -19,9 +19,16 @@ const {
   invoke,
   isNativeApp,
   listenLocal,
+  listenMenu,
   removeRemoteConnection,
   connections,
+  windowState,
 } = vi.hoisted(() => ({
+  listenMenu: vi.fn(async (_event: string, _handler: () => void) => () => {
+    // no-op unsubscribe
+  }),
+  // The connection this window drives; `connectionWindow` marks a remote window.
+  windowState: { activeId: 'local', connectionWindow: false },
   addRemoteConnection: vi.fn(
     async (): Promise<{ id: string }> => ({ id: 'remote-1' })
   ),
@@ -45,10 +52,32 @@ const {
 }))
 
 vi.mock('@/lib/remote-connections', () => ({
+  parseConnectionLink: (link: string) => {
+    const parsed = new URL(link)
+    if (parsed.host !== 'connect') return null
+    return {
+      name: parsed.searchParams.get('name') ?? '',
+      url: parsed.searchParams.get('url') ?? '',
+      token: parsed.searchParams.get('token') ?? '',
+    }
+  },
+  withTokenFromUrl: (rawUrl: string, currentToken: string) => {
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl.trim())
+    } catch {
+      return { url: rawUrl, token: currentToken }
+    }
+    const token = parsed.searchParams.get('token')?.trim()
+    if (!token) return { url: rawUrl, token: currentToken }
+    parsed.searchParams.delete('token')
+    return { url: parsed.toString(), token }
+  },
   getRemoteConnections: () => [],
   LOCAL_CONNECTION_ID: 'local',
   addRemoteConnection,
-  getActiveConnectionId: () => 'local',
+  getActiveConnectionId: () => windowState.activeId,
+  isConnectionWindow: () => windowState.connectionWindow,
   removeRemoteConnection,
   markConnectionSwitch: vi.fn(),
   parseOptionalSshPort: (raw: string) => {
@@ -98,12 +127,14 @@ vi.mock('@/lib/environment', () => ({
 vi.mock('@/lib/transport', () => ({
   invoke,
   listenLocal,
+  listenMenu,
 }))
 
 describe('RemoteConnectionsDialog', () => {
   beforeEach(() => {
     remoteInstall.enabled = true
     vi.clearAllMocks()
+    invoke.mockReset()
     fetchRemoteServerInfo.mockResolvedValue({
       ok: true,
       appVersion: '0.1.69',
@@ -112,6 +143,136 @@ describe('RemoteConnectionsDialog', () => {
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(false)
     connections.list = []
+    windowState.activeId = 'local'
+    windowState.connectionWindow = false
+  })
+
+  it('fills the token field from a pasted link with token=', () => {
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
+
+    fireEvent.change(screen.getByLabelText('Web Access URL'), {
+      target: { value: 'https://jean.example.com/?token=secret' },
+    })
+
+    expect(screen.getByLabelText('Web Access URL')).toHaveValue(
+      'https://jean.example.com/'
+    )
+    expect(screen.getByLabelText('Access token')).toHaveValue('secret')
+  })
+
+  it('fills in Add remote from a pending splitkick://connect link', async () => {
+    isNativeApp.mockReturnValue(true)
+    invoke.mockImplementation(async (command: string) =>
+      command === 'take_pending_connection_link'
+        ? 'splitkick://connect?url=http%3A%2F%2Fmb16%3A3456&token=tok&name=mac-2'
+        : []
+    )
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    expect(await screen.findByLabelText('Web Access URL')).toHaveValue(
+      'http://mac-2:3456'
+    )
+    expect(screen.getByLabelText('Access token')).toHaveValue('tok')
+    expect(screen.getByLabelText('Name')).toHaveValue('mac-2')
+    // Nothing is saved until the user clicks Save & Connect.
+    expect(addRemoteConnection).not.toHaveBeenCalled()
+  })
+
+  describe('in a connection window', () => {
+    beforeEach(() => {
+      isNativeApp.mockReturnValue(true)
+      invoke.mockResolvedValue([])
+      windowState.activeId = 'remote-a'
+      windowState.connectionWindow = true
+      connections.list = [
+        {
+          id: 'remote-a',
+          name: 'Build box',
+          url: 'https://a.example.com',
+          token: 't',
+        },
+        {
+          id: 'remote-b',
+          name: 'Other box',
+          url: 'https://b.example.com',
+          token: 't',
+        },
+      ]
+    })
+
+    it('shows only the server of this window', async () => {
+      render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Server connections' })
+      )
+
+      expect(
+        screen.getByText('This window is connected to Build box.')
+      ).toBeInTheDocument()
+      expect(screen.getByText('https://a.example.com')).toBeInTheDocument()
+      expect(screen.queryByText('Local')).not.toBeInTheDocument()
+      expect(screen.queryByText('Other box')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Add remote' })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Delete Build box' })
+      ).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit Build box' }))
+      expect(screen.getByLabelText('Web Access URL')).toHaveValue(
+        'https://a.example.com'
+      )
+    })
+
+    it('hands list management to the main window', async () => {
+      render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Server connections' })
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Manage all connections' })
+      )
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith('focus_main_window', {
+          openConnections: true,
+        })
+      })
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: 'Manage all connections' })
+        ).not.toBeInTheDocument()
+      })
+      // A connection window does not listen for the main window's request.
+      expect(listenMenu).not.toHaveBeenCalled()
+    })
+  })
+
+  it('opens when a connection window asks the main window', async () => {
+    isNativeApp.mockReturnValue(true)
+    invoke.mockResolvedValue([])
+    const handlers: Record<string, () => void> = {}
+    listenMenu.mockImplementation(
+      async (event: string, handler: () => void) => {
+        handlers[event] = handler
+        return () => undefined
+      }
+    )
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(listenMenu).toHaveBeenCalledWith(
+        'connections:open',
+        expect.any(Function)
+      )
+    })
+    act(() => handlers['connections:open']?.())
+    expect(
+      await screen.findByRole('button', { name: 'Add remote' })
+    ).toBeInTheDocument()
   })
 
   it('uses the title bar tooltip instead of the native browser tooltip', async () => {
@@ -167,8 +328,8 @@ describe('RemoteConnectionsDialog', () => {
       )
       expect(addRemoteConnection).toHaveBeenCalledWith({
         name: 'Build server',
-        url: 'https://jean.example.com/?token=secret',
-        token: '',
+        url: 'https://jean.example.com/',
+        token: 'secret',
         sshUser: undefined,
         sshHost: undefined,
         sshPort: 22,
@@ -272,8 +433,8 @@ describe('RemoteConnectionsDialog', () => {
     await waitFor(() => {
       expect(addRemoteConnection).toHaveBeenCalledWith({
         name: 'Build server',
-        url: 'https://jean.example.com/?token=secret',
-        token: '',
+        url: 'https://jean.example.com/',
+        token: 'secret',
         sshUser: 'ubuntu',
         sshHost: '192.168.1.50',
         sshPort: 2222,

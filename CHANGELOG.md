@@ -21,6 +21,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   or Remote" step install the server of this app's release over SSH again. The
   access token no longer appears in the argument list of any process on the
   remote host, and the install log masks it. Closes #105
+- **Connection links.** Settings → Web Access has "Copy connection link" next
+  to the network URL. It copies `splitkick://connect?url=…&token=…`. Open the
+  link on another computer, and Splitkick opens Server connections with "Add
+  remote" filled in. Nothing is saved until you click Save & Connect.
+  Splitkick now registers the `splitkick://` scheme with the OS. On Windows
+  and Linux a second launch now hands over to the running app.
 
 ### Changed
 
@@ -35,6 +41,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Starred stays selected.** A click on a starred session opens it and keeps
   the Starred tab selected. The tree behind the Projects tab still expands to
   the session, so it shows there when you switch.
+
+### Fixed
+
+- **Server connections in a remote window.** The dialog shows only the server
+  of that window (version, Edit). It no longer opens other remote windows.
+  "Manage all connections" brings the main window to the front with the full
+  list open.
+- **Pasted Web Access links fill in the token.** When you add a remote, a URL
+  with `?token=` loses the token, and the token goes into the Access token
+  field.
 
 ## [1.5.15] - 2026-11-13
 

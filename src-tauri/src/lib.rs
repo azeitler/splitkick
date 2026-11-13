@@ -6,6 +6,7 @@ mod artifact_preview;
 mod browser;
 mod connection_window;
 mod crash_log;
+mod deep_link;
 mod desktop_commands;
 mod dock;
 mod http_server;
@@ -269,6 +270,7 @@ pub(crate) fn configure_app_window(window: &tauri::WebviewWindow) {
 }
 
 fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    deep_link::setup(app);
     let core = initialize_core(app).map_err(std::io::Error::other)?;
     allow_project_assets(app.handle(), &core);
     app.manage(CoreRuntime(core.clone()));
@@ -435,7 +437,16 @@ pub fn run() {
     let builder = builder
         .on_web_content_process_terminate(webview_watchdog::on_web_content_process_terminate);
 
+    // Must be the first plugin. Windows and Linux start a second process for
+    // a splitkick:// link; it hands its arguments to this one and quits. The
+    // deep-link feature turns them into `on_open_url` events.
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        let _ = connection_window::show_main_window(app);
+    }));
+
     builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
@@ -530,6 +541,7 @@ pub fn run() {
             webview_watchdog::take_webview_recovery,
             connection_window::open_connection_window,
             connection_window::focus_main_window,
+            deep_link::take_pending_connection_link,
             connection_window::close_connection_window,
             connection_window::list_connection_windows,
             browser::browser_create,

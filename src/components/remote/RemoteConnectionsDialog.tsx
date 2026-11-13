@@ -1,6 +1,12 @@
 import { REMOTE_INSTALL_ENABLED } from '@/lib/remote-install'
 import { PRODUCT_NAME } from '@/lib/build-info'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ComponentProps,
+  type FormEvent,
+} from 'react'
 import {
   Check,
   HardDriveDownload,
@@ -36,12 +42,16 @@ import {
   LOCAL_CONNECTION_ID,
   addRemoteConnection,
   getActiveConnectionId,
+  isConnectionWindow,
   markConnectionSwitch,
+  parseConnectionLink,
   parseOptionalSshPort,
   parseRemoteConnectionInput,
+  withTokenFromUrl,
   removeRemoteConnection,
   updateRemoteConnection,
   useRemoteConnections,
+  type ConnectionLinkPrefill,
   type RemoteConnection,
 } from '@/lib/remote-connections'
 import { DISMISS_TRANSIENT_UI_EVENT } from '@/lib/dismiss-transient-ui'
@@ -53,12 +63,15 @@ import {
   isBlockingProbeError,
   warnRemoteVersionMismatch,
 } from '@/lib/remote-version'
-import { invoke, listenLocal } from '@/lib/transport'
+import { invoke, listenLocal, listenMenu } from '@/lib/transport'
 import {
   activateConnection,
   closeConnectionWindow,
   listConnectionWindows,
+  CONNECTION_LINK_EVENT,
+  OPEN_CONNECTIONS_EVENT,
   openConnectionWindow,
+  showConnectionsInMainWindow,
 } from '@/lib/connection-windows'
 
 const EMPTY_URL_FORM = {
@@ -117,6 +130,12 @@ export function RemoteConnectionsDialog({
   const [openIds, setOpenIds] = useState<string[]>([])
   const localVersion = getLocalJeanVersion()
   const native = isNativeApp()
+  // A connection window shows only its own server. Managing the list (open
+  // other windows, add, delete) belongs to the main window.
+  const connectionWindow = native && isConnectionWindow()
+  const thisConnection = connectionWindow
+    ? connections.find(connection => connection.id === activeId)
+    : undefined
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<EditorMode>(null)
   const [addMode, setAddMode] = useState<AddMode>('url')
@@ -200,15 +219,60 @@ export function RemoteConnectionsDialog({
 
   useEffect(() => {
     if (!open || editingId) return
-    void refreshVersions(connections)
+    void refreshVersions(
+      connectionWindow
+        ? connections.filter(connection => connection.id === activeId)
+        : connections
+    )
     // connectionIds captures membership changes without depending on array identity
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editingId, connectionIds, refreshVersions])
+  }, [open, editingId, connectionIds, connectionWindow, refreshVersions])
+
+  // "Manage all connections" in a connection window opens this dialog in main.
+  useEffect(() => {
+    if (!native || connectionWindow) return
+    let disposed = false
+    const unlistens: (() => void)[] = []
+    const keep = (fn: () => void) => {
+      if (disposed) fn()
+      else unlistens.push(fn)
+    }
+    // A splitkick://connect link waits in the shell until this window takes it:
+    // on mount (the link started the app) and on each new link.
+    const takeLink = async () => {
+      const link = await invoke<string | null>('take_pending_connection_link')
+      const prefill = link ? parseConnectionLink(link) : null
+      if (!prefill || disposed) return
+      window.dispatchEvent(
+        new CustomEvent('open-remote-connections', { detail: { prefill } })
+      )
+    }
+    void listenMenu(OPEN_CONNECTIONS_EVENT, () => setOpen(true)).then(keep)
+    void listenMenu(CONNECTION_LINK_EVENT, () => void takeLink()).then(keep)
+    void takeLink().catch(() => undefined)
+    return () => {
+      disposed = true
+      unlistens.forEach(fn => fn())
+    }
+  }, [native, connectionWindow])
 
   useEffect(() => {
     const handleOpen = (event: Event) => {
       setOpen(true)
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id
+      const detail = (
+        event as CustomEvent<{ id?: string; prefill?: ConnectionLinkPrefill }>
+      ).detail
+      if (detail?.prefill) {
+        // From a splitkick://connect link: fill in "Add remote", never save.
+        setEditingId('new')
+        setAddMode('url')
+        setForm({ ...EMPTY_URL_FORM, ...detail.prefill })
+        setError(null)
+        setProgress(null)
+        setInstalling(false)
+        return
+      }
+      const id = detail?.id
       const connection = connections.find(item => item.id === id)
       if (connection) {
         setEditingId(connection.id)
@@ -495,37 +559,53 @@ export function RemoteConnectionsDialog({
     }
   }
 
+  const manageAllConnections = async () => {
+    setError(null)
+    try {
+      await showConnectionsInMainWindow()
+      setOpen(false)
+    } catch (focusError) {
+      setError(
+        focusError instanceof Error ? focusError.message : String(focusError)
+      )
+    }
+  }
+
+  const versionLabelFor = (id: string) => {
+    const versionState = versions[id]
+    return versionState?.status === 'ready'
+      ? formatJeanVersionLabel(versionState.version)
+      : versionState?.status === 'error'
+        ? 'unreachable'
+        : 'checking…'
+  }
+
+  const versionMismatchFor = (id: string) => {
+    const versionState = versions[id]
+    return (
+      versionState?.status === 'ready' &&
+      !checkRemoteVersionCompatibility(versionState.version).compatible
+    )
+  }
+
   const isNew = editingId === 'new'
   const showInstallForm = isNew && addMode === 'install'
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {showTrigger && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                aria-label="Server connections"
-                variant="ghost"
-                size="icon"
-                className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-              >
-                <Server className="size-3.5" />
-                {remoteActive && (
-                  <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
-                )}
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>Server connections</TooltipContent>
-        </Tooltip>
+        <DialogTrigger asChild>
+          <ServerButton remoteActive={remoteActive} />
+        </DialogTrigger>
       )}
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
           <DialogTitle>Server connections</DialogTitle>
           <DialogDescription>
-            Connect this client to Local or a remote Web Access server.
+            {connectionWindow
+              ? `This window is connected to ${thisConnection?.name ?? 'a remote server'}.`
+              : 'Connect this client to Local or a remote Web Access server.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -705,7 +785,7 @@ export function RemoteConnectionsDialog({
                   onChange={event =>
                     setForm(current => ({
                       ...current,
-                      url: event.target.value,
+                      ...withTokenFromUrl(event.target.value, current.token),
                     }))
                   }
                   placeholder="https://jean.example.com/?token=..."
@@ -725,7 +805,7 @@ export function RemoteConnectionsDialog({
                       token: event.target.value,
                     }))
                   }
-                  placeholder="Optional when included in the URL"
+                  placeholder="Filled in from a URL with ?token="
                   disabled={connectingId !== null}
                 />
               </div>
@@ -810,6 +890,30 @@ export function RemoteConnectionsDialog({
               </DialogFooter>
             </form>
           )
+        ) : connectionWindow ? (
+          <div className="space-y-2">
+            {thisConnection && (
+              <ConnectionRow
+                name={thisConnection.name}
+                detail={thisConnection.url}
+                versionLabel={versionLabelFor(thisConnection.id)}
+                versionWarning={versionMismatchFor(thisConnection.id)}
+                active
+                onSelect={() => undefined}
+                onEdit={() => beginEdit(thisConnection)}
+              />
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2 w-full"
+              onClick={() => void manageAllConnections()}
+            >
+              <Server className="mr-2 size-4" />
+              Manage all connections
+            </Button>
+          </div>
         ) : (
           <div className="space-y-2">
             <ConnectionRow
@@ -821,24 +925,13 @@ export function RemoteConnectionsDialog({
               onSelect={() => void switchTo(LOCAL_CONNECTION_ID)}
             />
             {connections.map(connection => {
-              const versionState = versions[connection.id]
-              const mismatch =
-                versionState?.status === 'ready' &&
-                !checkRemoteVersionCompatibility(versionState.version)
-                  .compatible
-              const versionLabel =
-                versionState?.status === 'ready'
-                  ? formatJeanVersionLabel(versionState.version)
-                  : versionState?.status === 'error'
-                    ? 'unreachable'
-                    : 'checking…'
               return (
                 <ConnectionRow
                   key={connection.id}
                   name={connection.name}
                   detail={connection.url}
-                  versionLabel={versionLabel}
-                  versionWarning={mismatch}
+                  versionLabel={versionLabelFor(connection.id)}
+                  versionWarning={versionMismatchFor(connection.id)}
                   active={
                     activeId === connection.id ||
                     openIds.includes(connection.id)
@@ -864,6 +957,48 @@ export function RemoteConnectionsDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * The sidebar's Server button. It only asks the dialog to open: the main
+ * window mounts the dialog once (MainWindow), so a hidden sidebar does not
+ * take the dialog, and the links that open it, away with it.
+ */
+export function RemoteConnectionsTrigger() {
+  const remoteActive = getActiveConnectionId() !== LOCAL_CONNECTION_ID
+  return (
+    <ServerButton
+      remoteActive={remoteActive}
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent('open-remote-connections'))
+      }
+    />
+  )
+}
+
+function ServerButton({
+  remoteActive,
+  ...props
+}: { remoteActive: boolean } & ComponentProps<typeof Button>) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label="Server connections"
+          variant="ghost"
+          size="icon"
+          className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+          {...props}
+        >
+          <Server className="size-3.5" />
+          {remoteActive && (
+            <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Server connections</TooltipContent>
+    </Tooltip>
   )
 }
 

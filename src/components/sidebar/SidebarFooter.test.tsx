@@ -34,7 +34,7 @@ vi.mock('@/components/titlebar/UsagePopover', () => ({
   UsagePopover: () => null,
 }))
 vi.mock('@/components/remote/RemoteConnectionsDialog', () => ({
-  RemoteConnectionsDialog: () => <span data-testid="connections" />,
+  RemoteConnectionsTrigger: () => <span data-testid="connections" />,
 }))
 vi.mock('@tauri-apps/api/app', () => ({
   getVersion: () => Promise.resolve('0.1.73'),

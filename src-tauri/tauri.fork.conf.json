@@ -57,6 +57,11 @@
     "copyright": "© 2026 Planetfall Software. Built on Jean, © 2025 Andras Bacsai (Apache 2.0)."
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["splitkick"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/azeitler/splitkick/releases/latest/download/latest.json"

@@ -4,16 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addRemoteConnection,
   clearConnectionSwitch,
+  connectionLink,
   getActiveConnectionId,
   getActiveRemoteConnection,
   getRemoteConnections,
   isConnectionSwitchPending,
   markConnectionSwitch,
+  parseConnectionLink,
   parseRemoteConnectionInput,
   removeRemoteConnection,
   selectConnection,
   updateRemoteConnection,
   useActiveRemoteConnection,
+  withTokenFromUrl,
 } from './remote-connections'
 
 const tauriInvoke = vi.hoisted(() => vi.fn())
@@ -35,6 +38,53 @@ describe('remote connections', () => {
     expect(
       parseRemoteConnectionInput('http://server.local:3456///', ' token ')
     ).toEqual({ url: 'http://server.local:3456', token: 'token' })
+  })
+
+  it('moves token= from a pasted link into the token field', () => {
+    expect(
+      withTokenFromUrl('https://jean.example.com/?token=secret', 'old')
+    ).toEqual({ url: 'https://jean.example.com/', token: 'secret' })
+    expect(
+      withTokenFromUrl('https://jean.example.com/?a=1&token=secret', '')
+    ).toEqual({ url: 'https://jean.example.com/?a=1', token: 'secret' })
+  })
+
+  it('keeps typed text and the current token when there is no token', () => {
+    expect(withTokenFromUrl('https://jean.exa', 'tok')).toEqual({
+      url: 'https://jean.exa',
+      token: 'tok',
+    })
+    expect(withTokenFromUrl('jean.example', 'tok')).toEqual({
+      url: 'jean.example',
+      token: 'tok',
+    })
+  })
+
+  it('round-trips a splitkick://connect link', () => {
+    const link = connectionLink('http://mac-2:3456', 'se cret', 'mac-2')
+    expect(link).toBe(
+      'splitkick://connect?url=http%3A%2F%2Fmb16%3A3456&token=se+cret&name=mac-2'
+    )
+    expect(parseConnectionLink(link)).toEqual({
+      name: 'mac-2',
+      url: 'http://mac-2:3456',
+      token: 'se cret',
+    })
+  })
+
+  it('reads a token inside the url parameter of a connect link', () => {
+    expect(
+      parseConnectionLink(
+        'splitkick://connect?url=' +
+          encodeURIComponent('https://jean.example.com/?token=abc')
+      )
+    ).toEqual({ name: '', url: 'https://jean.example.com/', token: 'abc' })
+  })
+
+  it('ignores links that are not connect links', () => {
+    expect(parseConnectionLink('splitkick://session/abc')).toBeNull()
+    expect(parseConnectionLink('splitkick://connect')).toBeNull()
+    expect(parseConnectionLink('not a link')).toBeNull()
   })
 
   it('rejects unsupported URL schemes', () => {
