@@ -10,7 +10,11 @@ import type {
   SessionNetwork,
   SessionNetworkNode,
 } from '@/types/chat'
-import { networkDepths, SessionNetworkTree } from './SessionNetworkTree'
+import {
+  focusedNetworkRows,
+  networkDepths,
+  SessionNetworkTree,
+} from './SessionNetworkTree'
 
 const network = vi.hoisted(() => ({
   current: undefined as SessionNetwork | null | undefined,
@@ -82,6 +86,38 @@ describe('networkDepths', () => {
   })
 })
 
+describe('focusedNetworkRows', () => {
+  const rowsOf = (focusId: string) =>
+    focusedNetworkRows(tree, focusId).map(({ node, depth }) => [
+      node.session.id,
+      depth,
+    ])
+
+  it('shows the parent as one row, then the session and its children', () => {
+    expect(rowsOf('a')).toEqual([
+      ['root', 0],
+      ['a', 1],
+      ['a1', 2],
+    ])
+  })
+
+  it('leaves out siblings and the rest of the parent tree', () => {
+    expect(rowsOf('a1')).toEqual([
+      ['a', 0],
+      ['a1', 1],
+    ])
+  })
+
+  it('starts at the session itself when it has no parent', () => {
+    expect(rowsOf('root')).toEqual([
+      ['root', 0],
+      ['a', 1],
+      ['a1', 2],
+      ['b', 1],
+    ])
+  })
+})
+
 describe('linkedSessionIds', () => {
   it('holds parents and children, not unlinked sessions', () => {
     const data = {
@@ -115,12 +151,20 @@ describe('SessionNetworkTree (#77, #98)', () => {
     useUIStore.getState().setSessionNetworkSessionId(null)
   })
 
-  it('lists the whole tree with project › worktree and marks this session', () => {
+  it('lists the parent, this session and its children, not siblings', () => {
     render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
     expect(screen.getByText('Session root')).toBeInTheDocument()
     expect(screen.getByText('Session a1')).toBeInTheDocument()
     expect(screen.getByText('Demo › tree-a1')).toBeInTheDocument()
     expect(screen.getByText('This session')).toBeInTheDocument()
+    expect(screen.queryByText('Session b')).toBeNull()
+  })
+
+  it('says when this session has started no other sessions', () => {
+    render(<SessionNetworkTree sessionId="a1" currentSessionId="a1" />)
+    expect(
+      screen.getByText('This session has not started other sessions.')
+    ).toBeInTheDocument()
   })
 
   it('marks no row as this session for a pinned other network', () => {
@@ -149,7 +193,7 @@ describe('SessionNetworkTree (#77, #98)', () => {
   })
 
   it('shows archived sessions greyed out and not clickable', () => {
-    render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
+    render(<SessionNetworkTree sessionId="root" currentSessionId="root" />)
     const row = screen.getByText('Session b').closest('button')
     expect(row).toBeDisabled()
     expect(row?.textContent).toContain('Archived')
@@ -157,7 +201,7 @@ describe('SessionNetworkTree (#77, #98)', () => {
 
   it('says when the root was started by a session not on this device', () => {
     network.current = { ...tree, rootParentMissing: true }
-    render(<SessionNetworkTree sessionId="a" currentSessionId="a" />)
+    render(<SessionNetworkTree sessionId="root" currentSessionId="root" />)
     expect(
       screen.getByText('Started by a session that is not on this device.')
     ).toBeInTheDocument()

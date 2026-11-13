@@ -22,6 +22,47 @@ export function networkDepths(network: SessionNetwork): Map<string, number> {
   return depths
 }
 
+export interface NetworkRowEntry {
+  node: SessionNetworkNode
+  depth: number
+}
+
+/**
+ * The rows around one session: its parent as a single row (if it has one),
+ * then the session itself and every session started from it, as a tree.
+ * Siblings and the rest of the parent's tree are left out.
+ */
+export function focusedNetworkRows(
+  network: SessionNetwork,
+  focusId: string
+): NetworkRowEntry[] {
+  const depths = networkDepths(network)
+  const focus = network.nodes.find(node => node.session.id === focusId)
+  if (!focus) {
+    return network.nodes.map(node => ({
+      node,
+      depth: depths.get(node.session.id) ?? 0,
+    }))
+  }
+  const parent = focus.parentId
+    ? network.nodes.find(node => node.session.id === focus.parentId)
+    : undefined
+  // Nodes arrive depth-first, so a parent is always seen before its children.
+  const inSubtree = new Set([focusId])
+  for (const node of network.nodes) {
+    if (node.parentId && inSubtree.has(node.parentId)) {
+      inSubtree.add(node.session.id)
+    }
+  }
+  const offset = (parent ? 1 : 0) - (depths.get(focusId) ?? 0)
+  const rows: NetworkRowEntry[] = parent ? [{ node: parent, depth: 0 }] : []
+  for (const node of network.nodes) {
+    if (!inSubtree.has(node.session.id)) continue
+    rows.push({ node, depth: (depths.get(node.session.id) ?? 0) + offset })
+  }
+  return rows
+}
+
 export function isNodeArchived(node: SessionNetworkNode): boolean {
   return !!node.session.archived_at || node.worktreeArchived
 }
@@ -102,8 +143,9 @@ function NetworkRow({
 }
 
 /**
- * The tree of sessions around one session (#77): its root through
- * `started_by`, and every session started from there, in any project.
+ * The sessions around one session (#77): the session that started it (one
+ * row), and every session it started, in any project. Siblings started by the
+ * same parent are not shown; open the parent to see them.
  * This is the schedule side (who started whom); the Graph tab is the roadmap.
  * Shown in the left panel's Network tab (#98); live through the `sessions`
  * cache invalidation.
@@ -122,7 +164,7 @@ export function SessionNetworkTree({
 }) {
   const { data: network, isLoading, isError } = useSessionNetwork(sessionId)
   const storeState = useCanvasStoreState()
-  const depths = network ? networkDepths(network) : null
+  const rows = network ? focusedNetworkRows(network, sessionId) : null
 
   const open = (node: SessionNetworkNode) => {
     // The opened session is in this network, so the pin is no longer needed.
@@ -138,7 +180,7 @@ export function SessionNetworkTree({
   if (isLoading) {
     return <p className="px-2 py-4 text-sm text-muted-foreground">Loading…</p>
   }
-  if (isError || !network || !depths) {
+  if (isError || !network || !rows) {
     return (
       <p className="px-2 py-4 text-sm text-muted-foreground">
         This session is not on this device.
@@ -147,17 +189,17 @@ export function SessionNetworkTree({
   }
   return (
     <div className="p-1">
-      {network.rootParentMissing && (
+      {network.rootParentMissing && sessionId === network.rootId && (
         <p className="mb-1 px-2 text-xs text-muted-foreground">
           Started by a session that is not on this device.
         </p>
       )}
       <ul className="space-y-0.5" aria-label="Session network">
-        {network.nodes.map(node => (
+        {rows.map(({ node, depth }) => (
           <NetworkRow
             key={node.session.id}
             node={node}
-            depth={depths.get(node.session.id) ?? 0}
+            depth={depth}
             isCurrent={node.session.id === currentSessionId}
             isFocus={node.session.id === sessionId}
             storeState={storeState}
@@ -165,7 +207,7 @@ export function SessionNetworkTree({
           />
         ))}
       </ul>
-      {network.nodes.length === 1 && (
+      {!rows.some(({ node }) => node.parentId === sessionId) && (
         <p className="mt-2 px-2 text-xs text-muted-foreground">
           This session has not started other sessions.
         </p>
