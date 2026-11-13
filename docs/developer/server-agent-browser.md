@@ -2,7 +2,7 @@
 
 ## Goal
 
-On **jean-server** (and Web Access without a desktop display), let the user
+On **splitkick-server** (and Web Access without a desktop display), let the user
 **log into accounts manually once**, then let coding agents **drive the same
 browser** for authenticated workflows (Gmail, admin panels, SaaS apps, etc.).
 
@@ -36,7 +36,7 @@ writing backend MCP configs.
 ## Architecture
 
 ```text
-┌──────────────────── jean-server host ─────────────────────┐
+┌────────────────── splitkick-server host ──────────────────┐
 │                                                           │
 │  User (optional remote view later)                        │
 │       │                                                   │
@@ -54,7 +54,7 @@ writing backend MCP configs.
 
 ### Why not re-use the embedded browser?
 
-- jean-server has **no Tauri, WebView, GTK, or display server**.
+- splitkick-server has **no Tauri, WebView, GTK, or display server**.
 - Agents need a local automation surface (CDP), not a React-hosted iframe.
 
 ### Why agent-browser over Playwright MCP?

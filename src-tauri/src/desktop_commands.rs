@@ -545,7 +545,7 @@ pub async fn stop_http_server(runtime: State<'_, CoreRuntime>) -> Result<(), Str
     jean_core::stop_http_server(runtime.0.clone()).await
 }
 
-/// Install jean-server on a remote Linux host over SSH, verify readiness, and
+/// Install splitkick-server on a remote Linux host over SSH, verify readiness, and
 /// return connection details for the remote connections dialog.
 #[tauri::command]
 pub async fn install_remote_jean_server(

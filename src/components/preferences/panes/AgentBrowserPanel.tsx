@@ -96,7 +96,7 @@ export const AgentBrowserPanel: React.FC<{
       <p className="text-sm text-muted-foreground">
         Give coding agents a real Chromium browser with a {PRODUCT_NAME}-managed
         login profile (Vercel agent-browser). Log in manually once; sessions
-        reuse cookies. Works on jean-server and desktop.
+        reuse cookies. Works on the {PRODUCT_NAME} server and desktop.
       </p>
 
       <div className="space-y-3 rounded-md border px-4 py-3">

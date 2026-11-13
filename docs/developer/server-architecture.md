@@ -29,10 +29,10 @@ tools when the gate above permits it.
 ## Required server gates
 
 ```bash
-cargo tree --manifest-path src-server/Cargo.toml -p jean-server
-env -u DISPLAY -u WAYLAND_DISPLAY jean-server --host 127.0.0.1 --port 3456
+cargo tree --manifest-path src-server/Cargo.toml -p splitkick-server
+env -u DISPLAY -u WAYLAND_DISPLAY splitkick-server --host 127.0.0.1 --port 3460
 curl http://127.0.0.1:3456/readyz
-ldd jean-server
+ldd splitkick-server
 ```
 
 The dependency tree and dynamic-library list must not contain Tauri, wry,

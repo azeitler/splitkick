@@ -281,11 +281,11 @@ describe('RemoteConnectionsDialog', () => {
     })
   })
 
-  it('installs jean-server via SSH user and host in the native app', async () => {
+  it('installs splitkick-server via SSH user and host in the native app', async () => {
     isNativeApp.mockReturnValue(true)
     invoke.mockResolvedValue({
       name: 'build-box',
-      url: 'http://192.168.1.50:3456',
+      url: 'http://192.168.1.50:3460',
       token: 'tok-abc',
       alreadyInstalled: false,
       installMode: 'system',
@@ -323,7 +323,7 @@ describe('RemoteConnectionsDialog', () => {
         user: 'ubuntu',
         host: '192.168.1.50',
         sshPort: 22,
-        jeanPort: 3456,
+        jeanPort: 3460,
         userInstall: null,
       })
     })
@@ -331,7 +331,7 @@ describe('RemoteConnectionsDialog', () => {
     await waitFor(() => {
       expect(addRemoteConnection).toHaveBeenCalledWith({
         name: 'build-box',
-        url: 'http://192.168.1.50:3456',
+        url: 'http://192.168.1.50:3460',
         token: 'tok-abc',
         sshUser: 'ubuntu',
         sshHost: '192.168.1.50',

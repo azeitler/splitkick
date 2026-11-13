@@ -47,6 +47,23 @@ pub const DEFAULT_HTTP_PORT: u16 = 3460;
 pub const DESKTOP_MANIFEST_URL: &str =
     "https://github.com/azeitler/splitkick/releases/latest/download/latest.json";
 
+/// Prefix of Splitkick's release tags (`splitkick-v1.5.16`). Upstream Jean
+/// tags are `v<version>`.
+pub const RELEASE_TAG_PREFIX: &str = "splitkick-v";
+
+/// Headless server binary name, and the prefix of its release assets
+/// (`splitkick-server-linux-amd64-<version>.tar.gz`). Upstream's is `jean-server`.
+pub const SERVER_BINARY_NAME: &str = "splitkick-server";
+
+/// systemd unit the installer writes (`scripts/install-splitkick-server.sh`).
+pub const SERVER_SERVICE_NAME: &str = "splitkick-server.service";
+
+/// Headless server release feed, published with every Splitkick release
+/// (`.github/workflows/server-build.yml`). Never upstream's: a Splitkick
+/// server must not update itself to Jean.
+pub const SERVER_MANIFEST_URL: &str =
+    "https://github.com/azeitler/splitkick/releases/latest/download/server-latest.json";
+
 /// Scheme of the links that point to a session, worktree or project
 /// (`splitkick://session/<id>`). Chat renders them; the OS does not know it yet.
 pub const LINK_SCHEME: &str = "splitkick";

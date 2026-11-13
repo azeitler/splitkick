@@ -13,6 +13,13 @@ on:
         required: false
         type: boolean
         default: false
+    outputs:
+      published:
+        description: "'true' when this run published a new Splitkick release"
+        value: ${{ jobs.publish.outputs.published }}
+      tag:
+        description: 'Tag of the published release (splitkick-v<version>)'
+        value: ${{ jobs.publish.outputs.tag }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -384,6 +391,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Read by ci-build.yml, which then adds the headless server to the release.
+    outputs:
+      published: ${{ steps.published.outputs.published }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -519,6 +530,11 @@ jobs:
               echo "- download: https://github.com/${REPOSITORY}/releases/latest/download/$WIN_SETUP_NAME"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mark the release as published
+        id: published
+        if: steps.version.outputs.publish == 'true'
+        run: echo "published=true" >> "$GITHUB_OUTPUT"
 
       # After a final release the website shows the new download facts and the
       # docs get its release notes: scripts/sync-sites.sh runs each repo's own

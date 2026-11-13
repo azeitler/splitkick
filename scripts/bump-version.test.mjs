@@ -16,7 +16,7 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
-test('bump-version updates the desktop and jean-server versions', () => {
+test('bump-version updates the desktop and splitkick-server versions', () => {
   const tempRoot = mkdtempSync(join(tmpdir(), 'jean-bump-version-'))
 
   try {
@@ -44,7 +44,7 @@ test('bump-version updates the desktop and jean-server versions', () => {
     )
     writeFileSync(
       join(tempRoot, 'src-server/Cargo.toml'),
-      '[package]\nname = "jean-server"\nversion = "1.2.3"\n'
+      '[package]\nname = "splitkick-server"\nversion = "1.2.3"\n'
     )
     writeFileSync(
       join(tempRoot, 'jean-core/Cargo.toml'),
@@ -56,7 +56,7 @@ test('bump-version updates the desktop and jean-server versions', () => {
     )
     writeFileSync(
       join(tempRoot, 'src-server/Cargo.lock'),
-      '[[package]]\nname = "jean-server"\nversion = "1.2.3"\n\n[[package]]\nname = "jean-core"\nversion = "1.2.3"\n'
+      '[[package]]\nname = "splitkick-server"\nversion = "1.2.3"\n\n[[package]]\nname = "jean-core"\nversion = "1.2.3"\n'
     )
     writeFileSync(
       join(tempRoot, 'jean-core/Cargo.lock'),
@@ -94,7 +94,7 @@ test('bump-version updates the desktop and jean-server versions', () => {
     )
     assert.match(
       readFileSync(join(tempRoot, 'src-server/Cargo.lock'), 'utf8'),
-      /name = "jean-server"\nversion = "1\.2\.4"/
+      /name = "splitkick-server"\nversion = "1\.2\.4"/
     )
     assert.match(
       readFileSync(join(tempRoot, 'src-server/Cargo.lock'), 'utf8'),

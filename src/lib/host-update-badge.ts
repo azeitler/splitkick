@@ -8,6 +8,7 @@
  * walks the install phases and ends on "Restart host".
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import type { PendingServerUpdate } from '@/store/ui-store'
 
 export interface HostUpdateBadge {
@@ -21,7 +22,7 @@ export interface HostUpdateBadge {
 export function hostUpdateLabel(
   channel: PendingServerUpdate['channel']
 ): string {
-  return channel === 'desktop' ? 'the host app' : 'jean-server'
+  return channel === 'desktop' ? 'the host app' : `the ${PRODUCT_NAME} server`
 }
 
 export function hostUpdateBadge(pending: PendingServerUpdate): HostUpdateBadge {
@@ -41,7 +42,7 @@ export function hostUpdateBadge(pending: PendingServerUpdate): HostUpdateBadge {
           : 'Host update'
 
   const tooltip = !pending.canUpdate
-    ? `${target} v${pending.latestVersion} available — ${pending.reason || 'manual update required'}`
+    ? `${target.charAt(0).toUpperCase()}${target.slice(1)} v${pending.latestVersion} available — ${pending.reason || 'manual update required'}`
     : phase === 'ready' && isDesktop
       ? `v${pending.latestVersion} is installed on the host. Restart it to apply.`
       : busy

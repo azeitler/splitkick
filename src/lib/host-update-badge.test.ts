@@ -23,10 +23,10 @@ describe('hostUpdateBadge', () => {
     expect(badge.busy).toBe(false)
   })
 
-  it('keeps the jean-server wording on the server channel', () => {
+  it('names the Splitkick server on the server channel', () => {
     const badge = hostUpdateBadge({ ...base, channel: 'server' })
     expect(badge.label).toBe('Server update')
-    expect(badge.tooltip).toContain('jean-server')
+    expect(badge.tooltip).toContain('the Splitkick server')
   })
 
   it('disables the control while the host downloads', () => {
@@ -66,6 +66,6 @@ describe('hostUpdateBadge', () => {
 
   it('labels the update target per channel', () => {
     expect(hostUpdateLabel('desktop')).toBe('the host app')
-    expect(hostUpdateLabel('server')).toBe('jean-server')
+    expect(hostUpdateLabel('server')).toBe('the Splitkick server')
   })
 })

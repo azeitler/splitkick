@@ -1,7 +1,12 @@
-//! Install jean-server on a remote Linux host over SSH and verify readiness.
+//! Install splitkick-server on a remote Linux host over SSH and verify readiness.
 //!
-//! Desktop-only: used by the native Jean app when adding a remote connection
-//! from a user + IP/host pair.
+//! Desktop-only: used by the native app when adding a remote connection from a
+//! user + IP/host pair. The installer and the server come from the Splitkick
+//! release of this desktop build, so client and server have the same version.
+//!
+//! The access token never appears in a process argument list (#105): it is
+//! generated on the remote host into a 0600 file that the installer reads with
+//! `--token-file`, and it comes back over the SSH channel (stdout).
 
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
@@ -11,9 +16,12 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 const DEFAULT_SSH_PORT: u16 = 22;
-const DEFAULT_JEAN_PORT: u16 = 3456;
-const INSTALL_SCRIPT_URL: &str =
-    "https://raw.githubusercontent.com/coollabsio/jean/main/scripts/install-jean-server.sh";
+const DEFAULT_JEAN_PORT: u16 = jean_core::brand::DEFAULT_HTTP_PORT;
+const INSTALL_REPO: &str = "azeitler/splitkick";
+const INSTALL_SCRIPT_PATH: &str = "scripts/install-splitkick-server.sh";
+const SERVER_ENV_FILE_SYSTEM: &str = "/etc/splitkick-server.env";
+const SERVER_ENV_FILE_USER: &str = "$HOME/.config/splitkick-server/splitkick-server.env";
+const TOKEN_MASK: &str = "<hidden>";
 const SSH_CONNECT_TIMEOUT_SECS: u64 = 15;
 const HEALTH_ATTEMPTS: u32 = 24;
 const HEALTH_INTERVAL_MS: u64 = 2_500;
@@ -30,7 +38,7 @@ pub struct InstallRemoteInput {
     pub host: String,
     /// SSH port (default 22).
     pub ssh_port: Option<u16>,
-    /// jean-server listen port (default 3456).
+    /// Server listen port (default 3460, `brand::DEFAULT_HTTP_PORT`).
     pub jean_port: Option<u16>,
     /// Force user-level install (no sudo). When None, try system then user.
     pub user_install: Option<bool>,
@@ -131,7 +139,7 @@ pub fn parse_install_token(output: &str) -> Option<String> {
     None
 }
 
-/// Extract token from a jean-server env file body.
+/// Extract token from a splitkick-server env file body.
 pub fn parse_env_token(env_body: &str) -> Option<String> {
     for line in env_body.lines() {
         let line = line.trim();
@@ -277,7 +285,7 @@ fn http_get_status(url: &str) -> Result<(u16, String), String> {
         format!("{host}:{port}")
     };
     let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {host_header}\r\nConnection: close\r\nUser-Agent: jean-remote-install\r\n\r\n"
+        "GET {path} HTTP/1.1\r\nHost: {host_header}\r\nConnection: close\r\nUser-Agent: splitkick-remote-install\r\n\r\n"
     );
     stream
         .write_all(request.as_bytes())
@@ -383,21 +391,22 @@ fn wait_until_ready(app: &AppHandle, url: &str, token: &str) -> Result<(), Strin
         }
     }
     Err(format!(
-        "jean-server did not become ready at {url}: {last_error}"
+        "The Splitkick server did not become ready at {url}: {last_error}"
     ))
 }
 
 fn try_read_existing_token(user: &str, host: &str, ssh_port: u16) -> Option<(String, String)> {
-    // Prefer system env, then user env.
-    let system_cmd = "sudo -n cat /etc/jean-server.env 2>/dev/null || true";
-    if let Ok(body) = run_ssh_ok(user, host, ssh_port, system_cmd) {
+    // Prefer system env, then user env. Only Splitkick's files: an upstream
+    // jean-server on the same host is a different product and is left alone.
+    let system_cmd = format!("sudo -n cat {SERVER_ENV_FILE_SYSTEM} 2>/dev/null || true");
+    if let Ok(body) = run_ssh_ok(user, host, ssh_port, &system_cmd) {
         if let Some(token) = parse_env_token(&body) {
             return Some((token, "system".to_string()));
         }
     }
 
-    let user_cmd = "cat \"$HOME/.config/jean-server/jean-server.env\" 2>/dev/null || true";
-    if let Ok(body) = run_ssh_ok(user, host, ssh_port, user_cmd) {
+    let user_cmd = format!("cat \"{SERVER_ENV_FILE_USER}\" 2>/dev/null || true");
+    if let Ok(body) = run_ssh_ok(user, host, ssh_port, &user_cmd) {
         if let Some(token) = parse_env_token(&body) {
             return Some((token, "user".to_string()));
         }
@@ -406,19 +415,26 @@ fn try_read_existing_token(user: &str, host: &str, ssh_port: u16) -> Option<(Str
     None
 }
 
-/// Build the remote bash install script.
-pub fn build_install_remote_script(jean_port: u16, user_install: bool) -> String {
-    let install_args = if user_install {
-        format!("--user-install --host 0.0.0.0 --port {jean_port} --token \"$TOKEN\" -y")
-    } else {
-        format!("--host 0.0.0.0 --port {jean_port} --token \"$TOKEN\" -y")
-    };
-    let sudo_prefix = if user_install {
-        String::new()
-    } else {
-        "sudo -n ".to_string()
-    };
-    let script_url = shell_escape(INSTALL_SCRIPT_URL);
+/// The installer of the given Splitkick release, never `main`: the server it
+/// installs is the release of the desktop build that asks for it.
+pub fn install_script_url(version: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/{INSTALL_REPO}/{}{version}/{INSTALL_SCRIPT_PATH}",
+        jean_core::brand::RELEASE_TAG_PREFIX
+    )
+}
+
+/// Build the remote bash install script for the given Splitkick version.
+///
+/// The token is written to a `mktemp` file (mode 0600) and handed to the
+/// installer with `--token-file`, so it is never in the argv of `sudo`,
+/// `bash` or the installer, where `ps` would show it to every user (#105).
+/// `printf` and `echo` are bash builtins and start no process.
+pub fn build_install_remote_script(jean_port: u16, user_install: bool, version: &str) -> String {
+    let mode_args = if user_install { "--user-install " } else { "" };
+    let sudo_prefix = if user_install { "" } else { "sudo -n " };
+    let script_url = shell_escape(&install_script_url(version));
+    let version_arg = shell_escape(version);
 
     // Bind 0.0.0.0 so the desktop client can reach the server by the host/IP
     // the user entered. Token auth stays required.
@@ -432,6 +448,9 @@ if ! command -v tar >/dev/null 2>&1; then
   echo "tar is required on the remote host" >&2
   exit 1
 fi
+TOKEN_FILE="$(mktemp)"
+trap 'rm -f "$TOKEN_FILE"' EXIT
+chmod 600 "$TOKEN_FILE"
 TOKEN="$(
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -base64 32 | tr -d '\n'
@@ -439,10 +458,35 @@ TOKEN="$(
     head -c 32 /dev/urandom | base64 | tr -d '\n'
   fi
 )"
+printf '%s\n' "$TOKEN" > "$TOKEN_FILE"
 echo "JEAN_INSTALL_TOKEN=${{TOKEN}}"
-curl -fsSL {script_url} | {sudo_prefix}bash -s -- {install_args}
+curl -fsSL {script_url} | {sudo_prefix}bash -s -- {mode_args}--version {version_arg} --host 0.0.0.0 --port {jean_port} --token-file "$TOKEN_FILE" -y
 "#
     )
+}
+
+/// The install output with the token replaced, for the log the UI shows.
+pub fn mask_token(output: &str, token: Option<&str>) -> String {
+    let masked: String = output
+        .lines()
+        .map(|line| {
+            if line.trim().starts_with("JEAN_INSTALL_TOKEN=") {
+                format!("JEAN_INSTALL_TOKEN={TOKEN_MASK}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let masked = match token.filter(|t| !t.is_empty()) {
+        Some(token) => masked.replace(token, TOKEN_MASK),
+        None => masked,
+    };
+    if output.ends_with('\n') {
+        format!("{masked}\n")
+    } else {
+        masked
+    }
 }
 
 fn run_install(
@@ -454,6 +498,7 @@ fn run_install(
     force_user_install: Option<bool>,
 ) -> Result<(String, String, String), String> {
     let mut log = String::new();
+    let version = jean_core::release_version();
     let modes: Vec<(bool, &str)> = match force_user_install {
         Some(true) => vec![(true, "user")],
         Some(false) => vec![(false, "system")],
@@ -465,10 +510,13 @@ fn run_install(
         emit_progress(
             app,
             "install",
-            &format!("Installing jean-server ({mode_name} install)…"),
+            &format!("Installing Splitkick server {version} ({mode_name} install)…"),
         );
-        let script = build_install_remote_script(jean_port, user_install);
-        let (code, stdout, stderr) = run_ssh(user, host, ssh_port, &script)?;
+        let script = build_install_remote_script(jean_port, user_install, version);
+        let (code, raw_stdout, raw_stderr) = run_ssh(user, host, ssh_port, &script)?;
+        let token = parse_install_token(&raw_stdout).or_else(|| parse_install_token(&raw_stderr));
+        let stdout = mask_token(&raw_stdout, token.as_deref());
+        let stderr = mask_token(&raw_stderr, token.as_deref());
         log.push_str(&format!("--- {mode_name} install ---\n"));
         if !stdout.is_empty() {
             log.push_str(&stdout);
@@ -484,11 +532,9 @@ fn run_install(
         }
 
         if code == 0 {
-            let token = parse_install_token(&stdout)
-                .or_else(|| parse_install_token(&stderr))
-                .ok_or_else(|| {
-                    format!("Install completed but no token was returned. Output:\n{log}")
-                })?;
+            let token = token.ok_or_else(|| {
+                format!("Install completed but no token was returned. Output:\n{log}")
+            })?;
             return Ok((token, mode_name.to_string(), log));
         }
 
@@ -515,10 +561,17 @@ fn run_install(
         }
     }
 
+    let combined = log.to_lowercase();
+    if combined.contains("returned error: 404") {
+        last_error = format!(
+            "{last_error}\n\nSplitkick {version} has no published server release yet. \
+             Update this app, or install the server by hand (docs/headless-server.md)."
+        );
+    }
     Err(format!("{last_error}\n\n{log}"))
 }
 
-/// Install (or reuse) jean-server on a remote host and return connection details.
+/// Install (or reuse) splitkick-server on a remote host and return connection details.
 pub fn install_remote_jean_server(
     app: AppHandle,
     input: InstallRemoteInput,
@@ -531,7 +584,7 @@ pub fn install_remote_jean_server(
     let ssh_port = input.ssh_port.unwrap_or(DEFAULT_SSH_PORT);
     let jean_port = input.jean_port.unwrap_or(DEFAULT_JEAN_PORT);
     validate_port(ssh_port, "SSH port")?;
-    validate_port(jean_port, "Jean server port")?;
+    validate_port(jean_port, "Server port")?;
 
     let name = input
         .name
@@ -561,11 +614,11 @@ pub fn install_remote_jean_server(
     log.push_str("SSH connection OK\n");
 
     // 2) Reuse existing install if already ready
-    emit_progress(&app, "probe", "Checking for an existing jean-server…");
+    emit_progress(&app, "probe", "Checking for an existing Splitkick server…");
     if let Some((token, mode)) = try_read_existing_token(&user, &host, ssh_port) {
         log.push_str(&format!("Found existing env token ({mode})\n"));
         if check_remote_ready(&url, &token).is_ok() {
-            emit_progress(&app, "done", "Existing jean-server is ready.");
+            emit_progress(&app, "done", "Existing Splitkick server is ready.");
             return Ok(InstallRemoteResult {
                 name,
                 url,
@@ -585,7 +638,11 @@ pub fn install_remote_jean_server(
     log.push_str(&install_log);
 
     // 4) Wait until healthy from this client
-    emit_progress(&app, "health", "Waiting for jean-server to become ready…");
+    emit_progress(
+        &app,
+        "health",
+        "Waiting for the Splitkick server to become ready…",
+    );
     wait_until_ready(&app, &url, &token).map_err(|e| {
         format!(
             "{e}\n\nInstall finished, but this computer cannot reach {url}.\n\
@@ -593,7 +650,7 @@ pub fn install_remote_jean_server(
         )
     })?;
 
-    emit_progress(&app, "done", "Remote jean-server is ready.");
+    emit_progress(&app, "done", "Remote Splitkick server is ready.");
     Ok(InstallRemoteResult {
         name,
         url,
@@ -629,12 +686,12 @@ mod tests {
     #[test]
     fn builds_web_access_url() {
         assert_eq!(
-            build_web_access_url("10.0.0.5", 3456),
-            "http://10.0.0.5:3456"
+            build_web_access_url("10.0.0.5", 3460),
+            "http://10.0.0.5:3460"
         );
         assert_eq!(
-            build_web_access_url("2001:db8::1", 3456),
-            "http://[2001:db8::1]:3456"
+            build_web_access_url("2001:db8::1", 3460),
+            "http://[2001:db8::1]:3460"
         );
     }
 
@@ -654,18 +711,57 @@ JEAN_INSTALL_TOKEN=abc123+/=
 
     #[test]
     fn install_script_includes_flags() {
-        let system = build_install_remote_script(3456, false);
+        let system = build_install_remote_script(3460, false, "1.5.16");
         assert!(system.contains("sudo -n"));
         assert!(system.contains("--host 0.0.0.0"));
-        assert!(system.contains("--port 3456"));
+        assert!(system.contains("--port 3460"));
+        assert!(system.contains("--version '1.5.16'"));
         assert!(system.contains("JEAN_INSTALL_TOKEN="));
         assert!(!system.contains("--user-install"));
-        assert!(system.contains(INSTALL_SCRIPT_URL));
+        assert!(system.contains(&install_script_url("1.5.16")));
 
-        let user = build_install_remote_script(4000, true);
+        let user = build_install_remote_script(4000, true, "1.5.16");
         assert!(user.contains("--user-install"));
         assert!(user.contains("--port 4000"));
         assert!(!user.contains("sudo -n"));
+    }
+
+    #[test]
+    fn installer_comes_from_the_splitkick_release_tag() {
+        assert_eq!(
+            install_script_url("1.5.16"),
+            "https://raw.githubusercontent.com/azeitler/splitkick/splitkick-v1.5.16/scripts/install-splitkick-server.sh"
+        );
+        assert!(!install_script_url("1.5.16").contains("coollabsio"));
+    }
+
+    /// #105: the token must never be an argument of sudo, bash or the
+    /// installer. It reaches the installer only through a 0600 file.
+    #[test]
+    fn install_script_keeps_the_token_out_of_argv() {
+        for user_install in [false, true] {
+            let script = build_install_remote_script(3460, user_install, "1.5.16");
+            assert!(!script.contains("--token \""), "{script}");
+            assert!(!script.contains("--token $"), "{script}");
+            assert!(script.contains("--token-file \"$TOKEN_FILE\""));
+            assert!(script.contains("TOKEN_FILE=\"$(mktemp)\""));
+            assert!(script.contains("chmod 600 \"$TOKEN_FILE\""));
+            assert!(script.contains("trap 'rm -f \"$TOKEN_FILE\"' EXIT"));
+            // The only process that sees $TOKEN expanded is none: printf and
+            // echo are builtins.
+            let installer_line = script.lines().find(|l| l.starts_with("curl ")).unwrap();
+            assert!(!installer_line.contains("$TOKEN\""), "{installer_line}");
+        }
+    }
+
+    #[test]
+    fn masks_the_token_in_the_install_log() {
+        let out = "==> start\nJEAN_INSTALL_TOKEN=abc+/=\n==> url http://h:3460/?token=abc+/=\n";
+        let masked = mask_token(out, Some("abc+/="));
+        assert!(!masked.contains("abc+/="), "{masked}");
+        assert!(masked.contains("JEAN_INSTALL_TOKEN=<hidden>"));
+        assert!(masked.ends_with('\n'));
+        assert_eq!(mask_token("plain", None), "plain");
     }
 
     #[test]

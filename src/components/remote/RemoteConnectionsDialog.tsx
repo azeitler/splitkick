@@ -74,7 +74,7 @@ const EMPTY_INSTALL_FORM = {
   user: '',
   host: '',
   sshPort: '22',
-  jeanPort: '3456',
+  jeanPort: '3460',
 }
 
 type AddMode = 'url' | 'install'
@@ -418,7 +418,7 @@ export function RemoteConnectionsDialog({
     }
 
     const sshPort = Number(installForm.sshPort || '22')
-    const jeanPort = Number(installForm.jeanPort || '3456')
+    const jeanPort = Number(installForm.jeanPort || '3460')
     if (
       !Number.isInteger(sshPort) ||
       sshPort < 1 ||
@@ -427,9 +427,7 @@ export function RemoteConnectionsDialog({
       jeanPort < 1 ||
       jeanPort > 65535
     ) {
-      setError(
-        'SSH and Jean server ports must be integers between 1 and 65535.'
-      )
+      setError('SSH and server ports must be integers between 1 and 65535.')
       return
     }
 
@@ -451,7 +449,7 @@ export function RemoteConnectionsDialog({
       )
 
       if (!result.ready) {
-        throw new Error('Remote jean-server did not report ready.')
+        throw new Error('Remote Splitkick server did not report ready.')
       }
 
       const connection = await addRemoteConnection({
@@ -614,9 +612,7 @@ export function RemoteConnectionsDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="remote-install-jean-port">
-                    Jean server port
-                  </Label>
+                  <Label htmlFor="remote-install-jean-port">Server port</Label>
                   <Input
                     id="remote-install-jean-port"
                     type="number"
@@ -635,9 +631,9 @@ export function RemoteConnectionsDialog({
               </div>
               <p className="text-xs text-muted-foreground">
                 Requires SSH key auth to the host (no password prompt).{' '}
-                {PRODUCT_NAME} installs the Jean server via the official
-                installer, checks health/ready/auth, then adds the connection
-                when everything is green.
+                {PRODUCT_NAME} installs its server (the same version as this
+                app) from the {PRODUCT_NAME} release, checks health/ready/auth,
+                then adds the connection when everything is green.
               </p>
               {progress && (
                 <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">

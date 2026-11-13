@@ -181,7 +181,7 @@ describe('useServerUpdateCheck', () => {
     invokeMock.mockResolvedValue({
       success: true,
       version: '1.2.0',
-      message: 'Installed jean-server 1.2.0; restart scheduled',
+      message: 'Installed Splitkick server 1.2.0; restart scheduled',
       restartScheduled: true,
     })
 

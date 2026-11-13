@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY jean-core ./jean-core
 COPY src-server ./src-server
+COPY src-tauri/tauri.fork.conf.json ./src-tauri/tauri.fork.conf.json
 COPY --from=frontend /app/dist ./dist
 RUN cd src-server && RUSTC_WRAPPER= cargo build --release --locked
 
@@ -29,15 +30,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash jean \
-    && mkdir -p /home/jean/.cache /home/jean/.config /home/jean/.local/share/com.jean.desktop \
-    && chown -R jean:jean /home/jean
-COPY --from=builder /app/src-server/target/release/jean-server /usr/local/bin/jean-server
-COPY scripts/docker-entrypoint.sh /usr/local/bin/jean-server-entrypoint
-RUN chmod +x /usr/local/bin/jean-server-entrypoint
-USER jean
+    && useradd --create-home --shell /bin/bash splitkick \
+    && mkdir -p /home/splitkick/.cache /home/splitkick/.config /home/splitkick/.local/share/app.splitkick.desktop \
+    && chown -R splitkick:splitkick /home/splitkick
+COPY --from=builder /app/src-server/target/release/splitkick-server /usr/local/bin/splitkick-server
+COPY scripts/docker-entrypoint.sh /usr/local/bin/splitkick-server-entrypoint
+RUN chmod +x /usr/local/bin/splitkick-server-entrypoint
+USER splitkick
 ENV JEAN_HOST=0.0.0.0 \
-    JEAN_PORT=3456
-EXPOSE 3456
-VOLUME ["/home/jean/.local/share/com.jean.desktop"]
-ENTRYPOINT ["/usr/local/bin/jean-server-entrypoint"]
+    JEAN_PORT=3460
+EXPOSE 3460
+VOLUME ["/home/splitkick/.local/share/app.splitkick.desktop"]
+ENTRYPOINT ["/usr/local/bin/splitkick-server-entrypoint"]
