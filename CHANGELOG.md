@@ -14,6 +14,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   Worker (read) and Reviewer (read). A click saves the template as a new
   agent with its persona prompt, ready to edit. The New Session and Start
   session dialogs point to them.
+- **MCP tools for sidebar folders.** `create_folder` (`name`, optional
+  `parentId`), `move_project` (a project or folder into a folder, or back to
+  the top level, at an optional `position`), `rename_folder` and
+  `delete_folder` (empty folders only) let an agent sort projects into
+  folders. They use the sidebar's own commands, so the sidebar updates at
+  once, also in Web Access. Deleting a folder that is not empty now names
+  what is inside.
 
 ### Changed
 

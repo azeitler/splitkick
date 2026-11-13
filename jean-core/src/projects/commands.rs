@@ -13049,11 +13049,21 @@ pub async fn delete_folder(app: AppHandle, folder_id: String) -> Result<(), Stri
         return Err("Cannot delete: not a folder".to_string());
     }
 
-    // Verify empty
+    // Verify empty; name what is inside so the caller knows what to move.
     if !data.folder_is_empty(&folder_id) {
-        return Err(
-            "Cannot delete folder: it is not empty. Move or remove all items first.".to_string(),
-        );
+        let contents: Vec<String> = data
+            .get_children(Some(&folder_id))
+            .iter()
+            .map(|p| {
+                let kind = if p.is_folder { "folder" } else { "project" };
+                format!("{kind} '{}' ({})", p.name, p.id)
+            })
+            .collect();
+        return Err(format!(
+            "Cannot delete folder '{}': it is not empty. It contains {}. Move or remove these items first.",
+            folder.name,
+            contents.join(", ")
+        ));
     }
 
     data.remove_project(&folder_id);
@@ -13085,12 +13095,8 @@ pub async fn move_item(
         }
     }
 
-    // Check max depth
-    if data.would_exceed_max_depth(&item_id, new_parent_id.as_deref()) {
-        return Err("Move would exceed maximum nesting depth (3)".to_string());
-    }
-
-    // Prevent moving folder into itself or descendants
+    // Prevent moving folder into itself or descendants. Checked before the
+    // depth limit, which such a move can also trip with a misleading message.
     if let Some(ref pid) = new_parent_id {
         if item_id == *pid {
             return Err("Cannot move folder into itself".to_string());
@@ -13098,6 +13104,11 @@ pub async fn move_item(
         if data.is_descendant_of(pid, &item_id) {
             return Err("Cannot move folder into its own descendant".to_string());
         }
+    }
+
+    // Check max depth
+    if data.would_exceed_max_depth(&item_id, new_parent_id.as_deref()) {
+        return Err("Move would exceed maximum nesting depth (3)".to_string());
     }
 
     // Verify item exists
