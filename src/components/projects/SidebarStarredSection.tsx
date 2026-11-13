@@ -22,7 +22,8 @@ import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
  * A star is global, so the tab shows whatever project is selected. Rows
  * resolve against the all-sessions cache the Home view, the command palette
  * and the unread bell already share, so the tab adds no backend query. A click
- * switches to the Projects tab and reveals the session in the tree.
+ * opens the session and keeps the Starred tab selected; the tree behind the
+ * Projects tab still expands to the session's row.
  */
 export function SidebarStarredSection() {
   const stars = useProjectsStore(state => state.starredSessions)
@@ -47,15 +48,12 @@ export function SidebarStarredSection() {
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      // Show where the session lives: the tree expands to its row.
-      navigateToSession(
-        {
-          projectId: shortcut.projectId,
-          worktreeId: shortcut.worktreeId,
-          sessionId: shortcut.sessionId,
-        },
-        { showProjectsTab: true }
-      )
+      // Stay on Starred; the Projects tree still expands to the row.
+      navigateToSession({
+        projectId: shortcut.projectId,
+        worktreeId: shortcut.worktreeId,
+        sessionId: shortcut.sessionId,
+      })
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }

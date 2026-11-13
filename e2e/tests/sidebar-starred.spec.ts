@@ -14,9 +14,10 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * The Starred tab: a click switches to the Projects tab and reveals the
- * session in the tree, and the stars can be reordered by drag and drop. Enough projects that the
- * revealed row sits far below the visible part of the tree.
+ * The Starred tab: a click opens the session and keeps the Starred tab
+ * selected; the tree behind the Projects tab still reveals the row. The stars
+ * can be reordered by drag and drop. Enough projects that the revealed row
+ * sits far below the visible part of the tree.
  */
 
 const PROJECT_COUNT = 30
@@ -138,7 +139,7 @@ async function lastStarWrite(page: Page): Promise<string[] | null> {
 }
 
 test.describe('Sidebar Starred tab', () => {
-  test('a click on a star switches to Projects and reveals its session there', async ({
+  test('a click on a star keeps Starred selected and reveals its session in the tree', async ({
     mockPage,
   }) => {
     await ensureSidebarOpen(mockPage)
@@ -151,11 +152,19 @@ test.describe('Sidebar Starred tab', () => {
       .locator(`[data-shortcut-row-id="${target.session.id}"]`)
       .click()
 
-    await expect(mockPage.getByTestId('sidebar-tab-projects')).toHaveAttribute(
+    // The session is open and the Starred tab stays selected.
+    await expect(
+      starredSection(mockPage).locator(
+        `[data-shortcut-row-id="${target.session.id}"]`
+      )
+    ).toHaveAttribute('aria-current', 'page')
+    await expect(mockPage.getByTestId('sidebar-tab-starred')).toHaveAttribute(
       'aria-selected',
       'true'
     )
 
+    // Switching to Projects shows the row the tree revealed meanwhile.
+    await mockPage.getByTestId('sidebar-tab-projects').click()
     const rowId = `session:${target.session.id}`
     await expect
       .poll(

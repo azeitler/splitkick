@@ -22,6 +22,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   access token no longer appears in the argument list of any process on the
   remote host, and the install log masks it. Closes #105
 
+### Changed
+
+- **Starred stays selected.** A click on a starred session opens it and keeps
+  the Starred tab selected. The tree behind the Projects tab still expands to
+  the session, so it shows there when you switch.
+
 ## [1.5.15] - 2026-11-13
 
 Built on Jean 0.1.73.

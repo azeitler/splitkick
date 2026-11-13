@@ -129,7 +129,7 @@ describe('SidebarStarredSection', () => {
     expect(useProjectsStore.getState().starredSessions).toHaveLength(1)
   })
 
-  it('opens a star, switches to Projects and reveals its row there', async () => {
+  it('opens a star, stays on Starred and reveals its row in the tree', async () => {
     const user = userEvent.setup()
     useProjectsStore.setState({
       starredSessions: [star('s-2', 'Coolify', 'feat/deploy')],
@@ -145,17 +145,14 @@ describe('SidebarStarredSection', () => {
 
     await user.click(screen.getByText('Deploy pipeline'))
 
-    // The tree expands and scrolls to the session, in the Projects tab.
+    // The session opens, the Starred tab stays, the tree expands behind it.
     expect(mocks.navigateToSession).toHaveBeenCalledTimes(1)
-    expect(mocks.navigateToSession).toHaveBeenCalledWith(
-      {
-        projectId: 'id-Coolify',
-        worktreeId: 'id-feat/deploy',
-        sessionId: 's-2',
-      },
-      { showProjectsTab: true }
-    )
-    expect(useUIStore.getState().sidebarTab).toBe('projects')
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'id-Coolify',
+      worktreeId: 'id-feat/deploy',
+      sessionId: 's-2',
+    })
+    expect(useUIStore.getState().sidebarTab).toBe('starred')
     expect(useUIStore.getState().pendingSidebarRevealId).toBe('session:s-2')
     expect(
       useProjectsStore.getState().expandedWorktreeIds.has('id-feat/deploy')
