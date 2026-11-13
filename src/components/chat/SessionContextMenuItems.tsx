@@ -3,7 +3,6 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
-  FolderInput,
   GitBranchPlus,
   GitFork,
   Link,
@@ -46,6 +45,7 @@ import {
 import type { Session } from '@/types/chat'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
+import { MoveToSubmenu } from './MoveToSubmenu'
 import {
   togglePinnedSession,
   toggleStarredSession,
@@ -316,17 +316,12 @@ export function SessionContextMenuItems({
         <GitBranchPlus className="mr-2 h-4 w-4" />
         Fork Session (new Worktree)
       </ContextMenuItem>
-      <ContextMenuItem
+      <MoveToSubmenu
+        sessionId={session.id}
+        worktreeId={worktreeId}
+        projectId={projectId}
         disabled={!canMove}
-        onSelect={() => {
-          useUIStore
-            .getState()
-            .setMoveSessionTarget({ worktreeId, sessionId: session.id })
-        }}
-      >
-        <FolderInput className="mr-2 h-4 w-4" />
-        Move to…
-      </ContextMenuItem>
+      />
       {canTransfer && (
         <ContextMenuItem
           onSelect={() => {

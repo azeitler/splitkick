@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,10 +64,16 @@ describe('SessionContextMenuItems — move', () => {
     useChatStore.setState({ messageQueues: {} })
   })
 
-  it('opens the move dialog for this session', async () => {
+  it('opens the move dialog from Other Project in the submenu', async () => {
     const user = await openMenu()
 
-    await user.click(await screen.findByRole('menuitem', { name: /move to/i }))
+    // Open the submenu by keyboard; a pointer move closes it again in jsdom.
+    const trigger = await screen.findByRole('menuitem', { name: /move to/i })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' })
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Other Project…' })
+    )
 
     await waitFor(() =>
       expect(useUIStore.getState().moveSessionTarget).toEqual({

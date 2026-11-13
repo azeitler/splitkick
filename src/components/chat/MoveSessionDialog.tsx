@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -12,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import { moveSession } from '@/lib/session-move'
+import { moveSessionWithToast } from '@/lib/session-move-toast'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -56,8 +55,7 @@ export function MoveSessionDialog() {
     enabled: !!target && !!projectId,
     queryFn: async () =>
       (await invoke<Worktree[]>('list_worktrees', { projectId })).filter(
-        worktree =>
-          !worktree.archived_at && worktree.id !== target?.worktreeId
+        worktree => !worktree.archived_at && worktree.id !== target?.worktreeId
       ),
   })
 
@@ -74,16 +72,7 @@ export function MoveSessionDialog() {
       'worktree'
     const { sessionId } = target
     close()
-    const toastId = toast.loading(`Moving session to ${worktreeName}…`)
-    moveSession(sessionId, worktreeId)
-      .then(() => {
-        toast.success(`Moved session to ${worktreeName}`, { id: toastId })
-      })
-      .catch(error => {
-        toast.error(`Failed to move session: ${errorMessage(error)}`, {
-          id: toastId,
-        })
-      })
+    moveSessionWithToast(sessionId, worktreeId, worktreeName)
   }
 
   const listError = projects.error ?? worktrees.error
@@ -152,8 +141,8 @@ export function MoveSessionDialog() {
           ) : (
             <p className="text-sm text-muted-foreground">
               Claude continues its conversation. Other backends get the history
-              replayed on the next message. Checkpoint restore for earlier
-              turns does not move with the session.
+              replayed on the next message. Checkpoint restore for earlier turns
+              does not move with the session.
             </p>
           )}
         </div>
