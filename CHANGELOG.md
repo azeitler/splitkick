@@ -44,6 +44,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Remote windows with the browser open are found again.** Server
+  connections did not mark such a window as open, and a click on its server
+  failed with "a webview with label … already exists". The same window could
+  also be missed by the Dock, the tray and the menu. A click now brings the
+  window to the front.
 - **Server connections in a remote window.** The dialog shows only the server
   of that window (version, Edit). It no longer opens other remote windows.
   "Manage all connections" brings the main window to the front with the full
