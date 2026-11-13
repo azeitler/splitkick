@@ -19,53 +19,10 @@ import type {
 } from '@/types/github'
 import { isTauri } from './projects'
 
-function getErrorMessage(error: unknown): string {
-  if (!error) return ''
-  return error instanceof Error ? error.message : String(error)
-}
+import { isGhAuthError } from '@/lib/gh-cli-setup'
 
-/**
- * GitHub CLI can suggest `gh auth login` for repositories whose remotes are
- * not hosted on a known GitHub host. Those are repository eligibility errors,
- * not authentication failures.
- */
-export function isUnsupportedGitHubRepoError(error: unknown): boolean {
-  const lower = getErrorMessage(error).toLowerCase()
-  if (!lower) return false
-
-  return (
-    lower.includes('none of the git remotes configured') ||
-    lower.includes('no git remotes found') ||
-    lower.includes('known github host') ||
-    lower.includes('not a github repository') ||
-    lower.includes('remote url is not a github repository') ||
-    lower.includes('could not resolve repository') ||
-    lower.includes('not a git repository')
-  )
-}
-
-/**
- * Check if an error is a GitHub CLI authentication or installation error.
- *
- * Repository eligibility errors (GitLab/no remote/unknown host) are explicitly
- * excluded even if the gh stderr suggests running `gh auth login`.
- */
-export function isGhAuthError(error: unknown): boolean {
-  if (!error || isUnsupportedGitHubRepoError(error)) return false
-  const message = getErrorMessage(error)
-  const lower = message.toLowerCase()
-
-  return (
-    lower.includes('github cli not authenticated') ||
-    lower.includes('gh auth login') ||
-    lower.includes('not logged into any github hosts') ||
-    lower.includes('you are not logged into any github hosts') ||
-    lower.includes('requires authentication') ||
-    lower.includes('authentication required') ||
-    lower.includes('bad credentials') ||
-    lower.includes('the system cannot find the file specified')
-  )
-}
+// Re-exported: the gh error checks live next to the shared setup action.
+export { isGhAuthError, isUnsupportedGitHubRepoError } from '@/lib/gh-cli-setup'
 
 // Query keys for GitHub
 export const githubQueryKeys = {

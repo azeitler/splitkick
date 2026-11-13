@@ -354,4 +354,38 @@ describe('OnboardingDialog GitHub login', () => {
     expect(await screen.findByText('All Tools Ready')).toBeInTheDocument()
     expect(gh.loginMounts).toBe(2)
   })
+
+  it('skips the GitHub CLI setup and goes to Done', async () => {
+    const user = userEvent.setup()
+    const { OnboardingDialog } = await import('./OnboardingDialog')
+    render(<OnboardingDialog />)
+
+    await screen.findByRole('button', { name: 'Use GitHub CLI from PATH' })
+    await user.click(
+      screen.getByRole('button', { name: /Skip, I don't use GitHub/ })
+    )
+
+    expect(await screen.findByText('All Tools Ready')).toBeInTheDocument()
+    expect(screen.getByText(/GitHub CLI: not set up/)).toBeInTheDocument()
+    expect(gh.loginMounts).toBe(0)
+  })
+
+  it('skips the GitHub login while the login is open', async () => {
+    const user = userEvent.setup()
+    const { OnboardingDialog } = await import('./OnboardingDialog')
+    render(<OnboardingDialog />)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Use GitHub CLI from PATH' })
+    )
+    await screen.findByRole('button', { name: 'Complete GitHub CLI login' })
+    await user.click(
+      screen.getByRole('button', { name: /Skip, I don't use GitHub/ })
+    )
+
+    expect(await screen.findByText('All Tools Ready')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Complete GitHub CLI login' })
+    ).not.toBeInTheDocument()
+  })
 })

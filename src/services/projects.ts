@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances'
 import { toastActionLabel } from '@/lib/toast-action-label'
+import { isGhAuthError, toastGitHubError } from '@/lib/gh-cli-setup'
 import type {
   Project,
   Worktree,
@@ -1339,7 +1340,12 @@ export function useWorktreeEvents() {
           !error.includes('Directory already exists') &&
           !error.includes('Branch already exists')
         ) {
-          toast.error('Failed to create worktree', { description: error })
+          if (isGhAuthError(error)) {
+            // Worktree from a PR runs `gh pr checkout`
+            toastGitHubError('Failed to create worktree', error)
+          } else {
+            toast.error('Failed to create worktree', { description: error })
+          }
         }
       })
     )

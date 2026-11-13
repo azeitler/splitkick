@@ -88,6 +88,12 @@ pub struct PrStatus {
     pub checked_at: u64,
 }
 
+/// GitHub CLI is optional. True when `get_pr_status` failed only because gh
+/// is not installed or not logged in, so background polling can stay quiet.
+pub fn is_gh_unavailable_error(error: &str) -> bool {
+    error.starts_with("Failed to run gh") || error == "GitHub CLI not authenticated"
+}
+
 /// Fetch PR status using gh CLI
 pub fn get_pr_status(
     repo_path: &str,
@@ -323,5 +329,22 @@ mod tests {
             Some(MergeableStatus::Unknown)
         );
         assert_eq!(parse_mergeable_status("other"), None);
+    }
+}
+
+#[cfg(test)]
+mod gh_unavailable_tests {
+    use super::is_gh_unavailable_error;
+
+    #[test]
+    fn classifies_missing_or_logged_out_gh_as_unavailable() {
+        assert!(is_gh_unavailable_error(
+            "Failed to run gh pr view: No such file or directory (os error 2)"
+        ));
+        assert!(is_gh_unavailable_error("GitHub CLI not authenticated"));
+        assert!(!is_gh_unavailable_error(
+            "PR not found - may have been deleted"
+        ));
+        assert!(!is_gh_unavailable_error("gh pr view failed: HTTP 502"));
     }
 }

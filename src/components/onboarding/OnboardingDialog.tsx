@@ -2,7 +2,8 @@
  * Onboarding Dialog for CLI Setup
  *
  * Multi-step wizard that handles installation and authentication of at least
- * one supported AI backend CLI plus mandatory GitHub CLI.
+ * one supported AI backend CLI plus the optional GitHub CLI. The user can skip
+ * the GitHub CLI step; GitHub features then show a "not set up" state.
  */
 
 /* eslint-disable no-console */
@@ -111,7 +112,7 @@ import {
 import { WslSetupStep } from './WslSetupStep'
 import { UsageModeStep, type OnboardingUsageMode } from './UsageModeStep'
 import { RemoteSetupStep } from './RemoteSetupStep'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   checkSystemPrerequisites,
@@ -612,6 +613,8 @@ function OnboardingDialogContent() {
     (step === 'kimi-setup' && kimiPathSelected) ||
     (step === 'antigravity-setup' && antigravityPathSelected) ||
     (step === 'gh-setup' && ghPathSelected)
+  // GitHub CLI is optional: offer a skip on its setup and login screens.
+  const canSkipGh = step === 'gh-setup' || step === 'gh-auth-login'
   const canGoBack =
     (historyStack.length > 0 || hasSubStateBack) &&
     step !== 'complete' &&
@@ -791,7 +794,7 @@ function OnboardingDialogContent() {
   )
 
   const getNextStepAfterBackends = useCallback((): OnboardingStep => {
-    // Always show gh-setup so the user can confirm source + auth.
+    // Always show gh-setup so the user can confirm source + auth, or skip it.
     return 'gh-setup'
   }, [])
 
@@ -922,7 +925,8 @@ function OnboardingDialogContent() {
   useEffect(() => {
     if (!onboardingOpen) {
       initializedFlowRef.current = false
-      setHistoryStack([])
+      // Guard the no-op: a new [] each run re-renders forever.
+      setHistoryStack(prev => (prev.length === 0 ? prev : []))
       if (useUIStore.getState().onboardingEngaged) {
         useUIStore.setState({ onboardingEngaged: false })
       }
@@ -999,13 +1003,10 @@ function OnboardingDialogContent() {
     }
 
     const readyBackends = AI_BACKENDS.filter(isBackendReady)
-    const ghReady = !!ghSetup.status?.installed && !!ghAuth.data?.authenticated
     const remoteActive = getActiveConnectionId() !== LOCAL_CONNECTION_ID
     dbg(
       'init effect: readyBackends:',
       readyBackends,
-      'ghReady:',
-      ghReady,
       'remoteActive:',
       remoteActive,
       'manuallyTriggered:',
@@ -1028,28 +1029,16 @@ function OnboardingDialogContent() {
     // Already on a remote: skip usage mode and continue CLI setup there.
     // WSL mode only applies to local Windows development.
     if (!isNativeApp() || remoteActive) {
-      if (ghReady && readyBackends.length > 0) {
-        // Auto-opened with tools already ready (e.g. reconnecting to a remote
-        // that was set up earlier). Don't force the "Setup Complete" screen —
-        // that was reappearing on every remote session open.
-        if (!onboardingManuallyTriggered) {
-          dbg('init effect: remote all ready → auto-dismiss')
-          useUIStore.setState({
-            onboardingOpen: false,
-            onboardingStartStep: null,
-            onboardingDismissed: true,
-          })
-          return
-        }
-        dbg('init effect: remote all ready → complete')
-        queueMicrotask(() => setStep('complete', { replace: true }))
-        return
-      }
       if (readyBackends.length > 0) {
-        dbg('init effect: remote + some backends ready → after backends')
-        queueMicrotask(() => {
-          setSelectedBackends(readyBackends)
-          setStep(getNextStepAfterBackends(), { replace: true })
+        // Auto-opened with an AI backend already ready (e.g. reconnecting to
+        // a remote that was set up earlier). GitHub CLI is optional. Don't
+        // force the "Setup Complete" screen — that was reappearing on every
+        // remote session open.
+        dbg('init effect: remote ready → auto-dismiss')
+        useUIStore.setState({
+          onboardingOpen: false,
+          onboardingStartStep: null,
+          onboardingDismissed: true,
         })
         return
       }
@@ -1061,28 +1050,14 @@ function OnboardingDialogContent() {
     const needsWslChoice =
       isServerWindows() && !!preferences && !preferences.wsl_mode_chosen
 
-    // Local tools already ready and environment chosen → finish.
-    if (ghReady && readyBackends.length > 0 && !needsWslChoice) {
-      if (!onboardingManuallyTriggered) {
-        dbg('init effect: all ready → auto-dismiss')
-        useUIStore.setState({
-          onboardingOpen: false,
-          onboardingStartStep: null,
-          onboardingDismissed: true,
-        })
-        return
-      }
-      dbg('init effect: all ready → complete')
-      queueMicrotask(() => setStep('complete', { replace: true }))
-      return
-    }
-
-    // Partial local progress (and WSL already chosen): resume CLI setup.
+    // An AI backend is ready and the environment is chosen → finish. The
+    // GitHub CLI is optional, so it does not keep the wizard open.
     if (readyBackends.length > 0 && !needsWslChoice) {
-      dbg('init effect: some backends ready → skip to after backends')
-      queueMicrotask(() => {
-        setSelectedBackends(readyBackends)
-        setStep(getNextStepAfterBackends(), { replace: true })
+      dbg('init effect: ready → auto-dismiss')
+      useUIStore.setState({
+        onboardingOpen: false,
+        onboardingStartStep: null,
+        onboardingDismissed: true,
       })
       return
     }
@@ -1098,9 +1073,6 @@ function OnboardingDialogContent() {
     onboardingManuallyTriggered,
     loadingInitialState,
     isBackendReady,
-    ghSetup.status?.installed,
-    ghAuth.data?.authenticated,
-    getNextStepAfterBackends,
     preferences,
   ])
 
@@ -2122,6 +2094,13 @@ function OnboardingDialogContent() {
     setGhLoginAttempt(prev => prev + 1)
   }, [])
 
+  // GitHub CLI is optional: skip straight to the Done step.
+  const handleGhSkip = useCallback(() => {
+    dbg('gh step: SKIP → complete')
+    setGhAuthFailure(null)
+    setStep('complete')
+  }, [setStep])
+
   const handleComplete = useCallback(async () => {
     claudeSetup.refetchStatus()
     codexSetup.refetchStatus()
@@ -2610,14 +2589,15 @@ function OnboardingDialogContent() {
           ? 'Select a version to install. This will replace the current installation.'
           : hasPathCli
             ? `Choose to use your system GitHub CLI or install with ${PRODUCT_NAME}.`
-            : 'GitHub CLI is required for GitHub integration.',
+            : 'GitHub CLI is optional. It powers issues, pull requests and Actions.',
       }
     }
 
     if (dialogStep === 'gh-auth-checking' || dialogStep === 'gh-auth-login') {
       return {
         title: 'Authenticate GitHub CLI',
-        description: 'GitHub CLI authentication is required to continue.',
+        description:
+          'Log in to use GitHub features, or skip this step and set it up later.',
       }
     }
 
@@ -2831,7 +2811,7 @@ function OnboardingDialogContent() {
           }`}
         >
           <span className="font-medium">2</span>
-          <span>GitHub CLI</span>
+          <span>GitHub CLI (optional)</span>
         </div>
         <div className="w-4 h-px bg-border" />
         <div
@@ -2970,6 +2950,9 @@ function OnboardingDialogContent() {
                 kimiVersion={kimiSetup.status?.version}
                 antigravityVersion={antigravitySetup.status?.version}
                 ghVersion={ghSetup.status?.version}
+                ghReady={
+                  !!ghSetup.status?.installed && !!ghAuth.data?.authenticated
+                }
                 onContinue={handleComplete}
               />
             ) : step === 'claude-installing' && cliData ? (
@@ -3443,9 +3426,16 @@ function OnboardingDialogContent() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <span className="text-xs text-muted-foreground">
-            {isTransientStep ? 'Working...' : ''}
-          </span>
+          {canSkipGh ? (
+            <Button variant="ghost" size="sm" onClick={handleGhSkip}>
+              Skip, I don&apos;t use GitHub
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {isTransientStep ? 'Working...' : ''}
+            </span>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -3666,6 +3656,7 @@ interface SuccessStateProps {
   kimiVersion: string | null | undefined
   antigravityVersion: string | null | undefined
   ghVersion: string | null | undefined
+  ghReady: boolean
   onContinue: () => void
 }
 
@@ -3681,6 +3672,7 @@ function SuccessState({
   kimiVersion,
   antigravityVersion,
   ghVersion,
+  ghReady,
   onContinue,
 }: SuccessStateProps) {
   return (
@@ -3701,7 +3693,13 @@ function SuccessState({
           {grokVersion && <p>Grok CLI: v{grokVersion}</p>}
           {kimiVersion && <p>Kimi Code CLI: v{kimiVersion}</p>}
           {antigravityVersion && <p>Antigravity CLI: v{antigravityVersion}</p>}
-          {ghVersion && <p>GitHub CLI: v{ghVersion}</p>}
+          {ghReady && ghVersion && <p>GitHub CLI: v{ghVersion}</p>}
+          {!ghReady && (
+            <p>
+              GitHub CLI: not set up. You can set it up later in Settings →
+              General.
+            </p>
+          )}
           {!claudeVersion &&
             !codexVersion &&
             !opencodeVersion &&
@@ -3711,7 +3709,7 @@ function SuccessState({
             !grokVersion &&
             !kimiVersion &&
             !antigravityVersion &&
-            !ghVersion && <p>Setup complete</p>}
+            !ghReady && <p>Setup complete</p>}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -281,7 +282,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch issue details: ${error}`)
+        toastGitHubError('Failed to fetch issue details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -345,7 +346,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch issue details: ${error}`)
+        toastGitHubError('Failed to fetch issue details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -780,7 +781,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch PR details: ${error}`)
+        toastGitHubError('Failed to fetch PR details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -864,7 +865,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch PR details: ${error}`)
+        toastGitHubError('Failed to fetch PR details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -917,7 +918,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch security alert details: ${error}`)
+        toastGitHubError('Failed to fetch security alert details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -974,7 +975,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch security alert details: ${error}`)
+        toastGitHubError('Failed to fetch security alert details', error)
         setCreatingFromNumber(null)
       }
     },
@@ -1029,7 +1030,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch advisory details: ${error}`)
+        toastGitHubError('Failed to fetch advisory details', error)
         setCreatingFromGhsaId(null)
       }
     },
@@ -1088,7 +1089,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           handleOpenChange(false)
         }
       } catch (error) {
-        toast.error(`Failed to fetch advisory details: ${error}`)
+        toastGitHubError('Failed to fetch advisory details', error)
         setCreatingFromGhsaId(null)
       }
     },

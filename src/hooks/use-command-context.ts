@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -90,7 +91,7 @@ export function useCommandContext(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to open pull request:', { error: message })
-      notify(message, undefined, { type: 'error' })
+      toastGitHubError('Failed to open pull request', error)
     }
   }, [])
 

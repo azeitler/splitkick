@@ -79,6 +79,7 @@ import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import { toastActionLabel } from '@/lib/toast-action-label'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import {
   gitPush,
   triggerImmediateGitPoll,
@@ -1239,7 +1240,10 @@ export function MagicModal() {
               })
               await openExternal(linked.pr_url)
             } catch (error) {
-              toast.error(`Failed to open PR #${worktree.pr_number}: ${error}`)
+              toastGitHubError(
+                `Failed to open PR #${worktree.pr_number}`,
+                error
+              )
             }
             return
           }
@@ -1294,7 +1298,7 @@ export function MagicModal() {
               }
             )
           } catch (error) {
-            toast.error(`Failed to create PR: ${error}`, { id: toastId })
+            toastGitHubError('Failed to create PR', error, { id: toastId })
           } finally {
             clearWorktreeLoading(selectedWorktreeId)
           }
@@ -1341,7 +1345,9 @@ export function MagicModal() {
               )
             }
           } catch (error) {
-            toast.error(`Failed to merge PR: ${error}`, { id: mergePrToastId })
+            toastGitHubError('Failed to merge PR', error, {
+              id: mergePrToastId,
+            })
           }
           break
         }
@@ -1798,7 +1804,7 @@ ${resolveInstructions}`
                 }
               )
             } catch (error) {
-              toast.error(`Failed to trigger CodeRabbit review: ${error}`, {
+              toastGitHubError('Failed to trigger CodeRabbit review', error, {
                 id: toastId,
               })
             } finally {
@@ -2145,7 +2151,7 @@ ${resolveInstructions}`
     } catch (error) {
       const message = `Failed to link PR: ${error}`
       setLinkPrError(message)
-      toast.error(message)
+      toastGitHubError('Failed to link PR', error)
     } finally {
       setIsLinkingPr(false)
     }

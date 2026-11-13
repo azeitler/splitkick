@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import {
   loadIssueContext,
   removeIssueContext,
@@ -177,7 +178,7 @@ export function useLoadContextHandlers({
           { id: toastId }
         )
       } catch (error) {
-        toast.error(`${error}`, { id: toastId })
+        toastGitHubError('Failed to load context', error, { id: toastId })
       } finally {
         setLoadingNumbers(prev => {
           const next = new Set(prev)
@@ -264,7 +265,7 @@ export function useLoadContextHandlers({
           { id: toastId }
         )
       } catch (error) {
-        toast.error(`${error}`, { id: toastId })
+        toastGitHubError('Failed to load context', error, { id: toastId })
       } finally {
         setLoadingNumbers(prev => {
           const next = new Set(prev)
@@ -351,7 +352,7 @@ export function useLoadContextHandlers({
           { id: toastId }
         )
       } catch (error) {
-        toast.error(`${error}`, { id: toastId })
+        toastGitHubError('Failed to load context', error, { id: toastId })
       } finally {
         setLoadingNumbers(prev => {
           const next = new Set(prev)
@@ -451,7 +452,7 @@ export function useLoadContextHandlers({
           { id: toastId }
         )
       } catch (error) {
-        toast.error(`${error}`, { id: toastId })
+        toastGitHubError('Failed to load context', error, { id: toastId })
       } finally {
         setLoadingAdvisoryGhsaIds(prev => {
           const next = new Set(prev)

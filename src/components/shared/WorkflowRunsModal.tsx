@@ -57,6 +57,8 @@ import {
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
+import { isGhAuthError } from '@/lib/gh-cli-setup'
+import { GhCliNotSetUp } from '@/components/shared/GhAuthError'
 import type { Project, Worktree } from '@/types/projects'
 import {
   getLatestFailedWorkflowRuns,
@@ -173,6 +175,7 @@ export function WorkflowRunsModal() {
 
   const {
     data: result,
+    error: runsError,
     isLoading,
     isFetching,
   } = useWorkflowRuns(
@@ -747,6 +750,8 @@ export function WorkflowRunsModal() {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
+        ) : runs.length === 0 && isGhAuthError(runsError) ? (
+          <GhCliNotSetUp />
         ) : runs.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             No workflow runs found

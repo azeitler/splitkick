@@ -4,6 +4,7 @@ import { useAutoResize } from '@/hooks/use-auto-resize'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import { Textarea } from '@/components/ui/textarea'
 import { Kbd } from '@/components/ui/kbd'
 import { useChatStore } from '@/store/chat-store'
@@ -1145,7 +1146,7 @@ export const ChatInput = memo(function ChatInput({
 
         toast.success(`Loaded ${item.label} context`, { id: toastId })
       } catch (error) {
-        toast.error(`Failed to load context: ${error}`, { id: toastId })
+        toastGitHubError('Failed to load context', error, { id: toastId })
       } finally {
         setContextMentionOpen(false)
         setHashTriggerIndex(null)
