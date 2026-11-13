@@ -30,6 +30,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Move to has a submenu.** The session menu's Move to lists the other
+  worktrees of the session's project, so a move takes one click. "Other
+  Project…" at the top opens the Move Session dialog as before.
 - **Opus 5.5 is the default Claude model.** New installs start on Claude
   Opus 5.5 for chat and for the magic prompts that used Opus 4.8 (1M).
   Existing installs that still have the old Opus 4.8 (1M) default move to
