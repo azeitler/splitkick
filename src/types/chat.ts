@@ -1095,6 +1095,23 @@ export function isAskUserQuestion(
  * True only when persisted question tool output represents a real answer.
  * Blocking-tool errors can also produce output and must not collapse the UI.
  */
+/**
+ * The error text when a question tool call failed instead of returning
+ * answers, e.g. `Error calling tool (AskUserQuestion): Connection closed`
+ * when the dialog MCP server died (#139). Null for answers and empty output.
+ */
+export function getQuestionToolError(
+  output: string | null | undefined
+): string | null {
+  const trimmed = (output ?? '')
+    .replace(/<\/?tool_use_error>/g, '')
+    .trim()
+  return trimmed.startsWith('Error:') ||
+    trimmed.startsWith('Error calling tool')
+    ? trimmed
+    : null
+}
+
 export function hasQuestionAnswerOutput(
   output: string | null | undefined
 ): boolean {
@@ -1103,7 +1120,7 @@ export function hasQuestionAnswerOutput(
   const trimmed = output.trim()
   if (!trimmed) return false
 
-  if (trimmed === 'Answer questions?' || trimmed.startsWith('Error:')) {
+  if (trimmed === 'Answer questions?' || getQuestionToolError(trimmed)) {
     return false
   }
 

@@ -67,6 +67,50 @@ describe('AskUserQuestion', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  // #139: the dialog MCP server died. The error is not an answer, and nothing
+  // was reloaded.
+  const connectionClosed =
+    'Error calling tool (AskUserQuestion): Connection closed'
+
+  it('shows the error of a failed call and keeps the form answerable', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-failed"
+        questions={questions}
+        onSubmit={noopSubmit}
+        toolOutput={connectionClosed}
+      />
+    )
+
+    expect(
+      screen.getByText(
+        `The question failed: ${connectionClosed}. Your answer goes to the agent as a new message.`
+      )
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/after reload/)).not.toBeInTheDocument()
+  })
+
+  it('shows the error, not a reload, for a failed call answered later', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-failed-answered"
+        questions={questions}
+        onSubmit={noopSubmit}
+        readOnly
+        hasFollowUpMessage
+        toolOutput={connectionClosed}
+      />
+    )
+
+    fireEvent.click(screen.getByText('Answered (details unavailable)'))
+
+    expect(
+      screen.getAllByText(`The question failed: ${connectionClosed}`)
+    ).toHaveLength(questions.length)
+    expect(screen.queryByText(/after reload/)).not.toBeInTheDocument()
+  })
+
   it('keeps the answered summary for an answered question even without options', () => {
     render(
       <AskUserQuestion
