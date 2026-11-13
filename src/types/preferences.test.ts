@@ -27,7 +27,7 @@ import {
 } from './preferences'
 
 // The saved default model went through normalizeClaudeModel on every load,
-// and an id it did not list fell back to Opus 4.8: picking a newer model
+// and an id it did not list fell back to the default: picking a newer model
 // never stuck.
 describe('normalizeClaudeModel', () => {
   it('lists the current Claude models', () => {
@@ -55,8 +55,8 @@ describe('normalizeClaudeModel', () => {
   })
 
   it('still replaces values that are no Claude model id', () => {
-    expect(normalizeClaudeModel('')).toBe('claude-opus-4-8[1m]')
-    expect(normalizeClaudeModel('gpt-5.5')).toBe('claude-opus-4-8[1m]')
+    expect(normalizeClaudeModel('')).toBe('claude-opus-5-5')
+    expect(normalizeClaudeModel('gpt-5.5')).toBe('claude-opus-5-5')
     expect(normalizeClaudeModel('sonnet')).toBe('claude-sonnet-5')
   })
 })
@@ -77,7 +77,7 @@ describe('magic prompt preference resolvers', () => {
   it('provides configurable smoke test defaults', () => {
     expect(defaultPreferences.magic_prompts.smoke_test).toBeNull()
     expect(defaultPreferences.magic_prompt_models.smoke_test_model).toBe(
-      'claude-opus-4-8[1m]'
+      'claude-opus-5-5'
     )
     expect(defaultPreferences.magic_prompt_modes.smoke_test_mode).toBe('yolo')
     expect(DEFAULT_SMOKE_TEST_PROMPT).toContain('{worktree_id}')
@@ -172,8 +172,8 @@ describe('magic prompt preference resolvers', () => {
     expect(defaultPreferences.default_grok_reasoning_effort).toBe('high')
   })
 
-  it('defaults Claude to Opus 4.8 and Codex/OpenCode to GPT 5.6 Sol', () => {
-    expect(defaultPreferences.selected_model).toBe('claude-opus-4-8[1m]')
+  it('defaults Claude to Opus 5.5 and Codex/OpenCode to GPT 5.6 Sol', () => {
+    expect(defaultPreferences.selected_model).toBe('claude-opus-5-5')
     expect(defaultPreferences.selected_codex_model).toBe('gpt-5.6-sol')
     expect(defaultPreferences.selected_opencode_model).toBe(
       'opencode/gpt-5.6-sol'
@@ -202,7 +202,7 @@ describe('magic prompt preference resolvers', () => {
   it('provides dedicated defaults for Sentry investigations', () => {
     expect(
       defaultPreferences.magic_prompt_models.investigate_sentry_issue_model
-    ).toBe('claude-opus-4-8[1m]')
+    ).toBe('claude-opus-5-5')
     expect(
       defaultPreferences.magic_prompt_modes.investigate_sentry_issue_mode
     ).toBe('plan')

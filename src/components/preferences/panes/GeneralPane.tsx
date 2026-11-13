@@ -374,8 +374,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       : grokReasoningOptions,
     selectedGrokModel
   )
-  const selectedClaudeModel =
-    preferences?.selected_model ?? 'claude-opus-4-8[1m]'
+  const selectedClaudeModel = preferences?.selected_model ?? 'claude-opus-5-5'
   const claudeReasoning = getCatalogModelReasoning(
     modelCatalog,
     'claude',
@@ -3075,7 +3074,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               }
             >
               <Select
-                value={preferences?.selected_model ?? 'claude-opus-4-8[1m]'}
+                value={preferences?.selected_model ?? 'claude-opus-5-5'}
                 onValueChange={handleModelChange}
               >
                 <SelectTrigger className="w-full sm:w-80">

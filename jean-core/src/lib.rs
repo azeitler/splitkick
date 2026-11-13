@@ -181,7 +181,7 @@ fn is_wsl_available() -> bool {
 pub struct AppPreferences {
     pub theme: String,
     #[serde(default = "default_model")]
-    pub selected_model: String, // Claude model: claude-fable-5, claude-opus-4-8[1m], claude-opus-4-8, haiku
+    pub selected_model: String, // Claude model: claude-opus-5-5, claude-fable-5, claude-opus-4-8[1m], haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
@@ -260,6 +260,8 @@ pub struct AppPreferences {
     pub magic_prompt_modes: MagicPromptModes, // Per-prompt execution modes for chat-style magic prompts
     #[serde(default)]
     pub magic_models_auto_initialized: bool, // Whether magic prompt models were auto-set based on installed backends
+    #[serde(default)]
+    pub opus_5_5_default_applied: bool, // One-time move of the old Opus 4.8 (1M) default to Opus 5.5 is done
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (Pierre) or external (VS Code, etc.)
     #[serde(default)]
@@ -641,8 +643,11 @@ fn default_font_weight() -> String {
 }
 
 fn default_model() -> String {
-    "claude-opus-4-8[1m]".to_string()
+    "claude-opus-5-5".to_string()
 }
+
+/// The default Claude model before Opus 5.5.
+const PREVIOUS_DEFAULT_MODEL: &str = "claude-opus-4-8[1m]";
 
 fn migrate_default_claude_model(model: &str) -> Option<&'static str> {
     match model {
@@ -1237,6 +1242,57 @@ mod tests {
         assert_eq!(super::migrate_default_claude_model("claude-opus-4-8"), None);
         assert_eq!(super::migrate_default_claude_model("claude-opus-4-7"), None);
         assert_eq!(super::migrate_default_claude_model("claude-opus-4-6"), None);
+    }
+
+    #[test]
+    fn opus_5_5_default_replaces_old_default_once() {
+        let mut prefs = AppPreferences {
+            selected_model: "claude-opus-4-8[1m]".to_string(),
+            opus_5_5_default_applied: false,
+            ..Default::default()
+        };
+        prefs.magic_prompt_models.code_review_model = "claude-opus-4-8[1m]".to_string();
+        prefs.magic_prompt_models.commit_message_model = "claude-opus-4-8[1m]".to_string();
+
+        assert!(super::apply_opus_5_5_default(&mut prefs));
+        assert_eq!(prefs.selected_model, "claude-opus-5-5");
+        assert_eq!(
+            prefs.magic_prompt_models.code_review_model,
+            "claude-opus-5-5"
+        );
+        // Fields that never had the Opus default stay as they are.
+        assert_eq!(
+            prefs.magic_prompt_models.commit_message_model,
+            "claude-opus-4-8[1m]"
+        );
+        assert!(prefs.opus_5_5_default_applied);
+
+        // A later deliberate pick of Opus 4.8 (1M) is kept.
+        prefs.selected_model = "claude-opus-4-8[1m]".to_string();
+        assert!(!super::apply_opus_5_5_default(&mut prefs));
+        assert_eq!(prefs.selected_model, "claude-opus-4-8[1m]");
+    }
+
+    #[test]
+    fn opus_5_5_default_keeps_other_models() {
+        let mut prefs = AppPreferences {
+            selected_model: "claude-fable-5-1".to_string(),
+            opus_5_5_default_applied: false,
+            ..Default::default()
+        };
+        super::apply_opus_5_5_default(&mut prefs);
+        assert_eq!(prefs.selected_model, "claude-fable-5-1");
+    }
+
+    #[test]
+    fn opus_5_5_default_flag_missing_on_existing_prefs_means_not_applied() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("opus_5_5_default_applied");
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(!prefs.opus_5_5_default_applied);
     }
 
     #[test]
@@ -2430,7 +2486,7 @@ impl Default for MagicPromptModels {
 
 impl MagicPromptModels {
     /// Upgrade previous Opus defaults left on existing installs to the current
-    /// default (`"claude-opus-4-8[1m]"`). Users who explicitly picked non-Opus
+    /// default (`"claude-opus-5-5"`). Users who explicitly picked non-Opus
     /// default models are untouched. Returns true if any field changed.
     fn migrate_legacy_defaults(&mut self) -> bool {
         let new_opus = default_model();
@@ -2716,6 +2772,40 @@ fn selected_model_for_backend(preferences: &AppPreferences, backend: &str) -> St
     }
 }
 
+/// Move the old Opus 4.8 (1M) default to Opus 5.5, once. A user who picks
+/// Opus 4.8 (1M) again later keeps it: the flag stops a second move.
+fn apply_opus_5_5_default(preferences: &mut AppPreferences) -> bool {
+    if preferences.opus_5_5_default_applied {
+        return false;
+    }
+    let new_model = default_model();
+    if preferences.selected_model == PREVIOUS_DEFAULT_MODEL {
+        preferences.selected_model = new_model.clone();
+    }
+    let models = &mut preferences.magic_prompt_models;
+    for field in [
+        &mut models.smoke_test_model,
+        &mut models.investigate_issue_model,
+        &mut models.investigate_pr_model,
+        &mut models.investigate_workflow_run_model,
+        &mut models.code_review_model,
+        &mut models.final_review_model,
+        &mut models.context_summary_model,
+        &mut models.resolve_conflicts_model,
+        &mut models.investigate_security_alert_model,
+        &mut models.investigate_advisory_model,
+        &mut models.investigate_linear_issue_model,
+        &mut models.investigate_sentry_issue_model,
+        &mut models.review_comments_model,
+    ] {
+        if field == PREVIOUS_DEFAULT_MODEL {
+            *field = new_model.clone();
+        }
+    }
+    preferences.opus_5_5_default_applied = true;
+    true
+}
+
 fn migrate_final_review_preferences(
     preferences: &mut AppPreferences,
     raw_preferences: &Value,
@@ -2889,6 +2979,7 @@ impl Default for AppPreferences {
             magic_prompt_efforts: MagicPromptReasoningEfforts::default(),
             magic_prompt_modes: MagicPromptModes::default(),
             magic_models_auto_initialized: false,
+            opus_5_5_default_applied: true,
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
@@ -3514,9 +3605,10 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
     }
     needs_resave |= normalize_parallel_execution_preferences(&mut preferences);
 
-    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-8[1m]")
+    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-5-5")
     // and legacy auto-naming models ("haiku" → "sonnet")
     needs_resave |= preferences.magic_prompt_models.migrate_legacy_defaults();
+    needs_resave |= apply_opus_5_5_default(&mut preferences);
     if preferences.branch_naming_model == "haiku" {
         preferences.branch_naming_model = default_branch_naming_model();
         needs_resave = true;

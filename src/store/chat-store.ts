@@ -42,7 +42,7 @@ export type { ClaudeModel, CodexModel }
 export type { ManualSessionStatus }
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
-export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-4-8[1m]'
+export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-5-5'
 
 /** Default Codex model */
 export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.6-sol'
