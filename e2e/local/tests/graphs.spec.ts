@@ -10,7 +10,14 @@ import {
 import { join } from 'node:path'
 import { api, createSession, git, readEnv, waitForIdle } from '../helpers'
 import { REPO_ROOT } from '../launcher'
-import { goToSession, openApp, runCommand, send, uniqueName } from './ui'
+import {
+  goToSession,
+  openApp,
+  runCommand,
+  send,
+  showSidebarTab,
+  uniqueName,
+} from './ui'
 
 // Graph layer (#79), end to end on instance A: the real web UI for the
 // graph files, outline, detail, review, agents and the session graph panel;
@@ -73,7 +80,8 @@ async function openWithSidebar(page: Page) {
   await openApp(page, a)
   const show = page.getByRole('button', { name: 'Show sidebar' })
   if (await show.isVisible()) await show.click()
-  await expect(page.getByTestId('sidebar-graphs-section')).toBeAttached()
+  await showSidebarTab(page, 'graphs')
+  await expect(page.getByTestId('sidebar-graphs-section')).toBeVisible()
 }
 
 function graphRow(page: Page, title: string) {
@@ -91,6 +99,7 @@ function nodeRow(page: Page, title: string) {
 }
 
 async function openGraph(page: Page, title: string) {
+  await showSidebarTab(page, 'graphs')
   await graphRow(page, title).click()
   await expect(page.getByTestId('graph-title')).toHaveText(title)
 }
@@ -133,7 +142,10 @@ test('New graph dialog creates a folder graph and an in-repo graph', async ({
   await openWithSidebar(page)
   const section = page.getByTestId('sidebar-graphs-section')
   await expect(section).toBeVisible()
-  await expect(section.getByText('Graphs', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('sidebar-tab-graphs')).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
 
   // 1. In a folder outside any repo (web access: the server's folder browser).
   await section.getByRole('button', { name: 'New graph' }).click()
@@ -360,8 +372,11 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
   await start.getByRole('button', { name: 'Start session' }).click()
   await expect(start).toBeHidden()
 
-  // The new session carries agent, permission and serves.
-  await expect(page.getByText(state.agentName).first()).toBeVisible()
+  // The new session carries agent, permission and serves. (Its row in the
+  // tree is hidden while the Graphs tab is open.)
+  await expect(
+    page.getByText(state.agentName).filter({ visible: true }).first()
+  ).toBeVisible()
   await expect
     .poll(() => agentSessionMetadata(a.data, state.agentName))
     .toMatchObject({

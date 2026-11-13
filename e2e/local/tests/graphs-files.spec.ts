@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { api, createRepo, createSession, git, mcp, readEnv } from '../helpers'
 import { REPO_ROOT, type Instance } from '../launcher'
-import { openApp } from './ui'
+import { openApp, showSidebarTab } from './ui'
 
 // Graph files, locations and the store (graph layer, #79), end to end on
 // instance A through the real web UI. Contract: docs/developer/graph-layer.md.
@@ -88,12 +88,8 @@ async function openWithSidebar(page: Page) {
   await openApp(page, a)
   const show = page.getByRole('button', { name: 'Show sidebar' })
   if (await show.isVisible()) await show.click()
-  await expect(page.getByTestId('sidebar-graphs-section')).toBeAttached()
-  // A collapsed Graphs section (left by a failed run) hides the rows.
-  const toggle = page.getByTestId('sidebar-graphs-toggle')
-  if ((await toggle.getAttribute('aria-expanded')) === 'false') {
-    await toggle.click()
-  }
+  await showSidebarTab(page, 'graphs')
+  await expect(page.getByTestId('sidebar-graphs-section')).toBeVisible()
 }
 
 const graphRow = (page: Page, id: string) =>
@@ -113,6 +109,7 @@ function nodeRow(page: Page, title: string) {
 }
 
 async function openGraph(page: Page, id: string, title: string) {
+  await showSidebarTab(page, 'graphs')
   await graphRow(page, id).click()
   await expect(page.getByTestId('graph-title')).toHaveText(title)
 }
@@ -953,40 +950,25 @@ test('sidebar: collapse persists, counts, selected row', async ({ page }) => {
     page.locator('[data-testid^="sidebar-graph-row-"][aria-current="page"]')
   ).toHaveCount(1)
 
-  // Collapse persists across a reload, and so does expand.
-  const toggle = page.getByTestId('sidebar-graphs-toggle')
-  // Sticky header: still on screen after scrolling the list to the end. A
-  // click on a stuck header jumps back instead of collapsing (by design),
-  // so collapse from the top.
-  const scroller = page.getByTestId('sidebar-projects-scroll')
-  await scroller.evaluate(el => {
-    el.scrollTop = el.scrollHeight
-  })
-  await expect(toggle).toBeInViewport()
-  await scroller.evaluate(el => {
-    el.scrollTop = 0
-  })
-  await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  await expect(row).toHaveCount(0)
+  // The Graphs tab counts the requests that wait for the user.
+  const graphsTab = page.getByTestId('sidebar-tab-graphs')
+  await expect(page.getByTestId('sidebar-tab-count-graphs')).toHaveText('1')
+
+  // The selected tab persists across a reload, and so does Projects.
   await new Promise(done => setTimeout(done, 1000)) // debounced UI-state save
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await expect(page.getByTestId('sidebar-graphs-toggle')).toHaveAttribute(
-    'aria-expanded',
-    'false'
-  )
-  await expect(row).toHaveCount(0)
-  await page.getByTestId('sidebar-graphs-toggle').click()
+  await expect(graphsTab).toHaveAttribute('aria-selected', 'true')
   await expect(row).toBeVisible()
+  await showSidebarTab(page, 'projects')
+  await expect(row).toHaveCount(0)
   await new Promise(done => setTimeout(done, 1000))
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await expect(page.getByTestId('sidebar-graphs-toggle')).toHaveAttribute(
-    'aria-expanded',
+  await expect(page.getByTestId('sidebar-tab-projects')).toHaveAttribute(
+    'aria-selected',
     'true'
   )
-  await expect(row).toBeVisible()
 })
 
 // ---------------------------------------------------------------------------
@@ -1022,14 +1004,17 @@ test('navigation: Home, back/forward, project, worktree, Archived, reload', asyn
   await page.getByRole('button', { name: 'Go forward' }).click()
   await expect(view).toHaveCount(0)
 
-  // Selecting a project clears it.
+  // Selecting a project clears it. Projects and graphs are separate tabs.
   await openGraph(page, g.id, title)
+  await showSidebarTab(page, 'projects')
   await page.getByTestId(`project-row-${alphaA.projectId}`).click()
   await expect(view).toHaveCount(0)
+  await showSidebarTab(page, 'graphs')
   await expect(row).not.toHaveAttribute('aria-current', 'page')
 
   // Selecting a worktree clears it.
   await openGraph(page, g.id, title)
+  await showSidebarTab(page, 'projects')
   const expand = page
     .getByTestId(`project-row-${alphaA.projectId}`)
     .getByRole('button', { name: 'Expand project' })
@@ -1044,8 +1029,10 @@ test('navigation: Home, back/forward, project, worktree, Archived, reload', asyn
 
   // Archived clears it.
   await openGraph(page, g.id, title)
+  await showSidebarTab(page, 'projects')
   await page.getByTestId('sidebar-archived-row').click()
   await expect(view).toHaveCount(0)
+  await showSidebarTab(page, 'graphs')
   await expect(row).not.toHaveAttribute('aria-current', 'page')
 
   // Reload while a graph is open: the open graph is not persisted (design:
@@ -1054,7 +1041,6 @@ test('navigation: Home, back/forward, project, worktree, Archived, reload', asyn
   await openGraph(page, g.id, title)
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await expect(page.getByTestId('sidebar-graphs-section')).toBeAttached()
   await new Promise(done => setTimeout(done, 1500))
   await expect(view).toHaveCount(0)
 })

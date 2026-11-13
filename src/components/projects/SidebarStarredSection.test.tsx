@@ -86,16 +86,18 @@ describe('SidebarStarredSection', () => {
     ]
     useProjectsStore.setState({
       starredSessions: [],
-      starredSectionCollapsed: false,
       projectCanvasSettings: {},
     })
     useChatStore.setState({ sessionLabels: {}, activeSessionIds: {} })
   })
 
-  it('renders nothing while nothing is starred', () => {
-    const { container } = render(<SidebarStarredSection />)
+  it('shows an empty state while nothing is starred', () => {
+    render(<SidebarStarredSection />)
 
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.getByTestId('sidebar-starred-empty')).toHaveTextContent(
+      'No starred sessions'
+    )
+    expect(screen.queryByTestId('sidebar-starred-section')).toBeNull()
   })
 
   it('lists stars from every project, in star order, with project and workspace', () => {
@@ -121,30 +123,13 @@ describe('SidebarStarredSection', () => {
     useProjectsStore.setState({
       starredSessions: [star('s-3', 'Coolify', 'feat/deploy')],
     })
-    const { container } = render(<SidebarStarredSection />)
+    render(<SidebarStarredSection />)
 
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.getByTestId('sidebar-starred-empty')).toBeInTheDocument()
     expect(useProjectsStore.getState().starredSessions).toHaveLength(1)
   })
 
-  it('collapses to a count, and remembers it in the store', async () => {
-    const user = userEvent.setup()
-    useProjectsStore.setState({
-      starredSessions: [
-        star('s-1', 'Jean', 'main'),
-        star('s-2', 'Coolify', 'feat/deploy'),
-      ],
-    })
-    render(<SidebarStarredSection />)
-
-    await user.click(screen.getByTestId('sidebar-starred-toggle'))
-
-    expect(screen.queryByText('Investigation')).toBeNull()
-    expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('2')
-    expect(useProjectsStore.getState().starredSectionCollapsed).toBe(true)
-  })
-
-  it('opens a star and reveals its row in the project tree', async () => {
+  it('opens a star, switches to Projects and reveals its row there', async () => {
     const user = userEvent.setup()
     useProjectsStore.setState({
       starredSessions: [star('s-2', 'Coolify', 'feat/deploy')],
@@ -155,18 +140,22 @@ describe('SidebarStarredSection', () => {
       typeof import('@/lib/navigate-to-session')
     >('@/lib/navigate-to-session')
     mocks.navigateToSession.mockImplementationOnce(actual.navigateToSession)
-    useUIStore.setState({ pendingSidebarRevealId: null })
+    useUIStore.setState({ pendingSidebarRevealId: null, sidebarTab: 'starred' })
     render(<SidebarStarredSection />)
 
     await user.click(screen.getByText('Deploy pipeline'))
 
-    // Default options: the tree below expands and scrolls to the session.
+    // The tree expands and scrolls to the session, in the Projects tab.
     expect(mocks.navigateToSession).toHaveBeenCalledTimes(1)
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'id-Coolify',
-      worktreeId: 'id-feat/deploy',
-      sessionId: 's-2',
-    })
+    expect(mocks.navigateToSession).toHaveBeenCalledWith(
+      {
+        projectId: 'id-Coolify',
+        worktreeId: 'id-feat/deploy',
+        sessionId: 's-2',
+      },
+      { showProjectsTab: true }
+    )
+    expect(useUIStore.getState().sidebarTab).toBe('projects')
     expect(useUIStore.getState().pendingSidebarRevealId).toBe('session:s-2')
     expect(
       useProjectsStore.getState().expandedWorktreeIds.has('id-feat/deploy')

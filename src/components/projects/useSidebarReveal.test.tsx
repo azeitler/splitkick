@@ -68,4 +68,30 @@ describe('useSidebarReveal', () => {
       calls
     )
   })
+
+  // Rows above it may still load; scrolling at once would aim at a stale place.
+  it('waits until the row stops moving before it scrolls', async () => {
+    let top = 500
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const y = this.dataset.sidebarRowId ? top : 0
+        return { top: y, bottom: y + 20 } as DOMRect
+      })
+    try {
+      render(<Tree rowId="session:s-1" />)
+      useUIStore.getState().markSidebarReveal('session:s-1')
+
+      await new Promise(resolve => setTimeout(resolve, 100))
+      top = 532 // a 32px group loaded above the row
+      await new Promise(resolve => setTimeout(resolve, 100))
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+
+      await waitFor(() => {
+        expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+      })
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })

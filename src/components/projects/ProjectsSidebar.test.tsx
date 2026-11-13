@@ -72,15 +72,12 @@ describe('ProjectsSidebar layout', () => {
     useChatStore.getState().clearActiveWorktree()
   })
 
-  it('puts the tabs first, then Home, Starred, To-Do, Graphs, the tree and Archived', () => {
+  it('puts Home first, then the tabs, the tree and Archived', () => {
     renderSidebar()
 
     const order = [
-      'sidebar-tabs',
       'sidebar-home-row',
-      'sidebar-starred-section',
-      'sidebar-todo-section',
-      'sidebar-graphs-section',
+      'sidebar-tabs',
       'project-tree',
       'sidebar-archived-row',
     ].map(id => screen.getByTestId(id))
@@ -90,37 +87,45 @@ describe('ProjectsSidebar layout', () => {
         follows(order[i - 1] as HTMLElement, order[i] as HTMLElement)
       ).toBe(true)
     }
+    // Home is outside every tab panel, so it shows whatever tab is open.
+    expect(
+      screen.getByTestId('sidebar-home-row').closest('[role="tabpanel"]')
+    ).toBeNull()
   })
 
-  it('pins Home, Starred and Graphs above the scrolling tree', () => {
+  it('no longer pins Starred, To-Do or Graphs in the Projects tab', () => {
     renderSidebar()
 
+    expect(screen.queryByTestId('sidebar-pinned-sections')).toBeNull()
+    expect(screen.queryByTestId('sidebar-starred-section')).toBeNull()
+    expect(screen.queryByTestId('sidebar-todo-section')).toBeNull()
+    expect(screen.queryByTestId('sidebar-graphs-section')).toBeNull()
     const scroll = screen.getByTestId('sidebar-projects-scroll')
-    expect(scroll).not.toContainElement(screen.getByTestId('sidebar-home-row'))
-    expect(scroll).not.toContainElement(
-      screen.getByTestId('sidebar-starred-section')
-    )
-    expect(scroll).not.toContainElement(
-      screen.getByTestId('sidebar-todo-section')
-    )
-    expect(scroll).not.toContainElement(
-      screen.getByTestId('sidebar-graphs-section')
-    )
     expect(scroll).toContainElement(screen.getByTestId('project-tree'))
     expect(scroll).toContainElement(screen.getByTestId('sidebar-archived-row'))
   })
 
-  it('keeps Home in the Projects tab, so Recent shows only recent sessions', () => {
-    useUIStore.setState({ sidebarTab: 'recent' })
-    renderSidebar()
+  it.each([
+    ['recent', 'sidebar-recent-sessions'],
+    ['starred', 'sidebar-starred-section'],
+    ['todo', 'sidebar-todo-section'],
+    ['graphs', 'sidebar-graphs-section'],
+  ] as const)(
+    'shows the %s tab in its own panel and keeps the tree mounted',
+    (tab, testId) => {
+      useUIStore.setState({ sidebarTab: tab })
+      renderSidebar()
 
-    const projectsPanel = screen
-      .getByTestId('sidebar-home-row')
-      .closest('[role="tabpanel"]')
-    expect(projectsPanel).toHaveAttribute('id', 'sidebar-panel-projects')
-    expect(projectsPanel).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.getByTestId('sidebar-recent-sessions')).toBeInTheDocument()
-  })
+      const panel = screen.getByTestId(testId).closest('[role="tabpanel"]')
+      expect(panel).toHaveAttribute('id', `sidebar-panel-${tab}`)
+      expect(panel).toHaveAttribute('aria-labelledby', `sidebar-tab-${tab}`)
+      expect(screen.getByTestId('project-tree')).toBeInTheDocument()
+      expect(
+        screen.getByTestId('project-tree').closest('[role="tabpanel"]')
+      ).toHaveAttribute('aria-hidden', 'true')
+      expect(screen.getByTestId('sidebar-home-row')).toBeVisible()
+    }
+  )
 
   it('renders the tree even with no projects, so its New buttons stay reachable', () => {
     renderSidebar()

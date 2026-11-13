@@ -1,4 +1,3 @@
-import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { useCallback, useMemo } from 'react'
 import { Star } from 'lucide-react'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -14,25 +13,19 @@ import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import { cn } from '@/lib/utils'
-import {
-  SIDEBAR_SECTION_HEADER_PADDING,
-  SIDEBAR_WORKTREE_LIST,
-  SIDEBAR_WORKTREE_ROW_PADDING,
-} from './sidebar-row-styles'
+import { SidebarTabEmpty } from './SidebarTabEmpty'
 import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
 
 /**
- * Starred sessions near the top of the sidebar, pinned under the Home row.
+ * The sidebar's Starred tab: every starred session, in the user's order.
  *
- * A star is global, so the section shows whatever project is selected. Rows
+ * A star is global, so the tab shows whatever project is selected. Rows
  * resolve against the all-sessions cache the Home view, the command palette
- * and the unread bell already share, so the section adds no backend query. It
- * renders nothing until at least one starred session resolves.
+ * and the unread bell already share, so the tab adds no backend query. A click
+ * switches to the Projects tab and reveals the session in the tree.
  */
 export function SidebarStarredSection() {
   const stars = useProjectsStore(state => state.starredSessions)
-  const collapsed = useProjectsStore(state => state.starredSectionCollapsed)
   const isMobile = useIsMobile()
   // Only fetch once something is starred; the cache is usually warm anyway.
   const { data } = useAllSessions(stars.length > 0)
@@ -52,19 +45,17 @@ export function SidebarStarredSection() {
     }))
   }, [stars, data?.entries, storeState])
 
-  const handleToggle = useCallback(() => {
-    useProjectsStore.getState().toggleStarredSectionCollapsed()
-  }, [])
-
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      // The Starred section scrolls on its own, so revealing the session's
-      // row in the tree below never moves the row that was clicked.
-      navigateToSession({
-        projectId: shortcut.projectId,
-        worktreeId: shortcut.worktreeId,
-        sessionId: shortcut.sessionId,
-      })
+      // Show where the session lives: the tree expands to its row.
+      navigateToSession(
+        {
+          projectId: shortcut.projectId,
+          worktreeId: shortcut.worktreeId,
+          sessionId: shortcut.sessionId,
+        },
+        { showProjectsTab: true }
+      )
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }
@@ -83,36 +74,30 @@ export function SidebarStarredSection() {
     []
   )
 
-  if (shortcuts.length === 0) return null
+  if (shortcuts.length === 0) {
+    return (
+      <SidebarTabEmpty
+        icon={<Star />}
+        title="No starred sessions"
+        hint="Star a session to keep it here."
+        testId="sidebar-starred-empty"
+      />
+    )
+  }
 
   return (
     <div data-testid="sidebar-starred-section">
-      <SidebarSectionRow
-        icon={<Star className="size-3.5 shrink-0" aria-hidden="true" />}
-        label="Starred"
-        count={shortcuts.length}
-        expanded={!collapsed}
-        onToggle={handleToggle}
-        // Glyph and label on the Home row's columns.
-        className={cn('gap-1', SIDEBAR_SECTION_HEADER_PADDING)}
-        testId="sidebar-starred-toggle"
+      <SessionShortcutRows
+        shortcuts={shortcuts}
+        variant="sidebar"
+        sidebarRowClassName="py-1.5 pl-2 pr-1"
+        sidebarNested={false}
+        // Every row here is a star; marking each would be noise.
+        showStarGlyph={false}
+        activeSessionId={activeSessionId}
+        onOpen={handleOpen}
+        onReorder={handleReorder}
       />
-      {!collapsed && (
-        // The guide line runs under the header glyph and the rows sit one
-        // step in (glyph at 32), as a project's workspace list does.
-        <div className={cn(SIDEBAR_WORKTREE_LIST, 'py-0.5')}>
-          <SessionShortcutRows
-            shortcuts={shortcuts}
-            variant="sidebar"
-            sidebarRowClassName={cn('py-1', SIDEBAR_WORKTREE_ROW_PADDING)}
-            // Every row here is a star; marking each would be noise.
-            showStarGlyph={false}
-            activeSessionId={activeSessionId}
-            onOpen={handleOpen}
-            onReorder={handleReorder}
-          />
-        </div>
-      )}
     </div>
   )
 }

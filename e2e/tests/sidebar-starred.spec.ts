@@ -14,8 +14,8 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * The Starred section: a click reveals the session in the Projects tree, and
- * the stars can be reordered by drag and drop. Enough projects that the
+ * The Starred tab: a click switches to the Projects tab and reveals the
+ * session in the tree, and the stars can be reordered by drag and drop. Enough projects that the
  * revealed row sits far below the visible part of the tree.
  */
 
@@ -90,6 +90,15 @@ function starredSection(page: Page): Locator {
   return page.getByTestId('sidebar-starred-section')
 }
 
+async function openStarredTab(page: Page): Promise<void> {
+  await ensureSidebarOpen(page)
+  await page.getByTestId('sidebar-tab-starred').click()
+  await expect(page.getByTestId('sidebar-tab-starred')).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+}
+
 async function starOrder(page: Page): Promise<string[]> {
   return starredSection(page)
     .locator('[data-shortcut-row-id]')
@@ -128,18 +137,24 @@ async function lastStarWrite(page: Page): Promise<string[] | null> {
   })
 }
 
-test.describe('Sidebar Starred section', () => {
-  test('a click on a star reveals its session in the Projects tree', async ({
+test.describe('Sidebar Starred tab', () => {
+  test('a click on a star switches to Projects and reveals its session there', async ({
     mockPage,
   }) => {
     await ensureSidebarOpen(mockPage)
     const panel = sidebar(mockPage)
     await expect(panel.getByText('project-01', { exact: true })).toBeVisible()
+    await openStarredTab(mockPage)
 
     const target = starred[0]
     await starredSection(mockPage)
       .locator(`[data-shortcut-row-id="${target.session.id}"]`)
       .click()
+
+    await expect(mockPage.getByTestId('sidebar-tab-projects')).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
 
     const rowId = `session:${target.session.id}`
     await expect
@@ -167,7 +182,7 @@ test.describe('Sidebar Starred section', () => {
   test('stars reorder by drag and drop, and the order is persisted', async ({
     mockPage,
   }) => {
-    await ensureSidebarOpen(mockPage)
+    await openStarredTab(mockPage)
     const section = starredSection(mockPage)
     await expect(section).toBeVisible()
     await recordStarWrites(mockPage)
@@ -183,10 +198,7 @@ test.describe('Sidebar Starred section', () => {
     expect(targetBox).not.toBeNull()
     if (!sourceBox || !targetBox) return
 
-    await shot(
-      mockPage.getByTestId('sidebar-pinned-sections'),
-      'starred-before'
-    )
+    await shot(starredSection(mockPage), 'starred-before')
     await mockPage.mouse.move(
       sourceBox.x + sourceBox.width / 2,
       sourceBox.y + sourceBox.height / 2
@@ -204,23 +216,20 @@ test.describe('Sidebar Starred section', () => {
       { steps: 12 }
     )
     await expect(section.getByTestId('drop-indicator')).toBeVisible()
-    await shot(
-      mockPage.getByTestId('sidebar-pinned-sections'),
-      'starred-dragging'
-    )
+    await shot(starredSection(mockPage), 'starred-dragging')
     await mockPage.mouse.up()
 
     const moved = [ids[1], ids[2], ids[0]]
     await expect.poll(() => starOrder(mockPage)).toEqual(moved)
     await expect(section.getByTestId('drop-indicator')).toHaveCount(0)
     await expect.poll(() => lastStarWrite(mockPage)).toEqual(moved)
-    await shot(mockPage.getByTestId('sidebar-pinned-sections'), 'starred-after')
+    await shot(starredSection(mockPage), 'starred-after')
   })
 
   test('Move Up in the row menu reorders and persists', async ({
     mockPage,
   }) => {
-    await ensureSidebarOpen(mockPage)
+    await openStarredTab(mockPage)
     const section = starredSection(mockPage)
     await expect(section).toBeVisible()
     await recordStarWrites(mockPage)

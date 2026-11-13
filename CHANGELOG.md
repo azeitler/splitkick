@@ -32,6 +32,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Sidebar tabs.** Starred, To-Do and Graphs are now tabs next to Projects
+  and Recent, instead of sections pinned above the project tree. Home sits
+  above the tab bar and shows on every tab. The tabs show counts (starred,
+  To-Do, graph requests waiting for you) and an empty state; at the default
+  width only the selected tab shows its label, the others are icons with a
+  tooltip. The arrow keys, Home and End move between tabs. The selected tab is
+  remembered. A click on a starred session switches to Projects and reveals it
+  in the tree. The reveal now waits until the tree stops moving, so the row no
+  longer ends up just outside the view.
 - **GitHub CLI is optional.** Setup is complete as soon as one AI backend
   is ready. The GitHub CLI step has "Skip, I don't use GitHub", and the
   "Setup incomplete" banner and the startup wizard no longer ask for `gh`.

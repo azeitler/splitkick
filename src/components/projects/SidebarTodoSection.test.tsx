@@ -77,16 +77,18 @@ describe('SidebarTodoSection', () => {
     ]
     useProjectsStore.setState({
       starredSessions: [],
-      todoSectionCollapsed: false,
       projectCanvasSettings: {},
     })
     useChatStore.setState({ sessionLabels: {}, activeSessionIds: {} })
   })
 
-  it('renders nothing while nothing is marked', () => {
+  it('shows an empty state while nothing is marked', () => {
     mocks.entries = [entry('Jean', 'main', [session('s-2', 'Not marked')])]
     render(<SidebarTodoSection />)
     expect(screen.queryByTestId('sidebar-todo-section')).toBeNull()
+    expect(screen.getByTestId('sidebar-todo-empty')).toHaveTextContent(
+      'Nothing to do'
+    )
   })
 
   it('lists marked sessions across projects, newest mark first', () => {
@@ -113,7 +115,7 @@ describe('SidebarTodoSection', () => {
 
     await user.click(screen.getByTitle('Review PR — Jean / main'))
 
-    // Default options: the tree below reveals the session's row.
+    // Default options: the hidden tree reveals the row, the tab stays open.
     expect(mocks.navigateToSession).toHaveBeenCalledWith({
       projectId: 'id-Jean',
       worktreeId: 'id-main',
@@ -135,16 +137,5 @@ describe('SidebarTodoSection', () => {
       previousTodoAt: NOW_SECS - 60,
     })
     expect(mocks.navigateToSession).not.toHaveBeenCalled()
-  })
-
-  it('collapses to a count, and remembers it in the store', async () => {
-    const user = userEvent.setup()
-    render(<SidebarTodoSection />)
-
-    await user.click(screen.getByTestId('sidebar-todo-toggle'))
-
-    expect(useProjectsStore.getState().todoSectionCollapsed).toBe(true)
-    expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('2')
-    expect(screen.queryByTitle('Review PR — Jean / main')).toBeNull()
   })
 })

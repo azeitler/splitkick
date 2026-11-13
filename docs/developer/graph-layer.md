@@ -233,9 +233,9 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 
 ## UI
 
-- Sidebar section **Graphs** below Starred, pinned above the scrolling
-  Folders and Projects list (collapse persisted as
-  `graphs_section_collapsed` in UI state). Rows: title, `type · where`, counts.
+- Sidebar tab **Graphs** (next to Projects, Recent, Starred, To-Do), with
+  "+ New" at the top. Rows: title, `type · where`, counts. The tab label
+  counts the requests waiting for the user.
 - Per-project **Graphs** row in the sidebar tree, beside Pinned (#99,
   `ProjectGraphsSection`): graphs stored in the project, then graphs from
   elsewhere that a live session of the project serves (`selectProjectGraphs`,

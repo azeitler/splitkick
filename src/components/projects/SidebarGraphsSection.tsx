@@ -1,42 +1,33 @@
 import { useCallback, useState } from 'react'
 import { AlertTriangle, Workflow } from 'lucide-react'
-import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { NewGraphDialog } from '@/components/graphs/NewGraphDialog'
 import { graphSubtitle } from '@/components/graphs/graph-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { openGraphView } from '@/lib/graph-view'
 import { cn } from '@/lib/utils'
 import { useGraphs } from '@/services/graphs'
-import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import type { GraphSummary } from '@/types/graphs'
 import { SectionNewButton } from './SectionNewButton'
+import { SidebarTabEmpty } from './SidebarTabEmpty'
 import {
-  SIDEBAR_NESTED_ROW_SHAPE,
+  SIDEBAR_PROJECT_ROW_PADDING,
   SIDEBAR_ROW_SELECTED,
-  SIDEBAR_SECTION_HEADER_PADDING,
-  SIDEBAR_WORKTREE_LIST,
-  SIDEBAR_WORKTREE_ROW_PADDING,
+  SIDEBAR_ROW_SHAPE,
 } from './sidebar-row-styles'
 
 /**
- * Registered graphs, pinned below Starred above the scrolling list (graph
- * layer, #79).
+ * The sidebar's Graphs tab: every registered graph (graph layer, #79).
  *
- * Unlike Starred, the header always shows so "+ New" stays reachable; with no
- * graphs there are simply no rows under it. Orange count = requests waiting
- * for the user, grey count = changes the user has not seen.
+ * "+ New" sits at the top of the tab, so it stays reachable with no graphs.
+ * Orange count = requests waiting for the user, grey count = changes the user
+ * has not seen.
  */
 export function SidebarGraphsSection() {
-  const collapsed = useProjectsStore(state => state.graphsSectionCollapsed)
   const activeGraphId = useUIStore(state => state.activeGraphId)
   const isMobile = useIsMobile()
   const { data: graphs = [] } = useGraphs()
   const [newOpen, setNewOpen] = useState(false)
-
-  const handleToggle = useCallback(() => {
-    useProjectsStore.getState().toggleGraphsSectionCollapsed()
-  }, [])
 
   const handleOpen = useCallback(
     (graphId: string) => {
@@ -48,24 +39,18 @@ export function SidebarGraphsSection() {
 
   return (
     <div data-testid="sidebar-graphs-section">
-      <SidebarSectionRow
-        icon={<Workflow className="size-3.5 shrink-0" aria-hidden="true" />}
-        label="Graphs"
-        count={graphs.length}
-        noun="graph"
-        expanded={!collapsed}
-        onToggle={handleToggle}
-        className={SIDEBAR_SECTION_HEADER_PADDING}
-        testId="sidebar-graphs-toggle"
-        actions={
-          <SectionNewButton
-            label="New graph"
-            onClick={() => setNewOpen(true)}
-          />
-        }
-      />
-      {!collapsed && graphs.length > 0 && (
-        <div className={cn(SIDEBAR_WORKTREE_LIST, 'py-0.5')}>
+      <div className="flex items-center justify-end px-2 pt-1">
+        <SectionNewButton label="New graph" onClick={() => setNewOpen(true)} />
+      </div>
+      {graphs.length === 0 ? (
+        <SidebarTabEmpty
+          icon={<Workflow />}
+          title="No graphs yet"
+          hint="Create one with New."
+          testId="sidebar-graphs-empty"
+        />
+      ) : (
+        <div className="py-0.5">
           {graphs.map(graph => (
             <SidebarGraphRow
               key={graph.id}
@@ -97,9 +82,10 @@ function SidebarGraphRow({
       aria-current={selected ? 'page' : undefined}
       data-testid={`sidebar-graph-row-${graph.id}`}
       className={cn(
-        'group relative flex cursor-pointer items-start gap-1.5 py-1 text-left transition-colors duration-150',
-        SIDEBAR_NESTED_ROW_SHAPE,
-        SIDEBAR_WORKTREE_ROW_PADDING,
+        'group relative flex cursor-pointer items-start gap-1.5 text-left transition-colors duration-150',
+        'py-1.5',
+        SIDEBAR_ROW_SHAPE,
+        SIDEBAR_PROJECT_ROW_PADDING,
         selected
           ? SIDEBAR_ROW_SELECTED
           : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'

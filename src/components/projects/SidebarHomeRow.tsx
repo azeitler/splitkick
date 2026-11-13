@@ -10,7 +10,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { SIDEBAR_ROW_SELECTED, SIDEBAR_ROW_SHAPE } from './sidebar-row-styles'
 
 /**
- * The Home row, at the top of the sidebar's Projects tab.
+ * The Home row, at the top of the sidebar, above the tabs.
  *
  * Home is the state where no project and no worktree is selected, so the row
  * only has to clear both (and close the Archived view, which shares that
@@ -50,7 +50,7 @@ export function SidebarHomeRow() {
       title={isNarrow ? 'Home' : undefined}
       data-testid="sidebar-home-row"
       className={cn(
-        'group relative flex cursor-pointer items-center gap-1 overflow-hidden px-2 py-1.5 text-left transition-colors duration-150',
+        'group relative flex shrink-0 cursor-pointer items-center gap-1 overflow-hidden px-2 py-1.5 text-left transition-colors duration-150',
         SIDEBAR_ROW_SHAPE,
         isNarrow && 'justify-center',
         isActive
