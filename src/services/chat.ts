@@ -128,6 +128,7 @@ export async function refreshWorktreeSessionsCaches(
       worktreePath,
     })
     queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessions)
+    syncSessionLabels(sessions.sessions)
     queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], old => {
       if (!old?.entries) return old
       return {
@@ -363,6 +364,7 @@ export function useSessions(
           includeMessageCounts,
         })
         logger.info('Sessions loaded', { count: sessions.sessions.length })
+        syncSessionLabels(sessions.sessions)
         return sessions
       } catch (error) {
         logger.error('Failed to load sessions', { error, worktreeId })
@@ -612,33 +614,46 @@ export async function prefetchSessions(
  * Used by Load Context modal to show sessions from anywhere
  */
 /**
- * Copy persisted session labels into the chat store, as `prefetchSessions`
- * does per worktree. Rows read labels from the store, and web access never
- * prefetches, so without this a phone showed no labels in Home, Starred or
- * History. Adds and updates only, like the prefetch: a cleared label is
- * already gone from the store, and the fresh response no longer carries it.
+ * Make `sessionLabels` match the labels of freshly fetched sessions. Rows read
+ * labels from the store, so without this a label that an agent set or cleared
+ * (MCP `set_session_label`) or one changed on another client stayed stale
+ * until restart, and web access, which never prefetches, showed none at all.
+ *
+ * The response is the truth for the sessions it carries: a session without a
+ * label loses its store label. Sessions not in the response are left alone.
+ * Runs as hydration, so `useImmediateSessionStateSave` does not write the
+ * fetched value back (a stale response would otherwise persist a stale
+ * label; the next `sessions` invalidation corrects the store instead).
  */
-function mergePersistedSessionLabels(response: AllSessionsResponse) {
+export function syncSessionLabels(sessions: Iterable<Session>): void {
   const { sessionLabels } = useChatStore.getState()
-  const updates: Record<string, LabelData> = {}
-  for (const entry of response.entries) {
-    for (const session of entry.sessions) {
-      const label = session.label
-      const current = sessionLabels[session.id]
+  let next: Record<string, LabelData> | null = null
+  for (const session of sessions) {
+    const label = session.label
+    const current = sessionLabels[session.id]
+    if (label) {
       if (
-        label &&
-        (current?.name !== label.name ||
-          current?.color !== label.color ||
-          current?.pinned !== label.pinned)
+        current?.name === label.name &&
+        current?.color === label.color &&
+        current?.pinned === label.pinned
       ) {
-        updates[session.id] = label
+        continue
       }
+      next ??= { ...sessionLabels }
+      next[session.id] = label
+    } else if (current) {
+      const { [session.id]: _cleared, ...rest } = next ?? sessionLabels
+      next = rest
     }
   }
-  if (Object.keys(updates).length === 0) return
-  useChatStore.setState(state => ({
-    sessionLabels: { ...state.sessionLabels, ...updates },
-  }))
+  if (!next) return
+  const sessionLabelsUpdate = next
+  beginSessionStateHydration()
+  try {
+    useChatStore.setState({ sessionLabels: sessionLabelsUpdate })
+  } finally {
+    endSessionStateHydration()
+  }
 }
 
 /**
@@ -696,7 +711,7 @@ const allSessionsQueryOptions = {
     try {
       logger.debug('Loading all sessions')
       const response = await invoke<AllSessionsResponse>('list_all_sessions')
-      mergePersistedSessionLabels(response)
+      syncSessionLabels(response.entries.flatMap(entry => entry.sessions))
       logger.info('All sessions loaded', {
         entryCount: response.entries.length,
       })

@@ -21,6 +21,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   folders. They use the sidebar's own commands, so the sidebar updates at
   once, also in Web Access. Deleting a folder that is not empty now names
   what is inside.
+- **Agents can label their session.** The new MCP tool `set_session_label`
+  sets or clears the label of a session (the calling session when no
+  `sessionId` is given). Without a colour, a label name that is already in use
+  keeps its colour. The sidebar row, the session tab, the label filters and
+  Home show the change at once, also in Web Access, and a label cleared from
+  outside now disappears too. The MCP server instructions now name
+  `rename_session` and `set_session_label`, so an agent asked to "rename your
+  session and add a label" finds both.
 
 ### Changed
 

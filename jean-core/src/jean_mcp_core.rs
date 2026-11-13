@@ -93,6 +93,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "send_chat_message",
     "set_session_model",
     "rename_session",
+    "set_session_label",
     "set_session_status",
     "set_session_todo",
     "start_run_environment",
@@ -159,6 +160,8 @@ pub fn next_depth() -> u32 {
 const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "Splitkick manages git worktrees and AI chat sessions across your projects.\n\n",
     "- get_current_context tells you which session, worktree and project you are in.\n",
+    "- To change your own session, omit sessionId: rename_session renames it, set_session_label ",
+    "labels it, set_session_status and set_session_todo mark it.\n",
     "- list_all_sessions gives a cross-project overview (status, idle days, labels, linked PR) ",
     "and search_sessions finds a session by topic or name. Both answer in one call. ",
     "Do not loop list_sessions over every worktree.\n",
@@ -509,6 +512,7 @@ fn tool_registry_session() -> Value {
         {"name":"rename_session","description":"Rename a Splitkick session. Omit sessionId to rename the calling session. A renamed session is never auto-named afterwards, so this also undoes a wrong auto-name. Returns sessionId and name.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to rename. Defaults to the calling session."},"name":{"type":"string","description":"The new name."}},"required":["name"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
+        {"name":"set_session_label","description":"Set or clear the label of a Splitkick session. A session has one label; the sidebar row, the session tab, Home and the label filters show it. Omit sessionId to label the calling session. Without color, a label name that is already in use keeps its colour and a new name gets the default yellow. Pass clear true (or label null) to remove the label. Returns sessionId and label (null when cleared). For worktree labels use update_worktree_labels.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to label. Defaults to the calling session."},"label":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string","description":"Hex color like #3b82f6. Optional."}},"required":["name"],"additionalProperties":false},"clear":{"type":"boolean","description":"true removes the session's label."}},"additionalProperties":false}},
         {"name":"set_session_todo","description":"Mark a Splitkick session as To-Do for the user, or clear the mark. The To-Do list in the sidebar and on Home shows every marked session, newest mark first, until the user clears it. Use it when the user must come back to a session, e.g. to review your work (\"I marked this for you to review\"). Omit sessionId to target the calling session. Marking a marked session keeps its first time. Returns sessionId and todoAt (unix seconds, null when cleared).","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"todo":{"type":"boolean","description":"true marks the session as To-Do, false clears the mark."}},"required":["todo"],"additionalProperties":false}},
         {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A session keeps one agent schedule: a new one replaces the previous. Returns the schedule.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
         {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
@@ -1661,6 +1665,49 @@ async fn run_tool(
             Ok(json!({
                 "sessionId": session_id,
                 "status": status,
+            }))
+        }
+        "set_session_label" => {
+            let clear = args.get("clear").and_then(|v| v.as_bool()).unwrap_or(false)
+                || args.get("label").is_some_and(Value::is_null);
+            let label = if clear {
+                None
+            } else if args.get("label").is_some() {
+                Some(parse_session_label_arg(app, &args)?)
+            } else {
+                return Err(ToolError::invalid_params(
+                    "pass 'label' ({name, color?}) or 'clear': true",
+                ));
+            };
+            let session_id = match optional_str(&args, "sessionId") {
+                Some(id) => id,
+                None => {
+                    if source == "anon" {
+                        return Err(no_current_context_error(source));
+                    }
+                    source.to_string()
+                }
+            };
+            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
+
+            // update_session_state emits the worktree-scoped `sessions`
+            // invalidation (emit_all), so native and web clients refetch.
+            let mut update = json!({
+                "sessionId": session_id.clone(),
+                "worktreeId": worktree_id,
+                "worktreePath": worktree_path,
+            });
+            match &label {
+                Some(label) => update["label"] = json!(label),
+                None => update["clearLabel"] = json!(true),
+            }
+            dispatch_command(app, "update_session_state", update)
+                .await
+                .map_err(ToolError::internal)?;
+
+            Ok(json!({
+                "sessionId": session_id,
+                "label": label,
             }))
         }
         "set_session_todo" => {
@@ -3589,6 +3636,64 @@ fn parse_label_arg(args: &Value) -> Result<LabelData, ToolError> {
         name,
         color,
         pinned,
+    })
+}
+
+/// The `label` argument of `set_session_label`. Without a colour, a label
+/// name already in use (case-insensitive, on any session or worktree) keeps
+/// its spelling and colour, as the label picker does (`resolveLabelData`);
+/// a new name gets the default colour.
+fn parse_session_label_arg(app: &AppHandle, args: &Value) -> Result<LabelData, ToolError> {
+    let label = args
+        .get("label")
+        .filter(|v| v.is_object())
+        .ok_or_else(|| ToolError::invalid_params("'label' must be an object {name, color?}"))?;
+    let name = label
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return Err(ToolError::invalid_params(
+            "label.name must be a non-empty string",
+        ));
+    }
+    if let Some(color) = label.get("color").and_then(|v| v.as_str()) {
+        let color = color.trim().to_string();
+        validate_label_color(&color, "label.color")?;
+        return Ok(LabelData {
+            name,
+            color,
+            pinned: false,
+        });
+    }
+    Ok(known_label(app, &name).unwrap_or(LabelData {
+        name,
+        color: DEFAULT_LABEL_COLOR.to_string(),
+        pinned: false,
+    }))
+}
+
+/// An existing label with this name: session labels first, then worktree labels.
+fn known_label(app: &AppHandle, name: &str) -> Option<LabelData> {
+    let session_ids = crate::chat::storage::list_all_session_ids(app).unwrap_or_default();
+    let from_sessions = session_ids.iter().find_map(|id| {
+        let (session, _) = crate::chat::storage::load_session_summary(app, id).ok()??;
+        session
+            .label
+            .filter(|label| labels_match(&label.name, name))
+    });
+    let label = from_sessions.or_else(|| {
+        let data = crate::projects::storage::load_projects_data(app).ok()?;
+        data.worktrees
+            .into_iter()
+            .flat_map(|worktree| worktree.labels)
+            .find(|label| labels_match(&label.name, name))
+    })?;
+    Some(LabelData {
+        pinned: false,
+        ..label
     })
 }
 
@@ -5963,6 +6068,8 @@ mod tests {
         assert!(instructions.contains("search_sessions"));
         assert!(instructions.contains("wait for a yes"));
         assert!(instructions.contains("[Session name](link)"));
+        assert!(instructions.contains("rename_session"));
+        assert!(instructions.contains("set_session_label"));
     }
 
     #[test]
@@ -6605,6 +6712,152 @@ mod tests {
         assert_eq!(cleared["todoAt"], Value::Null);
         let listed = call(&app, "list_all_sessions", json!({})).unwrap();
         assert!(listed["sessions"][0].get("todoAt").is_none());
+    }
+
+    fn run_label_tool(app: &AppHandle, args: Value, source: &str) -> Result<Value, ToolError> {
+        // dispatch_command's future is larger than a debug test thread's 2 MB stack.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap()
+                        .block_on(run_tool(app, "set_session_label", args, source))
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+    }
+
+    fn stored_session_label(app: &AppHandle) -> Option<LabelData> {
+        crate::chat::storage::load_sessions(app, "", "tool-wt")
+            .unwrap()
+            .sessions
+            .into_iter()
+            .find(|session| session.id == "tool-s1")
+            .and_then(|session| session.label)
+    }
+
+    #[test]
+    fn set_session_label_sets_changes_and_clears_the_calling_session() {
+        let (_temp, app) = tool_fixture();
+        crate::chat::storage::save_metadata(
+            &app,
+            &crate::chat::types::SessionMetadata::new(
+                "tool-s1".to_string(),
+                "tool-wt".to_string(),
+                "redirect notes".to_string(),
+                0,
+            ),
+        )
+        .unwrap();
+
+        // No sessionId, no colour: the calling session gets the default colour.
+        let set =
+            run_label_tool(&app, json!({ "label": { "name": " Social " } }), "tool-s1").unwrap();
+        assert_eq!(set["sessionId"], "tool-s1");
+        assert_eq!(
+            set["label"],
+            json!({ "name": "Social", "color": DEFAULT_LABEL_COLOR })
+        );
+        let stored = stored_session_label(&app).expect("label stored");
+        assert_eq!(stored.name, "Social");
+        assert_eq!(stored.color, DEFAULT_LABEL_COLOR);
+        let listed = call(&app, "list_all_sessions", json!({})).unwrap();
+        assert_eq!(listed["sessions"][0]["label"], "Social");
+
+        // An explicit colour changes it.
+        let changed = run_label_tool(
+            &app,
+            json!({ "sessionId": "tool-s1", "label": { "name": "Social", "color": "#ec4899" } }),
+            "anon",
+        )
+        .unwrap();
+        assert_eq!(changed["label"]["color"], "#ec4899");
+        assert_eq!(stored_session_label(&app).unwrap().color, "#ec4899");
+
+        // A known name without a colour keeps that label's spelling and colour.
+        let reused =
+            run_label_tool(&app, json!({ "label": { "name": "social" } }), "tool-s1").unwrap();
+        assert_eq!(
+            reused["label"],
+            json!({ "name": "Social", "color": "#ec4899" })
+        );
+
+        let cleared = run_label_tool(&app, json!({ "clear": true }), "tool-s1").unwrap();
+        assert_eq!(cleared["label"], Value::Null);
+        assert!(stored_session_label(&app).is_none());
+
+        run_label_tool(&app, json!({ "label": { "name": "Social" } }), "tool-s1").unwrap();
+        let cleared = run_label_tool(&app, json!({ "label": null }), "tool-s1").unwrap();
+        assert_eq!(cleared["label"], Value::Null);
+        assert!(stored_session_label(&app).is_none());
+    }
+
+    #[test]
+    fn set_session_label_reuses_a_worktree_label_colour() {
+        let (_temp, app) = tool_fixture();
+        crate::chat::storage::save_metadata(
+            &app,
+            &crate::chat::types::SessionMetadata::new(
+                "tool-s1".to_string(),
+                "tool-wt".to_string(),
+                "redirect notes".to_string(),
+                0,
+            ),
+        )
+        .unwrap();
+        let mut data = crate::projects::storage::load_projects_data(&app).unwrap();
+        data.worktrees[0].labels = vec![LabelData {
+            name: "Marketing".to_string(),
+            color: "#22c55e".to_string(),
+            pinned: true,
+        }];
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+
+        let set =
+            run_label_tool(&app, json!({ "label": { "name": "marketing" } }), "tool-s1").unwrap();
+        assert_eq!(
+            set["label"],
+            json!({ "name": "Marketing", "color": "#22c55e" })
+        );
+    }
+
+    #[test]
+    fn set_session_label_refuses_bad_input_and_is_rate_limited() {
+        let (_temp, app) = tool_fixture();
+        let unknown = run_label_tool(
+            &app,
+            json!({ "sessionId": "nope", "label": { "name": "Social" } }),
+            "anon",
+        )
+        .unwrap_err();
+        assert!(
+            unknown.message.contains("Unknown sessionId"),
+            "{}",
+            unknown.message
+        );
+
+        let no_context = run_label_tool(&app, json!({ "clear": true }), "anon").unwrap_err();
+        assert!(no_context.message.contains("No Splitkick session context"));
+
+        for args in [
+            json!({}),
+            json!({ "label": { "name": "  " } }),
+            json!({ "label": { "name": "Social", "color": "pink" } }),
+            json!({ "label": "Social" }),
+        ] {
+            let error = run_label_tool(&app, args.clone(), "tool-s1").unwrap_err();
+            assert_eq!(error.code, -32602, "{args}");
+        }
+
+        let tools = tool_registry();
+        let tool = find_tool(&tools, "set_session_label");
+        assert!(tool["inputSchema"].get("required").is_none());
+        assert!(RATE_LIMITED_TOOLS.contains(&"set_session_label"));
     }
 
     #[test]
