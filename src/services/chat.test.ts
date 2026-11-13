@@ -26,6 +26,7 @@ import {
   mergeFetchedSession,
   prefetchSessions,
   reconnectNativeCliSession,
+  refreshWorktreeSessionsCaches,
   useAllSessions,
   useSendMessage,
 } from './chat'
@@ -36,6 +37,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { toast } from 'sonner'
 import { disposeTerminal } from '@/lib/terminal-instances'
+import { isSessionStateHydrating } from '@/lib/session-state-hydration'
 import type { Session } from '@/types/chat'
 
 const toastMock = toast as unknown as {
@@ -192,9 +194,7 @@ describe('useSendMessage refused send', () => {
       message: 'hello',
     })
 
-    await waitFor(() =>
-      expect(useChatStore.getState().errors.s1).toBe(refusal)
-    )
+    await waitFor(() => expect(useChatStore.getState().errors.s1).toBe(refusal))
     expect(useChatStore.getState().inputDrafts.s1).toBe('hello')
     expect(useChatStore.getState().lastSentMessages.s1).toBeUndefined()
   })
@@ -203,7 +203,10 @@ describe('useSendMessage refused send', () => {
 describe('useAllSessions', () => {
   it('copies persisted labels into the store (web access never prefetches)', async () => {
     useChatStore.setState({
-      sessionLabels: { kept: { name: 'Old', color: '#000000' } },
+      sessionLabels: {
+        cleared: { name: 'Old', color: '#000000' },
+        elsewhere: { name: 'Other', color: '#111111' },
+      },
     })
     vi.mocked(invoke).mockResolvedValueOnce({
       entries: [
@@ -215,7 +218,7 @@ describe('useAllSessions', () => {
           worktree_path: '/w',
           sessions: [
             { id: 'labeled', label: { name: 'Needs QA', color: '#e11d48' } },
-            { id: 'kept' },
+            { id: 'cleared' },
           ],
         },
       ],
@@ -231,8 +234,61 @@ describe('useAllSessions', () => {
 
     const labels = useChatStore.getState().sessionLabels
     expect(labels.labeled).toEqual({ name: 'Needs QA', color: '#e11d48' })
-    // A session without a persisted label keeps what the store has.
-    expect(labels.kept).toEqual({ name: 'Old', color: '#000000' })
+    // The response is the truth for its sessions: no label means cleared.
+    expect(labels.cleared).toBeUndefined()
+    // A session the response does not carry keeps its label.
+    expect(labels.elsewhere).toEqual({ name: 'Other', color: '#111111' })
+  })
+})
+
+describe('outside session label changes', () => {
+  const worktreeSessions = (label?: { name: string; color: string }) => ({
+    worktree_id: 'w1',
+    sessions: [{ id: 's1', name: 'Session 1', label }],
+    active_session_id: 's1',
+    version: 2,
+  })
+
+  it('reach sessionLabels through the scoped sessions refresh', async () => {
+    useChatStore.setState({ sessionLabels: {} })
+    const client = new QueryClient()
+    const hydrating: boolean[] = []
+    const unsubscribe = useChatStore.subscribe(() =>
+      hydrating.push(isSessionStateHydrating())
+    )
+
+    // An agent sets the label (MCP set_session_label), then changes it.
+    vi.mocked(invoke).mockResolvedValueOnce(
+      worktreeSessions({ name: 'Social', color: '#eab308' })
+    )
+    await refreshWorktreeSessionsCaches(client, 'w1', '/w1')
+    expect(useChatStore.getState().sessionLabels.s1).toEqual({
+      name: 'Social',
+      color: '#eab308',
+    })
+
+    vi.mocked(invoke).mockResolvedValueOnce(
+      worktreeSessions({ name: 'Social', color: '#ec4899' })
+    )
+    await refreshWorktreeSessionsCaches(client, 'w1', '/w1')
+    expect(useChatStore.getState().sessionLabels.s1?.color).toBe('#ec4899')
+
+    // The same label again changes nothing in the store.
+    const before = useChatStore.getState().sessionLabels
+    vi.mocked(invoke).mockResolvedValueOnce(
+      worktreeSessions({ name: 'Social', color: '#ec4899' })
+    )
+    await refreshWorktreeSessionsCaches(client, 'w1', '/w1')
+    expect(useChatStore.getState().sessionLabels).toBe(before)
+
+    // The agent clears it.
+    vi.mocked(invoke).mockResolvedValueOnce(worktreeSessions())
+    await refreshWorktreeSessionsCaches(client, 'w1', '/w1')
+    expect(useChatStore.getState().sessionLabels.s1).toBeUndefined()
+
+    unsubscribe()
+    // Written as hydration, so the immediate-save hook does not echo it back.
+    expect(hydrating).toEqual([true, true, true])
   })
 })
 
