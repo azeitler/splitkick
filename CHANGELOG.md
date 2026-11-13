@@ -23,6 +23,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Session menu on the Home To-Do list.** A right-click on a row of the
+  To-Do list on Home opens the same session menu as in the sidebar: rename,
+  labels, star, pin, status, fork, move, archive and delete.
 - **AskUserQuestion works on Windows again.** Every question failed at once
   with "Connection closed", and the answer never reached the agent. The
   dialog helper process crashed at its first call on Windows. A failed
