@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
@@ -97,5 +97,21 @@ describe('TodoSessionsSection (Home)', () => {
     expect(mocks.setSessionTodo).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 's-1', todo: false })
     )
+  })
+
+  it('opens the session menu on a right-click', async () => {
+    const user = userEvent.setup()
+    render(<TodoSessionsSection />)
+
+    fireEvent.contextMenu(screen.getByText('Newer'))
+    expect(
+      await screen.findByRole('menuitem', { name: /Rename/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /Archive/ })
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('menuitem', { name: /Rename/ }))
+    expect(await screen.findByLabelText('Session name')).toHaveValue('Newer')
   })
 })

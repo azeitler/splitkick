@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => ({
   navigateToProject: vi.fn(),
 }))
 
-vi.mock('@/services/chat', () => ({
+vi.mock('@/services/chat', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import('@/services/chat')>()),
   useAllSessions: () => ({ data: mocks.sessions, isLoading: false }),
 }))
 
