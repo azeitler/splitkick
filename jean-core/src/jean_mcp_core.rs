@@ -107,6 +107,11 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "send_request",
     "set_serves",
     "create_graph",
+    // Sidebar folders
+    "create_folder",
+    "move_project",
+    "rename_folder",
+    "delete_folder",
 ];
 const DEFAULT_MCP_DIFF_MAX_BYTES: usize = 60_000;
 const MAX_MCP_DIFF_BYTES: usize = 200_000;
@@ -412,7 +417,21 @@ pub fn tool_registry() -> Value {
     if let Some(remote) = tool_registry_remote().as_array() {
         tools.extend(remote.iter().cloned());
     }
+    if let Some(folders) = tool_registry_folders().as_array() {
+        tools.extend(folders.iter().cloned());
+    }
     Value::Array(tools)
+}
+
+/// Sidebar folders: the same commands the sidebar uses (`create_folder`,
+/// `move_item`, `rename_folder`, `delete_folder` in `projects::commands`).
+fn tool_registry_folders() -> Value {
+    json!([
+        {"name":"create_folder","description":"Create a sidebar folder to group projects. Folders nest at most 3 levels deep. When the name is taken at that level, Splitkick adds \" (2)\", \" (3)\" and so on; the result has the name used. Returns folderId. Sort projects into it with move_project.","inputSchema":{"type":"object","properties":{"name":{"type":"string","description":"Folder name."},"parentId":{"type":"string","description":"Optional id of the folder to create it in (kind \"folder\" in list_projects). Omit for the top level."}},"required":["name"],"additionalProperties":false}},
+        {"name":"move_project","description":"Move a project or a folder into a sidebar folder, or back to the top level. A folder cannot go into itself or its own subfolder, and nesting stays within 3 levels. Returns the moved item with its new parentId.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Id of the project or folder to move (from list_projects)."},"folderId":{"type":["string","null"],"description":"Id of the target folder. Omit or null for the top level."},"position":{"type":"integer","minimum":0,"description":"Index at the target level, 0 = first. Omit to put it at the end. The sidebar lists folders before projects."}},"required":["projectId"],"additionalProperties":false}},
+        {"name":"rename_folder","description":"Rename a sidebar folder. Fails when another folder at the same level has that name. Does not rename projects.","inputSchema":{"type":"object","properties":{"folderId":{"type":"string"},"name":{"type":"string","description":"New folder name."}},"required":["folderId","name"],"additionalProperties":false}},
+        {"name":"delete_folder","description":"Delete an empty sidebar folder. Fails when the folder still holds projects or folders and names them; move them out first with move_project. Never deletes projects.","inputSchema":{"type":"object","properties":{"folderId":{"type":"string"}},"required":["folderId"],"additionalProperties":false}},
+    ])
 }
 
 /// Tools that reach other Splitkick instances (#94). Contract:
@@ -640,6 +659,84 @@ async fn run_tool(
             dispatch_command(app, "init_project", Value::Object(payload))
                 .await
                 .map_err(ToolError::internal)
+        }
+        "create_folder" => {
+            let name = require_nonempty_str(&args, "name")?;
+            let parent_id = optional_str(&args, "parentId");
+            if let Some(parent_id) = &parent_id {
+                require_sidebar_item(app, parent_id, "parentId", true)?;
+            }
+            let mut folder = dispatch_command(
+                app,
+                "create_folder",
+                json!({ "name": name, "parentId": parent_id }),
+            )
+            .await
+            .map_err(ToolError::invalid_params)?;
+            let folder_id = folder.get("id").cloned().unwrap_or(Value::Null);
+            if let Some(object) = folder.as_object_mut() {
+                object.insert("folderId".to_string(), folder_id);
+                object.insert("kind".to_string(), json!("folder"));
+            }
+            Ok(folder)
+        }
+        "move_project" => {
+            let item_id = require_str(&args, "projectId")?;
+            require_sidebar_item(app, &item_id, "projectId", false)?;
+            let folder_id = match args.get("folderId") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(id)) if !id.trim().is_empty() => Some(id.clone()),
+                Some(_) => {
+                    return Err(ToolError::invalid_params(
+                        "'folderId' must be a folder id, or null for the top level",
+                    ))
+                }
+            };
+            if let Some(folder_id) = &folder_id {
+                require_sidebar_item(app, folder_id, "folderId", true)?;
+            }
+            let position = match args.get("position") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(
+                    value
+                        .as_u64()
+                        .and_then(|p| u32::try_from(p).ok())
+                        .ok_or_else(|| {
+                            ToolError::invalid_params("'position' must be an integer of 0 or more")
+                        })?,
+                ),
+            };
+            let mut moved = dispatch_command(
+                app,
+                "move_item",
+                json!({ "itemId": item_id, "newParentId": folder_id, "targetIndex": position }),
+            )
+            .await
+            .map_err(ToolError::invalid_params)?;
+            add_project_kinds(&mut moved);
+            Ok(moved)
+        }
+        "rename_folder" => {
+            let folder_id = require_str(&args, "folderId")?;
+            let name = require_nonempty_str(&args, "name")?;
+            require_sidebar_item(app, &folder_id, "folderId", true)?;
+            let mut folder = dispatch_command(
+                app,
+                "rename_folder",
+                json!({ "folderId": folder_id, "name": name }),
+            )
+            .await
+            .map_err(ToolError::invalid_params)?;
+            add_project_kinds(&mut folder);
+            Ok(folder)
+        }
+        "delete_folder" => {
+            let folder_id = require_str(&args, "folderId")?;
+            require_sidebar_item(app, &folder_id, "folderId", true)?;
+            dispatch_command(app, "delete_folder", json!({ "folderId": folder_id }))
+                .await
+                .map_err(ToolError::invalid_params)?;
+            Ok(json!({ "deleted": true, "folderId": folder_id }))
         }
         "list_worktrees" => {
             let project_id = require_str(&args, "projectId")?;
@@ -4438,9 +4535,34 @@ fn ensure_mcp_git_tool(app: &AppHandle, name: &str, args: &Value) -> Result<(), 
 }
 
 /// Add `kind` ("git", "plain" or "folder") to each `list_projects` entry.
+/// Refuse an unknown id, and a project where a folder is needed. The folder
+/// commands check this too; this gives the agent the argument name and a
+/// pointer to `list_projects`.
+fn require_sidebar_item(
+    app: &AppHandle,
+    id: &str,
+    key: &str,
+    must_be_folder: bool,
+) -> Result<(), ToolError> {
+    let data = crate::projects::storage::load_projects_data(app).map_err(ToolError::internal)?;
+    let item = data.find_project(id).ok_or_else(|| {
+        ToolError::invalid_params(format!("Unknown {key}: {id}. Take ids from list_projects."))
+    })?;
+    if must_be_folder && !item.is_folder {
+        return Err(ToolError::invalid_params(format!(
+            "{key} {id} is the project '{}', not a folder. Folders have kind \"folder\" in list_projects.",
+            item.name
+        )));
+    }
+    Ok(())
+}
+
+/// Adds `kind` to one project object or to each object in an array.
 fn add_project_kinds(projects: &mut Value) {
-    let Some(items) = projects.as_array_mut() else {
-        return;
+    let items: Vec<&mut Value> = match projects {
+        Value::Array(items) => items.iter_mut().collect(),
+        Value::Object(_) => vec![projects],
+        _ => return,
     };
     for item in items {
         let Some(object) = item.as_object_mut() else {
@@ -8249,5 +8371,386 @@ mod tests {
 
         let context = get_project_context(&app, "plain-p").unwrap();
         assert_eq!(context["kind"], "plain");
+    }
+
+    // ---- Sidebar folder tools ----------------------------------------------
+
+    /// Runs a folder tool on a big stack: dispatch_command's future is larger
+    /// than a debug test thread's 2 MB stack.
+    fn folder_call(app: &AppHandle, name: &str, args: Value) -> Result<Value, ToolError> {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap()
+                        .block_on(run_tool(app, name, args, "folder-test"))
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+    }
+
+    fn stored_item(app: &AppHandle, id: &str) -> crate::projects::types::Project {
+        crate::projects::storage::load_projects_data(app)
+            .unwrap()
+            .find_project(id)
+            .cloned()
+            .unwrap_or_else(|| panic!("{id} is stored"))
+    }
+
+    fn new_folder(app: &AppHandle, name: &str, parent: Option<&str>) -> String {
+        let mut args = json!({ "name": name });
+        if let Some(parent) = parent {
+            args["parentId"] = json!(parent);
+        }
+        let folder = folder_call(app, "create_folder", args).unwrap();
+        folder["folderId"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn folder_tools_are_listed_rate_limited_and_not_on_the_dialog_server() {
+        let tools = tool_registry();
+        let dialog = dialog_tool_registry();
+        for name in [
+            "create_folder",
+            "move_project",
+            "rename_folder",
+            "delete_folder",
+        ] {
+            let tool = find_tool(&tools, name);
+            assert!(!tool["description"].as_str().unwrap().is_empty());
+            assert!(RATE_LIMITED_TOOLS.contains(&name), "{name} writes");
+            assert!(
+                !dialog.as_array().unwrap().iter().any(|t| t["name"] == name),
+                "{name} must not be on the dialog server"
+            );
+        }
+        assert_eq!(
+            find_tool(&tools, "move_project")["inputSchema"]["required"],
+            json!(["projectId"])
+        );
+    }
+
+    #[test]
+    fn dialog_role_cannot_call_folder_tools() {
+        let (_temp, app) = tool_fixture();
+        let error = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(call_tool(
+                &app,
+                "create_folder",
+                json!({ "name": "x" }),
+                "anon",
+                0,
+                McpRole::Dialog,
+            ))
+            .unwrap_err();
+        assert!(error.message.contains("Unknown dialog tool"));
+    }
+
+    #[test]
+    fn create_folder_returns_the_id_nests_and_emits_invalidation() {
+        let (_temp, app) = tool_fixture();
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        app.listen("cache:invalidate", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+
+        let top = folder_call(&app, "create_folder", json!({ "name": "Clients" })).unwrap();
+        let top_id = top["folderId"].as_str().unwrap().to_string();
+        assert_eq!(top["id"], json!(top_id));
+        assert_eq!(top["kind"], "folder");
+        assert_eq!(top["name"], "Clients");
+        assert!(stored_item(&app, &top_id).is_folder);
+        assert!(events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.contains("projects")));
+
+        let sub = new_folder(&app, "Acme", Some(&top_id));
+        assert_eq!(
+            stored_item(&app, &sub).parent_id.as_deref(),
+            Some(top_id.as_str())
+        );
+
+        // A taken name gets a suffix, and the result says which name was used.
+        let again = folder_call(&app, "create_folder", json!({ "name": "Clients" })).unwrap();
+        assert_eq!(again["name"], "Clients (2)");
+
+        // list_projects shows the new folder.
+        let listed = folder_call(&app, "list_projects", json!({})).unwrap();
+        assert!(listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == json!(sub) && p["kind"] == "folder"));
+    }
+
+    #[test]
+    fn create_folder_refuses_bad_input() {
+        let (_temp, app) = tool_fixture();
+        let empty = folder_call(&app, "create_folder", json!({ "name": "  " })).unwrap_err();
+        assert_eq!(empty.code, -32602);
+
+        let unknown = folder_call(
+            &app,
+            "create_folder",
+            json!({ "name": "x", "parentId": "nope" }),
+        )
+        .unwrap_err();
+        assert_eq!(unknown.code, -32602);
+        assert!(unknown.message.contains("Unknown parentId: nope"));
+
+        let project = folder_call(
+            &app,
+            "create_folder",
+            json!({ "name": "x", "parentId": "tool-p1" }),
+        )
+        .unwrap_err();
+        assert!(
+            project.message.contains("not a folder"),
+            "{}",
+            project.message
+        );
+    }
+
+    #[test]
+    fn move_project_into_a_folder_and_back_to_the_top_level() {
+        let (_temp, app) = tool_fixture();
+        let folder = new_folder(&app, "Clients", None);
+
+        let moved = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "tool-p1", "folderId": folder }),
+        )
+        .unwrap();
+        assert_eq!(moved["parent_id"], json!(folder));
+        assert_eq!(moved["kind"], "git");
+        assert_eq!(stored_item(&app, "tool-p1").parent_id, Some(folder.clone()));
+
+        // null and an omitted folderId both mean the top level.
+        folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "tool-p1", "folderId": null }),
+        )
+        .unwrap();
+        assert_eq!(stored_item(&app, "tool-p1").parent_id, None);
+
+        folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "tool-p1", "folderId": folder }),
+        )
+        .unwrap();
+        folder_call(&app, "move_project", json!({ "projectId": "tool-p1" })).unwrap();
+        assert_eq!(stored_item(&app, "tool-p1").parent_id, None);
+    }
+
+    #[test]
+    fn move_project_honours_the_position() {
+        let (_temp, app) = tool_fixture();
+        let a = new_folder(&app, "A", None);
+        let b = new_folder(&app, "B", None);
+        let c = new_folder(&app, "C", None);
+
+        // Order at the top level is now A, B, C (folders first, then tool-p1).
+        folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": c, "folderId": null, "position": 0 }),
+        )
+        .unwrap();
+        let order = |id: &str| stored_item(&app, id).order;
+        assert!(order(&c) < order(&a));
+        assert!(order(&a) < order(&b));
+
+        let bad = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": c, "position": -1 }),
+        )
+        .unwrap_err();
+        assert_eq!(bad.code, -32602);
+    }
+
+    #[test]
+    fn move_project_refuses_a_folder_into_itself_or_its_subfolder() {
+        let (_temp, app) = tool_fixture();
+        let top = new_folder(&app, "Top", None);
+        let sub = new_folder(&app, "Sub", Some(&top));
+        let subsub = new_folder(&app, "SubSub", Some(&sub));
+
+        let itself = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": top, "folderId": top }),
+        )
+        .unwrap_err();
+        assert!(itself.message.contains("into itself"), "{}", itself.message);
+
+        // Deep enough to also trip the depth limit: the descendant reason wins.
+        let into_sub = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": top, "folderId": subsub }),
+        )
+        .unwrap_err();
+        assert!(
+            into_sub.message.contains("own descendant"),
+            "{}",
+            into_sub.message
+        );
+        assert_eq!(stored_item(&app, &top).parent_id, None);
+    }
+
+    #[test]
+    fn move_project_refuses_wrong_ids() {
+        let (_temp, app) = tool_fixture();
+        let folder = new_folder(&app, "Clients", None);
+
+        let unknown_item = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "nope", "folderId": folder }),
+        )
+        .unwrap_err();
+        assert!(unknown_item.message.contains("Unknown projectId: nope"));
+
+        let unknown_folder = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "tool-p1", "folderId": "nope" }),
+        )
+        .unwrap_err();
+        assert!(unknown_folder.message.contains("Unknown folderId: nope"));
+
+        let project_as_folder = folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": folder, "folderId": "tool-p1" }),
+        )
+        .unwrap_err();
+        assert_eq!(project_as_folder.code, -32602);
+        assert!(project_as_folder.message.contains("not a folder"));
+    }
+
+    #[test]
+    fn rename_folder_renames_and_refuses_projects() {
+        let (_temp, app) = tool_fixture();
+        let folder = new_folder(&app, "Clients", None);
+
+        let renamed = folder_call(
+            &app,
+            "rename_folder",
+            json!({ "folderId": folder, "name": "Customers" }),
+        )
+        .unwrap();
+        assert_eq!(renamed["name"], "Customers");
+        assert_eq!(stored_item(&app, &folder).name, "Customers");
+
+        let project = folder_call(
+            &app,
+            "rename_folder",
+            json!({ "folderId": "tool-p1", "name": "x" }),
+        )
+        .unwrap_err();
+        assert!(project.message.contains("not a folder"));
+        assert_eq!(stored_item(&app, "tool-p1").name, "jean");
+
+        let unknown = folder_call(
+            &app,
+            "rename_folder",
+            json!({ "folderId": "nope", "name": "x" }),
+        )
+        .unwrap_err();
+        assert!(unknown.message.contains("Unknown folderId"));
+    }
+
+    #[test]
+    fn delete_folder_only_deletes_an_empty_folder() {
+        let (_temp, app) = tool_fixture();
+        let full = new_folder(&app, "Clients", None);
+        let empty = new_folder(&app, "Old", None);
+        folder_call(
+            &app,
+            "move_project",
+            json!({ "projectId": "tool-p1", "folderId": full }),
+        )
+        .unwrap();
+
+        let refused = folder_call(&app, "delete_folder", json!({ "folderId": full })).unwrap_err();
+        assert_eq!(refused.code, -32602);
+        assert!(
+            refused.message.contains("project 'jean' (tool-p1)"),
+            "{}",
+            refused.message
+        );
+        assert!(stored_item(&app, &full).is_folder);
+
+        let deleted = folder_call(&app, "delete_folder", json!({ "folderId": empty })).unwrap();
+        assert_eq!(deleted, json!({ "deleted": true, "folderId": empty }));
+        assert!(crate::projects::storage::load_projects_data(&app)
+            .unwrap()
+            .find_project(&empty)
+            .is_none());
+
+        let project =
+            folder_call(&app, "delete_folder", json!({ "folderId": "tool-p1" })).unwrap_err();
+        assert!(project.message.contains("not a folder"));
+        stored_item(&app, "tool-p1");
+    }
+
+    #[test]
+    fn folder_tools_obey_the_rate_limit() {
+        let (_temp, app) = tool_fixture();
+        let prefs = crate::AppPreferences {
+            jean_mcp_rate_limit_per_minute: 2,
+            ..Default::default()
+        };
+        let path = crate::get_preferences_path(&app).unwrap();
+        std::fs::write(path, serde_json::to_string(&prefs).unwrap()).unwrap();
+
+        let source = format!("folder-rate-{}", uuid::Uuid::new_v4());
+        let call = |n: u32| {
+            std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap()
+                            .block_on(call_tool(
+                                &app,
+                                "create_folder",
+                                json!({ "name": format!("F{n}") }),
+                                &source,
+                                0,
+                                McpRole::Full,
+                            ))
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap()
+            })
+        };
+        assert!(call(1).is_ok());
+        assert!(call(2).is_ok());
+        let limited = call(3).unwrap_err();
+        assert!(
+            limited.message.contains("rate limit"),
+            "{}",
+            limited.message
+        );
     }
 }

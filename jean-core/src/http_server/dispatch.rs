@@ -2431,12 +2431,14 @@ pub async fn dispatch_command(
             let name: String = from_field(&args, "name")?;
             let parent_id: Option<String> = field_opt(&args, "parentId", "parent_id")?;
             let result = crate::projects::create_folder(app.clone(), name, parent_id).await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "rename_folder" => {
             let folder_id: String = field(&args, "folderId", "folder_id")?;
             let name: String = from_field(&args, "name")?;
             let result = crate::projects::rename_folder(app.clone(), folder_id, name).await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "delete_folder" => {
@@ -2452,6 +2454,7 @@ pub async fn dispatch_command(
             let result =
                 crate::projects::move_item(app.clone(), item_id, new_parent_id, target_index)
                     .await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "reorder_items" => {
