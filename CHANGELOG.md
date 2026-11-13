@@ -24,6 +24,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Opus 5.5 is the default Claude model.** New installs start on Claude
+  Opus 5.5 for chat and for the magic prompts that used Opus 4.8 (1M).
+  Existing installs that still have the old Opus 4.8 (1M) default move to
+  Opus 5.5 once. If you pick Opus 4.8 (1M) again later, it stays.
 - **Artifacts also show in the chat reply.** The `add_artifact` MCP tool
   (description and result) now tells the model that the Artifacts tab does not
   replace its answer: it also embeds the image, quotes the key content or links
