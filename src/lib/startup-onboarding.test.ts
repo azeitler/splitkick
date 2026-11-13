@@ -12,8 +12,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [readyStatus, missingStatus, missingStatus],
         aiAuth: [undefined, undefined, undefined],
-        ghStatus: readyStatus,
-        ghAuth: undefined,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -28,8 +26,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [undefined, missingStatus],
         aiAuth: [undefined, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -43,8 +39,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus, readyStatus, missingStatus],
         aiAuth: [undefined, authenticated, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: true,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -58,8 +52,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus, readyStatus, missingStatus],
         aiAuth: [undefined, authenticated, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: true,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -74,8 +66,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus, readyStatus, missingStatus],
         aiAuth: [undefined, authenticated, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -109,8 +99,6 @@ describe('getStartupOnboardingAction', () => {
           authenticated,
           undefined,
         ],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -124,8 +112,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [readyStatus],
         aiAuth: [authenticated],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -139,8 +125,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus, readyStatus, missingStatus],
         aiAuth: [undefined, authenticated, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: true,
         onboardingDismissed: false,
         onboardingManuallyTriggered: true,
@@ -154,8 +138,6 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus, missingStatus, missingStatus],
         aiAuth: [undefined, undefined, undefined],
-        ghStatus: readyStatus,
-        ghAuth: authenticated,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
@@ -169,13 +151,24 @@ describe('getStartupOnboardingAction', () => {
       getStartupOnboardingAction({
         aiStatuses: [missingStatus],
         aiAuth: [undefined],
-        ghStatus: missingStatus,
-        ghAuth: undefined,
         onboardingOpen: false,
         onboardingDismissed: false,
         onboardingManuallyTriggered: false,
         requiresWslChoice: true,
       })
     ).toBe('open')
+  })
+
+  it('treats one ready AI backend as ready without GitHub CLI', () => {
+    expect(
+      getStartupOnboardingAction({
+        aiStatuses: [readyStatus, missingStatus],
+        aiAuth: [authenticated, undefined],
+        onboardingOpen: false,
+        onboardingDismissed: false,
+        onboardingManuallyTriggered: false,
+        requiresWslChoice: false,
+      })
+    ).toBe('ready')
   })
 })

@@ -1178,7 +1178,8 @@ pub fn git_push_to_pr(
 ) -> Result<PushResult, String> {
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
-    // 1. Query PR info from GitHub
+    // 1. Query PR info from GitHub. GitHub CLI is optional: when it is
+    // missing or fails, fall back to a regular push.
     let gh_output = gh_command(gh_binary, repo_path)
         .args([
             "pr",
@@ -1187,21 +1188,25 @@ pub fn git_push_to_pr(
             "--json",
             "headRefName,isCrossRepository,headRepositoryOwner,headRepository",
         ])
-        .output()
-        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
-
-    if !gh_output.status.success() {
-        let stderr = String::from_utf8_lossy(&gh_output.stderr).to_string();
-        log::warn!("gh pr view failed, falling back to regular push: {stderr}");
-        let output = git_push(repo_path, None)?;
-        return Ok(PushResult {
-            output,
-            fell_back: true,
-            permission_denied: false,
-            pushed_remote: None,
-            pushed_branch: None,
-        });
-    }
+        .output();
+    let gh_output = match gh_output {
+        Ok(output) if output.status.success() => output,
+        failed => {
+            let reason = match failed {
+                Ok(output) => String::from_utf8_lossy(&output.stderr).to_string(),
+                Err(e) => format!("GitHub CLI could not run: {e}"),
+            };
+            log::warn!("gh pr view failed, falling back to regular push: {reason}");
+            let output = git_push(repo_path, None)?;
+            return Ok(PushResult {
+                output,
+                fell_back: true,
+                permission_denied: false,
+                pushed_remote: None,
+                pushed_branch: None,
+            });
+        }
+    };
 
     let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)
         .map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
@@ -3758,5 +3763,53 @@ mod jean_config_resolve_tests {
             .as_deref(),
             Some("project-run"),
         );
+    }
+}
+
+#[cfg(test)]
+mod push_to_pr_without_gh_tests {
+    use super::*;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git command");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn falls_back_to_a_regular_push_when_gh_is_missing() {
+        let remote = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        git(
+            remote.path(),
+            &["init", "--bare", "--initial-branch", "main"],
+        );
+        git(repo.path(), &["init", "--initial-branch", "main"]);
+        git(repo.path(), &["config", "user.email", "test@example.com"]);
+        git(repo.path(), &["config", "user.name", "Test"]);
+        git(repo.path(), &["commit", "--allow-empty", "-m", "first"]);
+        git(
+            repo.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        );
+
+        let missing_gh = repo.path().join("no-such-gh");
+        let result =
+            git_push_to_pr(repo.path().to_str().unwrap(), 7, &missing_gh).expect("push succeeds");
+
+        assert!(result.fell_back);
+        let branches = std::process::Command::new("git")
+            .args(["branch", "--list", "main"])
+            .current_dir(remote.path())
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&branches.stdout).contains("main"));
     }
 }

@@ -13,7 +13,6 @@ import {
 } from '@/services/commandcode-cli'
 import { useGrokCliStatus, useGrokCliAuth } from '@/services/grok-cli'
 import { useKimiCliStatus, useKimiCliAuth } from '@/services/kimi-cli'
-import { useGhCliStatus, useGhCliAuth } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
 import { isNativeApp } from '@/lib/environment'
 import { Loader2 } from 'lucide-react'
@@ -38,7 +37,6 @@ export function SetupIncompleteBanner() {
   const commandcodeStatus = useCommandCodeCliStatus()
   const grokStatus = useGrokCliStatus()
   const kimiStatus = useKimiCliStatus()
-  const ghStatus = useGhCliStatus()
 
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
@@ -58,7 +56,6 @@ export function SetupIncompleteBanner() {
     enabled: !!grokStatus.data?.installed,
   })
   const kimiAuth = useKimiCliAuth({ enabled: !!kimiStatus.data?.installed })
-  const ghAuth = useGhCliAuth({ enabled: !!ghStatus.data?.installed })
 
   if (!isNativeApp()) return null
   // Only show after user has dismissed onboarding, and while it's not currently open
@@ -74,8 +71,7 @@ export function SetupIncompleteBanner() {
     (cursorStatus.data?.installed &&
       (cursorAuth.isLoading || cursorAuth.isFetching)) ||
     grokStatus.isLoading ||
-    kimiStatus.isLoading ||
-    ghStatus.isLoading
+    kimiStatus.isLoading
 
   if (isLoading) {
     return (
@@ -88,7 +84,7 @@ export function SetupIncompleteBanner() {
 
   // A failed or pending check is unknown, not "missing": a slow remote host
   // must not show this banner for tools it has.
-  const checks: [typeof ghStatus, { data?: unknown }][] = [
+  const checks: [{ data?: { installed: boolean } }, { data?: unknown }][] = [
     [claudeStatus, claudeAuth],
     [codexStatus, codexAuth],
     [opencodeStatus, opencodeAuth],
@@ -97,7 +93,6 @@ export function SetupIncompleteBanner() {
     [commandcodeStatus, commandcodeAuth],
     [grokStatus, grokAuth],
     [kimiStatus, kimiAuth],
-    [ghStatus, ghAuth],
   ]
   const hasUnknownCheck = checks.some(
     ([status, auth]) =>
@@ -106,7 +101,6 @@ export function SetupIncompleteBanner() {
   )
   if (hasUnknownCheck) return null
 
-  const ghReady = !!ghStatus.data?.installed && !!ghAuth.data?.authenticated
   const hasAiBackendReady =
     (!!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated) ||
     (!!codexStatus.data?.installed && !!codexAuth.data?.authenticated) ||
@@ -118,14 +112,13 @@ export function SetupIncompleteBanner() {
     (!!grokStatus.data?.installed && !!grokAuth.data?.authenticated) ||
     (!!kimiStatus.data?.installed && !!kimiAuth.data?.authenticated)
 
-  // Everything is set up — no banner needed
-  if (ghReady && hasAiBackendReady) return null
+  // One AI backend is enough. GitHub CLI is optional.
+  if (hasAiBackendReady) return null
 
   return (
     <div className="flex w-full shrink-0 items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-xs text-amber-400">
       <span>
-        Setup incomplete — {PRODUCT_NAME} requires GitHub CLI and at least one
-        AI backend.
+        Setup incomplete — {PRODUCT_NAME} requires at least one AI backend.
       </span>
       <button
         type="button"

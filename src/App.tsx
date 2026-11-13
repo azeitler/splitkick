@@ -53,7 +53,6 @@ import {
   useCodexCliAuth,
   useCodexUsageUpdateListener,
 } from './services/codex-cli'
-import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
 import {
   useOpencodeCliStatus,
   useOpencodeCliAuth,
@@ -1078,9 +1077,6 @@ function App() {
   const { data: kimiStatus, isLoading: isKimiStatusLoading } = useKimiCliStatus(
     { enabled: nativeCli }
   )
-  const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus({
-    enabled: nativeCli,
-  })
 
   // Check CLI authentication status (only when installed)
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
@@ -1111,11 +1107,8 @@ function App() {
   const { data: kimiAuth, isLoading: isKimiAuthLoading } = useKimiCliAuth({
     enabled: nativeCli && !!kimiStatus?.installed,
   })
-  const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
-    enabled: nativeCli && !!ghStatus?.installed,
-  })
 
-  // Show onboarding if GitHub CLI is not ready, or no AI backend is ready.
+  // Show onboarding if no AI backend is ready. GitHub CLI is optional.
   // Only in native app - pure web access uses the host's already-setup CLIs.
   useEffect(() => {
     if (!isNativeApp()) return
@@ -1152,8 +1145,6 @@ function App() {
         grokAuth,
         kimiAuth,
       ],
-      ghStatus,
-      ghAuth,
       onboardingOpen: onboarding.onboardingOpen,
       onboardingDismissed: onboarding.onboardingDismissed,
       onboardingManuallyTriggered: onboarding.onboardingManuallyTriggered,
@@ -1193,7 +1184,6 @@ function App() {
       commandcodeInstalled: commandcodeStatus?.installed,
       grokInstalled: grokStatus?.installed,
       kimiInstalled: kimiStatus?.installed,
-      ghInstalled: ghStatus?.installed,
       claudeAuth: claudeAuth?.authenticated,
       codexAuth: codexAuth?.authenticated,
       opencodeAuth: opencodeAuth?.authenticated,
@@ -1202,7 +1192,6 @@ function App() {
       commandcodeAuth: commandcodeAuth?.authenticated,
       grokAuth: grokAuth?.authenticated,
       kimiAuth: kimiAuth?.authenticated,
-      ghAuth: ghAuth?.authenticated,
     })
     onboarding.setOnboardingOpen(true)
   }, [
@@ -1214,7 +1203,6 @@ function App() {
     commandcodeStatus,
     grokStatus,
     kimiStatus,
-    ghStatus,
     claudeAuth,
     codexAuth,
     opencodeAuth,
@@ -1223,7 +1211,6 @@ function App() {
     commandcodeAuth,
     grokAuth,
     kimiAuth,
-    ghAuth,
     isClaudeStatusLoading,
     isCodexStatusLoading,
     isOpencodeStatusLoading,
@@ -1232,7 +1219,6 @@ function App() {
     isCommandcodeStatusLoading,
     isGrokStatusLoading,
     isKimiStatusLoading,
-    isGhStatusLoading,
     isClaudeAuthLoading,
     isCodexAuthLoading,
     isOpencodeAuthLoading,
@@ -1241,7 +1227,6 @@ function App() {
     isCommandcodeAuthLoading,
     isGrokAuthLoading,
     isKimiAuthLoading,
-    isGhAuthLoading,
     cliCheckReady,
     jeanImportPending,
     platformVersion,
@@ -1280,7 +1265,7 @@ function App() {
       grokAuth,
       kimiAuth,
     ]
-    if (aiStatuses.some(status => !status) || !ghStatus) return
+    if (aiStatuses.some(status => !status)) return
 
     const isLoading =
       isClaudeStatusLoading ||
@@ -1291,7 +1276,6 @@ function App() {
       isCommandcodeStatusLoading ||
       isGrokStatusLoading ||
       isKimiStatusLoading ||
-      isGhStatusLoading ||
       (claudeStatus?.installed && isClaudeAuthLoading) ||
       (codexStatus?.installed && isCodexAuthLoading) ||
       (opencodeStatus?.installed && isOpencodeAuthLoading) ||
@@ -1299,17 +1283,15 @@ function App() {
       (piStatus?.installed && isPiAuthLoading) ||
       (commandcodeStatus?.installed && isCommandcodeAuthLoading) ||
       (grokStatus?.installed && isGrokAuthLoading) ||
-      (kimiStatus?.installed && isKimiAuthLoading) ||
-      (ghStatus?.installed && isGhAuthLoading)
+      (kimiStatus?.installed && isKimiAuthLoading)
     if (isLoading) return
 
-    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
     const hasAiBackendReady = aiStatuses.some(
       (status, index) => !!status?.installed && !!aiAuth[index]?.authenticated
     )
 
     // If setup is incomplete, onboarding owns the startup surface.
-    if (!ghReady || !hasAiBackendReady) return
+    if (!hasAiBackendReady) return
 
     // Existing first-run tour has priority; show MCP intro on a later tick/reload
     // after that preference has been marked seen.
@@ -1331,7 +1313,6 @@ function App() {
     commandcodeStatus,
     grokStatus,
     kimiStatus,
-    ghStatus,
     claudeAuth,
     codexAuth,
     opencodeAuth,
@@ -1340,7 +1321,6 @@ function App() {
     commandcodeAuth,
     grokAuth,
     kimiAuth,
-    ghAuth,
     isClaudeStatusLoading,
     isCodexStatusLoading,
     isOpencodeStatusLoading,
@@ -1349,7 +1329,6 @@ function App() {
     isCommandcodeStatusLoading,
     isGrokStatusLoading,
     isKimiStatusLoading,
-    isGhStatusLoading,
     isClaudeAuthLoading,
     isCodexAuthLoading,
     isOpencodeAuthLoading,
@@ -1358,7 +1337,6 @@ function App() {
     isCommandcodeAuthLoading,
     isGrokAuthLoading,
     isKimiAuthLoading,
-    isGhAuthLoading,
     cliCheckReady,
     jeanImportPending,
   ])

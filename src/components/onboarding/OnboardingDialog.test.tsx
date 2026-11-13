@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   cursorAuthenticated: false,
   cursorAuthRefetchCount: 0,
   cursorInstallSucceeds: true,
+  ghReady: true,
   patchPreferences: vi.fn(
     (_patch: unknown, options?: { onSuccess?: () => void }) =>
       options?.onSuccess?.()
@@ -152,8 +153,9 @@ vi.mock('@/services/antigravity-cli', () => ({
 }))
 
 vi.mock('@/services/gh-cli', () => ({
-  useGhCliSetup: () => setupResult(true, '/usr/bin/gh'),
-  useGhCliAuth: () => authResult(true),
+  useGhCliSetup: () =>
+    mocks.ghReady ? setupResult(true, '/usr/bin/gh') : setupResult(),
+  useGhCliAuth: () => authResult(mocks.ghReady),
   useGhPathDetection: () => pathResult(true, '/usr/bin/gh'),
 }))
 
@@ -230,6 +232,7 @@ describe('OnboardingDialog backends', () => {
     mocks.cursorAuthenticated = false
     mocks.cursorAuthRefetchCount = 0
     mocks.cursorInstallSucceeds = true
+    mocks.ghReady = true
     mocks.patchPreferences.mockClear()
     mocks.patchPreferencesAsync.mockClear()
     useUIStore.setState({
@@ -238,6 +241,21 @@ describe('OnboardingDialog backends', () => {
       onboardingManuallyTriggered: true,
       onboardingDismissed: false,
     })
+  })
+
+  it('closes on its own when an AI backend is ready and GitHub CLI is missing', async () => {
+    mocks.cursorInstalled = true
+    mocks.cursorAuthenticated = true
+    mocks.ghReady = false
+    useUIStore.setState({ onboardingManuallyTriggered: false })
+    const { OnboardingDialog } = await import('./OnboardingDialog')
+    render(<OnboardingDialog />)
+
+    await waitFor(() =>
+      expect(useUIStore.getState().onboardingOpen).toBe(false)
+    )
+    expect(useUIStore.getState().onboardingDismissed).toBe(true)
+    expect(screen.queryByText('Setup GitHub CLI')).not.toBeInTheDocument()
   })
 
   it('offers every supported chat backend', () => {

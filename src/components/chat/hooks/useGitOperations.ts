@@ -6,6 +6,7 @@ import { dismissibleToast } from '@/lib/dismissible-toast'
 import { toastActionLabel } from '@/lib/toast-action-label'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import { generateId } from '@/lib/uuid'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -694,7 +695,7 @@ export function useGitOperations({
         })
         await openExternal(linked.pr_url)
       } catch (error) {
-        toast.error(`Failed to open PR #${worktree.pr_number}: ${error}`)
+        toastGitHubError(`Failed to open PR #${worktree.pr_number}`, error)
       }
       return
     }
@@ -764,7 +765,7 @@ export function useGitOperations({
       if (cancellationRequested || message.includes('PR creation cancelled')) {
         toast.info('PR creation cancelled', { id: toastId })
       } else {
-        toast.error(`Failed to create PR: ${error}`, { id: toastId })
+        toastGitHubError('Failed to create PR', error, { id: toastId })
       }
     } finally {
       clearWorktreeLoading(activeWorktreeId)
@@ -845,7 +846,7 @@ export function useGitOperations({
             }
           )
         } catch (error) {
-          toast.error(`Failed to trigger CodeRabbit review: ${error}`, {
+          toastGitHubError('Failed to trigger CodeRabbit review', error, {
             id: toastId,
           })
         } finally {
@@ -1151,7 +1152,7 @@ export function useGitOperations({
         )
       }
     } catch (error) {
-      toast.error(`Failed to merge PR: ${error}`, { id: mergePrToastId })
+      toastGitHubError('Failed to merge PR', error, { id: mergePrToastId })
     }
   }, [activeWorktreeId, worktree, preferences?.removal_behavior, queryClient])
 

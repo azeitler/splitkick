@@ -19,7 +19,7 @@ use tauri::AppHandle;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::projects::git_status::{get_branch_status, ActiveWorktreeInfo, GitBranchStatus};
-use crate::projects::pr_status::{get_pr_status, PrState, PrStatus};
+use crate::projects::pr_status::{get_pr_status, is_gh_unavailable_error, PrState, PrStatus};
 
 pub mod commands;
 
@@ -462,6 +462,9 @@ impl BackgroundTaskManager {
                                         log::error!("Failed to emit PR status event: {e}");
                                     }
                                 }
+                                Err(e) if is_gh_unavailable_error(&e) => {
+                                    log::trace!("PR status for #{pr_number} skipped: {e}");
+                                }
                                 Err(e) => {
                                     log::warn!("Failed to get PR status for #{}: {e}", pr_number);
                                 }
@@ -517,6 +520,9 @@ impl BackgroundTaskManager {
                                         if let Err(e) = emit_pr_status(&app, status) {
                                             log::error!("Sweep: failed to emit PR status: {e}");
                                         }
+                                    }
+                                    Err(e) if is_gh_unavailable_error(&e) => {
+                                        log::trace!("Sweep: PR status for #{pr_num} skipped: {e}");
                                     }
                                     Err(e) => {
                                         log::warn!("Sweep: failed PR status for #{}: {e}", pr_num);

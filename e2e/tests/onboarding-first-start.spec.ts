@@ -33,10 +33,10 @@ const DESKTOP = { width: 1000, height: 600 }
  * the CLI installed, a login terminal that exits with 0 marks it logged in. */
 async function firstStartDesktopApp(
   page: Page,
-  options: { cliReady: boolean; updateVersion?: string }
+  options: { cliReady: boolean; ghReady?: boolean; updateVersion?: string }
 ) {
   await page.addInitScript(
-    ({ cliReady, updateVersion }) => {
+    ({ cliReady, ghReady, updateVersion }) => {
       if (updateVersion) {
         ;(window as unknown as { __E2E_UPDATER__: unknown }).__E2E_UPDATER__ = {
           version: updateVersion,
@@ -67,9 +67,9 @@ async function firstStartDesktopApp(
 
       const state: FirstStartState = {
         claude: cliReady,
-        gh: cliReady,
+        gh: ghReady,
         claudeAuth: cliReady,
-        ghAuth: cliReady,
+        ghAuth: ghReady,
         terminals: [],
         maxDialogs: 0,
         titles: [],
@@ -126,7 +126,11 @@ async function firstStartDesktopApp(
         }
       }, 25)
     },
-    { cliReady: options.cliReady, updateVersion: options.updateVersion }
+    {
+      cliReady: options.cliReady,
+      ghReady: options.ghReady ?? options.cliReady,
+      updateVersion: options.updateVersion,
+    }
   )
   await page.reload()
 }
@@ -352,5 +356,91 @@ test.describe('First start', () => {
     await expect(tour).toBeInViewport({ ratio: 1 })
     await expectTourButtonsVisible(page)
     await expect(tour.locator('kbd', { hasText: /^(S|↵)$/ })).toHaveCount(0)
+  })
+
+  test('GitHub CLI is optional: Skip goes to Done', async ({
+    mockPage: page,
+  }) => {
+    test.setTimeout(60_000)
+    await firstStartDesktopApp(page, { cliReady: false })
+
+    const local = page.getByRole('button', { name: /^Local/ })
+    await expect(onboarding(page)).toBeVisible({ timeout: 15_000 })
+    if (await local.isVisible()) {
+      await local.click()
+      await page.getByRole('button', { name: /^Continue$/ }).click()
+    }
+    await page.getByText('Claude CLI', { exact: true }).click()
+    await page.getByRole('button', { name: /^Continue/ }).click()
+    await page.getByRole('button', { name: /^Install with/ }).click()
+    await page.getByRole('button', { name: /^Install Claude CLI/ }).click()
+    await finishLogin(page, 'claudeAuth')
+
+    await expect(onboarding(page)).toContainText('GitHub CLI (optional)', {
+      timeout: 10_000,
+    })
+    const skip = page.getByRole('button', { name: "Skip, I don't use GitHub" })
+    await expect(skip).toBeVisible()
+    await shot(page, 'gh-optional-1-skip')
+    await skip.click()
+
+    const done = page.getByRole('dialog', { name: 'Setup Complete' })
+    await expect(done).toBeVisible()
+    await expect(done).toContainText('GitHub CLI: not set up')
+    await shot(page, 'gh-optional-2-done')
+    expect((await firstStart(page)).gh).toBe(false)
+  })
+
+  test('an AI backend alone is ready: no setup dialog, no banner', async ({
+    mockPage: page,
+  }) => {
+    await firstStartDesktopApp(page, { cliReady: true, ghReady: false })
+
+    // Setup is complete, so the first-start tour opens instead of setup
+    const tour = page.getByRole('dialog', { name: 'Start with the Magic Menu' })
+    await expect(tour).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/Setup incomplete/)).toHaveCount(0)
+    const { titles } = await firstStart(page)
+    expect(titles).not.toContain('Setup GitHub CLI')
+  })
+
+  test('a GitHub feature without gh shows "GitHub CLI is not set up"', async ({
+    mockPage: page,
+  }) => {
+    await firstStartDesktopApp(page, { cliReady: true, ghReady: false })
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handlers = (window as any).__JEAN_E2E_MOCK__.invokeHandlers
+      handlers.list_workflow_runs = () => {
+        throw 'Failed to run gh run list: No such file or directory (os error 2)'
+      }
+    })
+    const tour = page.getByRole('dialog', { name: 'Start with the Magic Menu' })
+    await expect(tour).toBeVisible({ timeout: 15_000 })
+    await tour.getByRole('button', { name: /^Skip/ }).click()
+    await expect(tour).toHaveCount(0)
+
+    await page.evaluate(async () => {
+      const { useUIStore } = await import('/src/store/ui-store.ts')
+      useUIStore.setState({
+        workflowRunsModalOpen: true,
+        workflowRunsModalProjectPath: '/tmp/e2e-repo',
+        workflowRunsModalBranch: null,
+      })
+    })
+    const runs = page.getByRole('dialog')
+    await expect(runs).toContainText('GitHub CLI is not set up', {
+      timeout: 10_000,
+    })
+    await expect(runs).not.toContainText('os error')
+    await shot(page, 'gh-optional-3-not-set-up')
+
+    await runs.getByRole('button', { name: 'Set up GitHub CLI' }).click()
+    await expect(
+      page.getByRole('dialog', { name: 'Setup GitHub CLI' })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: "Skip, I don't use GitHub" })
+    ).toBeVisible()
   })
 })

@@ -21,7 +21,7 @@ import {
   Eye,
   MoreHorizontal,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toastGitHubError } from '@/lib/gh-cli-setup'
 import { getModifierSymbol } from '@/lib/platform'
 import {
   Dialog,
@@ -858,7 +858,7 @@ export function GitHubDashboardModal() {
         })
         useUIStore.getState().markWorktreeForAutoInvestigate(worktree.id)
       } catch (error) {
-        toast.error(`Failed: ${error}`)
+        toastGitHubError('Failed', error)
       } finally {
         setCreatingId(null)
       }
@@ -931,7 +931,7 @@ export function GitHubDashboardModal() {
         })
         useUIStore.getState().markWorktreeForAutoInvestigatePR(worktree.id)
       } catch (error) {
-        toast.error(`Failed: ${error}`)
+        toastGitHubError('Failed', error)
       } finally {
         setCreatingId(null)
       }
@@ -976,7 +976,7 @@ export function GitHubDashboardModal() {
           .getState()
           .markWorktreeForAutoInvestigateSecurityAlert(worktree.id)
       } catch (error) {
-        toast.error(`Failed: ${error}`)
+        toastGitHubError('Failed', error)
       } finally {
         setCreatingId(null)
       }
@@ -1023,7 +1023,7 @@ export function GitHubDashboardModal() {
           .getState()
           .markWorktreeForAutoInvestigateAdvisory(worktree.id)
       } catch (error) {
-        toast.error(`Failed: ${error}`)
+        toastGitHubError('Failed', error)
       } finally {
         setCreatingId(null)
       }

@@ -6,7 +6,7 @@ import { SetupIncompleteBanner } from './SetupIncompleteBanner'
 const mocks = vi.hoisted(() => ({
   cursorInstalled: true,
   cursorAuthenticated: true,
-  ghStatusFailed: false,
+  kimiStatusFailed: false,
 }))
 
 function statusResult(installed = false) {
@@ -55,23 +55,24 @@ vi.mock('@/services/grok-cli', () => ({
 }))
 
 vi.mock('@/services/kimi-cli', () => ({
-  useKimiCliStatus: () => statusResult(),
+  useKimiCliStatus: () =>
+    mocks.kimiStatusFailed
+      ? { data: undefined, isLoading: false, isError: true }
+      : statusResult(),
   useKimiCliAuth: () => authResult(),
 }))
 
+// GitHub CLI is not installed: it is optional and must not affect the banner.
 vi.mock('@/services/gh-cli', () => ({
-  useGhCliStatus: () =>
-    mocks.ghStatusFailed
-      ? { data: undefined, isLoading: false, isError: true }
-      : statusResult(true),
-  useGhCliAuth: () => authResult(true),
+  useGhCliStatus: () => statusResult(false),
+  useGhCliAuth: () => authResult(false),
 }))
 
 describe('SetupIncompleteBanner', () => {
   beforeEach(() => {
     mocks.cursorInstalled = true
     mocks.cursorAuthenticated = true
-    mocks.ghStatusFailed = false
+    mocks.kimiStatusFailed = false
     useUIStore.setState({ onboardingDismissed: true, onboardingOpen: false })
   })
 
@@ -79,6 +80,13 @@ describe('SetupIncompleteBanner', () => {
     render(<SetupIncompleteBanner />)
 
     expect(screen.queryByText(/setup incomplete/i)).not.toBeInTheDocument()
+  })
+
+  it('hides the banner with one AI backend ready and no GitHub CLI', () => {
+    render(<SetupIncompleteBanner />)
+
+    expect(screen.queryByText(/setup incomplete/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/GitHub CLI/i)).not.toBeInTheDocument()
   })
 
   it('shows setup as incomplete when Cursor is not authenticated', () => {
@@ -91,7 +99,7 @@ describe('SetupIncompleteBanner', () => {
 
   it('hides the banner when a status check failed (e.g. remote timeout)', () => {
     mocks.cursorAuthenticated = false
-    mocks.ghStatusFailed = true
+    mocks.kimiStatusFailed = true
 
     render(<SetupIncompleteBanner />)
 

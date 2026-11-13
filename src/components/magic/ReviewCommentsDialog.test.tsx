@@ -151,6 +151,24 @@ describe('ReviewCommentsDialog', () => {
     )
   })
 
+  it('shows "GitHub CLI is not set up" instead of the raw error without gh', async () => {
+    mocks.invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_pr_review_comments' || command === 'get_github_pr') {
+        return Promise.reject(
+          'Failed to run gh api: No such file or directory (os error 2)'
+        )
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`))
+    })
+
+    render(<ReviewCommentsDialog />)
+
+    expect(
+      await screen.findByText('GitHub CLI is not set up')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/os error 2/)).not.toBeInTheDocument()
+  })
+
   it('clears send loading state when reopened after sending comments to chat', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<ReviewCommentsDialog />)

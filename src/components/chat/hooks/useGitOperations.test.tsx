@@ -189,11 +189,7 @@ describe('useGitOperations conflict resolution', () => {
     )
     expect(
       queryClient
-        .getQueryData<{ sessions: Session[] }>([
-          'chat',
-          'sessions',
-          'wt-1',
-        ])
+        .getQueryData<{ sessions: Session[] }>(['chat', 'sessions', 'wt-1'])
         ?.sessions.map(session => session.id)
     ).toContain('conflict-session')
     expect(sendMessage.mutate).toHaveBeenCalledWith(
@@ -256,6 +252,54 @@ describe('useGitOperations conflict resolution', () => {
     expect(mocks.invoke).not.toHaveBeenCalledWith(
       'create_pr_with_ai_content',
       expect.anything()
+    )
+  })
+
+  it('shows "GitHub CLI is not set up" when Create PR fails without gh', async () => {
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'create_pr_with_ai_content') {
+        return Promise.reject(
+          'Failed to run gh pr create: No such file or directory (os error 2)'
+        )
+      }
+      return Promise.resolve(undefined)
+    })
+    const { result } = renderGitOperations(
+      {},
+      { pr_number: undefined, pr_url: undefined }
+    )
+
+    await act(async () => {
+      await result.current.handleOpenPr()
+    })
+
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      'GitHub CLI is not set up',
+      expect.objectContaining({
+        id: 'toast-1',
+        action: expect.objectContaining({ label: 'Set up' }),
+      })
+    )
+  })
+
+  it('shows "GitHub CLI is not set up" when a linked PR cannot be resolved without gh', async () => {
+    mocks.linkWorktreePr.mockRejectedValue(
+      "GitHub CLI not authenticated. Run 'gh auth login' first."
+    )
+    const { result } = renderGitOperations(
+      {},
+      { pr_number: 31, pr_url: undefined }
+    )
+
+    await act(async () => {
+      await result.current.handleOpenPr()
+    })
+
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      'GitHub CLI is not set up',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Set up' }),
+      })
     )
   })
 
@@ -471,7 +515,10 @@ describe('useGitOperations conflict resolution', () => {
       base_remote: 'fork',
     }
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
     })
     const sendMessage = { mutate: vi.fn() }
     const wrapper = ({ children }: { children: React.ReactNode }) => (

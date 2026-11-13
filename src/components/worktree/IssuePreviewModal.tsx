@@ -23,6 +23,8 @@ import {
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { openExternal } from '@/lib/platform'
+import { isGhAuthError } from '@/lib/gh-cli-setup'
+import { GhCliNotSetUp } from '@/components/shared/GhAuthError'
 import {
   useGitHubIssue,
   useGitHubPR,
@@ -666,7 +668,9 @@ export function IssuePreviewModal({
               </div>
             )}
 
-            {error && (
+            {error && isGhAuthError(error) && <GhCliNotSetUp />}
+
+            {error && !isGhAuthError(error) && (
               <div className="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
                 <AlertCircle className="h-6 w-6" />
                 <p>Failed to load {TYPE_LABELS[type].toLowerCase()} details.</p>

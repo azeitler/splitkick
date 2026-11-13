@@ -11,10 +11,6 @@ interface StartupOnboardingState {
   aiStatuses: (CliStatus | undefined)[]
   /** Matching auth statuses for each AI backend (same order as aiStatuses). */
   aiAuth: (CliAuthStatus | undefined)[]
-  /** GitHub CLI install status. */
-  ghStatus: CliStatus | undefined
-  /** GitHub CLI auth status. */
-  ghAuth: CliAuthStatus | undefined
   onboardingOpen: boolean
   onboardingDismissed: boolean
   onboardingManuallyTriggered: boolean
@@ -25,7 +21,8 @@ interface StartupOnboardingState {
   onboardingEngaged?: boolean
   /**
    * Local Windows still needs a WSL vs native choice. Must be false for remote
-   * connections — WSL only applies to the local desktop shell.
+   * connections — WSL only applies to the local desktop shell. It never
+   * blocks a ready setup; the wizard asks for it when the user installs.
    */
   requiresWslChoice: boolean
 }
@@ -47,42 +44,35 @@ function isReady(
 export function getStartupOnboardingAction({
   aiStatuses,
   aiAuth,
-  ghStatus,
-  ghAuth,
   onboardingOpen,
   onboardingDismissed,
   onboardingManuallyTriggered,
   onboardingEngaged = false,
-  requiresWslChoice,
 }: StartupOnboardingState): StartupOnboardingAction {
   if (onboardingDismissed || onboardingManuallyTriggered) return 'none'
 
   // Wait until every status query has resolved (undefined = still loading).
-  if (aiStatuses.some(status => status === undefined) || ghStatus === undefined)
-    return 'wait'
+  if (aiStatuses.some(status => status === undefined)) return 'wait'
 
   // Wait for auth of installed tools only.
   const aiAuthPending = aiStatuses.some(
     (status, index) => status?.installed && aiAuth[index] === undefined
   )
-  const ghAuthPending = !!ghStatus?.installed && ghAuth === undefined
-  if (aiAuthPending || ghAuthPending) return 'wait'
+  if (aiAuthPending) return 'wait'
 
   // Any authenticated AI backend counts (Claude, Codex, Grok, Pi, …).
   const hasAiBackendReady = aiStatuses.some((status, index) =>
     isReady(status, aiAuth[index])
   )
-  const ghReady = isReady(ghStatus, ghAuth)
 
-  // Tools already good: never force the setup wizard (including the "Setup
-  // Complete" success screen). WSL choice can wait until the user actually
-  // needs local CLI installs.
-  if (ghReady && hasAiBackendReady) {
+  // One ready AI backend is enough. GitHub CLI is optional: GitHub features
+  // show their own "not set up" state. Never force the setup wizard
+  // (including the "Setup Complete" success screen). WSL choice can wait
+  // until the user actually needs local CLI installs.
+  if (hasAiBackendReady) {
     if (!onboardingOpen) return 'ready'
     return onboardingEngaged ? 'none' : 'close'
   }
-
-  if (requiresWslChoice) return 'open'
 
   return 'open'
 }

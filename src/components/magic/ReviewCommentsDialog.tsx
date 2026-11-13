@@ -41,6 +41,8 @@ import {
 } from '@/types/preferences'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
+import { isGhAuthError } from '@/lib/gh-cli-setup'
+import { GhCliNotSetUp } from '@/components/shared/GhAuthError'
 import type {
   GitHubReviewComment,
   GitHubComment,
@@ -266,8 +268,7 @@ export function ReviewCommentsDialog() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [diffExpanded, setDiffExpanded] = useState<Set<number>>(new Set())
-  const [inlineFilter, setInlineFilter] =
-    useState<InlineCommentFilter>('open')
+  const [inlineFilter, setInlineFilter] = useState<InlineCommentFilter>('open')
 
   // Conversation comments state
   const [conversationItems, setConversationItems] = useState<
@@ -715,7 +716,11 @@ export function ReviewCommentsDialog() {
           </div>
         )}
 
-        {phase === 'select' && error && (
+        {phase === 'select' && error && isGhAuthError(error) && (
+          <GhCliNotSetUp />
+        )}
+
+        {phase === 'select' && error && !isGhAuthError(error) && (
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <p className="text-sm text-destructive">{error}</p>
             <Button variant="outline" size="sm" onClick={fetchComments}>
@@ -749,11 +754,8 @@ export function ReviewCommentsDialog() {
               >
                 <Code className="size-3" />
                 Code Comments (
-                {inlineFilter === 'open'
-                  ? openInlineCount
-                  : comments.length}
-                {inlineFilter === 'open' &&
-                openInlineCount !== comments.length
+                {inlineFilter === 'open' ? openInlineCount : comments.length}
+                {inlineFilter === 'open' && openInlineCount !== comments.length
                   ? ` open`
                   : ''}
                 )
