@@ -184,7 +184,7 @@ export function SidebarFooter() {
         </TooltipContent>
       </Tooltip>
       {isNativeApp() && <RemoteConnectionsDialog />}
-      <UsagePopover />
+      <UsagePopover className="ml-1.5" />
       <div className="flex-1" />
       <UpdatesButton />
       <UnreadBell />
