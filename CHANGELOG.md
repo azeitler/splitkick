@@ -23,6 +23,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **AskUserQuestion works on Windows again.** Every question failed at once
+  with "Connection closed", and the answer never reached the agent. The
+  dialog helper process crashed at its first call on Windows. A failed
+  question now shows its error, not "Answer details unavailable after
+  reload", and the form stays open: the answer goes to the agent as a new
+  message. Refs #139
 - **First start is one linear flow.** Setup moves forward in one dialog and
   ends on its own Done step (it no longer closed itself after the last login
   and skipped Done). "Continue" then opens the feature tour. While setup or the

@@ -6,6 +6,7 @@ import {
   getAskUserQuestions,
   getCodexUserInputRequestId,
   getTodoWriteTodos,
+  getQuestionToolError,
   hasQuestionAnswerOutput,
   isAskUserQuestion,
   isTodoWrite,
@@ -20,6 +21,20 @@ describe('hasQuestionAnswerOutput', () => {
     expect(hasQuestionAnswerOutput('Error: Answer questions?')).toBe(false)
   })
 
+  // #139: the dialog MCP server died, and the error read as an answer.
+  it('returns false for a failed tool call', () => {
+    expect(
+      hasQuestionAnswerOutput(
+        'Error calling tool (AskUserQuestion): Connection closed'
+      )
+    ).toBe(false)
+    expect(
+      hasQuestionAnswerOutput(
+        '<tool_use_error>Error calling tool (AskUserQuestion): Connection closed</tool_use_error>'
+      )
+    ).toBe(false)
+  })
+
   it('returns true for persisted JSON answers', () => {
     expect(
       hasQuestionAnswerOutput(
@@ -30,6 +45,25 @@ describe('hasQuestionAnswerOutput', () => {
 
   it('returns true for non-JSON backend answer output', () => {
     expect(hasQuestionAnswerOutput('Backyard birds')).toBe(true)
+  })
+})
+
+describe('getQuestionToolError', () => {
+  it('returns the error text of a failed question call', () => {
+    expect(
+      getQuestionToolError(
+        '<tool_use_error>Error calling tool (AskUserQuestion): Connection closed</tool_use_error>'
+      )
+    ).toBe('Error calling tool (AskUserQuestion): Connection closed')
+    expect(getQuestionToolError('Error: Answer questions?')).toBe(
+      'Error: Answer questions?'
+    )
+  })
+
+  it('returns null for answers and empty output', () => {
+    expect(getQuestionToolError('Backyard birds')).toBeNull()
+    expect(getQuestionToolError(undefined)).toBeNull()
+    expect(getQuestionToolError('  ')).toBeNull()
   })
 })
 

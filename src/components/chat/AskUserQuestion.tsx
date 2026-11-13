@@ -20,6 +20,7 @@ import {
 import { AlertTriangle, ChevronRight, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
+import { getQuestionToolError } from '@/types/chat'
 import type { Question, QuestionAnswer } from '@/types/chat'
 
 interface AskUserQuestionProps {
@@ -96,8 +97,12 @@ export function AskUserQuestion({
 
   // Reconstruct QuestionAnswer[] from toolOutput by trying JSON parse first,
   // then matching option labels against the raw output string
+  // The call failed (e.g. the dialog server died, #139): show the error, not
+  // a missing answer.
+  const toolError = getQuestionToolError(toolOutput)
+
   const answersFromOutput = useMemo(() => {
-    if (!toolOutput) return null
+    if (!toolOutput || getQuestionToolError(toolOutput)) return null
 
     // Try JSON parse first (our custom format stored at answer time)
     try {
@@ -276,7 +281,11 @@ export function AskUserQuestion({
       >
         <div className="my-2 min-w-0 rounded border border-muted bg-muted/30 font-mono text-sm">
           <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+            {toolError ? (
+              <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-500" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+            )}
             <span className="truncate font-medium">{getAnswerSummary()}</span>
             <ChevronRight
               className={cn(
@@ -477,7 +486,9 @@ export function AskUserQuestion({
                     </div>
                   ) : !answer ? (
                     <div className="pt-1 text-sm text-muted-foreground italic">
-                      Answer details unavailable after reload.
+                      {toolError
+                        ? `The question failed: ${toolError}`
+                        : 'Answer details unavailable.'}
                     </div>
                   ) : null
                 ) : allowsCustomText ? (
@@ -496,6 +507,16 @@ export function AskUserQuestion({
             </div>
           )
         })}
+
+        {!readOnly && toolError && (
+          <div className="flex items-start gap-2 text-muted-foreground">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+            <span>
+              The question failed: {toolError}. Your answer goes to the agent
+              as a new message.
+            </span>
+          </div>
+        )}
 
         {/* Submit/Skip buttons (only if not read-only) */}
         {!readOnly && (

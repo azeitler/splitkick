@@ -129,18 +129,12 @@ fn proxy_to_parent(
 ) -> Result<Value, String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::windows::named_pipe::ClientOptions;
-    use tokio::runtime::Builder;
     use tokio::time::{timeout, Duration};
 
     let encoded = serde_json::to_string(&request)
         .map_err(|e| format!("Failed to encode Splitkick MCP pipe request: {e}"))?;
-    let runtime = Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .map_err(|e| format!("Failed to create Splitkick MCP pipe runtime: {e}"))?;
 
-    let response = runtime.block_on(async {
+    let response = run_pipe_io(async {
         let mut pipe = ClientOptions::new()
             .open(socket)
             .map_err(|e| format!("Failed to connect Splitkick MCP named pipe {socket}: {e}"))?;
@@ -177,6 +171,31 @@ fn proxy_to_parent(
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
 }
 
+/// Run the named-pipe I/O to completion on a runtime of its own.
+///
+/// On a thread of its own, too: `run_server()` serves `--jean-mcp-stdio` from
+/// inside its tokio runtime, and a nested `block_on` on that thread panics.
+/// The panic killed the dialog child at its first tool call, and Claude
+/// reported "Connection closed" for every AskUserQuestion on Windows (#139).
+#[cfg(any(windows, test))]
+fn run_pipe_io<T: Send>(
+    future: impl std::future::Future<Output = Result<T, String>> + Send,
+) -> Result<T, String> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_io()
+                    .enable_time()
+                    .build()
+                    .map_err(|e| format!("Failed to create Splitkick MCP pipe runtime: {e}"))?
+                    .block_on(future)
+            })
+            .join()
+            .map_err(|_| "Splitkick MCP pipe thread panicked".to_string())?
+    })
+}
+
 #[cfg(not(any(unix, windows)))]
 fn proxy_to_parent(
     _socket: &str,
@@ -203,7 +222,67 @@ fn parent_error_message(response: &Value) -> Option<String> {
 mod tests {
     use serde_json::json;
 
-    use super::parent_error_message;
+    use super::{parent_error_message, run_pipe_io};
+
+    /// `run_server()` serves `--jean-mcp-stdio` from inside its own
+    /// `block_on`, so the pipe I/O starts within a tokio runtime. A nested
+    /// `block_on` there panics, the dialog child dies at its first tool call,
+    /// and Claude reports "Connection closed" for every AskUserQuestion on
+    /// Windows (issue #139).
+    #[test]
+    fn pipe_io_runs_inside_the_server_runtime() {
+        let server = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = server.block_on(async {
+            run_pipe_io(async {
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                Ok::<_, String>(7)
+            })
+        });
+        assert_eq!(result, Ok(7));
+    }
+
+    /// The real Windows path: a dialog tool call proxied over a named pipe
+    /// from inside the server runtime, as `run_server()` runs it (#139).
+    #[cfg(windows)]
+    #[test]
+    fn dialog_call_reaches_the_parent_pipe_from_the_server_runtime() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::windows::named_pipe::ServerOptions;
+
+        let pid = std::process::id();
+        let pipe_name = format!(r"\\.\pipe\splitkick-test-139-{pid}");
+        let server = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = server.block_on(async {
+            let mut pipe = ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&pipe_name)
+                .unwrap();
+            let parent = tokio::spawn(async move {
+                pipe.connect().await.unwrap();
+                let mut line = String::new();
+                BufReader::new(&mut pipe)
+                    .read_line(&mut line)
+                    .await
+                    .unwrap();
+                let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(request["role"], "dialog");
+                pipe.write_all(b"{\"result\":{\"behavior\":\"allow\"}}\n")
+                    .await
+                    .unwrap();
+                pipe.flush().await.unwrap();
+            });
+            let result = super::proxy_to_parent(&pipe_name, json!({"role": "dialog"}), None);
+            parent.await.unwrap();
+            result
+        });
+        assert_eq!(result, Ok(json!({"behavior": "allow"})));
+    }
 
     #[test]
     fn parent_error_message_handles_plain_error_string() {
