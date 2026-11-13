@@ -30,6 +30,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Network tab shows only the sessions around this one.** It lists the
+  session that started this one as a single row, then this session and the
+  sessions it started. Sessions started by the same parent no longer show;
+  open the parent to see them.
 - **Session menu on the Home To-Do list.** A right-click on a row of the
   To-Do list on Home opens the same session menu as in the sidebar: rename,
   labels, star, pin, status, fork, move, archive and delete.

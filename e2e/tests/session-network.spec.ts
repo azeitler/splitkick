@@ -206,6 +206,11 @@ test.describe('Session network (#77)', () => {
     await expect(
       dialog.getByRole('button', { name: /Fix login timeout/ })
     ).toContainText('This session')
+    // A child sees its parent as one row and its own children, no siblings.
+    await expect(rows.getByRole('listitem')).toHaveCount(2)
+    await expect(dialog).toContainText('Plan release 1.5')
+    await expect(dialog).not.toContainText('Proofread release notes')
+    await shot(dialog, 'session-network-child')
 
     // The child's chat names its parent and links back to the network.
     const banner = mockPage.getByText('Started by ‘').first()
@@ -232,7 +237,7 @@ test.describe('Session network (#77)', () => {
       'aria-selected',
       'true'
     )
-    await expect(rows.getByRole('listitem')).toHaveCount(5)
+    await expect(rows.getByRole('listitem')).toHaveCount(2)
   })
 
   test('works on a phone', async ({ mockPage }) => {
