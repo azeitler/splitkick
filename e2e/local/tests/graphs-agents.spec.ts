@@ -27,6 +27,7 @@ import {
   runCommand,
   send,
   sessionTab,
+  showSidebarTab,
 } from './ui'
 
 // Agents, permissions, MCP graph tools, requests, review, the session graph
@@ -494,17 +495,15 @@ async function openWithSidebar(page: Page) {
   await openApp(page, a)
   const show = page.getByRole('button', { name: 'Show sidebar' })
   if (await show.isVisible()) await show.click()
-  await expect(page.getByTestId('sidebar-graphs-section')).toBeAttached()
-  const toggle = page.getByTestId('sidebar-graphs-toggle')
-  if ((await toggle.getAttribute('aria-expanded')) === 'false') {
-    await toggle.click()
-  }
+  await showSidebarTab(page, 'graphs')
+  await expect(page.getByTestId('sidebar-graphs-section')).toBeVisible()
 }
 
 const graphRow = (page: Page, id: string) =>
   page.getByTestId(`sidebar-graph-row-${id}`)
 
 async function openGraph(page: Page, g: Graph) {
+  await showSidebarTab(page, 'graphs')
   await graphRow(page, g.id).click()
   await expect(page.getByTestId('graph-title')).toHaveText(g.title)
 }
@@ -1430,6 +1429,8 @@ test('requests: accept, send back with note, decision options, other answer, no 
     }),
   ])
 
+  // "Go to…" switched the sidebar to Projects.
+  await showSidebarTab(page, 'graphs')
   const counts = async (n: number) => {
     const sidebar = graphRow(page, g.id).getByTestId('sidebar-graph-requests')
     const tab = page.getByTestId('graph-tab-review')
@@ -1997,6 +1998,8 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
     .getByRole('button', { name: new RegExp(escapeRe(agent.name)) })
     .first()
     .click()
+  // The tree is in the Projects tab; the Graphs tab stays open until then.
+  await showSidebarTab(page, 'projects')
   const glyphRow = sidebarSession(page, glyphId)
   const renamedRow = sidebarSession(page, renamedId)
   await expect(glyphRow).toBeVisible()
@@ -2221,6 +2224,7 @@ test('MCP follow-up tools: create_graph in a project, refused for read; list_req
   expect(made.path).toBe(join(alpha, `.splitkick/graphs/agent-plan-${tag}.yml`))
   expect(made.locationKind).toBe('project-repo')
   expect(existsSync(made.path)).toBe(true)
+  await showSidebarTab(page, 'graphs')
   await expect(graphRow(page, made.id)).toContainText(title)
   await openGraph(page, { id: made.id, title, path: made.path })
   const log = await changes(a, made.id)
@@ -2339,9 +2343,7 @@ test('MCP follow-up tools: create_graph in a project, refused for read; list_req
     action: 'revert',
   })
   // Reading the log does not mark anything as seen.
-  expect((await changes(a, g.id)).map(c => [c.id, c.seen])).toEqual(
-    seenBefore
-  )
+  expect((await changes(a, g.id)).map(c => [c.id, c.seen])).toEqual(seenBefore)
   await shot(page, 'follow-up-tools')
   rmSync(made.path, { force: true }) // cleanup: the fixture repo is shared
 })

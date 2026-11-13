@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { api, createSession, mcp, readEnv, waitForIdle } from '../helpers'
 import { REPO_ROOT, type Instance } from '../launcher'
-import { chatInput, goToSession, openApp } from './ui'
+import { chatInput, goToSession, openApp, showSidebarTab } from './ui'
 
 // Nodes, relations, attachments, derived values and the views of the graph
 // layer (#79), end to end on instance A through the real web UI. Contract:
@@ -279,17 +279,15 @@ async function openWithSidebar(page: Page) {
   await openApp(page, a)
   const show = page.getByRole('button', { name: 'Show sidebar' })
   if (await show.isVisible()) await show.click()
-  await expect(page.getByTestId('sidebar-graphs-section')).toBeAttached()
-  const toggle = page.getByTestId('sidebar-graphs-toggle')
-  if ((await toggle.getAttribute('aria-expanded')) === 'false') {
-    await toggle.click()
-  }
+  await showSidebarTab(page, 'graphs')
+  await expect(page.getByTestId('sidebar-graphs-section')).toBeVisible()
 }
 
 const graphRow = (page: Page, id: string) =>
   page.getByTestId(`sidebar-graph-row-${id}`)
 
 async function openGraph(page: Page, id: string, title: string) {
+  await showSidebarTab(page, 'graphs')
   await graphRow(page, id).click()
   await expect(page.getByTestId('graph-title')).toHaveText(title)
 }

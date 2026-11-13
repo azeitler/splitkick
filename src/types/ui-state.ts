@@ -39,12 +39,21 @@ export function isMobileTab(value: unknown): value is MobileTab {
   return MOBILE_TABS.includes(value as MobileTab)
 }
 
-/** A tab of the desktop sidebar, below the Home row. */
-export type SidebarTab = 'projects' | 'recent'
+/** The tabs of the sidebar, below the Home row, in their order. */
+export const SIDEBAR_TABS = [
+  'projects',
+  'recent',
+  'starred',
+  'todo',
+  'graphs',
+] as const
+
+/** A tab of the sidebar, below the Home row. */
+export type SidebarTab = (typeof SIDEBAR_TABS)[number]
 
 /** Narrow a persisted value, which may predate a tab or be hand-edited. */
 export function isSidebarTab(value: unknown): value is SidebarTab {
-  return value === 'projects' || value === 'recent'
+  return SIDEBAR_TABS.includes(value as SidebarTab)
 }
 
 /** How the Archived page orders its rows: last archived, name, or project. */

@@ -1,4 +1,3 @@
-import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { useCallback, useMemo } from 'react'
 import { ListTodo } from 'lucide-react'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -12,26 +11,19 @@ import { resolveTodoSessions } from '@/components/home/home-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
-import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import { cn } from '@/lib/utils'
-import {
-  SIDEBAR_SECTION_HEADER_PADDING,
-  SIDEBAR_WORKTREE_LIST,
-  SIDEBAR_WORKTREE_ROW_PADDING,
-} from './sidebar-row-styles'
+import { SidebarTabEmpty } from './SidebarTabEmpty'
 import { useSidebarActiveSessionId } from './useSidebarActiveSessionId'
 
 /**
- * The To-Do list in the sidebar (#125), under Starred: every session marked
- * as To-Do, across every project, newest mark first.
+ * The sidebar's To-Do tab (#125): every session marked as To-Do, across every
+ * project, newest mark first.
  *
  * The mark lives on the session (`todo_at`), so the rows come straight from
- * the all-sessions cache the Home view and Starred already share. Renders
- * nothing while nothing is marked.
+ * the all-sessions cache the Home view and Starred already share. As in
+ * Recent, a click keeps this tab open, so the list can be worked through.
  */
 export function SidebarTodoSection() {
-  const collapsed = useProjectsStore(state => state.todoSectionCollapsed)
   const isMobile = useIsMobile()
   const { data } = useAllSessions()
   const storeState = useCanvasStoreState()
@@ -50,13 +42,9 @@ export function SidebarTodoSection() {
     }))
   }, [data?.entries, storeState])
 
-  const handleToggle = useCallback(() => {
-    useProjectsStore.getState().toggleTodoSectionCollapsed()
-  }, [])
-
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      // As in Starred: the section scrolls on its own, the tree follows.
+      // The hidden Projects tree follows, as from Recent.
       navigateToSession({
         projectId: shortcut.projectId,
         worktreeId: shortcut.worktreeId,
@@ -74,34 +62,31 @@ export function SidebarTodoSection() {
     []
   )
 
-  if (shortcuts.length === 0) return null
+  if (shortcuts.length === 0) {
+    return (
+      <SidebarTabEmpty
+        icon={<ListTodo />}
+        title="Nothing to do"
+        hint="Mark a session as To-Do to list it here."
+        testId="sidebar-todo-empty"
+      />
+    )
+  }
 
   return (
     <div data-testid="sidebar-todo-section">
-      <SidebarSectionRow
-        icon={<ListTodo className="size-3.5 shrink-0" aria-hidden="true" />}
-        label="To-Do"
-        count={shortcuts.length}
-        expanded={!collapsed}
-        onToggle={handleToggle}
-        className={cn('gap-1', SIDEBAR_SECTION_HEADER_PADDING)}
-        testId="sidebar-todo-toggle"
+      <SessionShortcutRows
+        shortcuts={shortcuts}
+        variant="sidebar"
+        layout="stacked"
+        sidebarRowClassName="py-1.5 pl-2 pr-1"
+        sidebarNested={false}
+        // Every row here is a To-Do; marking each would be noise.
+        showTodoGlyph={false}
+        activeSessionId={activeSessionId}
+        renderAction={renderAction}
+        onOpen={handleOpen}
       />
-      {!collapsed && (
-        <div className={cn(SIDEBAR_WORKTREE_LIST, 'py-0.5')}>
-          <SessionShortcutRows
-            shortcuts={shortcuts}
-            variant="sidebar"
-            layout="stacked"
-            sidebarRowClassName={cn('py-1', SIDEBAR_WORKTREE_ROW_PADDING)}
-            // Every row here is a To-Do; marking each would be noise.
-            showTodoGlyph={false}
-            activeSessionId={activeSessionId}
-            renderAction={renderAction}
-            onOpen={handleOpen}
-          />
-        </div>
-      )}
     </div>
   )
 }

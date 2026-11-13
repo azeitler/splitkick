@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
 import { summary } from '@/components/graphs/graph-test-fixtures'
-import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import type { GraphSummary } from '@/types/graphs'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
@@ -28,14 +27,13 @@ describe('SidebarGraphsSection', () => {
   beforeEach(() => {
     mocks.graphs = []
     mocks.openGraphView.mockClear()
-    useProjectsStore.setState({ graphsSectionCollapsed: false })
     useUIStore.setState({ activeGraphId: null })
   })
 
-  it('shows the header with New even without graphs', async () => {
+  it('shows an empty state and New without graphs', async () => {
     render(<SidebarGraphsSection />)
-    expect(screen.getByTestId('sidebar-graphs-toggle')).toHaveTextContent(
-      'Graphs'
+    expect(screen.getByTestId('sidebar-graphs-empty')).toHaveTextContent(
+      'No graphs yet'
     )
     expect(screen.queryByTestId(/^sidebar-graph-row-/)).toBeNull()
 
@@ -113,13 +111,5 @@ describe('SidebarGraphsSection', () => {
     )
     await userEvent.click(screen.getByTestId('sidebar-graph-row-g1'))
     expect(mocks.openGraphView).toHaveBeenCalledWith('g1')
-  })
-
-  it('hides the rows while collapsed', async () => {
-    mocks.graphs = [summary()]
-    render(<SidebarGraphsSection />)
-    await userEvent.click(screen.getByTestId('sidebar-graphs-toggle'))
-    expect(useProjectsStore.getState().graphsSectionCollapsed).toBe(true)
-    expect(screen.queryByTestId('sidebar-graph-row-g1')).toBeNull()
   })
 })

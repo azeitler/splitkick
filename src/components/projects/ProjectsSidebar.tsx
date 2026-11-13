@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useProjects, useCreateFolder } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -18,6 +18,15 @@ import { useSidebarReveal } from './useSidebarReveal'
 import { useSidebarStickyStack } from './useSidebarStickyStack'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import type { SidebarTab } from '@/types/ui-state'
+
+/** What the tabs other than Projects show. */
+const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
+  recent: <SidebarRecentSessions />,
+  starred: <SidebarStarredSection />,
+  todo: <SidebarTodoSection />,
+  graphs: <SidebarGraphsSection />,
+}
 
 export function ProjectsSidebar() {
   const {
@@ -57,14 +66,17 @@ export function ProjectsSidebar() {
 
   return (
     <div className="flex h-full flex-col" data-testid="projects-sidebar">
+      {/* Home sits above the tabs: it is a place, not a list, and stays one
+          click away whatever tab is open. */}
+      <SidebarHomeRow />
       <SidebarTabs />
 
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and
           the tree does not shift sideways when the list starts to overflow.
-          The Projects panel stays mounted, only made invisible, while Recent
-          shows: `display: none` would drop its scroll position on a tab
-          switch. */}
+          The Projects panel stays mounted, only made invisible, while another
+          tab shows: `display: none` would drop its scroll position on a tab
+          switch, and a jump from Recent or To-Do reveals its row there. */}
       <div className="relative min-h-0 flex-1">
         <div
           role="tabpanel"
@@ -76,20 +88,10 @@ export function ProjectsSidebar() {
             sidebarTab !== 'projects' && 'invisible'
           )}
         >
-          {/* Home, Starred and Graphs stay put above the list that scrolls;
-              a long pinned area scrolls on its own. Folders and Projects scroll
-              in one list with a sticky stack: each section header stays stuck
-              once you scroll past it, and the folder, project and worktree rows
-              stick below them (sidebar-sticky.ts). */}
-          <SidebarHomeRow />
-          <div
-            data-testid="sidebar-pinned-sections"
-            className="max-h-[40%] shrink-0 overflow-y-auto overflow-x-hidden border-b border-sidebar-border [scrollbar-gutter:stable]"
-          >
-            <SidebarStarredSection />
-            <SidebarTodoSection />
-            <SidebarGraphsSection />
-          </div>
+          {/* Folders and Projects scroll in one list with a sticky stack: each
+              section header stays stuck once you scroll past it, and the
+              folder, project and worktree rows stick below them
+              (sidebar-sticky.ts). */}
           <div
             ref={scrollRef}
             data-testid="sidebar-projects-scroll"
@@ -129,14 +131,14 @@ export function ProjectsSidebar() {
           </div>
         </div>
 
-        {sidebarTab === 'recent' && (
+        {sidebarTab !== 'projects' && (
           <div
             role="tabpanel"
-            id="sidebar-panel-recent"
-            aria-labelledby="sidebar-tab-recent"
+            id={`sidebar-panel-${sidebarTab}`}
+            aria-labelledby={`sidebar-tab-${sidebarTab}`}
             className="absolute inset-0 overflow-y-auto overflow-x-hidden pb-[calc(var(--safe-area-bottom)+1.25rem)] [scrollbar-gutter:stable]"
           >
-            <SidebarRecentSessions />
+            {TAB_CONTENT[sidebarTab]}
           </div>
         )}
       </div>

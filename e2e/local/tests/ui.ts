@@ -32,6 +32,17 @@ export async function openApp(
   await expect(page.getByText('Go to…').first()).toBeVisible()
 }
 
+/** Select a sidebar tab (Projects, Recent, Starred, To-Do, Graphs). "Go
+ *  to…" switches back to Projects, so call this before using another tab. */
+export async function showSidebarTab(
+  page: Page,
+  tab: 'projects' | 'recent' | 'starred' | 'todo' | 'graphs'
+): Promise<void> {
+  const button = page.getByTestId(`sidebar-tab-${tab}`)
+  await button.click()
+  await expect(button).toHaveAttribute('aria-selected', 'true')
+}
+
 /** Open a session by name through the "Go to…" search. */
 export async function goToSession(page: Page, name: string): Promise<void> {
   await page.getByText('Go to…').first().click()
@@ -45,7 +56,8 @@ export async function goToSession(page: Page, name: string): Promise<void> {
 }
 
 export function sessionTab(page: Page, name: string) {
-  return page.getByText(name, { exact: true }).first()
+  // Visible only: the sidebar tree keeps its rows, hidden, under other tabs.
+  return page.getByText(name, { exact: true }).filter({ visible: true }).first()
 }
 
 export function chatInput(page: Page) {
