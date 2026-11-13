@@ -17,21 +17,24 @@ test('buildInstallPlan uses the local server defaults', () => {
       ['build', '--release', '--manifest-path', 'src-server/Cargo.toml'],
     ],
   ])
-  assert.match(plan.builtBinary, /src-server\/target\/release\/jean-server$/)
-  assert.equal(plan.installPath, '/usr/local/bin/jean-server')
-  assert.equal(plan.service, 'jean-server.service')
+  assert.match(
+    plan.builtBinary,
+    /src-server\/target\/release\/splitkick-server$/
+  )
+  assert.equal(plan.installPath, '/usr/local/bin/splitkick-server')
+  assert.equal(plan.service, 'splitkick-server.service')
 })
 
 test('buildInstallPlan supports an explicit binary and service', () => {
   const plan = buildInstallPlan({
     env: {
-      JEAN_SERVER_INSTALL_PATH: '/opt/jean/jean-server-dev',
-      JEAN_SERVER_SERVICE: 'jean-dev.service',
+      JEAN_SERVER_INSTALL_PATH: '/opt/splitkick/splitkick-server-dev',
+      JEAN_SERVER_SERVICE: 'splitkick-dev.service',
     },
   })
 
-  assert.equal(plan.installPath, '/opt/jean/jean-server-dev')
-  assert.equal(plan.service, 'jean-dev.service')
+  assert.equal(plan.installPath, '/opt/splitkick/splitkick-server-dev')
+  assert.equal(plan.service, 'splitkick-dev.service')
 })
 
 test('shouldStartBackground stays foreground for explicit foreground or the child process', () => {

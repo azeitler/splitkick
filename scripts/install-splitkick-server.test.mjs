@@ -6,15 +6,15 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const script = resolve(root, 'scripts/install-jean-server.sh')
+const script = resolve(root, 'scripts/install-splitkick-server.sh')
 
-test('install-jean-server.sh is executable and bash-clean', () => {
+test('install-splitkick-server.sh is executable and bash-clean', () => {
   accessSync(script, constants.X_OK)
   const syntax = spawnSync('bash', ['-n', script], { encoding: 'utf8' })
   assert.equal(syntax.status, 0, syntax.stderr)
 })
 
-test('install-jean-server.sh help documents core options', () => {
+test('install-splitkick-server.sh help documents core options', () => {
   const result = spawnSync('bash', [script, '--help'], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /--host/)
@@ -28,9 +28,9 @@ test('install-jean-server.sh help documents core options', () => {
   assert.match(result.stdout, /Non-interactive|non-interactive|-y/)
 })
 
-test('install-jean-server.sh script covers download, verify, systemd, env file', () => {
+test('install-splitkick-server.sh script covers download, verify, systemd, env file', () => {
   const source = readFileSync(script, 'utf8')
-  assert.match(source, /jean-server-linux-\$\{ARCH\}|jean-server-\$\{ASSET_ARCH\}/)
+  assert.match(source, /splitkick-server-\$\{ASSET_ARCH\}/)
   assert.match(source, /sha256|Checksum/)
   assert.match(source, /systemctl/)
   assert.match(source, /EnvironmentFile/)
@@ -43,7 +43,26 @@ test('install-jean-server.sh script covers download, verify, systemd, env file',
   assert.match(source, /--uninstall/)
 })
 
-test('install-jean-server.sh refuses public bind without token', () => {
+test('install-splitkick-server.sh installs Splitkick, never upstream Jean', () => {
+  const source = readFileSync(script, 'utf8')
+  assert.match(source, /REPO="\$\{SPLITKICK_REPO:-azeitler\/splitkick\}"/)
+  assert.match(source, /TAG_PREFIX="splitkick-v"/)
+  assert.match(source, /DEFAULT_PORT="3460"/)
+  assert.doesNotMatch(source, /coollabsio/)
+  assert.doesNotMatch(source, /com\.jean\.desktop/)
+  assert.doesNotMatch(source, /JEAN_DATA_DIR/)
+  // A missing checksum stops the install instead of warning.
+  assert.doesNotMatch(source, /skipping checksum verification/)
+  assert.match(source, /Checksum download failed/)
+})
+
+test('install-splitkick-server.sh reads the token from a file (#105)', () => {
+  const source = readFileSync(script, 'utf8')
+  assert.match(source, /--token-file\)/)
+  assert.match(source, /TOKEN="\$\(head -n1 "\$TOKEN_FILE"/)
+})
+
+test('install-splitkick-server.sh refuses public bind without token', () => {
   const source = readFileSync(script, 'utf8')
   assert.match(source, /Refusing --no-token with public bind host/)
   assert.match(source, /is_wildcard_bind/)
@@ -56,7 +75,7 @@ test('headless docs recommend official Node.js installation for managed tools', 
   assert.match(docs, /does not recommend Debian\/Ubuntu's `nodejs` package/)
 })
 
-test('install-jean-server.sh prompts for bind interface and supports presets', () => {
+test('install-splitkick-server.sh prompts for bind interface and supports presets', () => {
   const source = readFileSync(script, 'utf8')
   assert.match(source, /prompt_bind_settings/)
   assert.match(source, /detect_tailscale_ipv4/)
@@ -65,7 +84,7 @@ test('install-jean-server.sh prompts for bind interface and supports presets', (
   assert.match(source, /HOST_EXPLICIT/)
   assert.match(source, /PORT_EXPLICIT/)
   assert.match(source, /\/dev\/tty/)
-  assert.match(source, /Choose which interface jean-server should bind to/)
+  assert.match(source, /Choose which interface splitkick-server should bind to/)
   assert.match(source, /tailscale \| ts/)
   assert.match(source, /lan \| primary/)
 })
@@ -135,7 +154,7 @@ validate_port() {
 is_wildcard_bind "0.0.0.0"
 is_wildcard_bind "all"
 ! is_wildcard_bind "127.0.0.1"
-validate_port 3456
+validate_port 3460
 validate_port 1
 validate_port 65535
 ! validate_port 0

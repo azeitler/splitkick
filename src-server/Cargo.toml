@@ -1,5 +1,5 @@
 [package]
-name = "jean-server"
+name = "splitkick-server"
 version = "0.1.73"
 edition = "2021"
 

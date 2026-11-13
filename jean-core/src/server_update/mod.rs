@@ -26,8 +26,7 @@ use crate::http_server::EmitExt;
 mod diagnosis;
 pub use diagnosis::diagnose_update_check;
 
-const MANIFEST_URL: &str =
-    "https://github.com/coollabsio/jean/releases/latest/download/server-latest.json";
+const MANIFEST_URL: &str = crate::brand::SERVER_MANIFEST_URL;
 /// The feed the desktop shell's native updater reads (`plugins.updater` in
 /// its Tauri config). Set once at startup; see [`set_desktop_release_feed`].
 static DESKTOP_RELEASE_FEED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -44,7 +43,7 @@ pub fn set_desktop_release_feed(url: impl Into<String>) {
 fn desktop_manifest_url(configured: Option<&str>) -> &str {
     configured.unwrap_or(crate::brand::DESKTOP_MANIFEST_URL)
 }
-const USER_AGENT: &str = "jean-server-updater";
+const USER_AGENT: &str = "splitkick-server-updater";
 const RESTART_GRACE: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -69,7 +68,7 @@ pub struct ServerUpdateManifest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum HostUpdateChannel {
-    /// Headless `jean-server` binary (server-latest.json).
+    /// Headless `splitkick-server` binary (server-latest.json).
     #[default]
     Server,
     /// Desktop Jean hosting Web Access (latest.json + native Tauri install).
@@ -193,7 +192,7 @@ pub async fn check_server_update(_app: &AppHandle) -> Result<ServerUpdateStatus,
 }
 
 async fn check_headless_server_update() -> Result<ServerUpdateStatus, String> {
-    // Must use the host binary version (jean-server), not jean-core's crate version.
+    // Must use the host binary version (splitkick-server), not jean-core's crate version.
     let current_version = crate::app_version().to_string();
     let eligibility = update_eligibility();
     if let Some(reason) = &eligibility.block_reason {
@@ -292,7 +291,7 @@ pub async fn apply_server_update(app: AppHandle) -> Result<ServerUpdateApplyResu
     let running = crate::chat::registry::get_running_sessions();
     if !running.is_empty() {
         return Err(format!(
-            "Cannot update jean-server while {} session{} running. Stop active sessions first.",
+            "Cannot update the Splitkick server while {} session{} running. Stop active sessions first.",
             running.len(),
             if running.len() == 1 { " is" } else { "s are" }
         ));
@@ -341,7 +340,7 @@ pub async fn apply_server_update(app: AppHandle) -> Result<ServerUpdateApplyResu
     Ok(ServerUpdateApplyResult {
         success: true,
         version: latest.clone(),
-        message: format!("Installed jean-server {latest}; restart scheduled"),
+        message: format!("Installed Splitkick server {latest}; restart scheduled"),
         restart_scheduled: true,
     })
 }
@@ -418,7 +417,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
     })
 }
 
-/// True when running the headless `jean-server` binary (`JEAN_HEADLESS=1`).
+/// True when running the headless `splitkick-server` binary (`JEAN_HEADLESS=1`).
 fn is_headless_host() -> bool {
     match std::env::var("JEAN_HEADLESS") {
         Ok(value) => {
@@ -547,35 +546,47 @@ fn extract_server_binary(archive_content: &[u8]) -> Result<Vec<u8>, String> {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or_default();
-        // Release assets are named jean-server-linux-amd64 / jean-server-linux-arm64
-        // Local builds are plain jean-server.
-        if name == "jean-server" || name.starts_with("jean-server-linux-") {
+        if is_server_binary_name(name) {
             let mut data = Vec::new();
             entry
                 .read_to_end(&mut data)
-                .map_err(|e| format!("Failed to read jean-server from archive: {e}"))?;
+                .map_err(|e| format!("Failed to read {SERVER_BINARY} from archive: {e}"))?;
             if data.is_empty() {
-                return Err("Extracted jean-server binary is empty".to_string());
+                return Err(format!("Extracted {SERVER_BINARY} binary is empty"));
             }
             return Ok(data);
         }
     }
 
-    Err("jean-server binary not found inside update archive".to_string())
+    Err(format!(
+        "{SERVER_BINARY} binary not found inside update archive"
+    ))
+}
+
+const SERVER_BINARY: &str = crate::brand::SERVER_BINARY_NAME;
+
+/// Release assets hold `splitkick-server-linux-amd64` / `-arm64`; a local
+/// build is plain `splitkick-server`. Upstream's `jean-server` never matches,
+/// so a Jean tarball can not replace a Splitkick server.
+fn is_server_binary_name(name: &str) -> bool {
+    name == SERVER_BINARY
+        || name
+            .strip_prefix(SERVER_BINARY)
+            .is_some_and(|rest| rest.starts_with("-linux-"))
 }
 
 fn install_binary_atomically(binary: &[u8]) -> Result<(), String> {
     let target = current_executable_path()?;
     let parent = target
         .parent()
-        .ok_or_else(|| "Cannot determine install directory for jean-server".to_string())?;
+        .ok_or_else(|| "Cannot determine install directory for the Splitkick server".to_string())?;
 
     let temp = parent.join(format!(
         "{}.new-{}",
         target
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("jean-server"),
+            .unwrap_or(SERVER_BINARY),
         std::process::id()
     ));
 
@@ -600,7 +611,7 @@ fn install_binary_atomically(binary: &[u8]) -> Result<(), String> {
     if let Err(error) = std::fs::rename(&temp, &target) {
         let _ = std::fs::remove_file(&temp);
         return Err(format!(
-            "Failed to replace jean-server binary at {}: {error}",
+            "Failed to replace {SERVER_BINARY} binary at {}: {error}",
             target.display()
         ));
     }
@@ -612,7 +623,7 @@ fn schedule_restart() {
     tokio::spawn(async {
         tokio::time::sleep(RESTART_GRACE).await;
         if let Err(error) = restart_server_process() {
-            log::error!("Failed to restart jean-server after update: {error}");
+            log::error!("Failed to restart {SERVER_BINARY} after update: {error}");
             // Last resort: exit and hope a process supervisor restarts us.
             std::process::exit(0);
         }
@@ -633,22 +644,23 @@ fn restart_server_process() -> Result<(), String> {
     {
         use std::os::unix::process::CommandExt;
         let error = command.exec();
-        Err(format!("Failed to re-exec jean-server: {error}"))
+        Err(format!("Failed to re-exec {SERVER_BINARY}: {error}"))
     }
     #[cfg(not(unix))]
     {
         command
             .spawn()
-            .map_err(|e| format!("Failed to spawn updated jean-server: {e}"))?;
+            .map_err(|e| format!("Failed to spawn updated {SERVER_BINARY}: {e}"))?;
         std::process::exit(0);
     }
 }
 
 fn try_systemd_restart() -> bool {
-    let service = std::env::var("JEAN_SERVER_SERVICE")
-        .ok()
+    let service = ["SPLITKICK_SERVER_SERVICE", "JEAN_SERVER_SERVICE"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok())
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "jean-server.service".to_string());
+        .unwrap_or_else(|| crate::brand::SERVER_SERVICE_NAME.to_string());
 
     let show = std::process::Command::new("systemctl")
         .args(["show", "--property=LoadState", "--value", &service])
@@ -693,7 +705,7 @@ fn update_eligibility() -> Eligibility {
             can_update: false,
             hard_block: true,
             block_reason: Some(
-                "Running in a container; update the jean-server image instead".to_string(),
+                "Running in a container; update the splitkick-server image instead".to_string(),
             ),
         };
     }
@@ -705,7 +717,7 @@ fn update_eligibility() -> Eligibility {
                     can_update: false,
                     hard_block: false,
                     block_reason: Some(format!(
-                        "Cannot write to jean-server binary at {}",
+                        "Cannot write to {SERVER_BINARY} binary at {}",
                         path.display()
                     )),
                 };
@@ -750,7 +762,7 @@ fn path_is_writable(path: &Path) -> bool {
 }
 
 fn current_executable_path() -> Result<PathBuf, String> {
-    std::env::current_exe().map_err(|e| format!("Failed to resolve jean-server path: {e}"))
+    std::env::current_exe().map_err(|e| format!("Failed to resolve {SERVER_BINARY} path: {e}"))
 }
 
 fn current_platform_key() -> Result<&'static str, String> {
@@ -982,7 +994,7 @@ mod tests {
     #[test]
     fn current_version_uses_host_override_not_library_crate() {
         // Regression: self-update used env!("CARGO_PKG_VERSION") from jean-core
-        // (e.g. 0.1.67) while jean-server was already 0.1.68, so "update available"
+        // (e.g. 0.1.67) while the server binary was already 0.1.68, so "update available"
         // never cleared after install.
         crate::set_app_version("9.9.9-host");
         assert_eq!(crate::app_version(), "9.9.9-host");
@@ -993,29 +1005,48 @@ mod tests {
         let data = b"hello";
         let hash = format!("{:x}", Sha256::digest(data));
         assert!(verify_sha256(data, &hash).is_ok());
-        assert!(verify_sha256(data, &format!("{hash}  jean-server.tar.gz")).is_ok());
+        assert!(verify_sha256(data, &format!("{hash}  splitkick-server.tar.gz")).is_ok());
         assert!(verify_sha256(data, "deadbeef").is_err());
     }
 
     #[test]
-    fn extracts_jean_server_from_tar_gz() {
+    fn extracts_splitkick_server_from_tar_gz() {
         let mut raw = Vec::new();
         {
             let enc = GzEncoder::new(&mut raw, Compression::default());
             let mut builder = Builder::new(enc);
             let mut header = tar::Header::new_gnu();
-            let payload = b"#!/bin/sh\necho jean-server\n";
+            let payload = b"#!/bin/sh\necho splitkick-server\n";
             header.set_size(payload.len() as u64);
             header.set_mode(0o755);
             header.set_cksum();
             builder
-                .append_data(&mut header, "jean-server-linux-amd64", payload.as_slice())
+                .append_data(
+                    &mut header,
+                    "splitkick-server-linux-amd64",
+                    payload.as_slice(),
+                )
                 .unwrap();
             builder.into_inner().unwrap().finish().unwrap();
         }
 
         let extracted = extract_server_binary(&raw).unwrap();
-        assert_eq!(extracted, b"#!/bin/sh\necho jean-server\n");
+        assert_eq!(extracted, b"#!/bin/sh\necho splitkick-server\n");
+    }
+
+    #[test]
+    fn only_splitkick_server_binaries_are_accepted() {
+        assert!(is_server_binary_name("splitkick-server"));
+        assert!(is_server_binary_name("splitkick-server-linux-arm64"));
+        assert!(!is_server_binary_name("jean-server"));
+        assert!(!is_server_binary_name("jean-server-linux-amd64"));
+        assert!(!is_server_binary_name("splitkick-server.sha256"));
+    }
+
+    #[test]
+    fn server_feed_is_splitkick_not_upstream() {
+        assert!(MANIFEST_URL.contains("azeitler/splitkick"));
+        assert!(!MANIFEST_URL.contains("coollabsio"));
     }
 
     #[test]

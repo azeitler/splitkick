@@ -1336,7 +1336,7 @@ fn embedded_static_response(raw_path: &str) -> Response {
     let Some(data) = data else {
         return (
             StatusCode::NOT_FOUND,
-            "Frontend assets not found. Run `bun run build` before building jean-server.",
+            "Frontend assets not found. Run `bun run build` before building splitkick-server.",
         )
             .into_response();
     };

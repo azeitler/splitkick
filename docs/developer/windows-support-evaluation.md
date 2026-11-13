@@ -198,7 +198,7 @@ touch files the fork has renamed, so expect manual ports.
   a DMG, and rewrites only `version`, `size`, `sha256` in `src/site.ts`
   (`DOWNLOAD = { version, arch: 'Apple Silicon', macos: 'macOS 14 or newer', … }`).
   Read from a local worktree copy, not its `main`.
-- `jean-server` (`server-release.yml`) builds Linux only. A Windows server
+- `splitkick-server` (`server-build.yml`) builds Linux only. A Windows server
   binary is not needed for the desktop app. Out of scope.
 
 ### What a Windows row needs

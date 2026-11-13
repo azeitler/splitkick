@@ -1,13 +1,24 @@
-name: Server Release
+name: Server Build
+
+# The headless Splitkick server (src-server, binary `splitkick-server`).
+#
+# ci-build.yml calls this after preflight.yml published a release, so every
+# Splitkick release also carries the Linux server tarballs, server-latest.json
+# (the self-update feed, brand::SERVER_MANIFEST_URL) and the Docker image
+# ghcr.io/<owner>/splitkick-server. Run it by hand with a tag to add the
+# server to a release again; without a tag it only builds and tests.
 
 on:
-  # Off in this fork: no server images are published, and every Splitkick release
-  # publishes a release, which would trigger this workflow. Run it by hand if
-  # it is ever needed.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to add the server to (splitkick-v<version>)'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version/tag for manual runs (for example v0.1.60)'
+      tag:
+        description: 'Release tag to add the server to (for example splitkick-v1.5.16). Empty = build and test only'
         required: false
         type: string
 
@@ -16,14 +27,14 @@ permissions:
   packages: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-server
+  IMAGE_NAME: ${{ github.repository_owner }}/splitkick-server
 
 jobs:
   metadata:
@@ -32,20 +43,40 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+
       - name: Resolve release version
         id: version
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if [ -z "$RELEASE_TAG" ]; then
+          set -euo pipefail
+          # The version the binary reports (build.rs reads the same file).
+          VERSION=$(node -p "require('./src-tauri/tauri.fork.conf.json').version")
+          if [ -n "$RELEASE_TAG" ]; then
+            if [ "$RELEASE_TAG" != "splitkick-v$VERSION" ]; then
+              echo "::error::Tag $RELEASE_TAG does not match tauri.fork.conf.json version $VERSION"
+              exit 1
+            fi
+            PUBLISH=true
+          else
             RELEASE_TAG="manual-${GITHUB_SHA::7}"
+            PUBLISH=false
           fi
-
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building Jean server artifacts for $RELEASE_TAG"
+          case "$VERSION" in *-*) PRERELEASE=true ;; *) PRERELEASE=false ;; esac
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building Splitkick server $VERSION for $RELEASE_TAG (publish: $PUBLISH)"
 
   build-binaries:
     name: Build server binary (${{ matrix.arch }})
@@ -57,13 +88,15 @@ jobs:
         include:
           - runner: ubuntu-22.04
             arch: amd64
-            asset: jean-server-linux-amd64
+            asset: splitkick-server-linux-amd64
           - runner: ubuntu-22.04-arm
             arch: arm64
-            asset: jean-server-linux-arm64
+            asset: splitkick-server-linux-arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Install Linux dependencies
         run: |
@@ -90,22 +123,28 @@ jobs:
       - name: Build frontend bundle
         run: bun run build
 
-      - name: Build jean-server
+      - name: Build splitkick-server
         run: cd src-server && cargo build --release --locked
 
-      - name: Verify Tauri-free headless runtime
+      - name: Verify Tauri-free headless runtime and version
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
         run: |
-          ! cargo tree --manifest-path src-server/Cargo.toml -p jean-server | grep -Ei 'tauri|wry|webkit|gtk'
-          ! ldd src-server/target/release/jean-server | grep -Ei 'webkit|gtk|appindicator'
-          env -u DISPLAY -u WAYLAND_DISPLAY JEAN_DATA_DIR="$RUNNER_TEMP/jean-data" \
-            src-server/target/release/jean-server --host 127.0.0.1 --port 3457 --no-token &
+          set -euo pipefail
+          ! cargo tree --manifest-path src-server/Cargo.toml -p splitkick-server | grep -Ei 'tauri|wry|webkit|gtk'
+          ! ldd src-server/target/release/splitkick-server | grep -Ei 'webkit|gtk|appindicator'
+          reported=$(src-server/target/release/splitkick-server --version)
+          echo "$reported"
+          [ "$reported" = "Splitkick $VERSION" ]
+          env -u DISPLAY -u WAYLAND_DISPLAY SPLITKICK_DATA_DIR="$RUNNER_TEMP/splitkick-data" \
+            src-server/target/release/splitkick-server --host 127.0.0.1 --port 3461 --no-token &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           for _ in $(seq 1 30); do
-            curl --fail --silent http://127.0.0.1:3457/readyz && break
+            curl --fail --silent http://127.0.0.1:3461/readyz && break
             sleep 1
           done
-          curl --fail http://127.0.0.1:3457/readyz
+          curl --fail http://127.0.0.1:3461/readyz
 
       - name: Package binary
         env:
@@ -113,21 +152,20 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: |
           mkdir -p artifacts
-          cp src-server/target/release/jean-server "artifacts/${ASSET}"
+          cp src-server/target/release/splitkick-server "artifacts/${ASSET}"
           tar -C artifacts -czf "artifacts/${ASSET}-${VERSION}.tar.gz" "${ASSET}"
-          shasum -a 256 "artifacts/${ASSET}-${VERSION}.tar.gz" > "artifacts/${ASSET}-${VERSION}.tar.gz.sha256"
+          (cd artifacts && shasum -a 256 "${ASSET}-${VERSION}.tar.gz" > "${ASSET}-${VERSION}.tar.gz.sha256")
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jean-server-linux-${{ matrix.arch }}
+          name: splitkick-server-linux-${{ matrix.arch }}
           path: |
             artifacts/*.tar.gz
             artifacts/*.sha256
 
       - name: Upload release assets
-        # Allow workflow_dispatch re-runs after fixing a tagged release (e.g. lockfile).
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        if: needs.metadata.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
@@ -137,7 +175,7 @@ jobs:
   publish-update-manifest:
     name: Publish server-latest.json
     needs: [metadata, build-binaries]
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+    if: needs.metadata.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       # gh release upload needs repo context; without checkout it fails with
@@ -148,27 +186,26 @@ jobs:
       - name: Download amd64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: jean-server-linux-amd64
+          name: splitkick-server-linux-amd64
           path: artifacts/amd64
 
       - name: Download arm64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: jean-server-linux-arm64
+          name: splitkick-server-linux-arm64
           path: artifacts/arm64
 
       - name: Build and upload server-latest.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
           VERSION: ${{ needs.metadata.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          amd64_sha=$(awk '{print $1}' artifacts/amd64/jean-server-linux-amd64-${VERSION}.tar.gz.sha256)
-          arm64_sha=$(awk '{print $1}' artifacts/arm64/jean-server-linux-arm64-${VERSION}.tar.gz.sha256)
+          amd64_sha=$(awk '{print $1}' artifacts/amd64/splitkick-server-linux-amd64-${VERSION}.tar.gz.sha256)
+          arm64_sha=$(awk '{print $1}' artifacts/arm64/splitkick-server-linux-arm64-${VERSION}.tar.gz.sha256)
           pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           PUB_DATE="$pub_date" AMD64_SHA="$amd64_sha" ARM64_SHA="$arm64_sha" \
@@ -183,11 +220,11 @@ jobs:
               "pubDate": os.environ["PUB_DATE"],
               "platforms": {
                   "linux-amd64": {
-                      "url": f"https://github.com/{repo}/releases/download/{tag}/jean-server-linux-amd64-{version}.tar.gz",
+                      "url": f"https://github.com/{repo}/releases/download/{tag}/splitkick-server-linux-amd64-{version}.tar.gz",
                       "sha256": os.environ["AMD64_SHA"],
                   },
                   "linux-arm64": {
-                      "url": f"https://github.com/{repo}/releases/download/{tag}/jean-server-linux-arm64-{version}.tar.gz",
+                      "url": f"https://github.com/{repo}/releases/download/{tag}/splitkick-server-linux-arm64-{version}.tar.gz",
                       "sha256": os.environ["ARM64_SHA"],
                   },
               },
@@ -216,11 +253,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Download server binary
         uses: actions/download-artifact@v4
         with:
-          name: jean-server-linux-${{ matrix.arch }}
+          name: splitkick-server-linux-${{ matrix.arch }}
           path: artifacts
 
       - name: Prepare Docker context
@@ -229,9 +268,9 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p docker-context
-          tar -xzf "artifacts/jean-server-linux-${ARCH}-${VERSION}.tar.gz" -C docker-context
-          mv "docker-context/jean-server-linux-${ARCH}" docker-context/jean-server
-          chmod +x docker-context/jean-server
+          tar -xzf "artifacts/splitkick-server-linux-${ARCH}-${VERSION}.tar.gz" -C docker-context
+          mv "docker-context/splitkick-server-linux-${ARCH}" docker-context/splitkick-server
+          chmod +x docker-context/splitkick-server
           cp scripts/docker-entrypoint.sh docker-context/docker-entrypoint.sh
           cp Dockerfile.server-runtime docker-context/Dockerfile
 
@@ -239,6 +278,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: needs.metadata.outputs.publish == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -251,23 +291,23 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest-${{ matrix.arch }},enable=${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.version != '') }}
-            type=raw,value=${{ needs.metadata.outputs.tag }}-${{ matrix.arch }}
-            type=sha,prefix=sha-,suffix=-${{ matrix.arch }}
+            type=raw,value=${{ needs.metadata.outputs.version }}-${{ matrix.arch }}
 
-      - name: Build and push architecture image
+      # Only a release pushes. A build-only run still proves the image builds.
+      - name: Build (and push) architecture image
         uses: docker/build-push-action@v6
         with:
           context: docker-context
           file: docker-context/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: true
+          push: ${{ needs.metadata.outputs.publish == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-manifest:
     name: Publish multi-arch Docker manifest
     needs: [metadata, docker-image]
+    if: needs.metadata.outputs.publish == 'true'
     runs-on: ubuntu-22.04
     steps:
       - name: Set up Docker Buildx
@@ -283,21 +323,20 @@ jobs:
       - name: Create and push manifests
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
         run: |
           set -euo pipefail
 
           create_manifest() {
-            local tag="$1"
             docker buildx imagetools create \
-              -t "${IMAGE}:${tag}" \
-              "${IMAGE}:${tag}-amd64" \
-              "${IMAGE}:${tag}-arm64"
+              -t "${IMAGE}:$1" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
           }
 
-          create_manifest "$RELEASE_TAG"
-          create_manifest "sha-${GITHUB_SHA::7}"
-
-          if [ "${{ github.event_name }}" = "release" ] || { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; }; then
+          create_manifest "$VERSION"
+          # A pre-release never moves `latest`, as on the release page.
+          if [ "$PRERELEASE" != "true" ]; then
             create_manifest "latest"
           fi

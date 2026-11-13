@@ -59,6 +59,18 @@ own placeholder. `--mcp-config` accepts file paths
 | Grok | ACP host gets `--mcp-servers-file <0600 file>`, sends `mcpServers` over stdin JSON-RPC, deletes the file |
 | Kimi, Antigravity, Command Code | No MCP secrets in argv |
 
+## Remote server install over SSH (#105)
+
+`remote_install.rs` runs the installer on another host, so `ps` there is the
+risk, not on this machine. The script sent over SSH holds no secret. On the
+remote host the token is generated into a `mktemp` file (mode 600), passed to
+`install-splitkick-server.sh` as `--token-file <path>`, and deleted on exit; it
+is never an argument of `sudo`, `bash` or the installer. `printf`/`echo`
+are bash builtins and start no process. The token returns over the SSH channel
+(stdout) and is masked in the install log shown in the UI. The installed unit
+reads it from its env file (mode 600), not from `ExecStart`. Test:
+`install_script_keeps_the_token_out_of_argv`.
+
 When you add a spawn site, write a test that builds its arguments with a fake
 token (`"SECRET-TOKEN-123"`) and asserts the token is in no argument — see
 `mcp_secrets_never_appear_in_claude_args` (`chat/claude.rs`) and

@@ -56,7 +56,7 @@ for (const cargoPath of [
 for (const [lockPath, packageName] of [
   [resolve(root, 'src-tauri/Cargo.lock'), 'jean'],
   [resolve(root, 'src-tauri/Cargo.lock'), 'jean-core'],
-  [resolve(root, 'src-server/Cargo.lock'), 'jean-server'],
+  [resolve(root, 'src-server/Cargo.lock'), 'splitkick-server'],
   [resolve(root, 'src-server/Cargo.lock'), 'jean-core'],
   [resolve(root, 'jean-core/Cargo.lock'), 'jean-core'],
 ]) {

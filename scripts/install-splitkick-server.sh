@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
-# Install jean-server from GitHub releases, configure env, and register a service.
+# Install splitkick-server (the headless Splitkick server) from the Splitkick
+# GitHub releases, configure env, and register a service.
 #
 # Examples:
-#   curl -fsSL https://raw.githubusercontent.com/coollabsio/jean/main/scripts/install-jean-server.sh | sudo bash
-#   sudo ./scripts/install-jean-server.sh --host 0.0.0.0 --port 3456
-#   sudo ./scripts/install-jean-server.sh --host tailscale --port 3456
-#   ./scripts/install-jean-server.sh --user-install --host 127.0.0.1
-#   sudo ./scripts/install-jean-server.sh --version v0.1.66 --token "$JEAN_TOKEN"
-#   sudo ./scripts/install-jean-server.sh -y   # non-interactive (localhost:3456)
-#   sudo ./scripts/install-jean-server.sh --uninstall
+#   curl -fsSL https://raw.githubusercontent.com/azeitler/splitkick/main/scripts/install-splitkick-server.sh | sudo bash
+#   sudo ./scripts/install-splitkick-server.sh --host 0.0.0.0 --port 3460
+#   sudo ./scripts/install-splitkick-server.sh --host tailscale --port 3460
+#   ./scripts/install-splitkick-server.sh --user-install --host 127.0.0.1
+#   sudo ./scripts/install-splitkick-server.sh --version 1.5.16 --token-file ./token
+#   sudo ./scripts/install-splitkick-server.sh -y   # non-interactive (localhost:3460)
+#   sudo ./scripts/install-splitkick-server.sh --uninstall
 #
 # Environment overrides (same names as flags when useful):
-#   JEAN_REPO, JEAN_VERSION, JEAN_HOST, JEAN_PORT, JEAN_TOKEN
+#   SPLITKICK_REPO, SPLITKICK_VERSION, JEAN_HOST, JEAN_PORT, JEAN_TOKEN
 #   JEAN_SERVER_INSTALL_PATH, JEAN_SERVER_SERVICE, JEAN_SERVER_USER
 #   JEAN_SERVER_ENV_FILE, JEAN_SERVER_DATA_DIR
 
 set -euo pipefail
 
-REPO="${JEAN_REPO:-coollabsio/jean}"
-VERSION="${JEAN_VERSION:-latest}"
+REPO="${SPLITKICK_REPO:-azeitler/splitkick}"
+VERSION="${SPLITKICK_VERSION:-latest}"
+# Release tags are splitkick-v<version>; upstream Jean's are v<version>.
+TAG_PREFIX="splitkick-v"
 # Empty until flags/env/prompt resolve them; defaults applied later.
 HOST="${JEAN_HOST:-}"
 PORT="${JEAN_PORT:-}"
 TOKEN="${JEAN_TOKEN:-}"
+TOKEN_FILE=""
 INSTALL_PATH="${JEAN_SERVER_INSTALL_PATH:-}"
-SERVICE_NAME="${JEAN_SERVER_SERVICE:-jean-server}"
+SERVICE_NAME="${JEAN_SERVER_SERVICE:-splitkick-server}"
 SERVICE_USER="${JEAN_SERVER_USER:-}"
 ENV_FILE="${JEAN_SERVER_ENV_FILE:-}"
 DATA_DIR="${JEAN_SERVER_DATA_DIR:-}"
@@ -32,7 +36,7 @@ GITHUB_API="${GITHUB_API:-https://api.github.com}"
 GITHUB_DOWNLOAD="${GITHUB_DOWNLOAD:-https://github.com}"
 
 DEFAULT_HOST="127.0.0.1"
-DEFAULT_PORT="3456"
+DEFAULT_PORT="3460"
 
 USER_INSTALL=0
 NO_SERVICE=0
@@ -51,9 +55,9 @@ if [[ -n "${JEAN_PORT:-}" ]]; then PORT_EXPLICIT=1; fi
 
 usage() {
   cat <<'EOF'
-Usage: install-jean-server.sh [options]
+Usage: install-splitkick-server.sh [options]
 
-Install jean-server (Linux amd64/arm64), write an env file, and register systemd
+Install splitkick-server (Linux amd64/arm64), write an env file, and register systemd
 (or print an OpenRC unit when systemd is unavailable).
 
 When run interactively (TTY available and not -y), the installer asks which
@@ -61,25 +65,29 @@ interface to bind to (localhost, all interfaces, LAN IP, Tailscale, or custom)
 and which port to use, unless --host / --port / JEAN_HOST / JEAN_PORT are set.
 
 Options:
-  --version <tag|latest>   Release tag (default: latest). Example: v0.1.66
+  --version <ver|latest>   Splitkick version or tag (default: latest).
+                           Example: 1.5.16 or splitkick-v1.5.16
   --host <addr|preset>     Bind address or preset (skips interface prompt):
                              127.0.0.1 | localhost  — loopback only (default)
                              0.0.0.0 | all | public — all interfaces
                              lan | primary          — primary LAN IPv4
                              tailscale | ts         — Tailscale IPv4
                              <ip or hostname>       — exact bind address
-  --port <port>            Listen port (default: 3456; skips port prompt)
-  --token <token>          Auth token (default: auto-generate)
+  --port <port>            Listen port (default: 3460; skips port prompt)
+  --token <token>          Auth token (default: auto-generate). Visible in
+                           `ps` while the installer runs; prefer --token-file
+  --token-file <path>      Read the auth token from a file (first line)
   --no-token               Disable token auth (unsafe on public binds)
-  --install-path <path>    Binary path (default: /usr/local/bin/jean-server,
-                           or ~/.local/bin/jean-server with --user-install)
+  --install-path <path>    Binary path (default: /usr/local/bin/splitkick-server,
+                           or ~/.local/bin/splitkick-server with --user-install)
   --user <name>            Systemd service user (default: root, or current user
                            with --user-install)
   --user-install           Install for the current user (user systemd unit)
-  --service-name <name>    Unit name without .service (default: jean-server)
+  --service-name <name>    Unit name without .service (default: splitkick-server)
   --env-file <path>        Environment file path
-  --data-dir <path>        JEAN_DATA_DIR for projects/prefs
-  --repo <owner/name>      GitHub repo (default: coollabsio/jean)
+  --data-dir <path>        SPLITKICK_DATA_DIR for projects/prefs (default:
+                           ~/.local/share/app.splitkick.desktop of the user)
+  --repo <owner/name>      GitHub repo (default: azeitler/splitkick)
   --tarball <path>         Install from a local release .tar.gz instead of GitHub
   --no-service             Install binary + env only (skip service registration)
   --no-start               Do not start the service after install
@@ -89,7 +97,7 @@ Options:
   -h, --help               Show this help
 
 Environment:
-  JEAN_REPO JEAN_VERSION JEAN_HOST JEAN_PORT JEAN_TOKEN
+  SPLITKICK_REPO SPLITKICK_VERSION JEAN_HOST JEAN_PORT JEAN_TOKEN
   JEAN_SERVER_INSTALL_PATH JEAN_SERVER_SERVICE JEAN_SERVER_USER
   JEAN_SERVER_ENV_FILE JEAN_SERVER_DATA_DIR
 EOF
@@ -116,11 +124,12 @@ detect_arch() {
 }
 
 normalize_version() {
-  # v0.1.66 -> 0.1.66 ; latest stays latest until resolved
+  # splitkick-v1.5.16 / v1.5.16 -> 1.5.16 ; latest stays latest until resolved
   local v="$1"
   if [[ "$v" == latest ]]; then
     echo "latest"
   else
+    v="${v#"$TAG_PREFIX"}"
     echo "${v#v}"
   fi
 }
@@ -131,7 +140,7 @@ resolve_latest_tag() {
   tag="$(
     curl -fsSL \
       -H "Accept: application/vnd.github+json" \
-      -H "User-Agent: jean-server-installer" \
+      -H "User-Agent: splitkick-server-installer" \
       "${GITHUB_API}/repos/${REPO}/releases/latest" \
       | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
       | head -n1
@@ -154,7 +163,7 @@ download() {
   local url="$1"
   local out="$2"
   curl -fsSL \
-    -H "User-Agent: jean-server-installer" \
+    -H "User-Agent: splitkick-server-installer" \
     -o "$out" \
     "$url"
 }
@@ -199,14 +208,14 @@ extract_binary_from_tarball() {
   mkdir -p "$out_dir"
   tar -xzf "$tarball" -C "$out_dir"
 
-  # Prefer jean-server, else jean-server-linux-*
-  if [[ -f "$out_dir/jean-server" ]]; then
-    echo "$out_dir/jean-server"
+  # Prefer splitkick-server, else splitkick-server-linux-*
+  if [[ -f "$out_dir/splitkick-server" ]]; then
+    echo "$out_dir/splitkick-server"
     return
   fi
 
-  extracted="$(find "$out_dir" -type f \( -name 'jean-server' -o -name 'jean-server-linux-*' \) | head -n1 || true)"
-  [[ -n "$extracted" ]] || die "jean-server binary not found inside tarball"
+  extracted="$(find "$out_dir" -type f \( -name 'splitkick-server' -o -name 'splitkick-server-linux-*' \) | head -n1 || true)"
+  [[ -n "$extracted" ]] || die "splitkick-server binary not found inside tarball"
   echo "$extracted"
 }
 
@@ -224,7 +233,7 @@ write_env_file() {
 
   umask 077
   {
-    echo "# Generated by install-jean-server.sh — do not commit"
+    echo "# Generated by install-splitkick-server.sh — do not commit"
     echo "JEAN_HOST=${host}"
     echo "JEAN_PORT=${port}"
     if [[ "$no_token" == "1" ]]; then
@@ -233,7 +242,7 @@ write_env_file() {
       echo "JEAN_TOKEN=${token}"
     fi
     if [[ -n "$data_dir" ]]; then
-      echo "JEAN_DATA_DIR=${data_dir}"
+      echo "SPLITKICK_DATA_DIR=${data_dir}"
     fi
   } >"$path"
   chmod 600 "$path"
@@ -248,7 +257,7 @@ write_systemd_unit() {
   local binary="$2"
   local env_file="$3"
   local user="$4"
-  local description="Jean headless server"
+  local description="Splitkick headless server"
 
   mkdir -p "$(dirname "$unit_path")"
   cat >"$unit_path" <<EOF
@@ -280,7 +289,7 @@ write_user_systemd_unit() {
   mkdir -p "$(dirname "$unit_path")"
   cat >"$unit_path" <<EOF
 [Unit]
-Description=Jean headless server
+Description=Splitkick headless server
 Documentation=https://github.com/${REPO}
 After=network-online.target
 Wants=network-online.target
@@ -304,10 +313,10 @@ print_openrc_unit() {
   local user="$3"
   cat <<EOF
 
-# systemd not detected. Example OpenRC service (/etc/init.d/jean-server):
+# systemd not detected. Example OpenRC service (/etc/init.d/splitkick-server):
 #
 # #!/sbin/openrc-run
-# name="jean-server"
+# name="splitkick-server"
 # command="${binary}"
 # command_args="--headless"
 # command_user="${user}"
@@ -317,7 +326,7 @@ print_openrc_unit() {
 #
 # depend() { need net; }
 #
-# Then: rc-update add jean-server default && rc-service jean-server start
+# Then: rc-update add splitkick-server default && rc-service splitkick-server start
 EOF
 }
 
@@ -519,8 +528,8 @@ prompt_bind_settings() {
 
   if [[ "$HOST_EXPLICIT" != "1" || -z "$HOST" ]]; then
     echo
-    log "Choose which interface jean-server should bind to"
-    echo "  Jean will listen only on the address you pick."
+    log "Choose which interface splitkick-server should bind to"
+    echo "  Splitkick will listen only on the address you pick."
     echo "  Use \"all interfaces\" to accept LAN/public connections (token auth stays on)."
     echo
 
@@ -601,6 +610,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --token) TOKEN="$2"; shift 2 ;;
+    --token-file)
+      [[ $# -ge 2 ]] || die "--token-file requires a path"
+      TOKEN_FILE="$2"
+      shift 2
+      ;;
     --no-token) NO_TOKEN=1; shift ;;
     --install-path) INSTALL_PATH="$2"; shift 2 ;;
     --user) SERVICE_USER="$2"; shift 2 ;;
@@ -624,13 +638,13 @@ done
 
 # Defaults that depend on install mode
 if [[ "$USER_INSTALL" == "1" ]]; then
-  INSTALL_PATH="${INSTALL_PATH:-$HOME/.local/bin/jean-server}"
-  ENV_FILE="${ENV_FILE:-$HOME/.config/jean-server/jean-server.env}"
+  INSTALL_PATH="${INSTALL_PATH:-$HOME/.local/bin/splitkick-server}"
+  ENV_FILE="${ENV_FILE:-$HOME/.config/splitkick-server/splitkick-server.env}"
   SERVICE_USER="${SERVICE_USER:-$(id -un)}"
-  DATA_DIR="${DATA_DIR:-$HOME/.local/share/com.jean.desktop}"
+  # No DATA_DIR default: splitkick-server picks ~/.local/share/app.splitkick.desktop.
 else
-  INSTALL_PATH="${INSTALL_PATH:-/usr/local/bin/jean-server}"
-  ENV_FILE="${ENV_FILE:-/etc/jean-server.env}"
+  INSTALL_PATH="${INSTALL_PATH:-/usr/local/bin/splitkick-server}"
+  ENV_FILE="${ENV_FILE:-/etc/splitkick-server.env}"
   SERVICE_USER="${SERVICE_USER:-root}"
 fi
 
@@ -662,14 +676,26 @@ HOST="${HOST:-$DEFAULT_HOST}"
 PORT="${PORT:-$DEFAULT_PORT}"
 validate_port "$PORT" || die "Invalid port: ${PORT} (need 1-65535)"
 
-# Validate host/token safety similar to jean-server
+if [[ -n "$TOKEN_FILE" ]]; then
+  [[ -r "$TOKEN_FILE" ]] || die "Token file not readable: ${TOKEN_FILE}"
+  TOKEN="$(head -n1 "$TOKEN_FILE" | tr -d '[:space:]')"
+  [[ -n "$TOKEN" ]] || die "Token file is empty: ${TOKEN_FILE}"
+fi
+
+# An upstream Jean server keeps running next to this one (its own unit,
+# port and data folder); nothing is migrated.
+if [[ -f /etc/systemd/system/jean-server.service || -f "${HOME}/.config/systemd/user/jean-server.service" ]]; then
+  warn "An upstream Jean server (jean-server.service) is installed on this host. It is not changed or migrated; Splitkick installs next to it."
+fi
+
+# Validate host/token safety similar to splitkick-server
 if [[ "$NO_TOKEN" == "1" ]] && is_wildcard_bind "$HOST"; then
   die "Refusing --no-token with public bind host ${HOST}. Use a token or bind to 127.0.0.1."
 fi
 
 # Token resolution:
 # 1) --no-token
-# 2) --token / JEAN_TOKEN (already in TOKEN)
+# 2) --token-file / --token / JEAN_TOKEN (already in TOKEN)
 # 3) existing env file on reinstall
 # 4) freshly generated (printed once)
 PRINT_TOKEN=0
@@ -693,7 +719,7 @@ fi
 ARCH="$(detect_arch)"
 ASSET_ARCH="linux-${ARCH}"
 
-TMPDIR_INSTALL="$(mktemp -d "${TMPDIR:-/tmp}/jean-server-install.XXXXXX")"
+TMPDIR_INSTALL="$(mktemp -d "${TMPDIR:-/tmp}/splitkick-server-install.XXXXXX")"
 cleanup() { rm -rf "$TMPDIR_INSTALL"; }
 trap cleanup EXIT
 
@@ -714,11 +740,10 @@ else
     log "Resolving latest release for ${REPO}"
     TAG="$(resolve_latest_tag)"
   else
-    TAG="$VERSION"
-    [[ "$TAG" == v* ]] || TAG="v${TAG}"
+    TAG="${TAG_PREFIX}$(normalize_version "$VERSION")"
   fi
   VERSION_NUM="$(normalize_version "$TAG")"
-  ASSET="jean-server-${ASSET_ARCH}-${VERSION_NUM}.tar.gz"
+  ASSET="splitkick-server-${ASSET_ARCH}-${VERSION_NUM}.tar.gz"
   BASE_URL="${GITHUB_DOWNLOAD}/${REPO}/releases/download/${TAG}"
   TARBALL_URL="${BASE_URL}/${ASSET}"
   SHA_URL="${TARBALL_URL}.sha256"
@@ -727,12 +752,9 @@ else
   TARBALL_PATH="${TMPDIR_INSTALL}/${ASSET}"
   SHA_PATH="${TMPDIR_INSTALL}/${ASSET}.sha256"
   download "$TARBALL_URL" "$TARBALL_PATH" || die "Download failed: ${TARBALL_URL}"
-  if download "$SHA_URL" "$SHA_PATH"; then
-    log "Verifying SHA-256"
-    verify_sha256 "$TARBALL_PATH" "$SHA_PATH"
-  else
-    warn "No .sha256 asset found; skipping checksum verification"
-  fi
+  download "$SHA_URL" "$SHA_PATH" || die "Checksum download failed: ${SHA_URL}"
+  log "Verifying SHA-256"
+  verify_sha256 "$TARBALL_PATH" "$SHA_PATH"
 fi
 
 log "Extracting binary"
@@ -822,7 +844,7 @@ else
 fi
 
 echo
-log "jean-server installed"
+log "splitkick-server installed"
 echo "  binary : ${INSTALL_PATH}"
 echo "  env    : ${ENV_FILE}"
 echo "  bind   : ${HOST}:${PORT}"

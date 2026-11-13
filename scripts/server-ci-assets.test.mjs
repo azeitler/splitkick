@@ -4,17 +4,31 @@ import test from 'node:test'
 
 const read = path => readFileSync(path, 'utf8')
 
-test('server release workflow builds binaries and publishes docker image', () => {
-  const workflow = read('.github/workflows/server-release.yml')
+test('server build workflow builds binaries and publishes docker image', () => {
+  const workflow = read('.github/workflows/server-build.yml')
 
-  assert.doesNotMatch(workflow, /workflow_id: 'ci-build\.yml'/)
+  assert.match(workflow, /workflow_call:/)
   assert.match(workflow, /needs: metadata/)
   assert.match(workflow, /cd src-server && cargo build --release/)
-  assert.match(workflow, /jean-server-linux-amd64/)
-  assert.match(workflow, /jean-server-linux-arm64/)
+  assert.match(workflow, /splitkick-server-linux-amd64/)
+  assert.match(workflow, /splitkick-server-linux-arm64/)
   assert.match(workflow, /server-latest\.json/)
   assert.match(workflow, /docker\/build-push-action@v6/)
-  assert.match(workflow, /ghcr\.io/)
+  assert.match(workflow, /IMAGE_NAME: \$\{\{ github\.repository_owner \}\}\/splitkick-server/)
+  // The binary must report the release version it is published under.
+  assert.match(workflow, /\[ "\$reported" = "Splitkick \$VERSION" \]/)
+  assert.doesNotMatch(workflow, /jean-server/)
+  assert.equal(existsSync('.github/workflows/server-release.yml'), false)
+})
+
+test('every published Splitkick release also builds the server', () => {
+  const ci = read('.github/workflows/ci-build.yml')
+  const preflight = read('.github/workflows/preflight.yml')
+
+  assert.match(ci, /uses: \.\/\.github\/workflows\/server-build\.yml/)
+  assert.match(ci, /needs\.preflight\.outputs\.published == 'true'/)
+  assert.match(ci, /packages: write/)
+  assert.match(preflight, /value: \$\{\{ jobs\.publish\.outputs\.published \}\}/)
 })
 
 test('native release workflow does not require a previous CI build', () => {
@@ -24,7 +38,7 @@ test('native release workflow does not require a previous CI build', () => {
   assert.match(workflow, /needs: prepare-release/)
 })
 
-test('Dockerfile builds and runs jean-server headlessly as non-root user', () => {
+test('Dockerfile builds and runs splitkick-server headlessly as non-root user', () => {
   const dockerfile = read('Dockerfile.server')
 
   assert.match(dockerfile, /bun run build/)
@@ -34,15 +48,30 @@ test('Dockerfile builds and runs jean-server headlessly as non-root user', () =>
     dockerfile,
     /cd src-server && RUSTC_WRAPPER= cargo build --release/
   )
-  assert.match(dockerfile, /USER jean/)
-  assert.match(dockerfile, /chown -R jean:jean \/home\/jean/)
+  assert.match(dockerfile, /USER splitkick/)
+  assert.match(dockerfile, /chown -R splitkick:splitkick \/home\/splitkick/)
   assert.match(dockerfile, /JEAN_HOST=0\.0\.0\.0/)
   assert.doesNotMatch(dockerfile, /webkit|gtk|appindicator|xvfb|xauth/i)
-  assert.match(dockerfile, /jean-server-entrypoint/)
+  assert.match(dockerfile, /splitkick-server-entrypoint/)
   assert.match(
     dockerfile,
-    /ENTRYPOINT \["\/usr\/local\/bin\/jean-server-entrypoint"\]/
+    /ENTRYPOINT \["\/usr\/local\/bin\/splitkick-server-entrypoint"\]/
   )
+  // build.rs reads the release version from the fork config.
+  assert.match(dockerfile, /COPY src-tauri\/tauri\.fork\.conf\.json/)
+})
+
+test('server images keep data in the Splitkick data folder on a volume', () => {
+  for (const file of ['Dockerfile.server', 'Dockerfile.server-runtime']) {
+    const dockerfile = read(file)
+    assert.match(
+      dockerfile,
+      /VOLUME \["\/home\/splitkick\/\.local\/share\/app\.splitkick\.desktop"\]/,
+      file
+    )
+    assert.match(dockerfile, /EXPOSE 3460/, file)
+    assert.doesNotMatch(dockerfile, /com\.jean\.desktop|jean-server/, file)
+  }
 })
 
 /** Shared assertions: server images ship GitHub CLI from the official apt repo. */
@@ -68,24 +97,24 @@ test('Dockerfile.server-runtime installs GitHub CLI for onboarding and PATH tool
   assertServerImageInstallsGh(read('Dockerfile.server-runtime'))
 })
 
-test('jean-server depends only on the Tauri-free shared core', () => {
+test('splitkick-server depends only on the Tauri-free shared core', () => {
   const cargoToml = read('src-tauri/Cargo.toml')
   const coreCargoToml = read('jean-core/Cargo.toml')
   const serverCargoToml = read('src-server/Cargo.toml')
 
-  assert.doesNotMatch(cargoToml, /jean-server/)
+  assert.doesNotMatch(cargoToml, /splitkick-server/)
   assert.match(cargoToml, /jean-core = \{ path = "\.\.\/jean-core" \}/)
-  assert.match(serverCargoToml, /name = "jean-server"/)
+  assert.match(serverCargoToml, /name = "splitkick-server"/)
   assert.match(serverCargoToml, /jean-core = \{ path = "\.\.\/jean-core" \}/)
   assert.doesNotMatch(serverCargoToml, /src-tauri|tauri/i)
   assert.doesNotMatch(coreCargoToml, /tauri|wry|webkit|gtk/i)
 })
 
-test('Docker entrypoint starts jean-server directly without a display server', () => {
+test('Docker entrypoint starts splitkick-server directly without a display server', () => {
   const entrypoint = read('scripts/docker-entrypoint.sh')
 
   assert.doesNotMatch(entrypoint, /Xvfb|DISPLAY|WAYLAND|sleep/i)
-  assert.match(entrypoint, /exec jean-server "\$@"/)
+  assert.match(entrypoint, /exec splitkick-server "\$@"/)
 })
 
 test('shared dispatcher is owned by jean-core and used by the desktop adapter', () => {

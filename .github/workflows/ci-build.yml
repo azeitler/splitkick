@@ -21,3 +21,18 @@ jobs:
     with:
       publishFlavor: true
     secrets: inherit
+
+  # Adds the headless server (Linux tarballs, server-latest.json, Docker image)
+  # to the release preflight just published. A release made with GITHUB_TOKEN
+  # does not trigger `release:` workflows, so it is chained here.
+  server:
+    name: Server
+    needs: preflight
+    # !cancelled(): a failed Windows build fails preflight but still publishes.
+    if: ${{ !cancelled() && needs.preflight.outputs.published == 'true' }}
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/server-build.yml
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}

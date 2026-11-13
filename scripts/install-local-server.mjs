@@ -27,9 +27,15 @@ export function buildInstallPlan({ env = process.env } = {}) {
         ['build', '--release', '--manifest-path', 'src-server/Cargo.toml'],
       ],
     ],
-    builtBinary: resolve(root, 'src-server/target/release/jean-server'),
-    installPath: env.JEAN_SERVER_INSTALL_PATH ?? '/usr/local/bin/jean-server',
-    service: env.JEAN_SERVER_SERVICE ?? 'jean-server.service',
+    builtBinary: resolve(root, 'src-server/target/release/splitkick-server'),
+    installPath:
+      env.SPLITKICK_SERVER_INSTALL_PATH ??
+      env.JEAN_SERVER_INSTALL_PATH ??
+      '/usr/local/bin/splitkick-server',
+    service:
+      env.SPLITKICK_SERVER_SERVICE ??
+      env.JEAN_SERVER_SERVICE ??
+      'splitkick-server.service',
   }
 }
 
@@ -81,21 +87,21 @@ function startBackground(args) {
     }
   )
   child.unref()
-  console.log(`Installing jean-server in the background. Log: ${logPath}`)
+  console.log(`Installing splitkick-server in the background. Log: ${logPath}`)
 }
 
 function usage() {
   console.log(`Usage: bun run install:local:server [-- --foreground]
 
-Builds the frontend and jean-server release binary, atomically replaces the
-local server binary, and asks systemd to restart jean-server.service.
+Builds the frontend and splitkick-server release binary, atomically replaces the
+local server binary, and asks systemd to restart splitkick-server.service.
 
 Options:
   --foreground  Run in this terminal instead of detaching
 
 Environment:
-  JEAN_SERVER_INSTALL_PATH  Binary to replace (default: /usr/local/bin/jean-server)
-  JEAN_SERVER_SERVICE       systemd unit to restart (default: jean-server.service)
+  SPLITKICK_SERVER_INSTALL_PATH  Binary to replace (default: /usr/local/bin/splitkick-server)
+  SPLITKICK_SERVER_SERVICE       systemd unit to restart (default: splitkick-server.service)
 `)
 }
 
@@ -132,14 +138,14 @@ async function main() {
     throw new Error(`systemd service is not loaded: ${plan.service}`)
   }
   if (!existsSync(plan.installPath)) {
-    throw new Error(`Installed jean-server not found: ${plan.installPath}`)
+    throw new Error(`Installed splitkick-server not found: ${plan.installPath}`)
   }
 
   for (const [command, commandArgs] of plan.buildCommands) {
     run(command, commandArgs)
   }
   if (!existsSync(plan.builtBinary)) {
-    throw new Error(`Built jean-server not found: ${plan.builtBinary}`)
+    throw new Error(`Built splitkick-server not found: ${plan.builtBinary}`)
   }
 
   const temporaryPath = `${plan.installPath}.new-${process.pid}`

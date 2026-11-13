@@ -75,7 +75,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and [docs/devel
 
 ## Platform support
 
-macOS on Apple Silicon. Linux and Windows desktop builds are planned. The headless server is upstream Jean's `jean-server`; see [docs/headless-server.md](docs/headless-server.md).
+macOS on Apple Silicon. Linux and Windows desktop builds are planned. Each release also ships the headless server `splitkick-server` for Linux (amd64, arm64) and as the Docker image `ghcr.io/azeitler/splitkick-server`; see [docs/headless-server.md](docs/headless-server.md).
 
 ## Security
 

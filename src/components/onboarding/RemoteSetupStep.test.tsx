@@ -88,10 +88,10 @@ describe('RemoteSetupStep', () => {
     })
   })
 
-  it('installs jean-server via SSH and connects', async () => {
+  it('installs splitkick-server via SSH and connects', async () => {
     invoke.mockResolvedValue({
       name: 'build-box',
-      url: 'http://192.168.1.50:3456',
+      url: 'http://192.168.1.50:3460',
       token: 'tok-abc',
       alreadyInstalled: false,
       installMode: 'system',
@@ -119,7 +119,7 @@ describe('RemoteSetupStep', () => {
         user: 'ubuntu',
         host: '192.168.1.50',
         sshPort: 22,
-        jeanPort: 3456,
+        jeanPort: 3460,
         userInstall: null,
       })
       expect(addRemoteConnection).toHaveBeenCalled()

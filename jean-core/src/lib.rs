@@ -4916,7 +4916,7 @@ pub async fn run_server() -> Result<(), String> {
     let handle =
         http_server::server::start_server(context.clone(), port, token, bind_host, token_required)
             .await?;
-    println!("Jean server listening on {}", handle.url);
+    println!("Splitkick server listening on {}", handle.url);
 
     let handle_state = context
         .state::<std::sync::Arc<tokio::sync::Mutex<Option<http_server::server::HttpServerHandle>>>>(

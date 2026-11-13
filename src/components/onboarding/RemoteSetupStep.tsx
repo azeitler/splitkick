@@ -1,5 +1,5 @@
 /**
- * Onboarding remote setup: install jean-server over SSH or connect an existing
+ * Onboarding remote setup: install splitkick-server over SSH or connect an existing
  * Web Access URL. On success, selects the connection and reloads so CLI setup
  * (if needed) continues against the remote.
  */
@@ -43,7 +43,7 @@ const EMPTY_INSTALL_FORM = {
   user: '',
   host: '',
   sshPort: '22',
-  jeanPort: '3456',
+  jeanPort: '3460',
 }
 
 type AddMode = 'url' | 'install'
@@ -147,7 +147,7 @@ export function RemoteSetupStep({
     }
 
     const sshPort = Number(installForm.sshPort || '22')
-    const jeanPort = Number(installForm.jeanPort || '3456')
+    const jeanPort = Number(installForm.jeanPort || '3460')
     if (
       !Number.isInteger(sshPort) ||
       sshPort < 1 ||
@@ -156,9 +156,7 @@ export function RemoteSetupStep({
       jeanPort < 1 ||
       jeanPort > 65535
     ) {
-      setError(
-        'SSH and Jean server ports must be integers between 1 and 65535.'
-      )
+      setError('SSH and server ports must be integers between 1 and 65535.')
       return
     }
 
@@ -180,7 +178,7 @@ export function RemoteSetupStep({
       )
 
       if (!result.ready) {
-        throw new Error('Remote jean-server did not report ready.')
+        throw new Error('Remote Splitkick server did not report ready.')
       }
 
       const connection = await addRemoteConnection({
@@ -287,7 +285,7 @@ export function RemoteSetupStep({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="onboarding-remote-install-jean-port">
-              Jean server port
+              Server port
             </Label>
             <Input
               id="onboarding-remote-install-jean-port"
@@ -307,9 +305,9 @@ export function RemoteSetupStep({
         </div>
         <p className="text-xs text-muted-foreground">
           Requires SSH key auth to the host (no password prompt). {PRODUCT_NAME}{' '}
-          installs the Jean server via the official installer, checks health,
-          then connects. After connecting, AI CLI setup continues on the remote
-          if needed.
+          installs its server (the same version as this app) from the{' '}
+          {PRODUCT_NAME} release, checks health, then connects. After
+          connecting, AI CLI setup continues on the remote if needed.
         </p>
         {progress && (
           <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">

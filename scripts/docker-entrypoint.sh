@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
 
-exec jean-server "$@"
+exec splitkick-server "$@"
