@@ -39,7 +39,7 @@ pub fn label_for_connection(connection_id: &str) -> Option<String> {
     usable.then(|| format!("{REMOTE_LABEL_PREFIX}{connection_id}"))
 }
 
-fn focus(window: &tauri::WebviewWindow) -> Result<(), String> {
+fn focus(window: &tauri::Window) -> Result<(), String> {
     let _ = window.unminimize();
     let _ = window.show();
     ensure_usable_geometry(window);
@@ -78,7 +78,7 @@ fn is_usable_frame(
 /// `tauri-plugin-window-state` restores the saved size and position per label.
 /// A state saved on another display layout — or a broken one — can leave a
 /// window that exists, and shows in the Window menu, but cannot be seen.
-pub fn ensure_usable_geometry(window: &tauri::WebviewWindow) {
+pub fn ensure_usable_geometry(window: &tauri::Window) {
     if window.is_minimized().unwrap_or(false)
         || window.is_maximized().unwrap_or(false)
         || window.is_fullscreen().unwrap_or(false)
@@ -164,7 +164,11 @@ pub async fn open_connection_window(
     let label = label_for_connection(&connection_id)
         .ok_or_else(|| format!("'{connection_id}' cannot have a window of its own"))?;
 
-    if let Some(existing) = app.get_webview_window(&label) {
+    // `get_window`, not `get_webview_window`: a window that holds the browser
+    // pane has a second webview, and Tauri then no longer counts it as a
+    // webview window. The lookup missed it and the build failed with
+    // "a webview with label … already exists".
+    if let Some(existing) = app.get_window(&label) {
         focus(&existing)?;
         return Ok(label);
     }
@@ -184,7 +188,7 @@ pub async fn open_connection_window(
 
 /// Bring `main` to the front, rebuilding it when it was closed.
 pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
-    match app.get_webview_window(MAIN_WINDOW) {
+    match app.get_window(MAIN_WINDOW) {
         Some(window) => focus(&window),
         None => recreate_main_window(app),
     }
@@ -218,8 +222,9 @@ pub async fn focus_main_window(
 /// screen, and to decide whether an edited connection needs its window rebuilt.
 #[tauri::command]
 pub async fn list_connection_windows(app: AppHandle) -> Result<Vec<String>, String> {
+    // `windows()`: also finds a window that holds the browser pane.
     Ok(app
-        .webview_windows()
+        .windows()
         .keys()
         .filter_map(|label| label.strip_prefix(REMOTE_LABEL_PREFIX))
         .map(str::to_string)
@@ -233,7 +238,7 @@ pub async fn close_connection_window(app: AppHandle, connection_id: String) -> R
     let Some(label) = label_for_connection(&connection_id) else {
         return Ok(());
     };
-    if let Some(window) = app.get_webview_window(&label) {
+    if let Some(window) = app.get_window(&label) {
         window.destroy().map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -242,7 +247,7 @@ pub async fn close_connection_window(app: AppHandle, connection_id: String) -> R
 /// Build `main` again after the user closed it. Running sessions can hold the
 /// app alive with no windows left, and then there is no way back in.
 pub fn recreate_main_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+    if let Some(window) = app.get_window(MAIN_WINDOW) {
         return focus(&window);
     }
     let title = product_name(app);
@@ -327,5 +332,56 @@ mod tests {
     #[test]
     fn local_never_gets_a_window_of_its_own() {
         assert_eq!(label_for_connection("local"), None);
+    }
+
+    /// A window that holds the browser pane has a second webview, and Tauri
+    /// then hides it from `get_webview_window` / `webview_windows()`. Code that
+    /// looks for a window must use `get_window` / `windows()`; only setup code,
+    /// which runs before any browser pane exists, may keep the webview lookup.
+    #[test]
+    fn window_lookups_also_find_windows_with_a_browser_pane() {
+        const ALLOWED: &[(&str, usize)] = &[
+            // Setup: vibrancy and `configure_app_window` on the config `main`.
+            ("lib.rs", 2),
+            // Windows WebView2 crash hook, installed during setup.
+            ("platform/windows_webview.rs", 1),
+        ];
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src.clone()];
+        let mut found = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                // Count code only: this test names the calls in its own text.
+                let code = text.split("#[cfg(test)]").next().unwrap_or("");
+                let count = code.matches(".get_webview_window(").count()
+                    + code.matches(".webview_windows()").count();
+                if count > 0 {
+                    let rel = path
+                        .strip_prefix(&src)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    found.push((rel, count));
+                }
+            }
+        }
+        found.sort();
+        let allowed: Vec<(String, usize)> = ALLOWED
+            .iter()
+            .map(|(file, count)| (file.to_string(), *count))
+            .collect();
+        assert_eq!(
+            found, allowed,
+            "use get_window / windows() to find a window"
+        );
     }
 }

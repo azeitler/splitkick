@@ -317,7 +317,7 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
             // #135: a click that shows nothing must leave a trace.
             log::info!(
                 "Update check (manual): menu click -> window '{label}' (focused: {had_focus}, webview: {})",
-                app.get_webview_window(&label).is_some()
+                app.get_window(&label).is_some()
             );
         }
         if let Err(error) = app.emit_to(

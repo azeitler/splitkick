@@ -256,7 +256,7 @@ pub(crate) fn window_vibrancy_preference() -> bool {
 /// already set. Runs for the config-created `main` window during setup and for
 /// every connection window right after it is built.
 pub(crate) fn configure_app_window(window: &tauri::WebviewWindow) {
-    connection_window::ensure_usable_geometry(window);
+    connection_window::ensure_usable_geometry(&window.as_ref().window());
     #[cfg(target_os = "linux")]
     {
         let _ = window.set_decorations(false);
@@ -492,9 +492,7 @@ pub fn run() {
             // Catches a window raised from the macOS Window menu, which AppKit
             // handles without going through `focus_main_window` and friends.
             if let tauri::WindowEvent::Focused(true) = event {
-                if let Some(window) = window.app_handle().get_webview_window(window.label()) {
-                    connection_window::ensure_usable_geometry(&window);
-                }
+                connection_window::ensure_usable_geometry(window);
                 // Activation after a suspend: check the page still answers.
                 webview_watchdog::ping_window(window.app_handle(), window.label(), "focus");
             }
@@ -583,7 +581,7 @@ pub fn run() {
                     // may have been a connection window, and `main` may be
                     // gone. Keeping a hidden window means the user can get the
                     // app back.
-                    let windows = app.webview_windows();
+                    let windows = app.windows();
                     for window in windows.values() {
                         let _ = window.hide();
                     }
@@ -598,7 +596,7 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
-                let windows = app.webview_windows();
+                let windows = app.windows();
                 if windows.is_empty() {
                     if let Err(error) = connection_window::recreate_main_window(app) {
                         log::warn!("Failed to reopen the main window: {error}");
@@ -608,7 +606,7 @@ pub fn run() {
                         let _ = window.show();
                     }
                     let focus_target = app
-                        .get_webview_window(connection_window::MAIN_WINDOW)
+                        .get_window(connection_window::MAIN_WINDOW)
                         .or_else(|| windows.values().next().cloned());
                     if let Some(window) = focus_target {
                         let _ = window.set_focus();

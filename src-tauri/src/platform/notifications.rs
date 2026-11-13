@@ -3,7 +3,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 #[cfg(target_os = "windows")]
 pub fn restore_main_window<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();

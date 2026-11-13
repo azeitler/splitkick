@@ -307,7 +307,7 @@ async fn recover_unanswered(app: &AppHandle, label: &str, reason: &str) {
 /// Whether window `label` is on screen. Hidden and minimized windows are not
 /// pinged: there is nothing to look at, and WebKit may throttle them.
 fn is_on_screen(app: &AppHandle, label: &str) -> bool {
-    app.get_webview_window(label).is_some_and(|window| {
+    app.get_window(label).is_some_and(|window| {
         window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
     })
 }
@@ -362,7 +362,7 @@ pub(crate) fn ping_window(app: &AppHandle, label: &str, reason: &'static str) {
 }
 
 fn ping_all(app: &AppHandle, reason: &'static str) {
-    for label in app.webview_windows().into_keys() {
+    for label in app.windows().into_keys() {
         ping_window(app, &label, reason);
     }
 }

@@ -103,7 +103,7 @@ pub async fn send_native_notification(
 ) -> Result<(), String> {
     // One dock bounce (macOS) or taskbar flash: the session waits for the user.
     if request_attention == Some(true) {
-        if let Some(window) = app.get_webview_window(crate::connection_window::MAIN_WINDOW) {
+        if let Some(window) = app.get_window(crate::connection_window::MAIN_WINDOW) {
             let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
         }
     }
@@ -158,7 +158,7 @@ pub(crate) fn set_open_at_login(app: AppHandle, enabled: bool) -> Result<(), Str
 
 pub(crate) fn install_schedule_notifier(app: AppHandle) {
     jean_core::set_run_notifier(move |notice: jean_core::ScheduledRunNotice| {
-        if !app.webview_windows().is_empty() {
+        if !app.windows().is_empty() {
             return;
         }
         let app = app.clone();
