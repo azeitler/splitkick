@@ -250,7 +250,7 @@ function UsageRing({ percent }: { percent: number }) {
  * Title bar badge with the highest plan-limit figure across signed-in
  * backends. A click opens the full Usage pane in a popover.
  */
-export function UsagePopover() {
+export function UsagePopover({ className }: { className?: string } = {}) {
   const [open, setOpen] = useState(false)
   // Same gate as the dock badge: dev builds only fetch on demand, so a
   // restart loop does not hit the usage endpoints' rate limits.
@@ -269,7 +269,7 @@ export function UsagePopover() {
   }, [])
 
   return (
-    <div className="flex items-center gap-1">
+    <div className={cn('flex items-center gap-1', className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <Tooltip>
           <TooltipTrigger asChild>
