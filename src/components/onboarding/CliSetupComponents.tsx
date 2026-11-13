@@ -402,6 +402,55 @@ export function AuthCheckingState({ cliName }: AuthCheckingStateProps) {
   )
 }
 
+export interface AuthCheckFailedStateProps {
+  cliName: string
+  /** Why the check after a finished login still failed (from the CLI). */
+  error: string
+  onCheckAgain: () => void
+  onLoginAgain: () => void
+}
+
+/**
+ * Shown when a login finished but the status check still fails. The user
+ * picks the next step, so a check that keeps failing cannot reopen the login
+ * terminal in a loop.
+ */
+export function AuthCheckFailedState({
+  cliName,
+  error,
+  onCheckAgain,
+  onLoginAgain,
+}: AuthCheckFailedStateProps) {
+  return (
+    <div className="space-y-4">
+      <div className="text-center">
+        <p className="font-medium">{cliName} Login Not Confirmed</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          The login finished, but the status check still fails.
+        </p>
+      </div>
+      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+        <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+          {error}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={onCheckAgain} className="flex-1" size="lg">
+          Check Again
+        </Button>
+        <Button
+          onClick={onLoginAgain}
+          variant="outline"
+          className="flex-1"
+          size="lg"
+        >
+          Log In Again
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export interface AuthLoginStateProps {
   cliName: string
   terminalId: string

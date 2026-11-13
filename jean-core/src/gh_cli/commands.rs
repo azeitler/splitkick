@@ -789,11 +789,18 @@ pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
             error: None,
         })
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::warn!("GitHub CLI auth check failed: {}", stderr);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // `gh auth token` reads the saved token offline. Only its success is
+        // used; the token itself is never logged or returned.
+        let token_saved = crate::platform::wsl_aware_command(&binary_str, None)
+            .args(["auth", "token"])
+            .output()
+            .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty());
+        let error = gh_auth_failure_message(&stderr, token_saved);
+        log::warn!("GitHub CLI auth check failed: {error}");
         Ok(GhAuthStatus {
             authenticated: false,
-            error: Some(stderr),
+            error: Some(error),
         })
     }
 }
@@ -866,5 +873,53 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
 
     if let Err(e) = app.emit_all("gh-cli:install-progress", &progress) {
         log::warn!("Failed to emit install progress: {}", e);
+    }
+}
+
+/// Error text for a failed `gh auth status`. `gh` reports a network failure
+/// as "The token in keyring is invalid", so a saved token (found offline with
+/// `gh auth token`) is named here: the login exists, GitHub did not confirm it.
+/// `gh auth token` reads the keychain directly, so it can succeed while gh's
+/// config has no account; gh's "not logged into any" message wins then.
+fn gh_auth_failure_message(stderr: &str, token_saved: bool) -> String {
+    let gh_said = stderr.trim();
+    let no_account = gh_said.contains("not logged into any");
+    if token_saved && !no_account {
+        return format!(
+            "GitHub CLI has a saved login, but GitHub did not confirm it. \
+             Either GitHub could not be reached (network, proxy or VPN) or the \
+             token was revoked. gh said: {gh_said}"
+        );
+    }
+    if gh_said.is_empty() {
+        return "GitHub CLI is not logged in.".to_string();
+    }
+    gh_said.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gh_auth_failure_message;
+
+    #[test]
+    fn saved_token_failure_names_the_unconfirmed_login() {
+        let gh_said = "github.com\n  X Failed to log in to github.com account a (keyring)\n  - The token in keyring is invalid.";
+        let message = gh_auth_failure_message(gh_said, true);
+        assert!(message.starts_with("GitHub CLI has a saved login, but GitHub did not confirm it"));
+        assert!(message.contains("network"));
+        assert!(message.contains("The token in keyring is invalid."));
+    }
+
+    #[test]
+    fn missing_token_failure_says_not_logged_in() {
+        assert_eq!(
+            gh_auth_failure_message("", false),
+            "GitHub CLI is not logged in."
+        );
+        let gh_said = "You are not logged into any GitHub hosts. To log in, run: gh auth login";
+        assert_eq!(gh_auth_failure_message(gh_said, false), gh_said);
+        // `gh auth token` can still find an old keychain entry when gh's
+        // config lists no host; gh's own "not logged in" wins then.
+        assert_eq!(gh_auth_failure_message(gh_said, true), gh_said);
     }
 }
