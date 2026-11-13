@@ -311,7 +311,7 @@ MainWindow (Top-level orchestrator)
 
 ### Sidebar Sticky Stack
 
-The sidebar (`ProjectsSidebar.tsx`) has the Home row on top, then a tab bar (`SidebarTabs.tsx`): Projects, Recent, Starred, To-Do, Graphs. The tab is `sidebarTab` in the UI store, persisted as `sidebar_tab` (an unknown stored value falls back to Projects, `isSidebarTab`). The Projects panel stays mounted (only `invisible`) under the other tabs, so its scroll position survives and a jump from another tab can reveal its row there; a Starred click switches back to Projects (`showProjectsTab`). `useSidebarReveal` scrolls only once the target row has stopped moving, because groups above it (a project's Starred group, a session list) can still be loading.
+The sidebar (`ProjectsSidebar.tsx`) has the Home row on top, then a tab bar (`SidebarTabs.tsx`): Projects, Recent, Starred, To-Do, Graphs. The tab is `sidebarTab` in the UI store, persisted as `sidebar_tab` (an unknown stored value falls back to Projects, `isSidebarTab`). The Projects panel stays mounted (only `invisible`) under the other tabs, so its scroll position survives and a jump from another tab can reveal its row there. A Starred click keeps the Starred tab and only reveals the row behind it; the command palette switches to Projects (`showProjectsTab`). `useSidebarReveal` scrolls only once the target row has stopped moving, because groups above it (a project's Starred group, a session list) can still be loading.
 
 The Projects tab scrolls Folders and Projects in one list with a sticky stack (#45). The parts that bite:
 
