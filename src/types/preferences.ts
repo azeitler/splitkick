@@ -848,22 +848,22 @@ export interface MagicPromptReasoningEfforts {
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  smoke_test_model: 'claude-opus-4-8[1m]',
-  investigate_issue_model: 'claude-opus-4-8[1m]',
-  investigate_pr_model: 'claude-opus-4-8[1m]',
-  investigate_workflow_run_model: 'claude-opus-4-8[1m]',
+  smoke_test_model: 'claude-opus-5-5',
+  investigate_issue_model: 'claude-opus-5-5',
+  investigate_pr_model: 'claude-opus-5-5',
+  investigate_workflow_run_model: 'claude-opus-5-5',
   pr_content_model: 'sonnet',
   commit_message_model: 'sonnet',
-  code_review_model: 'claude-opus-4-8[1m]',
-  context_summary_model: 'claude-opus-4-8[1m]',
-  resolve_conflicts_model: 'claude-opus-4-8[1m]',
+  code_review_model: 'claude-opus-5-5',
+  context_summary_model: 'claude-opus-5-5',
+  resolve_conflicts_model: 'claude-opus-5-5',
   release_notes_model: 'sonnet',
   session_naming_model: 'sonnet',
-  investigate_security_alert_model: 'claude-opus-4-8[1m]',
-  investigate_advisory_model: 'claude-opus-4-8[1m]',
-  investigate_linear_issue_model: 'claude-opus-4-8[1m]',
-  investigate_sentry_issue_model: 'claude-opus-4-8[1m]',
-  review_comments_model: 'claude-opus-4-8[1m]',
+  investigate_security_alert_model: 'claude-opus-5-5',
+  investigate_advisory_model: 'claude-opus-5-5',
+  investigate_linear_issue_model: 'claude-opus-5-5',
+  investigate_sentry_issue_model: 'claude-opus-5-5',
+  review_comments_model: 'claude-opus-5-5',
 }
 
 function makeMagicPromptModelsPreset(
@@ -1338,6 +1338,7 @@ export interface AppPreferences {
   linear_api_key: string | null // Global Linear personal API key (inherited by all projects)
   sentry_auth_token?: string | null // Global Sentry auth token (inherited by all projects)
   magic_models_auto_initialized: boolean // Whether magic prompt models were auto-set based on installed backends
+  opus_5_5_default_applied?: boolean // One-time move of the old Opus 4.8 (1M) default to Opus 5.5 is done
   claude_cli_source: 'jean' | 'path' // Claude CLI source: 'jean' (managed) or 'path' (system PATH)
   codex_cli_source: 'jean' | 'path' // Codex CLI source: 'jean' (managed) or 'path' (system PATH)
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
@@ -1613,7 +1614,7 @@ export function normalizeClaudeModel(
   // the user picked to the default on the next load.
   return knownClaudeModels.has(model) || CLAUDE_MODEL_ID.test(model)
     ? (model as ClaudeModel)
-    : 'claude-opus-4-8[1m]'
+    : 'claude-opus-5-5'
 }
 
 /** Claude model options for a custom CLI profile (opus/sonnet/haiku aliases). */
@@ -2449,7 +2450,7 @@ export function getEditorLabel(editor: EditorApp | undefined): string {
 
 export const defaultPreferences: AppPreferences = {
   theme: 'system',
-  selected_model: 'claude-opus-4-8[1m]',
+  selected_model: 'claude-opus-5-5',
   thinking_level: 'ultrathink',
   default_effort_level: 'high',
   terminal: isServerWindows() ? 'powershell' : 'terminal',
@@ -2572,6 +2573,7 @@ export const defaultPreferences: AppPreferences = {
   linear_api_key: null, // Default: no global Linear API key
   sentry_auth_token: null, // Default: no global Sentry auth token
   magic_models_auto_initialized: false, // Default: not yet auto-set
+  opus_5_5_default_applied: true,
   claude_cli_source: 'jean', // Default: Jean-managed
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
