@@ -424,6 +424,11 @@ function OnboardingDialogContent() {
         setHistoryStack(h =>
           h[h.length - 1] === current ? h : [...h, current]
         )
+        // The user is now inside the flow: the dialog ends on its own Done
+        // step, App must not close it mid-flow (startup-onboarding.ts).
+        if (!useUIStore.getState().onboardingEngaged) {
+          useUIStore.setState({ onboardingEngaged: true })
+        }
       }
       stepRef.current = next
       _setStepRaw(next)
@@ -918,6 +923,9 @@ function OnboardingDialogContent() {
     if (!onboardingOpen) {
       initializedFlowRef.current = false
       setHistoryStack([])
+      if (useUIStore.getState().onboardingEngaged) {
+        useUIStore.setState({ onboardingEngaged: false })
+      }
       return
     }
 
@@ -2156,12 +2164,22 @@ function OnboardingDialogContent() {
           : {}),
       })
     }
+    // The tour is the next step of the same flow (first start or a manual
+    // re-run). Decide before the flags below reset.
+    const showTour =
+      useUIStore.getState().onboardingManuallyTriggered ||
+      (!!preferences && !preferences.has_seen_feature_tour)
     // Atomically close onboarding and mark as dismissed so it doesn't reappear on reload
     useUIStore.setState({
       onboardingOpen: false,
       onboardingStartStep: null,
       onboardingDismissed: true,
+      onboardingEngaged: false,
     })
+    // Same delay as App's hand-off: let the dialog close before the tour opens
+    if (showTour) {
+      setTimeout(() => useUIStore.getState().setFeatureTourOpen(true), 300)
+    }
   }, [
     claudeSetup,
     codexSetup,
@@ -2194,6 +2212,7 @@ function OnboardingDialogContent() {
       onboardingOpen: false,
       onboardingStartStep: null,
       onboardingDismissed: true,
+      onboardingEngaged: false,
     })
     // Safety: Radix Dialog sometimes fails to restore pointer-events on <body>
     setTimeout(() => {
@@ -2845,7 +2864,7 @@ function OnboardingDialogContent() {
   return (
     <Dialog open={onboardingOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-2xl max-h-[85dvh] flex flex-col"
+        className="sm:max-w-2xl max-h-[calc(100dvh-2rem)] flex flex-col"
         preventClose
       >
         <DialogHeader>

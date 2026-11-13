@@ -23,6 +23,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **First start is one linear flow.** Setup moves forward in one dialog and
+  ends on its own Done step (it no longer closed itself after the last login
+  and skipped Done). "Continue" then opens the feature tour. While setup or the
+  tour runs, nothing else opens on top: the update prompt, the MCP intro and
+  startup toasts with buttons (zoom tip, CLI and host updates) wait until the
+  tour has ended, then come one at a time.
+- **Feature tour fits any window.** The list scrolls inside the dialog, Skip,
+  Back and Next stay visible (also at 600 px height and on a phone), and a
+  step counter shows the progress. Back is new. Keyboard hints show only in
+  the desktop app. The setup dialog and its login terminal also fit at small
+  heights.
 - **GitHub login in setup no longer loops.** When the login finished but the
   status check still failed, setup opened a new `gh auth login` again and
   again and hid the reason. Now it shows the error with Check Again and Log In

@@ -573,7 +573,7 @@ export function AuthLoginState({
         terminalId={terminalId}
         command={command}
         commandArgs={commandArgs}
-        className="h-[min(50dvh,380px)] min-h-[200px] sm:h-[360px]"
+        className="h-[min(40dvh,360px)] min-h-[200px]"
       />
 
       {exitStatus && (

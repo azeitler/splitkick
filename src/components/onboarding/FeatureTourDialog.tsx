@@ -9,6 +9,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
+import { ArrowLeft } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { isNativeApp } from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { formatShortcutDisplay, type ShortcutString } from '@/types/keybindings'
@@ -197,6 +200,9 @@ function FeatureTourDialogContent() {
   const { setFeatureTourOpen } = useUIStore.getState()
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
+  const isMobile = useIsMobile()
+  // Keyboard hints and keys only in the native desktop app (not web/mobile)
+  const keyboardEnabled = isNativeApp() && !isMobile
 
   const markSeen = useCallback(() => {
     if (preferences && !preferences.has_seen_feature_tour) {
@@ -217,6 +223,10 @@ function FeatureTourDialogContent() {
     }
   }, [stepIndex, handleClose])
 
+  const handleBack = useCallback(() => {
+    setStepIndex(i => Math.max(i - 1, 0))
+  }, [])
+
   // Keyboard navigation: arrows, Enter, S
   const onTourKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === 'ArrowRight') {
@@ -224,7 +234,7 @@ function FeatureTourDialogContent() {
       setStepIndex(i => Math.min(i + 1, steps.length - 1))
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault()
-      setStepIndex(i => Math.max(i - 1, 0))
+      handleBack()
     } else if (e.key === 'Enter') {
       e.preventDefault()
       handleNext()
@@ -235,11 +245,11 @@ function FeatureTourDialogContent() {
   })
 
   useEffect(() => {
-    if (!featureTourOpen) return
+    if (!featureTourOpen || !keyboardEnabled) return
     const handleKeyDown = (e: KeyboardEvent) => onTourKeyDown(e)
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [featureTourOpen])
+  }, [featureTourOpen, keyboardEnabled])
 
   const step = steps[stepIndex] as (typeof steps)[number]
   const isLastStep = stepIndex === steps.length - 1
@@ -249,8 +259,12 @@ function FeatureTourDialogContent() {
       open={featureTourOpen}
       onOpenChange={open => !open && handleClose()}
     >
-      <DialogContent className="sm:max-w-lg" showCloseButton>
-        <DialogHeader>
+      {/* Fits any window: header and footer stay, the item list scrolls */}
+      <DialogContent
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        showCloseButton
+      >
+        <DialogHeader className="shrink-0 px-6 pt-6 pb-3">
           {/* Step dots */}
           <div className="flex items-center justify-center gap-1.5 mb-2">
             {steps.map((s, i) => (
@@ -258,6 +272,7 @@ function FeatureTourDialogContent() {
                 key={s.title}
                 type="button"
                 aria-label={`Go to ${s.title}`}
+                aria-current={i === stepIndex ? 'step' : undefined}
                 onClick={() => setStepIndex(i)}
                 className={`size-2 rounded-full transition-colors cursor-pointer hover:bg-primary/70 ${
                   i === stepIndex
@@ -269,11 +284,17 @@ function FeatureTourDialogContent() {
               />
             ))}
           </div>
+          <p className="text-center text-xs text-muted-foreground sm:text-left">
+            Step {stepIndex + 1} of {steps.length}
+          </p>
           <DialogTitle className="text-lg">{step.title}</DialogTitle>
           <DialogDescription>{step.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-[300px] py-3 space-y-2">
+        <div
+          data-testid="feature-tour-body"
+          className="min-h-0 flex-1 space-y-2 overflow-y-auto px-6 py-3 [@media(min-height:720px)]:min-h-[300px] [&_img]:h-auto [&_img]:max-w-full"
+        >
           {step.items.map(item => (
             <div
               key={`${item.shortcut ?? item.label}-${item.label}`}
@@ -298,18 +319,30 @@ function FeatureTourDialogContent() {
           ))}
         </div>
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t px-6 py-3">
           <Button variant="ghost" size="sm" onClick={handleClose}>
-            Skip <Kbd className="ml-1 h-4 px-1 text-[10px]">S</Kbd>
+            Skip
+            {keyboardEnabled && (
+              <Kbd className="ml-1 h-4 px-1 text-[10px]">S</Kbd>
+            )}
           </Button>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Kbd className="h-5 px-1 text-[10px]">←</Kbd>
-            <Kbd className="h-5 px-1 text-[10px]">→</Kbd>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBack}
+              disabled={stepIndex === 0}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <Button size="sm" className="min-w-18" onClick={handleNext}>
+              {isLastStep ? 'Done' : 'Next'}
+              {keyboardEnabled && (
+                <Kbd className="ml-1 h-4 px-1 text-[10px]">↵</Kbd>
+              )}
+            </Button>
           </div>
-          <Button size="sm" className="w-18" onClick={handleNext}>
-            {isLastStep ? 'Done' : 'Next'}{' '}
-            <Kbd className="ml-1 h-4 px-1 text-[10px]">↵</Kbd>
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -19,6 +19,11 @@ interface StartupOnboardingState {
   onboardingDismissed: boolean
   onboardingManuallyTriggered: boolean
   /**
+   * The user has moved past the first setup screen. The dialog then finishes
+   * on its own "Setup complete" step instead of vanishing mid-flow.
+   */
+  onboardingEngaged?: boolean
+  /**
    * Local Windows still needs a WSL vs native choice. Must be false for remote
    * connections — WSL only applies to the local desktop shell.
    */
@@ -47,6 +52,7 @@ export function getStartupOnboardingAction({
   onboardingOpen,
   onboardingDismissed,
   onboardingManuallyTriggered,
+  onboardingEngaged = false,
   requiresWslChoice,
 }: StartupOnboardingState): StartupOnboardingAction {
   if (onboardingDismissed || onboardingManuallyTriggered) return 'none'
@@ -72,7 +78,8 @@ export function getStartupOnboardingAction({
   // Complete" success screen). WSL choice can wait until the user actually
   // needs local CLI installs.
   if (ghReady && hasAiBackendReady) {
-    return onboardingOpen ? 'close' : 'ready'
+    if (!onboardingOpen) return 'ready'
+    return onboardingEngaged ? 'none' : 'close'
   }
 
   if (requiresWslChoice) return 'open'
