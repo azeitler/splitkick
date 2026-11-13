@@ -21,6 +21,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   Servers) and Claude in Chrome (was in Claude). Claude in Chrome is off by
   default for new installs, with a hint to use Browser for agents.
 
+### Fixed
+
+- **GitHub login in setup no longer loops.** When the login finished but the
+  status check still failed, setup opened a new `gh auth login` again and
+  again and hid the reason. Now it shows the error with Check Again and Log In
+  Again. The error also names the cause: `gh` reports an unreachable GitHub as
+  "token is invalid", so a saved login that GitHub did not confirm now says
+  so (network, proxy or VPN, or a revoked token).
+
 ## [1.5.15] - 2026-11-13
 
 Built on Jean 0.1.73.

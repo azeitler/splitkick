@@ -77,6 +77,7 @@ import {
   SetupState,
   InstallingState,
   ErrorState,
+  AuthCheckFailedState,
   AuthCheckingState,
   AuthLoginState,
   CliPathSelector,
@@ -481,6 +482,10 @@ function OnboardingDialogContent() {
   const [kimiLoginAttempt, setKimiLoginAttempt] = useState(0)
   const [antigravityLoginAttempt, setAntigravityLoginAttempt] = useState(0)
   const [ghLoginAttempt, setGhLoginAttempt] = useState(0)
+  // Set once a gh login finished. A check that still fails after that shows
+  // its error instead of reopening the login terminal in a loop.
+  const ghLoginFinishedRef = useRef(false)
+  const [ghAuthFailure, setGhAuthFailure] = useState<string | null>(null)
 
   const goBack = useCallback(() => {
     const current = stepRef.current
@@ -961,7 +966,9 @@ function OnboardingDialogContent() {
       setKimiLoginAttempt(0)
       setAntigravityLoginAttempt(0)
       setGhLoginAttempt(0)
+      setGhAuthFailure(null)
     })
+    ghLoginFinishedRef.current = false
 
     if (onboardingStartStep === 'gh') {
       dbg('init effect: startStep=gh → gh-setup')
@@ -1312,10 +1319,21 @@ function OnboardingDialogContent() {
 
     if (ghAuth.data?.authenticated) {
       dbg('gh auth OK → complete')
-      queueMicrotask(() => setStep('complete'))
+      queueMicrotask(() => {
+        setGhAuthFailure(null)
+        setStep('complete')
+      })
     } else {
       dbg('gh auth NOT OK → gh-auth-login')
-      queueMicrotask(() => setStep('gh-auth-login'))
+      const failure = ghLoginFinishedRef.current
+        ? ghAuth.data?.error ||
+          (ghAuth.error ? String(ghAuth.error) : null) ||
+          'GitHub CLI still reports no login.'
+        : null
+      queueMicrotask(() => {
+        setGhAuthFailure(failure)
+        setStep('gh-auth-login')
+      })
     }
   }, [
     step,
@@ -2040,6 +2058,7 @@ function OnboardingDialogContent() {
 
   const handleGhLoginComplete = useCallback(async () => {
     dbg('handleGhLoginComplete: refetching auth')
+    ghLoginFinishedRef.current = true
     setStep('gh-auth-checking')
     const result = await ghAuth.refetch()
     dbg('handleGhLoginComplete: refetch result =', result.data)
@@ -2082,6 +2101,16 @@ function OnboardingDialogContent() {
   }, [])
 
   const handleGhLoginRetry = useCallback(() => {
+    setGhLoginAttempt(prev => prev + 1)
+  }, [])
+
+  const handleGhCheckAgain = useCallback(() => {
+    setStep('gh-auth-checking')
+    ghAuth.refetch()
+  }, [ghAuth, setStep])
+
+  const handleGhLoginAgain = useCallback(() => {
+    setGhAuthFailure(null)
     setGhLoginAttempt(prev => prev + 1)
   }, [])
 
@@ -3248,7 +3277,14 @@ function OnboardingDialogContent() {
                 onSelectJean={handleGhJeanSelect}
               />
             ) : step === 'gh-auth-login' ? (
-              ghLoginCommand ? (
+              ghAuthFailure ? (
+                <AuthCheckFailedState
+                  cliName="GitHub CLI"
+                  error={ghAuthFailure}
+                  onCheckAgain={handleGhCheckAgain}
+                  onLoginAgain={handleGhLoginAgain}
+                />
+              ) : ghLoginCommand ? (
                 <AuthLoginState
                   key={ghLoginTerminalId}
                   cliName="GitHub CLI"
