@@ -593,6 +593,9 @@ fn build_kimi_system_prompt(
             gh_binary.display()
         ));
     }
+    if include_recap {
+        parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+    }
     if super::should_include_recap_instruction(app, include_recap) {
         parts.push(super::RECAP_INSTRUCTION.to_string());
     }
@@ -4273,6 +4276,10 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Where results go: findings in chat text, not in tool output.
+                    if thread_include_recap {
+                        system_prompt_parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+                    }
                     // End-of-turn recap instruction (compact view surfaces this block)
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         system_prompt_parts.push(super::RECAP_INSTRUCTION.to_string());
@@ -4706,6 +4713,10 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Where results go: findings in chat text, not in tool output.
+                    if thread_include_recap {
+                        system_prompt_parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+                    }
                     // End-of-turn recap instruction (compact view surfaces this block)
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         system_prompt_parts.push(super::RECAP_INSTRUCTION.to_string());
@@ -5068,6 +5079,10 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Where results go: findings in chat text, not in tool output.
+                    if thread_include_recap {
+                        parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+                    }
                     // End-of-turn recap instruction (compact view surfaces this block)
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         parts.push(super::RECAP_INSTRUCTION.to_string());
@@ -5267,6 +5282,9 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    if thread_include_recap {
+                        parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+                    }
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         parts.push(super::RECAP_INSTRUCTION.to_string());
                     }
@@ -5422,6 +5440,9 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    if thread_include_recap {
+                        parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+                    }
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         parts.push(super::RECAP_INSTRUCTION.to_string());
                     }

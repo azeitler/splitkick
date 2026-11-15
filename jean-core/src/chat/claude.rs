@@ -1105,6 +1105,10 @@ fn build_claude_args(
         }
     }
 
+    // Where results go: findings in chat text, not in tool output.
+    if include_recap {
+        system_prompt_parts.push(super::CHAT_OUTPUT_INSTRUCTION.to_string());
+    }
     // End-of-turn recap instruction (compact view surfaces this block).
     // Magic release notes skip this — the recap would cover the actual notes.
     if super::should_include_recap_instruction(app, include_recap) {

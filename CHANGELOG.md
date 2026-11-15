@@ -30,6 +30,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Findings stay in the chat text.** Agents sometimes announced a result
+  ("Erst der Befund:") and then printed it with `echo` in a shell command,
+  where the chat shows it only collapsed, so the text looked cut off. Every
+  chat send now carries a short rule: findings and results go into chat text,
+  not into tool output.
 - **Move to has a submenu.** The session menu's Move to lists the other
   worktrees of the session's project, so a move takes one click. "Other
   Project…" at the top opens the Move Session dialog as before. Closes #140
