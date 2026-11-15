@@ -6,11 +6,15 @@ events, persistence, projects, chat backends, terminals, background work, and
 the HTTP/WebSocket protocol. `src-server` is the standalone server adapter
 (binary `splitkick-server`).
 
-Every Splitkick release carries the server: `splitkick-server-linux-amd64-<version>.tar.gz`
-and `splitkick-server-linux-arm64-<version>.tar.gz` (each with a `.sha256`),
+The server is **not** part of the desktop releases yet, and the desktop app does
+not install it (Install via SSH is off). It gets its own pre-release track
+(`1.0.0-pre.N`, see `src-server/CHANGELOG.md`) until it is tested. The Server
+Build workflow is started by hand; for a release tag it attaches
+`splitkick-server-linux-amd64-<version>.tar.gz` and
+`splitkick-server-linux-arm64-<version>.tar.gz` (each with a `.sha256`),
 `server-latest.json` (the self-update feed), and the Docker image
-`ghcr.io/azeitler/splitkick-server`. The server reports the same version as the
-desktop app of that release.
+`ghcr.io/azeitler/splitkick-server`. Until a pre-release exists, build it from
+source: `cargo build --release --manifest-path src-server/Cargo.toml`.
 
 Splitkick's server is not upstream Jean's `jean-server`. It uses its own unit
 (`splitkick-server.service`), port (3460), and data folder
@@ -129,7 +133,7 @@ sudo ./scripts/install-splitkick-server.sh --host lan -y
 ./scripts/install-splitkick-server.sh --user-install --host 127.0.0.1 -y
 
 # Pin a release
-sudo ./scripts/install-splitkick-server.sh --version 1.5.16 -y
+sudo ./scripts/install-splitkick-server.sh --version <version> -y
 
 # Binary only (no service)
 sudo ./scripts/install-splitkick-server.sh --no-service -y
@@ -293,8 +297,9 @@ browser terminals can find tools installed by shell setup scripts (for example
 
 ## Docker notes
 
-- The server Docker image is published with every Splitkick release (Server Build workflow) as
-  `ghcr.io/azeitler/splitkick-server:<version>` (and `:latest`).
+- The Server Build workflow publishes the Docker image for a server release as
+  `ghcr.io/azeitler/splitkick-server:<version>`. It is not published with the
+  desktop releases.
 - The image launches `splitkick-server` directly and contains no GTK/WebKit/Xvfb packages.
 - Runtime packages include `ca-certificates`, `curl`, `git`, `openssh-client`, and
   the official **GitHub CLI (`gh`)** so onboarding and GitHub integration can run

@@ -21,14 +21,12 @@ test('server build workflow builds binaries and publishes docker image', () => {
   assert.equal(existsSync('.github/workflows/server-release.yml'), false)
 })
 
-test('every published Splitkick release also builds the server', () => {
+test('a desktop release does not build the server (own pre-release track)', () => {
   const ci = read('.github/workflows/ci-build.yml')
-  const preflight = read('.github/workflows/preflight.yml')
+  const server = read('.github/workflows/server-build.yml')
 
-  assert.match(ci, /uses: \.\/\.github\/workflows\/server-build\.yml/)
-  assert.match(ci, /needs\.preflight\.outputs\.published == 'true'/)
-  assert.match(ci, /packages: write/)
-  assert.match(preflight, /value: \$\{\{ jobs\.publish\.outputs\.published \}\}/)
+  assert.doesNotMatch(ci, /server-build\.yml/)
+  assert.match(server, /workflow_dispatch:/)
 })
 
 test('native release workflow does not require a previous CI build', () => {

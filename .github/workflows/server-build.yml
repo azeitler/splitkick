@@ -2,11 +2,11 @@ name: Server Build
 
 # The headless Splitkick server (src-server, binary `splitkick-server`).
 #
-# ci-build.yml calls this after preflight.yml published a release, so every
-# Splitkick release also carries the Linux server tarballs, server-latest.json
-# (the self-update feed, brand::SERVER_MANIFEST_URL) and the Docker image
-# ghcr.io/<owner>/splitkick-server. Run it by hand with a tag to add the
-# server to a release again; without a tag it only builds and tests.
+# Desktop releases do not run this any more: the server has its own
+# pre-release track (1.0.0-pre.N) until it is tested. Run it by hand
+# (workflow_dispatch). With a tag it adds the Linux server tarballs,
+# server-latest.json and the Docker image ghcr.io/<owner>/splitkick-server to
+# that release; without a tag it only builds and tests.
 
 on:
   workflow_call:
