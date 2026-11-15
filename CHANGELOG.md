@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.16] - 2026-11-15
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Connection links.** Settings → Web Access has "Copy connection link" next
@@ -3056,7 +3060,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.16...HEAD
+[1.5.16]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...splitkick-v1.5.16
 [1.5.15]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...splitkick-v1.5.15
 [1.5.14]: https://github.com/azeitler/jean/compare/splitkick-v1.5.13...splitkick-v1.5.14
 [1.5.13]: https://github.com/azeitler/jean/compare/splitkick-v1.5.12...splitkick-v1.5.13
