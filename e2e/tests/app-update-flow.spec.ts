@@ -5,8 +5,9 @@ import { test, expect } from '../fixtures/tauri-mock'
  * The desktop app's update flow, with the updater stub
  * (`e2e/stubs/tauri-plugin-updater.ts`). From 1.5.9 to 1.5.14 the only
  * Restart button sat in a toast that could not be seen, so no update was
- * applied (#135). The restart must be offered by the "Update Ready" prompt
- * and the toolbar, never only by a toast.
+ * applied (#135). A finished download shows a toast with Restart; the
+ * toolbar and the tray also offer the restart, so it never depends on the
+ * toast alone.
  */
 const VERSION = '9.9.9'
 
@@ -94,14 +95,19 @@ async function downloadToReady(page: Page) {
   await expect(
     page.locator('[data-sonner-toast]', { hasText: /Downloading update/ })
   ).toBeInViewport()
-  const ready = page.getByRole('dialog', { name: 'Update Ready' })
+  const ready = page.locator('[data-sonner-toast]', {
+    hasText: `${VERSION} is ready`,
+  })
   await expect(ready).toBeInViewport({ timeout: 10_000 })
-  await expect(ready).toContainText(`Version ${VERSION} is installed`)
+  // A toast, not a modal: the work is not interrupted.
+  await expect(page.getByRole('dialog', { name: 'Update Ready' })).toHaveCount(
+    0
+  )
   return ready
 }
 
 test.describe('App update flow (#135)', () => {
-  test('check → download → "Update Ready" → Restart installs and relaunches', async ({
+  test('check → download → ready toast → Restart installs and relaunches', async ({
     mockPage,
   }) => {
     await asReleasedDesktopApp(mockPage)
@@ -112,7 +118,7 @@ test.describe('App update flow (#135)', () => {
       mockPage.locator('[data-sonner-toast]', { hasText: /Downloading/ })
     ).toHaveCount(0)
 
-    await ready.getByRole('button', { name: 'Restart Now' }).click()
+    await ready.getByRole('button', { name: 'Restart' }).click()
 
     await expect.poll(() => calls(mockPage)).toContain('relaunch_app null')
     const sequence = await calls(mockPage)
@@ -130,13 +136,11 @@ test.describe('App update flow (#135)', () => {
     ).toHaveLength(1)
   })
 
-  test('"Later" keeps a restart in the toolbar, also with the sidebar hidden', async ({
+  test('the toolbar offers the restart too, also with the sidebar hidden', async ({
     mockPage,
   }) => {
     await asReleasedDesktopApp(mockPage)
-    const ready = await downloadToReady(mockPage)
-    await ready.getByRole('button', { name: 'Later' }).click()
-    await expect(ready).toHaveCount(0)
+    await downloadToReady(mockPage)
 
     const toolbar = mockPage.getByTestId('window-toolbar')
     const restart = toolbar.getByTestId('app-update-indicator')
@@ -158,8 +162,7 @@ test.describe('App update flow (#135)', () => {
     mockPage,
   }) => {
     await asReleasedDesktopApp(mockPage)
-    const ready = await downloadToReady(mockPage)
-    await ready.getByRole('button', { name: 'Later' }).click()
+    await downloadToReady(mockPage)
 
     // Quit without a restart: the package was never installed.
     await mockPage.reload()
@@ -174,7 +177,9 @@ test.describe('App update flow (#135)', () => {
     ])
     await offer.getByRole('button', { name: 'Update Now' }).click()
     await expect(
-      mockPage.getByRole('dialog', { name: 'Update Ready' })
+      mockPage.locator('[data-sonner-toast]', {
+        hasText: `${VERSION} is ready`,
+      })
     ).toBeInViewport({ timeout: 10_000 })
     // One notification per version, also across starts.
     expect(

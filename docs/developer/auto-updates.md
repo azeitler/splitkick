@@ -10,11 +10,12 @@ Automatic update checking and installation system using Tauri's updater plugin, 
   then every 30 minutes (`App.tsx`, `src/lib/app-update.ts`).
 - An update opens the "Update Available" prompt (`UpdateAvailableModal`).
   Update Now downloads it; a toast shows the progress.
-- When the download is done, `markAppUpdateReady()` opens the same prompt
-  as "Update Ready" (Restart Now / Later), shows "Restart to update" in the
-  window toolbar, adds "Restart to update to X" to the menu bar (tray) menu
+- When the download is done, `markAppUpdateReady()` shows a toast with
+  Restart (no modal, so the work is not interrupted), shows "Restart to
+  update" in the window toolbar, adds "Restart to update to X" to the menu bar (tray) menu
   (`set_tray_update_ready`, `src-tauri/src/tray.rs`), and sends one system
-  notification per version.
+  notification per version. Check for Updates opens the "Update Ready"
+  prompt (Restart Now / Later) for an update that is already downloaded.
 - The package is installed only right before the relaunch
   (`installAndRelaunch`): a bundle replaced under a running process loses
   its macOS folder access. It stays in the webview's memory (a private
