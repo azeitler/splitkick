@@ -211,7 +211,7 @@ describe('GeneralPane settings structure', () => {
       'label="Server"'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
-      'remoteServerVersion'
+      'formatRemoteServerLabel({'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
       'CLIENT_BUILD_INFO.gitSha'

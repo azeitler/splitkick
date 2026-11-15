@@ -6,15 +6,42 @@ events, persistence, projects, chat backends, terminals, background work, and
 the HTTP/WebSocket protocol. `src-server` is the standalone server adapter
 (binary `splitkick-server`).
 
-The server is **not** part of the desktop releases yet, and the desktop app does
-not install it (Install via SSH is off). It gets its own pre-release track
-(`1.0.0-pre.N`, see `src-server/CHANGELOG.md`) until it is tested. The Server
-Build workflow is started by hand; for a release tag it attaches
-`splitkick-server-linux-amd64-<version>.tar.gz` and
-`splitkick-server-linux-arm64-<version>.tar.gz` (each with a `.sha256`),
-`server-latest.json` (the self-update feed), and the Docker image
-`ghcr.io/azeitler/splitkick-server`. Until a pre-release exists, build it from
-source: `cargo build --release --manifest-path src-server/Cargo.toml`.
+The server is **not** part of the desktop releases, and the desktop app does
+not install it (Install via SSH is off). It has its own pre-release track until
+it is tested:
+
+- Version: `src-server/Cargo.toml` (`1.0.0-pre.N`), changes in
+  `src-server/CHANGELOG.md`. `splitkick-server --version` prints it.
+- GitHub pre-release `splitkick-server-v<version>` (the desktop app's tags are
+  `splitkick-v<version>`). It is never marked latest. It carries
+  `splitkick-server-linux-amd64-<version>.tar.gz`,
+  `splitkick-server-linux-arm64-<version>.tar.gz` (each with a `.sha256`) and
+  `server-latest.json`.
+- Docker image `ghcr.io/azeitler/splitkick-server:<version>`. There is no
+  `:latest` tag for a pre-release.
+- `/api/auth` reports `serverVersion` (the server release) and `appVersion`
+  (the version of the app code the server is built from). The desktop app
+  compares only `appVersion` with its own version, so a server 1.0.0-pre.1
+  built from app 1.5.16 does not show a version mismatch in app 1.5.16.
+
+To build it from source: `bun run build`, then
+`cargo build --release --manifest-path src-server/Cargo.toml`.
+
+### Install a pre-release
+
+Give the installer the version. It downloads from the
+`splitkick-server-v<version>` release and stops if the SHA-256 file is missing
+or does not match:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/azeitler/splitkick/splitkick-server-v1.0.0-pre.1/scripts/install-splitkick-server.sh \
+  | sudo bash -s -- --version 1.0.0-pre.1
+```
+
+Without `--version`, the installer takes the newest `splitkick-server-v*`
+release, pre-releases included (not GitHub's "latest" release, which is the
+desktop app). To update a pre-release server, run the installer again with the
+new `--version`; pre-releases do not update themselves.
 
 Splitkick's server is not upstream Jean's `jean-server`. It uses its own unit
 (`splitkick-server.service`), port (3460), and data folder
@@ -132,8 +159,8 @@ sudo ./scripts/install-splitkick-server.sh --host lan -y
 # Install as the current user (user systemd unit under ~/.config/systemd/user)
 ./scripts/install-splitkick-server.sh --user-install --host 127.0.0.1 -y
 
-# Pin a release
-sudo ./scripts/install-splitkick-server.sh --version <version> -y
+# Pin a release (splitkick-server-v<version>)
+sudo ./scripts/install-splitkick-server.sh --version 1.0.0-pre.1 -y
 
 # Binary only (no service)
 sudo ./scripts/install-splitkick-server.sh --no-service -y
@@ -324,7 +351,7 @@ docker run --rm \
   --env-file splitkick.env \
   -p 127.0.0.1:3460:3460 \
   -v splitkick-data:/home/splitkick/.local/share/app.splitkick.desktop \
-  ghcr.io/azeitler/splitkick-server:latest
+  ghcr.io/azeitler/splitkick-server:1.0.0-pre.1
 ```
 
 ## Reverse proxy
@@ -371,6 +398,12 @@ splitkick-server --host 100.x.y.z --port 3460 --token "$JEAN_TOKEN"
 Nothing is installed in the background - apply only runs after you click
 **Update & restart**.
 
+**Pre-releases (`1.0.0-pre.N`) do not update themselves.** The update check
+answers "update it with the installer: `install-splitkick-server.sh --version
+<new version>`" and reads no feed. The feed below is on the GitHub release
+that `releases/latest` points to, and that is always the desktop release:
+GitHub never marks a pre-release as latest.
+
 | Piece           | Behavior                                                                                                                 |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Manifest        | `server-latest.json` on the latest Splitkick release                                                                     |
@@ -393,7 +426,9 @@ Nothing is installed in the background - apply only runs after you click
 In the desktop app, click the server icon in the title bar and choose **Add
 remote**. You can either:
 
-1. **Install via SSH** (native app only) — enter an SSH user and host/IP
+1. **Install via SSH** (native app only; **off** while the server is on its
+   pre-release track, `REMOTE_INSTALL_ENABLED` in `src/lib/remote-install.ts`)
+   — enter an SSH user and host/IP
    (optional name, SSH port, server port). Splitkick connects with key-based SSH
    (`BatchMode`, no password prompt), runs `install-splitkick-server.sh` from the
    Splitkick release of the desktop app (`splitkick-v<version>`, never `main`)

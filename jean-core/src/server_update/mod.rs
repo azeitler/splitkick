@@ -418,7 +418,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
 }
 
 /// True when running the headless `splitkick-server` binary (`JEAN_HEADLESS=1`).
-fn is_headless_host() -> bool {
+pub(crate) fn is_headless_host() -> bool {
     match std::env::var("JEAN_HEADLESS") {
         Ok(value) => {
             let v = value.trim();
@@ -691,7 +691,30 @@ struct Eligibility {
     block_reason: Option<String>,
 }
 
+/// Pre-release servers (`1.0.0-pre.N`) do not update themselves.
+///
+/// `server-latest.json` sits on the GitHub release that `releases/latest`
+/// points to, and that is always the desktop release: GitHub never marks a
+/// pre-release as latest. A pre-release server is updated with the installer.
+fn prerelease_update_block(version: &str) -> Option<String> {
+    let version = normalize_version(version);
+    split_version(&version).1.map(|_| {
+        format!(
+            "Pre-release server {version} does not update itself. Update it with the \
+             installer: install-splitkick-server.sh --version <new version>"
+        )
+    })
+}
+
 fn update_eligibility() -> Eligibility {
+    if let Some(reason) = prerelease_update_block(crate::app_version()) {
+        return Eligibility {
+            can_update: false,
+            hard_block: true,
+            block_reason: Some(reason),
+        };
+    }
+
     if !cfg!(target_os = "linux") {
         return Eligibility {
             can_update: false,
@@ -998,6 +1021,16 @@ mod tests {
         // never cleared after install.
         crate::set_app_version("9.9.9-host");
         assert_eq!(crate::app_version(), "9.9.9-host");
+    }
+
+    #[test]
+    fn prerelease_servers_do_not_update_themselves() {
+        let reason = prerelease_update_block("1.0.0-pre.1").expect("blocked");
+        assert!(reason.contains("1.0.0-pre.1"), "{reason}");
+        assert!(reason.contains("--version"), "{reason}");
+        assert!(prerelease_update_block("v1.0.0-pre.2").is_some());
+        assert!(prerelease_update_block("1.0.0").is_none());
+        assert!(prerelease_update_block("1.0.0+build.5").is_none());
     }
 
     #[test]

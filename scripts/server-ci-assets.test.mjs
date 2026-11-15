@@ -7,18 +7,41 @@ const read = path => readFileSync(path, 'utf8')
 test('server build workflow builds binaries and publishes docker image', () => {
   const workflow = read('.github/workflows/server-build.yml')
 
-  assert.match(workflow, /workflow_call:/)
+  assert.match(workflow, /workflow_dispatch:/)
   assert.match(workflow, /needs: metadata/)
   assert.match(workflow, /cd src-server && cargo build --release/)
   assert.match(workflow, /splitkick-server-linux-amd64/)
   assert.match(workflow, /splitkick-server-linux-arm64/)
   assert.match(workflow, /server-latest\.json/)
   assert.match(workflow, /docker\/build-push-action@v6/)
-  assert.match(workflow, /IMAGE_NAME: \$\{\{ github\.repository_owner \}\}\/splitkick-server/)
+  assert.match(
+    workflow,
+    /IMAGE_NAME: \$\{\{ github\.repository_owner \}\}\/splitkick-server/
+  )
   // The binary must report the release version it is published under.
   assert.match(workflow, /\[ "\$reported" = "Splitkick \$VERSION" \]/)
+  assert.match(workflow, /"serverVersion\\":\\"\$VERSION\\""/)
   assert.doesNotMatch(workflow, /jean-server/)
   assert.equal(existsSync('.github/workflows/server-release.yml'), false)
+})
+
+test('the server is published as its own pre-release, never latest', () => {
+  const workflow = read('.github/workflows/server-build.yml')
+
+  // Own version and tag, apart from the desktop splitkick-v<version>.
+  assert.match(workflow, /src-server\/Cargo\.toml/)
+  assert.doesNotMatch(workflow, /tauri\.fork\.conf\.json/)
+  assert.match(workflow, /TAG="splitkick-server-v\$VERSION"/)
+  assert.match(workflow, /\*-pre\.\*\) ;;/)
+  // The desktop updater reads releases/latest: never take it over.
+  assert.match(workflow, /gh release create "\$RELEASE_TAG"/)
+  assert.match(workflow, /--prerelease \\/)
+  assert.match(workflow, /--latest=false \\/)
+  assert.doesNotMatch(workflow, /gh release upload/)
+  // Docker: only :<version>, no :latest.
+  assert.match(workflow, /-t "\$\{IMAGE\}:\$\{VERSION\}"/)
+  assert.doesNotMatch(workflow, /:latest"|create_manifest "latest"/)
+  assert.doesNotMatch(workflow, /workflow_call:/)
 })
 
 test('a desktop release does not build the server (own pre-release track)', () => {
@@ -55,8 +78,10 @@ test('Dockerfile builds and runs splitkick-server headlessly as non-root user', 
     dockerfile,
     /ENTRYPOINT \["\/usr\/local\/bin\/splitkick-server-entrypoint"\]/
   )
-  // build.rs reads the release version from the fork config.
-  assert.match(dockerfile, /COPY src-tauri\/tauri\.fork\.conf\.json/)
+  // The server version is its own Cargo version, not the desktop one.
+  assert.doesNotMatch(dockerfile, /tauri\.fork\.conf\.json/)
+  assert.equal(existsSync('src-server/build.rs'), false)
+  assert.match(read('.dockerignore'), /^src-server\/target$/m)
 })
 
 test('server images keep data in the Splitkick data folder on a volume', () => {
@@ -74,7 +99,10 @@ test('server images keep data in the Splitkick data folder on a volume', () => {
 
 /** Shared assertions: server images ship GitHub CLI from the official apt repo. */
 function assertServerImageInstallsGh(dockerfile) {
-  assert.match(dockerfile, /cli\.github\.com\/packages\/githubcli-archive-keyring\.gpg/)
+  assert.match(
+    dockerfile,
+    /cli\.github\.com\/packages\/githubcli-archive-keyring\.gpg/
+  )
   assert.match(dockerfile, /cli\.github\.com\/packages stable main/)
   assert.match(
     dockerfile,

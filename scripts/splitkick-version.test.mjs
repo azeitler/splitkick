@@ -20,6 +20,9 @@ const REFS = [
   'refs/tags/splitkick-v1.0.0-rc.1^{}',
   'refs/tags/splitkick-v1.0.0',
   'refs/tags/splitkick-v1.0.1',
+  // The headless server's own pre-release track, not a desktop release.
+  'refs/tags/splitkick-server-v1.0.0-pre.1',
+  'refs/tags/splitkick-server-v9.9.9-pre.1',
 ]
 
 test('tags carry the splitkick-v prefix', () => {
@@ -33,6 +36,15 @@ test('only Splitkick tags count as released', () => {
     '1.0.0',
     '1.0.1',
   ])
+})
+
+test('a server tag neither publishes nor blocks a desktop version', () => {
+  const changelog = '## [1.0.2] - 2026-11-15\n## [9.9.9-pre.1]\n'
+  assert.equal(previousTag(REFS, '9.9.9'), 'splitkick-v1.0.1')
+  assert.equal(
+    shouldPublish({ version: '9.9.9-pre.1', refs: REFS, changelog }),
+    true
+  )
 })
 
 test('semver precedence, including prereleases', () => {

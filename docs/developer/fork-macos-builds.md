@@ -63,7 +63,7 @@ hashed `href` reaches every client on its next load.
 | -------------------- | -------------------------------------------------------------------- |
 | CI Build / Preflight | Active: macOS arm64 and Windows x64. Builds, publishes a new version |
 | Release Jean         | Upstream's. Runs only in `coollabsio/jean` (repository guard)        |
-| Server Release       | Manual only                                                          |
+| Server Build         | Manual only. The headless server's own pre-release track (see below) |
 
 Preflight runs the usual gate (typecheck, lint, branding check, clippy,
 frontend, script and Rust tests) on `macos-latest` and `windows-latest`. With
@@ -103,6 +103,40 @@ deploy key with write access; the private keys are the secrets
 `SPLITKICK_WEBSITE_DEPLOY_KEY` and `SPLITKICK_DOCS_DEPLOY_KEY`. Without them
 the step skips that repo with a warning. Test it locally against bare repos with
 `SYNC_REMOTE_BASE=file:///path/to/bare/`.
+
+## Releasing the headless server
+
+The headless server (`src-server`, binary `splitkick-server`) is not part of a
+desktop release. It has its own pre-release track until it is tested:
+
+| Piece      | Desktop app                               | Headless server                                        |
+| ---------- | ----------------------------------------- | ------------------------------------------------------ |
+| Version    | `src-tauri/tauri.fork.conf.json`          | `src-server/Cargo.toml` (`1.0.0-pre.N`)                |
+| Changelog  | `CHANGELOG.md`                            | `src-server/CHANGELOG.md`                              |
+| Tag        | `splitkick-v<version>`                    | `splitkick-server-v<version>`                          |
+| Release    | CI Build / Preflight on push              | Server Build, `workflow_dispatch` with input `version` |
+| "Latest"   | Yes (the updater reads `releases/latest`) | Never (`--prerelease --latest=false`)                  |
+| Docker tag | -                                         | `ghcr.io/azeitler/splitkick-server:<version>` only     |
+
+To publish a server pre-release:
+
+1. Set `version` in `src-server/Cargo.toml` (and `src-server/Cargo.lock`) and
+   give it a `## [<version>] - <date>` section in `src-server/CHANGELOG.md`.
+   Commit and push.
+2. Actions → **Server Build** → Run workflow on that commit, `version` =
+   `1.0.0-pre.N`. The workflow refuses a version that does not match
+   `Cargo.toml`, that is not `x.y.z-pre.N`, whose release already exists, or
+   that has no changelog section.
+3. It builds and tests both architectures (`--version`, `/readyz`, the
+   `serverVersion` of `/api/auth`), then creates the pre-release with the
+   tarballs, `.sha256` files and `server-latest.json` (tag created at the run's
+   commit), and pushes the Docker image.
+
+`splitkick-version.mjs` and `release-cut.mjs` only read `splitkick-v*` tags,
+so a `splitkick-server-v*` tag does not change the desktop version checks.
+A pre-release server does not update itself (`prerelease_update_block` in
+`jean-core/src/server_update/mod.rs`); it is updated with the installer and
+`--version`.
 
 ## Version numbers
 

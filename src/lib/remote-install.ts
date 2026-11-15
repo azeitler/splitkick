@@ -7,6 +7,10 @@
  *
  * Off in the app: the server ships on its own pre-release track
  * (1.0.0-pre.N) and is not tested enough for the app to install it.
+ * Before turning this on: `remote_install.rs` still fetches the installer
+ * from the desktop tag (`splitkick-v<app version>`) and passes the app
+ * version as `--version`, but server releases are `splitkick-server-v<server
+ * version>` now, so that install would fail.
  */
 export const REMOTE_INSTALL_ENABLED = false
 

@@ -579,6 +579,10 @@ async fn probe(connection: RemoteConnection, token: String) -> Value {
         Ok(info) => {
             row["reachable"] = json!(true);
             row["version"] = info.get("appVersion").cloned().unwrap_or(Value::Null);
+            // Only a headless splitkick-server sends it (own pre-release track).
+            if let Some(server_version) = info.get("serverVersion").filter(|v| !v.is_null()) {
+                row["serverVersion"] = server_version.clone();
+            }
         }
         Err(error) => {
             row["reachable"] = json!(false);

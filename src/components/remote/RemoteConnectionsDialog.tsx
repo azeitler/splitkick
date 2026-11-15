@@ -59,6 +59,7 @@ import {
   checkRemoteVersionCompatibility,
   fetchRemoteServerInfo,
   formatJeanVersionLabel,
+  formatRemoteServerLabel,
   getLocalJeanVersion,
   isBlockingProbeError,
   warnRemoteVersionMismatch,
@@ -105,7 +106,7 @@ export interface InstallRemoteResult {
 
 type VersionState =
   | { status: 'loading' }
-  | { status: 'ready'; version: string | null }
+  | { status: 'ready'; version: string | null; serverVersion: string | null }
   | { status: 'error'; message: string }
 
 export function RemoteConnectionsDialog({
@@ -183,6 +184,7 @@ export function RemoteConnectionsDialog({
             {
               status: 'ready' as const,
               version: info.appVersion,
+              serverVersion: info.serverVersion,
             },
           ] as const
         } catch (probeError) {
@@ -574,7 +576,10 @@ export function RemoteConnectionsDialog({
   const versionLabelFor = (id: string) => {
     const versionState = versions[id]
     return versionState?.status === 'ready'
-      ? formatJeanVersionLabel(versionState.version)
+      ? formatRemoteServerLabel({
+          appVersion: versionState.version,
+          serverVersion: versionState.serverVersion,
+        })
       : versionState?.status === 'error'
         ? 'unreachable'
         : 'checking…'

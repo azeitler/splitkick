@@ -379,6 +379,16 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_ws_connection(socket, app, event_rx))
 }
 
+/// Version of the headless `splitkick-server` binary, `None` on a desktop host.
+///
+/// The server has its own release track (`1.0.0-pre.N`), so its version says
+/// nothing about compatibility. `appVersion` stays the version of the app
+/// code (web build) the host runs; clients compare that one and only show
+/// this one.
+fn server_version() -> Option<&'static str> {
+    crate::server_update::is_headless_host().then(crate::app_version)
+}
+
 /// Token validation endpoint. Returns 200 with { ok: true } on success,
 /// or 401 with { ok: false, error: "..." } on failure.
 async fn auth_handler(
@@ -395,6 +405,7 @@ async fn auth_handler(
             "token_required": false,
             "webBuildId": build_info.web_build_id,
             "appVersion": build_info.app_version,
+            "serverVersion": server_version(),
         }))
         .into_response();
     }
@@ -404,6 +415,7 @@ async fn auth_handler(
             "ok": true,
             "webBuildId": build_info.web_build_id,
             "appVersion": build_info.app_version,
+            "serverVersion": server_version(),
         }))
         .into_response()
     } else {
@@ -657,6 +669,7 @@ async fn init_handler(
     let build_info = read_web_build_info(&state.dist_path).await;
     response["webBuildId"] = Value::String(build_info.web_build_id.clone());
     response["appVersion"] = Value::String(build_info.app_version.clone());
+    response["serverVersion"] = serde_json::to_value(server_version()).unwrap_or(Value::Null);
     response["serverPlatform"] = Value::String(crate::server_platform_name().to_string());
     response["nativeOpenAllowed"] = Value::Bool(crate::platform::native_open_allowed());
 
