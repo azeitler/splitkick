@@ -6,7 +6,7 @@
 //! Two host channels:
 //! - **Server** (`JEAN_HEADLESS=1`): fetch `server-latest.json` → download arch
 //!   tarball → verify SHA-256 → atomic binary replace → systemd restart or re-exec.
-//!   Docker/containers are skipped — update the image instead of the binary.
+//!   Containers are skipped — the binary there belongs to the container.
 //! - **Desktop** (native Jean hosting Web Access): fetch desktop `latest.json`
 //!   and report availability. Apply emits `host:install-desktop-update` so the
 //!   native shell runs Tauri's updater (web clients cannot install installers).
@@ -728,7 +728,7 @@ fn update_eligibility() -> Eligibility {
             can_update: false,
             hard_block: true,
             block_reason: Some(
-                "Running in a container; update the splitkick-server image instead".to_string(),
+                "Running in a container; replace the binary in the container instead".to_string(),
             ),
         };
     }

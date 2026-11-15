@@ -4,7 +4,7 @@ import test from 'node:test'
 
 const read = path => readFileSync(path, 'utf8')
 
-test('server build workflow builds binaries and publishes docker image', () => {
+test('server build workflow builds and tests the Linux binaries', () => {
   const workflow = read('.github/workflows/server-build.yml')
 
   assert.match(workflow, /workflow_dispatch:/)
@@ -13,11 +13,6 @@ test('server build workflow builds binaries and publishes docker image', () => {
   assert.match(workflow, /splitkick-server-linux-amd64/)
   assert.match(workflow, /splitkick-server-linux-arm64/)
   assert.match(workflow, /server-latest\.json/)
-  assert.match(workflow, /docker\/build-push-action@v6/)
-  assert.match(
-    workflow,
-    /IMAGE_NAME: \$\{\{ github\.repository_owner \}\}\/splitkick-server/
-  )
   // The binary must report the release version it is published under.
   assert.match(workflow, /\[ "\$reported" = "Splitkick \$VERSION" \]/)
   assert.match(workflow, /"serverVersion\\":\\"\$VERSION\\""/)
@@ -38,9 +33,8 @@ test('the server is published as its own pre-release, never latest', () => {
   assert.match(workflow, /--prerelease \\/)
   assert.match(workflow, /--latest=false \\/)
   assert.doesNotMatch(workflow, /gh release upload/)
-  // Docker: only :<version>, no :latest.
-  assert.match(workflow, /-t "\$\{IMAGE\}:\$\{VERSION\}"/)
-  assert.doesNotMatch(workflow, /:latest"|create_manifest "latest"/)
+  // No Docker image: agents must run on the host itself.
+  assert.doesNotMatch(workflow, /docker|ghcr|packages: write/i)
   assert.doesNotMatch(workflow, /workflow_call:/)
 })
 
@@ -59,68 +53,17 @@ test('native release workflow does not require a previous CI build', () => {
   assert.match(workflow, /needs: prepare-release/)
 })
 
-test('Dockerfile builds and runs splitkick-server headlessly as non-root user', () => {
-  const dockerfile = read('Dockerfile.server')
-
-  assert.match(dockerfile, /bun run build/)
-  assert.match(dockerfile, /COPY src-server \.\/src-server/)
-  assert.match(dockerfile, /COPY jean-core \.\/jean-core/)
-  assert.match(
-    dockerfile,
-    /cd src-server && RUSTC_WRAPPER= cargo build --release/
-  )
-  assert.match(dockerfile, /USER splitkick/)
-  assert.match(dockerfile, /chown -R splitkick:splitkick \/home\/splitkick/)
-  assert.match(dockerfile, /JEAN_HOST=0\.0\.0\.0/)
-  assert.doesNotMatch(dockerfile, /webkit|gtk|appindicator|xvfb|xauth/i)
-  assert.match(dockerfile, /splitkick-server-entrypoint/)
-  assert.match(
-    dockerfile,
-    /ENTRYPOINT \["\/usr\/local\/bin\/splitkick-server-entrypoint"\]/
-  )
-  // The server version is its own Cargo version, not the desktop one.
-  assert.doesNotMatch(dockerfile, /tauri\.fork\.conf\.json/)
-  assert.equal(existsSync('src-server/build.rs'), false)
-  assert.match(read('.dockerignore'), /^src-server\/target$/m)
-})
-
-test('server images keep data in the Splitkick data folder on a volume', () => {
-  for (const file of ['Dockerfile.server', 'Dockerfile.server-runtime']) {
-    const dockerfile = read(file)
-    assert.match(
-      dockerfile,
-      /VOLUME \["\/home\/splitkick\/\.local\/share\/app\.splitkick\.desktop"\]/,
-      file
-    )
-    assert.match(dockerfile, /EXPOSE 3460/, file)
-    assert.doesNotMatch(dockerfile, /com\.jean\.desktop|jean-server/, file)
+test('there is no Docker image for the server', () => {
+  for (const file of [
+    'Dockerfile.server',
+    'Dockerfile.server-runtime',
+    'scripts/docker-entrypoint.sh',
+    '.dockerignore',
+  ]) {
+    assert.equal(existsSync(file), false, file)
   }
-})
-
-/** Shared assertions: server images ship GitHub CLI from the official apt repo. */
-function assertServerImageInstallsGh(dockerfile) {
-  assert.match(
-    dockerfile,
-    /cli\.github\.com\/packages\/githubcli-archive-keyring\.gpg/
-  )
-  assert.match(dockerfile, /cli\.github\.com\/packages stable main/)
-  assert.match(
-    dockerfile,
-    /apt-get update && apt-get install -y --no-install-recommends gh/
-  )
-  // Keep gh install in the same runtime package layer (no extra FROM/RUN stage).
-  assert.match(
-    dockerfile,
-    /openssh-client[\s\S]*githubcli-archive-keyring[\s\S]*apt-get install -y --no-install-recommends gh[\s\S]*useradd/
-  )
-}
-
-test('Dockerfile.server installs GitHub CLI for onboarding and PATH tools', () => {
-  assertServerImageInstallsGh(read('Dockerfile.server'))
-})
-
-test('Dockerfile.server-runtime installs GitHub CLI for onboarding and PATH tools', () => {
-  assertServerImageInstallsGh(read('Dockerfile.server-runtime'))
+  // The version comes from src-server/Cargo.toml, not the desktop config.
+  assert.equal(existsSync('src-server/build.rs'), false)
 })
 
 test('splitkick-server depends only on the Tauri-free shared core', () => {
@@ -134,13 +77,6 @@ test('splitkick-server depends only on the Tauri-free shared core', () => {
   assert.match(serverCargoToml, /jean-core = \{ path = "\.\.\/jean-core" \}/)
   assert.doesNotMatch(serverCargoToml, /src-tauri|tauri/i)
   assert.doesNotMatch(coreCargoToml, /tauri|wry|webkit|gtk/i)
-})
-
-test('Docker entrypoint starts splitkick-server directly without a display server', () => {
-  const entrypoint = read('scripts/docker-entrypoint.sh')
-
-  assert.doesNotMatch(entrypoint, /Xvfb|DISPLAY|WAYLAND|sleep/i)
-  assert.match(entrypoint, /exec splitkick-server "\$@"/)
 })
 
 test('shared dispatcher is owned by jean-core and used by the desktop adapter', () => {

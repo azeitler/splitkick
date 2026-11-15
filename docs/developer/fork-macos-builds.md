@@ -109,14 +109,13 @@ the step skips that repo with a warning. Test it locally against bare repos with
 The headless server (`src-server`, binary `splitkick-server`) is not part of a
 desktop release. It has its own pre-release track until it is tested:
 
-| Piece      | Desktop app                               | Headless server                                        |
-| ---------- | ----------------------------------------- | ------------------------------------------------------ |
-| Version    | `src-tauri/tauri.fork.conf.json`          | `src-server/Cargo.toml` (`1.0.0-pre.N`)                |
-| Changelog  | `CHANGELOG.md`                            | `src-server/CHANGELOG.md`                              |
-| Tag        | `splitkick-v<version>`                    | `splitkick-server-v<version>`                          |
-| Release    | CI Build / Preflight on push              | Server Build, `workflow_dispatch` with input `version` |
-| "Latest"   | Yes (the updater reads `releases/latest`) | Never (`--prerelease --latest=false`)                  |
-| Docker tag | -                                         | `ghcr.io/azeitler/splitkick-server:<version>` only     |
+| Piece     | Desktop app                               | Headless server                                        |
+| --------- | ----------------------------------------- | ------------------------------------------------------ |
+| Version   | `src-tauri/tauri.fork.conf.json`          | `src-server/Cargo.toml` (`1.0.0-pre.N`)                |
+| Changelog | `CHANGELOG.md`                            | `src-server/CHANGELOG.md`                              |
+| Tag       | `splitkick-v<version>`                    | `splitkick-server-v<version>`                          |
+| Release   | CI Build / Preflight on push              | Server Build, `workflow_dispatch` with input `version` |
+| "Latest"  | Yes (the updater reads `releases/latest`) | Never (`--prerelease --latest=false`)                  |
 
 To publish a server pre-release:
 
@@ -130,7 +129,7 @@ To publish a server pre-release:
 3. It builds and tests both architectures (`--version`, `/readyz`, the
    `serverVersion` of `/api/auth`), then creates the pre-release with the
    tarballs, `.sha256` files and `server-latest.json` (tag created at the run's
-   commit), and pushes the Docker image.
+   commit). There is no Docker image: agents must run on the host itself.
 
 `splitkick-version.mjs` and `release-cut.mjs` only read `splitkick-v*` tags,
 so a `splitkick-server-v*` tag does not change the desktop version checks.

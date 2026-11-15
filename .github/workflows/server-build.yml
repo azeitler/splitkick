@@ -9,8 +9,7 @@ name: Server Build
 # - with `version`: build, test, then create the GitHub pre-release
 #   `splitkick-server-v<version>` (never marked latest: the desktop updater
 #   reads releases/latest) with the Linux tarballs, their .sha256 files and
-#   server-latest.json, and push ghcr.io/<owner>/splitkick-server:<version>
-#   (no :latest);
+#   server-latest.json;
 # - without `version`: only build and test.
 
 on:
@@ -23,7 +22,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.version || github.ref }}
@@ -32,8 +30,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/splitkick-server
 
 jobs:
   metadata:
@@ -262,100 +258,3 @@ jobs:
             artifacts/amd64/*.tar.gz artifacts/amd64/*.sha256 \
             artifacts/arm64/*.tar.gz artifacts/arm64/*.sha256 \
             server-latest.json
-
-  docker-image:
-    name: Build Docker image (${{ matrix.arch }})
-    needs: [metadata, build-binaries, publish-release]
-    # Also on a build-only run, where publish-release is skipped. A failed
-    # release pushes no image.
-    if: ${{ !cancelled() && !failure() }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            arch: amd64
-            platform: linux/amd64
-          - runner: ubuntu-22.04-arm
-            arch: arm64
-            platform: linux/arm64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download server binary
-        uses: actions/download-artifact@v4
-        with:
-          name: splitkick-server-linux-${{ matrix.arch }}
-          path: artifacts
-
-      - name: Prepare Docker context
-        env:
-          VERSION: ${{ needs.metadata.outputs.version }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          mkdir -p docker-context
-          tar -xzf "artifacts/splitkick-server-linux-${ARCH}-${VERSION}.tar.gz" -C docker-context
-          mv "docker-context/splitkick-server-linux-${ARCH}" docker-context/splitkick-server
-          chmod +x docker-context/splitkick-server
-          cp scripts/docker-entrypoint.sh docker-context/docker-entrypoint.sh
-          cp Dockerfile.server-runtime docker-context/Dockerfile
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        if: needs.metadata.outputs.publish == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ needs.metadata.outputs.version }}-${{ matrix.arch }}
-
-      # Only a release pushes. A build-only run still proves the image builds.
-      - name: Build (and push) architecture image
-        uses: docker/build-push-action@v6
-        with:
-          context: docker-context
-          file: docker-context/Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: ${{ needs.metadata.outputs.publish == 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-  docker-manifest:
-    name: Publish multi-arch Docker manifest
-    needs: [metadata, docker-image]
-    if: needs.metadata.outputs.publish == 'true'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push the manifest
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          VERSION: ${{ needs.metadata.outputs.version }}
-        run: |
-          set -euo pipefail
-          # Only :<version>. A pre-release never moves :latest.
-          docker buildx imagetools create \
-            -t "${IMAGE}:${VERSION}" \
-            "${IMAGE}:${VERSION}-amd64" \
-            "${IMAGE}:${VERSION}-arm64"
