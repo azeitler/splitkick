@@ -73,6 +73,12 @@ Rules:
 - Skip the recap entirely if the turn was a single one-line answer with no tool calls.
 - Do NOT repeat tool inputs, file diffs, or raw command output verbatim. Summarize.";
 
+/// Where results go. Appended to every chat send, also when recaps are off:
+/// the chat shows tool calls collapsed, and models like to "present" a finding
+/// by printing it with `echo` in a shell command, so it looks lost.
+/// Structured one-shots (`include_recap == false`) skip it.
+pub const CHAT_OUTPUT_INSTRUCTION: &str = "The user sees tool output only collapsed. Put findings and results in chat text, never in echo/printf output. After \"Here is what I found:\", write the content, not a tool call.";
+
 pub(crate) fn should_add_recap_instruction(app: &tauri::AppHandle) -> bool {
     should_include_recap_instruction(app, true)
 }
@@ -100,7 +106,37 @@ pub(crate) fn recap_instruction_enabled(include_recap: bool, auto_recaps_enabled
 
 #[cfg(test)]
 mod tests {
-    use super::RECAP_INSTRUCTION;
+    use super::{CHAT_OUTPUT_INSTRUCTION, RECAP_INSTRUCTION};
+
+    #[test]
+    fn chat_output_rule_keeps_findings_out_of_echo_output() {
+        assert!(CHAT_OUTPUT_INSTRUCTION.contains("collapsed"));
+        assert!(CHAT_OUTPUT_INSTRUCTION.contains("echo/printf"));
+        assert!(CHAT_OUTPUT_INSTRUCTION.contains("not a tool call"));
+        // Short on purpose: it rides along with every chat send.
+        assert!(CHAT_OUTPUT_INSTRUCTION.len() < 200);
+    }
+
+    /// Every prompt builder that adds the recap rule must also add the chat
+    /// output rule, so a new backend cannot leave it out.
+    #[test]
+    fn every_prompt_builder_adds_the_chat_output_rule() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/chat");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let code = text.split("#[cfg(test)]").next().unwrap_or("");
+            let recap = code.matches("push(super::RECAP_INSTRUCTION").count();
+            let output = code.matches("push(super::CHAT_OUTPUT_INSTRUCTION").count();
+            assert_eq!(recap, output, "{}", path.display());
+            checked += recap;
+        }
+        assert!(checked >= 8, "found only {checked} prompt builders");
+    }
 
     #[test]
     fn recap_how_to_test_rule_requests_manual_smoke_test_when_useful() {
