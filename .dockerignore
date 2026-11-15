@@ -2,6 +2,8 @@
 .github
 node_modules
 src-tauri/target
+jean-core/target
+src-server/target
 dist
 .DS_Store
 *.log

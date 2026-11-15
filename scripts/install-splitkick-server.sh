@@ -7,7 +7,7 @@
 #   sudo ./scripts/install-splitkick-server.sh --host 0.0.0.0 --port 3460
 #   sudo ./scripts/install-splitkick-server.sh --host tailscale --port 3460
 #   ./scripts/install-splitkick-server.sh --user-install --host 127.0.0.1
-#   sudo ./scripts/install-splitkick-server.sh --version 1.5.16 --token-file ./token
+#   sudo ./scripts/install-splitkick-server.sh --version 1.0.0-pre.1 --token-file ./token
 #   sudo ./scripts/install-splitkick-server.sh -y   # non-interactive (localhost:3460)
 #   sudo ./scripts/install-splitkick-server.sh --uninstall
 #
@@ -20,8 +20,10 @@ set -euo pipefail
 
 REPO="${SPLITKICK_REPO:-azeitler/splitkick}"
 VERSION="${SPLITKICK_VERSION:-latest}"
-# Release tags are splitkick-v<version>; upstream Jean's are v<version>.
-TAG_PREFIX="splitkick-v"
+# The server has its own release track, apart from the desktop app
+# (splitkick-v<version>) and upstream Jean (v<version>):
+# splitkick-server-v<version>, for now only pre-releases (1.0.0-pre.N).
+TAG_PREFIX="splitkick-server-v"
 # Empty until flags/env/prompt resolve them; defaults applied later.
 HOST="${JEAN_HOST:-}"
 PORT="${JEAN_PORT:-}"
@@ -65,8 +67,9 @@ interface to bind to (localhost, all interfaces, LAN IP, Tailscale, or custom)
 and which port to use, unless --host / --port / JEAN_HOST / JEAN_PORT are set.
 
 Options:
-  --version <ver|latest>   Splitkick version or tag (default: latest).
-                           Example: 1.5.16 or splitkick-v1.5.16
+  --version <ver|latest>   Server version or tag (default: latest = the newest
+                           splitkick-server-v* release, pre-releases included).
+                           Example: 1.0.0-pre.1 or splitkick-server-v1.0.0-pre.1
   --host <addr|preset>     Bind address or preset (skips interface prompt):
                              127.0.0.1 | localhost  — loopback only (default)
                              0.0.0.0 | all | public — all interfaces
@@ -124,7 +127,8 @@ detect_arch() {
 }
 
 normalize_version() {
-  # splitkick-v1.5.16 / v1.5.16 -> 1.5.16 ; latest stays latest until resolved
+  # splitkick-server-v1.0.0-pre.1 / v1.0.0-pre.1 -> 1.0.0-pre.1 ;
+  # latest stays latest until resolved
   local v="$1"
   if [[ "$v" == latest ]]; then
     echo "latest"
@@ -135,17 +139,19 @@ normalize_version() {
 }
 
 resolve_latest_tag() {
+  # Not the "latest release" endpoint: that is the desktop release, and GitHub never marks
+  # a pre-release as latest. The list is newest first.
   need_cmd curl
   local tag
   tag="$(
     curl -fsSL \
       -H "Accept: application/vnd.github+json" \
       -H "User-Agent: splitkick-server-installer" \
-      "${GITHUB_API}/repos/${REPO}/releases/latest" \
+      "${GITHUB_API}/repos/${REPO}/releases?per_page=100" \
       | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-      | head -n1
+      | grep -m1 "^${TAG_PREFIX}" || true
   )"
-  [[ -n "$tag" ]] || die "Could not resolve latest release tag for ${REPO}"
+  [[ -n "$tag" ]] || die "Could not find a ${TAG_PREFIX}* release in ${REPO}; pass --version"
   echo "$tag"
 }
 
@@ -737,7 +743,7 @@ if [[ -n "$LOCAL_TARBALL" ]]; then
   log "Using local tarball ${LOCAL_TARBALL}"
 else
   if [[ "$VERSION" == "latest" ]]; then
-    log "Resolving latest release for ${REPO}"
+    log "Resolving the newest server release for ${REPO}"
     TAG="$(resolve_latest_tag)"
   else
     TAG="${TAG_PREFIX}$(normalize_version "$VERSION")"

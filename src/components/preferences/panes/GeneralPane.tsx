@@ -209,7 +209,7 @@ import { REPO_URL } from '@/lib/release-url'
 import { getActiveRemoteConnection } from '@/lib/remote-connections'
 import {
   fetchRemoteServerInfo,
-  formatJeanVersionLabel,
+  formatRemoteServerLabel,
 } from '@/lib/remote-version'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { hasBackend, isNativeApp } from '@/lib/environment'
@@ -335,7 +335,6 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       enabled: isGeneralScope && activeRemoteConnection !== null,
       staleTime: 60_000,
     })
-  const remoteServerVersion = remoteServerInfo?.appVersion
   const { data: preferences } = usePreferences()
   const { data: installedApps } = useInstalledApps()
   const gitClientOptions = filterInstalled(
@@ -5155,7 +5154,10 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                   <span className="font-mono text-sm text-muted-foreground">
                     {isRemoteServerInfoLoading
                       ? 'Loading…'
-                      : formatJeanVersionLabel(remoteServerVersion)}
+                      : formatRemoteServerLabel({
+                          appVersion: remoteServerInfo?.appVersion,
+                          serverVersion: remoteServerInfo?.serverVersion,
+                        })}
                   </span>
                 </InlineField>
               )}

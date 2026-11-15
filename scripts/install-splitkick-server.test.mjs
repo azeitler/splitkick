@@ -46,7 +46,11 @@ test('install-splitkick-server.sh script covers download, verify, systemd, env f
 test('install-splitkick-server.sh installs Splitkick, never upstream Jean', () => {
   const source = readFileSync(script, 'utf8')
   assert.match(source, /REPO="\$\{SPLITKICK_REPO:-azeitler\/splitkick\}"/)
-  assert.match(source, /TAG_PREFIX="splitkick-v"/)
+  // Own release track: never the desktop tag, never releases/latest (that
+  // is the desktop release; a pre-release is never latest).
+  assert.match(source, /TAG_PREFIX="splitkick-server-v"/)
+  assert.doesNotMatch(source, /releases\/latest/)
+  assert.match(source, /releases\?per_page=100/)
   assert.match(source, /DEFAULT_PORT="3460"/)
   assert.doesNotMatch(source, /coollabsio/)
   assert.doesNotMatch(source, /com\.jean\.desktop/)

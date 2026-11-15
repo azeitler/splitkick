@@ -1,6 +1,6 @@
 [package]
 name = "splitkick-server"
-version = "0.1.73"
+version = "1.0.0-pre.1"
 edition = "2021"
 
 [dependencies]

@@ -4,6 +4,7 @@ import {
   checkRemoteVersionCompatibility,
   fetchRemoteServerInfo,
   formatJeanVersionLabel,
+  formatRemoteServerLabel,
   isBlockingProbeError,
   isSsoProxyMessage,
   isSsoProxyResponse,
@@ -98,6 +99,7 @@ describe('remote version helpers', () => {
     ).resolves.toEqual({
       ok: true,
       appVersion: '0.1.70',
+      serverVersion: null,
       webBuildId: '0.1.70-abc',
     })
 
@@ -105,6 +107,54 @@ describe('remote version helpers', () => {
       'https://jean.example.com/api/auth?token=secret',
       expect.objectContaining({ signal: expect.anything() })
     )
+  })
+
+  it('reads the headless server release next to the app version', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        appVersion: '1.5.16',
+        serverVersion: '1.0.0-pre.1',
+        webBuildId: '1.5.16-abc',
+      }),
+    })
+
+    const info = await fetchRemoteServerInfo(
+      'https://jean.example.com',
+      'secret',
+      fetchImpl
+    )
+
+    expect(info.serverVersion).toBe('1.0.0-pre.1')
+    expect(formatRemoteServerLabel(info)).toBe(
+      'server v1.0.0-pre.1 (app v1.5.16)'
+    )
+  })
+
+  it('does not warn for a pre-release server built from the same app', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        appVersion: '1.5.16',
+        serverVersion: '1.0.0-pre.1',
+      }),
+    })
+
+    const result = await probeRemoteConnectionVersion(
+      { url: 'https://jean.example.com', token: 'secret' },
+      { fetchImpl, localVersion: '1.5.16' }
+    )
+
+    expect(result.warning).toBeNull()
+    expect(result.check.compatible).toBe(true)
+  })
+
+  it('labels a desktop host by its app version only', () => {
+    expect(
+      formatRemoteServerLabel({ appVersion: '1.5.16', serverVersion: null })
+    ).toBe('v1.5.16')
   })
 
   it('maps 401 responses to a clear token error', async () => {

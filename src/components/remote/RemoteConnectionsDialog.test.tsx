@@ -116,6 +116,11 @@ vi.mock('@/lib/remote-version', () => ({
   fetchRemoteServerInfo,
   formatJeanVersionLabel: (version: string | null | undefined) =>
     version ? `v${version.replace(/^v/, '')}` : 'version unknown',
+  formatRemoteServerLabel: ({
+    appVersion,
+  }: {
+    appVersion: string | null | undefined
+  }) => (appVersion ? `v${appVersion.replace(/^v/, '')}` : 'version unknown'),
   getLocalJeanVersion,
   warnRemoteVersionMismatch,
 }))

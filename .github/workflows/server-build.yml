@@ -2,23 +2,22 @@ name: Server Build
 
 # The headless Splitkick server (src-server, binary `splitkick-server`).
 #
-# Desktop releases do not run this any more: the server has its own
-# pre-release track (1.0.0-pre.N) until it is tested. Run it by hand
-# (workflow_dispatch). With a tag it adds the Linux server tarballs,
-# server-latest.json and the Docker image ghcr.io/<owner>/splitkick-server to
-# that release; without a tag it only builds and tests.
+# The server has its own pre-release track (1.0.0-pre.N, version in
+# src-server/Cargo.toml), apart from the desktop app. Desktop releases do not
+# run this workflow. Run it by hand (workflow_dispatch) on the commit to
+# release:
+# - with `version`: build, test, then create the GitHub pre-release
+#   `splitkick-server-v<version>` (never marked latest: the desktop updater
+#   reads releases/latest) with the Linux tarballs, their .sha256 files and
+#   server-latest.json, and push ghcr.io/<owner>/splitkick-server:<version>
+#   (no :latest);
+# - without `version`: only build and test.
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: 'Release tag to add the server to (splitkick-v<version>)'
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Release tag to add the server to (for example splitkick-v1.5.16). Empty = build and test only'
+      version:
+        description: 'Server pre-release to publish (for example 1.0.0-pre.1; must match src-server/Cargo.toml). Empty = build and test only'
         required: false
         type: string
 
@@ -27,7 +26,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.version || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -44,39 +43,50 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
       publish: ${{ steps.version.outputs.publish }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.tag || github.sha }}
 
-      - name: Resolve release version
+      - name: Resolve server version
         id: version
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          # The version the binary reports (build.rs reads the same file).
-          VERSION=$(node -p "require('./src-tauri/tauri.fork.conf.json').version")
-          if [ -n "$RELEASE_TAG" ]; then
-            if [ "$RELEASE_TAG" != "splitkick-v$VERSION" ]; then
-              echo "::error::Tag $RELEASE_TAG does not match tauri.fork.conf.json version $VERSION"
+          # The version the binary reports (CARGO_PKG_VERSION).
+          VERSION=$(sed -n 's/^version = "\(.*\)"$/\1/p' src-server/Cargo.toml | head -n1)
+          [ -n "$VERSION" ] || { echo "::error::No version in src-server/Cargo.toml"; exit 1; }
+          # Own tag prefix: splitkick-v<version> is the desktop app's.
+          TAG="splitkick-server-v$VERSION"
+          if [ -n "$INPUT_VERSION" ]; then
+            if [ "$INPUT_VERSION" != "$VERSION" ]; then
+              echo "::error::Input $INPUT_VERSION does not match src-server/Cargo.toml version $VERSION"
               exit 1
             fi
+            case "$VERSION" in
+              *-pre.*) ;;
+              *) echo "::error::Only pre-releases (x.y.z-pre.N) are set up for the server; $VERSION is not one"; exit 1 ;;
+            esac
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::Release $TAG already exists"
+              exit 1
+            fi
+            grep -q "^## \[$VERSION\]" src-server/CHANGELOG.md || {
+              echo "::error::src-server/CHANGELOG.md has no ## [$VERSION] section"
+              exit 1
+            }
             PUBLISH=true
           else
-            RELEASE_TAG="manual-${GITHUB_SHA::7}"
+            TAG="manual-${GITHUB_SHA::7}"
             PUBLISH=false
           fi
-          case "$VERSION" in *-*) PRERELEASE=true ;; *) PRERELEASE=false ;; esac
           {
-            echo "tag=$RELEASE_TAG"
+            echo "tag=$TAG"
             echo "version=$VERSION"
             echo "publish=$PUBLISH"
-            echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
-          echo "Building Splitkick server $VERSION for $RELEASE_TAG (publish: $PUBLISH)"
+          echo "Building Splitkick server $VERSION for $TAG (publish: $PUBLISH)"
 
   build-binaries:
     name: Build server binary (${{ matrix.arch }})
@@ -95,8 +105,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.tag || github.sha }}
 
       - name: Install Linux dependencies
         run: |
@@ -131,8 +139,13 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          ! cargo tree --manifest-path src-server/Cargo.toml -p splitkick-server | grep -Ei 'tauri|wry|webkit|gtk'
-          ! ldd src-server/target/release/splitkick-server | grep -Ei 'webkit|gtk|appindicator'
+          # `! cmd` would not stop the job (it skips errexit), so test explicitly.
+          if cargo tree --manifest-path src-server/Cargo.toml -p splitkick-server | grep -Ei 'tauri|wry|webkit|gtk'; then
+            echo "::error::splitkick-server depends on Tauri/WebView crates"; exit 1
+          fi
+          if ldd src-server/target/release/splitkick-server | grep -Ei 'webkit|gtk|appindicator'; then
+            echo "::error::splitkick-server links WebView/GTK libraries"; exit 1
+          fi
           reported=$(src-server/target/release/splitkick-server --version)
           echo "$reported"
           [ "$reported" = "Splitkick $VERSION" ]
@@ -145,6 +158,10 @@ jobs:
             sleep 1
           done
           curl --fail http://127.0.0.1:3461/readyz
+          # /api/auth reports the server release next to the app version.
+          auth=$(curl --fail --silent http://127.0.0.1:3461/api/auth)
+          echo "$auth"
+          echo "$auth" | grep -q "\"serverVersion\":\"$VERSION\""
 
       - name: Package binary
         env:
@@ -164,22 +181,13 @@ jobs:
             artifacts/*.tar.gz
             artifacts/*.sha256
 
-      - name: Upload release assets
-        if: needs.metadata.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-        run: |
-          gh release upload "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.sha256 --clobber
-
-  publish-update-manifest:
-    name: Publish server-latest.json
+  publish-release:
+    name: Create the GitHub pre-release
     needs: [metadata, build-binaries]
     if: needs.metadata.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      # gh release upload needs repo context; without checkout it fails with
-      # "fatal: not a git repository" even when GH_TOKEN is set.
+      # gh release needs repo context, and the notes come from the changelog.
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -195,7 +203,7 @@ jobs:
           name: splitkick-server-linux-arm64
           path: artifacts/arm64
 
-      - name: Build and upload server-latest.json
+      - name: Build server-latest.json and create the pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
@@ -204,8 +212,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          amd64_sha=$(awk '{print $1}' artifacts/amd64/splitkick-server-linux-amd64-${VERSION}.tar.gz.sha256)
-          arm64_sha=$(awk '{print $1}' artifacts/arm64/splitkick-server-linux-arm64-${VERSION}.tar.gz.sha256)
+          amd64_sha=$(awk '{print $1}' "artifacts/amd64/splitkick-server-linux-amd64-${VERSION}.tar.gz.sha256")
+          arm64_sha=$(awk '{print $1}' "artifacts/arm64/splitkick-server-linux-arm64-${VERSION}.tar.gz.sha256")
           pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           PUB_DATE="$pub_date" AMD64_SHA="$amd64_sha" ARM64_SHA="$arm64_sha" \
@@ -234,11 +242,33 @@ jobs:
           print(json.dumps(manifest, indent=2))
           PY
 
-          gh release upload "$RELEASE_TAG" server-latest.json --clobber
+          # The ## [VERSION] section of the server changelog, heading excluded.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' src-server/CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::Empty changelog section for $VERSION"; exit 1; }
+
+          # A pre-release, never "latest": the desktop updater reads
+          # releases/latest/download/latest.json.
+          gh release create "$RELEASE_TAG" \
+            --repo "$REPO" \
+            --target "$GITHUB_SHA" \
+            --title "Splitkick server $VERSION" \
+            --notes-file notes.md \
+            --prerelease \
+            --latest=false \
+            artifacts/amd64/*.tar.gz artifacts/amd64/*.sha256 \
+            artifacts/arm64/*.tar.gz artifacts/arm64/*.sha256 \
+            server-latest.json
 
   docker-image:
     name: Build Docker image (${{ matrix.arch }})
-    needs: [metadata, build-binaries]
+    needs: [metadata, build-binaries, publish-release]
+    # Also on a build-only run, where publish-release is skipped. A failed
+    # release pushes no image.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -253,8 +283,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.tag || github.sha }}
 
       - name: Download server binary
         uses: actions/download-artifact@v4
@@ -320,23 +348,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push manifests
+      - name: Create and push the manifest
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           VERSION: ${{ needs.metadata.outputs.version }}
-          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
         run: |
           set -euo pipefail
-
-          create_manifest() {
-            docker buildx imagetools create \
-              -t "${IMAGE}:$1" \
-              "${IMAGE}:${VERSION}-amd64" \
-              "${IMAGE}:${VERSION}-arm64"
-          }
-
-          create_manifest "$VERSION"
-          # A pre-release never moves `latest`, as on the release page.
-          if [ "$PRERELEASE" != "true" ]; then
-            create_manifest "latest"
-          fi
+          # Only :<version>. A pre-release never moves :latest.
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"

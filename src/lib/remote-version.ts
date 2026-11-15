@@ -5,6 +5,14 @@
  * remote headless/Web Access backend. When versions diverge we surface a
  * warning (picker label + toast) but still allow the connection so users
  * are not locked out.
+ *
+ * `/api/auth` reports two versions:
+ * - `appVersion`: the version of the app code the host runs (its web build,
+ *   `jean-build.json`). The desktop app and the headless server are built
+ *   from the same code, so this is the one to compare.
+ * - `serverVersion`: only from a headless `splitkick-server`, which has its
+ *   own release track (`1.0.0-pre.N`). It is shown, never compared: a
+ *   server 1.0.0-pre.1 built from app 1.5.16 matches desktop app 1.5.16.
  */
 
 import { PRODUCT_NAME } from '@/lib/build-info'
@@ -16,6 +24,8 @@ import { logger } from './logger'
 export interface RemoteServerInfo {
   ok: boolean
   appVersion: string | null
+  /** Headless server release (own track); null on desktop hosts. */
+  serverVersion: string | null
   webBuildId: string | null
 }
 
@@ -140,6 +150,18 @@ export function formatJeanVersionLabel(
 }
 
 /**
+ * Label for a remote host: the server release and the app code it runs for a
+ * headless server, the app version for a desktop host.
+ */
+export function formatRemoteServerLabel(info: {
+  appVersion: string | null | undefined
+  serverVersion?: string | null
+}): string {
+  if (!info.serverVersion) return formatJeanVersionLabel(info.appVersion)
+  return `server ${formatJeanVersionLabel(info.serverVersion)} (app ${formatJeanVersionLabel(info.appVersion)})`
+}
+
+/**
  * Compare local desktop client version against a remote Jean appVersion.
  * Missing remote version (older servers) is treated as compatible so we do
  * not spam warnings for pre-version-reporting installs.
@@ -197,6 +219,7 @@ export async function fetchRemoteServerInfo(
     let body: {
       ok?: boolean
       appVersion?: string | null
+      serverVersion?: string | null
       webBuildId?: string | null
     }
     try {
@@ -208,6 +231,7 @@ export async function fetchRemoteServerInfo(
     return {
       ok: body.ok !== false,
       appVersion: body.appVersion ?? null,
+      serverVersion: body.serverVersion ?? null,
       webBuildId: body.webBuildId ?? null,
     }
   } catch (error) {
