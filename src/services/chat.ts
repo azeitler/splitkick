@@ -48,6 +48,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { clearSessionScrollState } from '@/components/chat/session-scroll-state'
+import { supersedePendingQuestions } from '@/components/chat/supersede-pending-questions'
 import { isNativeTerminalBackend } from '@/lib/native-cli-session'
 import {
   getResumeArgs,
@@ -2033,6 +2034,9 @@ export function useSendMessage() {
       const previous = queryClient.getQueryData<Session>(
         chatQueryKeys.session(sessionId)
       )
+      // A message sent instead of an answer skips the open question now,
+      // not when the run ends and the history reloads.
+      supersedePendingQuestions(sessionId, previous?.messages)
 
       // Optimistically add user message immediately (skip if last message is same content)
       const optimisticUserMessage: ChatMessage = {

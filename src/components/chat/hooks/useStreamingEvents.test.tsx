@@ -21,10 +21,7 @@ const {
   mockListen: vi.fn(),
   mockSaveWorktreePr: vi.fn(),
   mockPlayNotificationSound: vi.fn(),
-  registeredListeners: new Map<
-    string,
-    (event: { payload: unknown }) => void
-  >(),
+  registeredListeners: new Map<string, (event: { payload: unknown }) => void>(),
 }))
 
 vi.mock('@/lib/transport', () => ({
@@ -1542,8 +1539,12 @@ describe('useStreamingEvents cancellation sanitization', () => {
       },
     })
 
-    expect(useChatStore.getState().sendingSessionIds['session-1']).toBeUndefined()
-    expect(useChatStore.getState().streamingContents['session-1']).toBeUndefined()
+    expect(
+      useChatStore.getState().sendingSessionIds['session-1']
+    ).toBeUndefined()
+    expect(
+      useChatStore.getState().streamingContents['session-1']
+    ).toBeUndefined()
   })
 
   it('clears the previous turn waiting flag in session-list caches on send', async () => {
@@ -1587,6 +1588,78 @@ describe('useStreamingEvents cancellation sanitization', () => {
       }>(key)
       expect(data?.sessions[0]?.waiting_for_input).toBe(false)
     }
+  })
+
+  // A turn started outside this client (Splitkick MCP send_chat_message) used
+  // to leave the previous question card live until the run ended.
+  it('skips the previous turn open question when another client starts a turn', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+    const question = {
+      id: 'toolu_q1',
+      name: 'AskUserQuestion',
+      input: {
+        questions: [
+          {
+            question: 'Where is the router?',
+            header: 'Router',
+            multiSelect: false,
+            options: [{ label: 'Store room', description: 'There.' }],
+          },
+        ],
+      },
+    }
+    const answered = { ...question, id: 'toolu_q0' }
+    queryClient.setQueryData(['chat', 'session', 'session-1'], {
+      id: 'session-1',
+      name: 'Test',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [
+        {
+          id: 'a1',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: '',
+          timestamp: 1,
+          tool_calls: [answered, question],
+        },
+      ],
+    })
+    const realAnswer = [{ questionIndex: 0, selectedOptions: [0] }]
+    useChatStore.setState({
+      sendingSessionIds: {},
+      answeredQuestions: { 'session-1': new Set(['toolu_q0']) },
+      submittedAnswers: { 'session-1': { toolu_q0: realAnswer } },
+      activeToolCalls: { 'session-1': [question] },
+      streamingContentBlocks: {
+        'session-1': [{ type: 'tool_use', tool_call_id: 'toolu_q1' }],
+      },
+    })
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+    await waitFor(() =>
+      expect(registeredListeners.has('chat:sending')).toBe(true)
+    )
+
+    registeredListeners.get('chat:sending')?.({
+      payload: {
+        session_id: 'session-1',
+        worktree_id: 'worktree-1',
+        user_message: 'Addendum from the parent session',
+      },
+    })
+
+    const state = useChatStore.getState()
+    expect(state.isQuestionAnswered('session-1', 'toolu_q1')).toBe(true)
+    expect(state.submittedAnswers['session-1']?.toolu_q1).toEqual([])
+    // A real answer is kept.
+    expect(state.submittedAnswers['session-1']?.toolu_q0).toEqual(realAnswer)
+    // Per tool, not session-wide: the next question must stay live.
+    expect(state.areQuestionsSkipped('session-1')).toBe(false)
+    expect(state.activeToolCalls['session-1'] ?? []).toEqual([])
+    expect(state.streamingContentBlocks['session-1'] ?? []).toEqual([])
   })
 
   // A Claude denial arrives with the end of a turn. In yolo mode the approval
@@ -2060,11 +2133,13 @@ describe('useStreamingEvents replay dedupe', () => {
       },
     })
 
-    expect(useChatStore.getState().streamingContentBlocks['session-1']).toEqual([
-      { type: 'text', text: 'Before steering.' },
-      { type: 'user_input', text: 'Also fix the header.' },
-      { type: 'text', text: 'After steering.' },
-    ])
+    expect(useChatStore.getState().streamingContentBlocks['session-1']).toEqual(
+      [
+        { type: 'text', text: 'Before steering.' },
+        { type: 'user_input', text: 'Also fix the header.' },
+        { type: 'text', text: 'After steering.' },
+      ]
+    )
     expect(
       useChatStore.getState().streamingReplayContentBlocks['session-1']
     ).toBeUndefined()
