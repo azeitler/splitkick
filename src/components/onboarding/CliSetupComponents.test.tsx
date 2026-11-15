@@ -7,12 +7,11 @@ import {
 } from './CliSetupComponents'
 
 vi.mock('@/components/chat/StandaloneTerminalSurface', () => ({
-  StandaloneTerminalSurface: ({
-    terminalId,
-  }: {
-    terminalId: string
-  }) => (
-    <div data-testid="standalone-terminal-surface" data-terminal-id={terminalId} />
+  StandaloneTerminalSurface: ({ terminalId }: { terminalId: string }) => (
+    <div
+      data-testid="standalone-terminal-surface"
+      data-terminal-id={terminalId}
+    />
   ),
 }))
 
