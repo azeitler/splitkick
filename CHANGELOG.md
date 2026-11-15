@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **A finished update download shows a toast again.** It has a Restart
+  button and does not open a modal over your work. The toolbar's "Restart to
+  update" button, the menu bar item and the system notification stay. Check
+  for Updates still opens the restart prompt.
+
 ### Fixed
 
 - **An open question is skipped as soon as the next turn starts.** When a

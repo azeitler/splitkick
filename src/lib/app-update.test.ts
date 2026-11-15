@@ -9,6 +9,7 @@ import {
   installAndRelaunch,
   isUpdateCheckEnabled,
   markAppUpdateReady,
+  UPDATE_READY_TOAST_ID,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
 } from './app-update'
@@ -200,6 +201,7 @@ const updater = vi.hoisted(() => ({
   message: vi.fn(() => Promise.resolve()),
   loading: vi.fn(() => 'checking-toast'),
   dismiss: vi.fn(),
+  success: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/app', () => ({
@@ -218,7 +220,11 @@ vi.mock('@/lib/native-log', () => ({
   logNativeInfo: updater.logInfo,
 }))
 vi.mock('sonner', () => ({
-  toast: { loading: updater.loading, dismiss: updater.dismiss },
+  toast: {
+    loading: updater.loading,
+    dismiss: updater.dismiss,
+    success: updater.success,
+  },
 }))
 
 describe('checkForUpdatesManually (#100)', () => {
@@ -373,16 +379,37 @@ describe('markAppUpdateReady (#135)', () => {
     updater.notify.mockReset()
   })
 
-  it('opens the "Update Ready" prompt, not only a toast', async () => {
+  it('shows a toast with Restart, not a modal', async () => {
     const { useUIStore } = await load()
+    updater.success.mockReset()
 
     markAppUpdateReady('2.0.0')
 
     const state = useUIStore.getState()
-    expect(state.updateModalVersion).toBe('2.0.0')
+    expect(state.updateModalVersion).toBeNull()
     expect(state.updateReadyVersion).toBe('2.0.0')
     expect(state.isUpdateInstalling).toBe(false)
     expect(state.pendingUpdateVersion).toBeNull()
+    expect(updater.success).toHaveBeenCalledTimes(1)
+    const [text, options] = updater.success.mock.calls[0] as unknown as [
+      string,
+      {
+        id: string
+        duration: number
+        action: { label: string; onClick: () => void }
+      },
+    ]
+    expect(text).toContain('2.0.0 is ready')
+    expect(options.id).toBe(UPDATE_READY_TOAST_ID)
+    expect(options.duration).toBe(Infinity)
+    expect(options.action.label).toBe('Restart')
+
+    // Restart takes the install-then-relaunch path, as Restart Now does.
+    const install = vi.fn()
+    window.addEventListener('install-pending-update', install)
+    options.action.onClick()
+    window.removeEventListener('install-pending-update', install)
+    expect(install).toHaveBeenCalledTimes(1)
   })
 
   it('sends the native notification once per version', async () => {

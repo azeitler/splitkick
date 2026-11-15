@@ -80,21 +80,38 @@ export function resolveInstallPendingAction(state: {
 /** localStorage key: the last version the "ready" notification was sent for. */
 export const READY_NOTIFIED_KEY = 'splitkick.update-ready-notified'
 
+/** Toast id of the "update is ready" toast, so a second download replaces it. */
+export const UPDATE_READY_TOAST_ID = 'app-update-ready'
+
 /**
- * The download finished. Record the ready state and open the "Update Ready"
- * prompt (Restart Now / Later). The restart must never depend on a toast:
- * from 1.5.9 to 1.5.14 every toast of the desktop app was off screen, so
- * the only Restart button could not be seen and no update was applied
- * (#135). Also sends a native notification once per version, and adds
- * "Restart to update" to the menu bar (tray) menu.
+ * The download finished. Record the ready state and show a toast with a
+ * Restart button; it does not interrupt the work with a modal.
+ *
+ * The restart must never depend on the toast alone: from 1.5.9 to 1.5.14
+ * every toast of the desktop app was off screen, so the only Restart button
+ * could not be seen and no update was applied (#135). The ready state also
+ * shows "Restart to update" in the window toolbar, adds it to the menu bar
+ * (tray) menu, and sends a native notification once per version. Check for
+ * Updates opens the "Update Ready" prompt for a downloaded update.
  */
 export function markAppUpdateReady(version: string): void {
   const store = useUIStore.getState()
   store.setIsUpdateInstalling(false)
   store.setUpdateReadyVersion(version)
   store.setPendingUpdateVersion(null)
-  store.setUpdateModalVersion(version)
-  logNativeInfo(`Update ${version} downloaded; restart prompt shown`)
+  store.setUpdateModalVersion(null)
+  logNativeInfo(`Update ${version} downloaded; restart toast shown`)
+  toast.success(`${PRODUCT_NAME} ${version} is ready. Restart to install it.`, {
+    id: UPDATE_READY_TOAST_ID,
+    duration: Infinity,
+    action: {
+      label: 'Restart',
+      // Same path as Restart Now: install the package, then relaunch.
+      onClick: () => {
+        window.dispatchEvent(new Event('install-pending-update'))
+      },
+    },
+  })
 
   if (readNotifiedVersion() !== version) {
     writeNotifiedVersion(version)

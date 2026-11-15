@@ -322,7 +322,7 @@ function App() {
         // instead of re-downloading.
         downloadedUpdateRef.current = update
         pendingUpdateRef.current = null
-        // The "Update Ready" prompt carries the restart, not a toast (#135).
+        // The ready toast, toolbar button and tray item carry the restart (#135).
         toast.dismiss(toastId)
         markAppUpdateReady(update.version)
         return true
