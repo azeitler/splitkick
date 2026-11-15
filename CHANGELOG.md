@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **An open question is skipped as soon as the next turn starts.** When a
+  turn started that this window did not send (MCP `send_chat_message` from
+  another session, another client, the queue), the open AskUserQuestion card
+  stayed live and clickable for the whole new turn. It changed to "Skipped"
+  only when the next question came. Now it changes at once, and a message you
+  type instead of an answer also skips it. MCP `send_chat_message` now returns
+  `skippedPendingQuestion: true` when the session waited for a question.
+  Closes #141
+
 ## [1.5.16] - 2026-11-15
 
 Built on Jean 0.1.73.

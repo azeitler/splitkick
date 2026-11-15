@@ -68,6 +68,7 @@ import type {
 } from '@/types/chat'
 import { saveCancelledMessage } from '@/services/chat'
 import { stripAllMarkers } from '@/components/chat/message-content-utils'
+import { supersedePendingQuestions } from '@/components/chat/supersede-pending-questions'
 import {
   applySessionSettingToSession,
   type SessionSettingKey,
@@ -376,6 +377,20 @@ export default function useStreamingEvents({
       // Check if THIS client initiated the send (sender calls addSendingSession
       // before sendMessage.mutate, so it's already in sendingSessionIds).
       const isSender = !!useChatStore.getState().sendingSessionIds[session_id]
+      // The new turn supersedes a question the previous turn left open, even
+      // when the turn was started outside this client (MCP, another client).
+      supersedePendingQuestions(
+        session_id,
+        queryClient.getQueryData<Session>(chatQueryKeys.session(session_id))
+          ?.messages
+      )
+      if (!isSender) {
+        // The sender clears these before it sends. Here they still hold the
+        // previous turn (e.g. its question card), which would otherwise render
+        // above the new turn's streamed output.
+        useChatStore.getState().clearToolCalls(session_id)
+        useChatStore.getState().clearStreamingContentBlocks(session_id)
+      }
       // A remote web/mobile client may start a new turn while this client still
       // has the previous turn parked as waiting/reviewing in Zustand. Clear
       // those stale terminal flags before marking the session as running.
