@@ -12,8 +12,8 @@ use yet.
 
 - **Splitkick server for Linux.** `splitkick-server` for amd64 and arm64, as
   tarballs with a `.sha256` file on the GitHub pre-release
-  `splitkick-server-v1.0.0-pre.1`, and as the Docker image
-  `ghcr.io/azeitler/splitkick-server:1.0.0-pre.1` (no `:latest`). It uses port
+  `splitkick-server-v1.0.0-pre.1`. There is no Docker image: the agents must
+  run on the host, with its repos and tools. It uses port
   3460, the unit `splitkick-server.service` and the data folder
   `app.splitkick.desktop`. An upstream `jean-server` on the same host is left
   alone.

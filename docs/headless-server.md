@@ -17,8 +17,6 @@ it is tested:
   `splitkick-server-linux-amd64-<version>.tar.gz`,
   `splitkick-server-linux-arm64-<version>.tar.gz` (each with a `.sha256`) and
   `server-latest.json`.
-- Docker image `ghcr.io/azeitler/splitkick-server:<version>`. There is no
-  `:latest` tag for a pre-release.
 - `/api/auth` reports `serverVersion` (the server release) and `appVersion`
   (the version of the app code the server is built from). The desktop app
   compares only `appVersion` with its own version, so a server 1.0.0-pre.1
@@ -26,6 +24,11 @@ it is tested:
 
 To build it from source: `bun run build`, then
 `cargo build --release --manifest-path src-server/Cargo.toml`.
+
+There is no Docker image. The agents (Claude, Codex, …) run on the machine
+that runs `splitkick-server` and work in its repos with its tools; in a
+container they would see only the container. Install the server on the Linux
+host itself.
 
 ### Install a pre-release
 
@@ -322,38 +325,6 @@ Splitkick loads the service user's interactive login-shell `PATH` at startup, so
 browser terminals can find tools installed by shell setup scripts (for example
 `~/.bun/bin/bun`) even though systemd itself provides a minimal environment.
 
-## Docker notes
-
-- The Server Build workflow publishes the Docker image for a server release as
-  `ghcr.io/azeitler/splitkick-server:<version>`. It is not published with the
-  desktop releases.
-- The image launches `splitkick-server` directly and contains no GTK/WebKit/Xvfb packages.
-- Runtime packages include `ca-certificates`, `curl`, `git`, `openssh-client`, and
-  the official **GitHub CLI (`gh`)** so onboarding and GitHub integration can run
-  without a separate install step. Prefer the **System PATH** CLI source in
-  onboarding/Settings when using the container image.
-- Bind to `0.0.0.0` inside the container, but keep token auth enabled.
-- Mount Splitkick's app-data directory as a volume so projects, preferences, and sessions persist.
-- Put TLS/auth in front of the container for internet exposure.
-- For Tailscale access from a browser, prefer `tailscale serve` (HTTPS) in front
-  of `127.0.0.1` rather than plain `http://100.x.y.z` — browsers block the
-  clipboard API and other secure-context features on non-localhost HTTP,
-  including the app cache (service worker) that lets the phone app start
-  without the server. See `docs/userguide/phone-home-screen-app.md`.
-
-Example command. The token goes in an env file (mode 600), not on the
-command line, where `ps` shows it:
-
-```bash
-printf 'JEAN_TOKEN=%s\n' "$(openssl rand -base64 32)" > splitkick.env
-chmod 600 splitkick.env
-docker run --rm \
-  --env-file splitkick.env \
-  -p 127.0.0.1:3460:3460 \
-  -v splitkick-data:/home/splitkick/.local/share/app.splitkick.desktop \
-  ghcr.io/azeitler/splitkick-server:1.0.0-pre.1
-```
-
 ## Reverse proxy
 
 ### Caddy
@@ -392,6 +363,12 @@ Bind directly to the Tailscale IP and keep token auth enabled:
 splitkick-server --host 100.x.y.z --port 3460 --token "$JEAN_TOKEN"
 ```
 
+For Tailscale access from a browser, prefer `tailscale serve` (HTTPS) in front
+of `127.0.0.1` rather than plain `http://100.x.y.z` — browsers block the
+clipboard API and other secure-context features on non-localhost HTTP,
+including the app cache (service worker) that lets the phone app start
+without the server. See `docs/userguide/phone-home-screen-app.md`.
+
 ## Server updates (bare-metal Linux)
 
 `splitkick-server` can install a newer binary when you choose to from Web Access.
@@ -411,7 +388,7 @@ GitHub never marks a pre-release as latest.
 | Apply           | User clicks **Update & restart** → `apply_server_update`                                                                 |
 | Verify          | SHA-256 from the release manifest                                                                                        |
 | Restart         | `systemctl restart splitkick-server.service` when that unit is loaded (or `SPLITKICK_SERVER_SERVICE`), otherwise re-exec |
-| Containers      | Not supported - update the Docker/GHCR image instead                                                                     |
+| Containers      | Not supported - replace the binary in the container instead                                                              |
 | Active sessions | Apply is refused while chat sessions are running                                                                         |
 
 ## Security recommendations
