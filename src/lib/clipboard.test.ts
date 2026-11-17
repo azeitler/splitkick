@@ -228,3 +228,32 @@ describe('normalizeClipboardForTerminal', () => {
     expect(normalizeClipboardForTerminal('a\r\nb\rc')).toBe('a\nb\nc')
   })
 })
+
+// Copy image fetches the shown image (copyImageToClipboard). On macOS a local
+// image is asset://localhost/…; without asset: in connect-src the native app
+// blocked that fetch, so the image showed but Copy image failed.
+describe('native app CSP', () => {
+  it('lets fetch read every image source img-src allows', async () => {
+    const { readFileSync } = await import('node:fs')
+    const conf = JSON.parse(
+      readFileSync(`${process.cwd()}/src-tauri/tauri.conf.json`, 'utf8')
+    ) as { app: { security: { csp: string } } }
+    const directive = (name: string) =>
+      conf.app.security.csp
+        .split(';')
+        .map(part => part.trim().split(/\s+/))
+        .find(([key]) => key === name)
+        ?.slice(1) ?? []
+    const connect = directive('connect-src')
+    for (const source of [
+      'asset:',
+      'http://asset.localhost',
+      'https://asset.localhost',
+      'data:',
+      'blob:',
+    ]) {
+      expect(directive('img-src')).toContain(source)
+      expect(connect).toContain(source)
+    }
+  })
+})
