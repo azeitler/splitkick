@@ -119,7 +119,7 @@ function MoreMenu() {
       <DropdownMenuContent side="top" align="end">
         <DropdownMenuItem onSelect={() => openExternal(REPO_URL)}>
           <Github />
-          GitHub
+          Star on GitHub
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => openExternal('https://splitkick.app')}

@@ -91,7 +91,7 @@ describe('SidebarFooter', () => {
     expect(openExternal).toHaveBeenCalledWith('https://splitkick.app')
 
     await user.click(screen.getByTestId('sidebar-more'))
-    await user.click(await screen.findByText('GitHub'))
+    await user.click(await screen.findByText('Star on GitHub'))
     expect(openExternal).toHaveBeenCalledWith(
       'https://github.com/azeitler/splitkick'
     )

@@ -21,6 +21,17 @@ use tauri::{
 const KEYBINDING_PREFIX: &str = "kb:";
 const COMMAND_PREFIX: &str = "cmd:";
 
+/// The Splitkick repository, opened by Help → Star Splitkick on GitHub….
+pub(crate) const REPO_URL: &str = "https://github.com/azeitler/splitkick";
+
+/// Web page that a menu item id opens in the system browser.
+pub(crate) fn menu_url(id: &str) -> Option<&'static str> {
+    match id {
+        "star-on-github" => Some(REPO_URL),
+        _ => None,
+    }
+}
+
 /// Frontend event and payload for a menu item id.
 pub(crate) fn menu_event(id: &str) -> Option<(&'static str, Option<&str>)> {
     if let Some(action) = id.strip_prefix(KEYBINDING_PREFIX) {
@@ -240,6 +251,7 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
             "help.install-ai-backends",
             "Install AI Backends",
         )?)
+        .item(&MenuItemBuilder::with_id("star-on-github", "Star Splitkick on GitHub…").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("show-log", "Show Log").build(app)?)
         .item(&MenuItemBuilder::with_id("show-crash-reports", "Show Crash Reports").build(app)?)
@@ -271,6 +283,12 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
         if event.id().as_ref() == "minimize" {
             if let Some(window) = focused {
                 let _ = window.minimize();
+            }
+            return;
+        }
+        if let Some(url) = menu_url(event.id().as_ref()) {
+            if let Err(error) = jean_core::open_url_in_browser(url) {
+                log::warn!("Cannot open {url}: {error}");
             }
             return;
         }
@@ -366,7 +384,18 @@ pub fn set_menu_accelerators(
 
 #[cfg(test)]
 mod tests {
-    use super::{keybinding_to_accelerator, menu_event};
+    use super::{keybinding_to_accelerator, menu_event, menu_url};
+
+    #[test]
+    fn star_item_opens_the_repository() {
+        assert_eq!(
+            menu_url("star-on-github"),
+            Some("https://github.com/azeitler/splitkick")
+        );
+        // The browser opens from Rust; the web view gets no event.
+        assert_eq!(menu_event("star-on-github"), None);
+        assert_eq!(menu_url("about"), None);
+    }
 
     #[test]
     fn converts_modifier_shortcuts() {
