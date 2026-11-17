@@ -1,0 +1,99 @@
+[
+  {
+    "name": "global defaults apply when there is no session or project choice",
+    "backend": "claude",
+    "availableServers": [
+      { "name": "playwright", "backend": "claude", "config": { "type": "http", "url": "http://localhost:8931/mcp" } },
+      { "name": "sevdesk", "backend": "claude", "config": { "command": "sevdesk-mcp" } }
+    ],
+    "globalEnabled": ["claude:playwright"],
+    "knownServers": ["claude:playwright", "claude:sevdesk"],
+    "expectedEnabled": ["claude:playwright"],
+    "expectedConfig": {
+      "mcpServers": { "playwright": { "type": "http", "url": "http://localhost:8931/mcp" } }
+    }
+  },
+  {
+    "name": "project list wins over global defaults",
+    "backend": "claude",
+    "availableServers": [
+      { "name": "playwright", "backend": "claude", "config": { "type": "http", "url": "http://localhost:8931/mcp" } },
+      { "name": "sevdesk", "backend": "claude", "config": { "command": "sevdesk-mcp" } }
+    ],
+    "projectEnabled": ["claude:sevdesk"],
+    "globalEnabled": ["claude:playwright"],
+    "knownServers": ["claude:playwright", "claude:sevdesk"],
+    "expectedEnabled": ["claude:sevdesk"],
+    "expectedConfig": { "mcpServers": { "sevdesk": { "command": "sevdesk-mcp" } } }
+  },
+  {
+    "name": "session override wins and turns auto-enable off",
+    "backend": "claude",
+    "availableServers": [
+      { "name": "playwright", "backend": "claude", "config": { "type": "http", "url": "http://localhost:8931/mcp" } },
+      { "name": "brand-new", "backend": "claude", "config": { "command": "new-mcp" } }
+    ],
+    "sessionEnabled": ["claude:playwright"],
+    "projectEnabled": [],
+    "globalEnabled": [],
+    "knownServers": [],
+    "expectedEnabled": ["claude:playwright"],
+    "expectedConfig": {
+      "mcpServers": { "playwright": { "type": "http", "url": "http://localhost:8931/mcp" } }
+    }
+  },
+  {
+    "name": "empty session override means no servers",
+    "backend": "claude",
+    "availableServers": [
+      { "name": "playwright", "backend": "claude", "config": { "type": "http", "url": "http://localhost:8931/mcp" } }
+    ],
+    "sessionEnabled": [],
+    "globalEnabled": ["claude:playwright"],
+    "expectedEnabled": [],
+    "expectedConfig": null
+  },
+  {
+    "name": "new servers are auto-enabled, known and disabled ones are not",
+    "backend": "claude",
+    "availableServers": [
+      { "name": "playwright", "backend": "claude", "config": { "type": "http", "url": "http://localhost:8931/mcp" } },
+      { "name": "user-off", "backend": "claude", "config": { "command": "off-mcp" } },
+      { "name": "config-off", "backend": "claude", "disabled": true, "config": { "command": "x", "disabled": true } },
+      { "name": "events", "backend": "claude", "config": { "type": "sse", "url": "http://localhost:9000/sse" } }
+    ],
+    "globalEnabled": [],
+    "knownServers": ["claude:user-off"],
+    "expectedEnabled": ["claude:playwright", "claude:events"],
+    "expectedConfig": {
+      "mcpServers": {
+        "playwright": { "type": "http", "url": "http://localhost:8931/mcp" },
+        "events": { "type": "sse", "url": "http://localhost:9000/sse" }
+      }
+    }
+  },
+  {
+    "name": "keys of other backends and legacy bare names",
+    "backend": "codex",
+    "availableServers": [
+      { "name": "node_repl", "backend": "codex", "config": { "command": "node-repl" } },
+      { "name": "jean", "backend": "codex", "config": { "command": "jean" } }
+    ],
+    "globalEnabled": ["claude:playwright", "codex:node_repl", "jean"],
+    "knownServers": ["codex:node_repl", "codex:jean"],
+    "expectedEnabled": ["claude:playwright", "codex:node_repl", "jean"],
+    "expectedConfig": {
+      "mcpServers": { "node_repl": { "command": "node-repl" }, "jean": { "command": "jean" } }
+    }
+  },
+  {
+    "name": "antigravity servers are always on",
+    "backend": "antigravity",
+    "availableServers": [
+      { "name": "docs", "backend": "antigravity", "config": { "command": "docs-mcp" } }
+    ],
+    "sessionEnabled": [],
+    "expectedEnabled": ["antigravity:docs"],
+    "expectedConfig": { "mcpServers": { "docs": { "command": "docs-mcp" } } }
+  }
+]

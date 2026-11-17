@@ -17,6 +17,7 @@ pub(crate) mod grok;
 pub(crate) mod handoff;
 pub mod jean_mcp;
 pub(crate) mod kimi;
+pub mod mcp_resolve;
 mod naming;
 mod native_history;
 pub(crate) mod opencode;
