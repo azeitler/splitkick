@@ -22,7 +22,9 @@ import {
   classifyChatLink,
   LocalPathRootContext,
   openChatLink,
+  openPathInSystem,
   resolveLocalPath,
+  toLocalReferencePath,
 } from '@/lib/chat-links'
 import { canOpenNativeApps } from '@/lib/environment'
 import { useFileReference } from '@/lib/file-reference'
@@ -200,6 +202,21 @@ export function MessageThreadContextMenu({
       : null)
   const canReveal = canOpenNativeApps()
   const revealPath = useRevealPathInFileManager()
+  // A folder opens in the file manager; a file is revealed in its parent.
+  const linkIsFolder = isLocalFileLink && reference.isDir
+  // The path a local link names: resolved when the backend found it, else
+  // what the answer wrote.
+  const linkPath = isLocalFileLink
+    ? (reference.path ??
+      toLocalReferencePath(splitFileRefSuffix(linkHref)[0]) ??
+      linkHref)
+    : ''
+  const handleCopyPath = useCallback(() => {
+    if (!linkPath) return
+    void copyToClipboard(linkPath)
+      .then(() => toast.success('Copied to clipboard'))
+      .catch(() => toast.error('Failed to copy'))
+  }, [linkPath])
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0
   // The selected text, else the whole message. ChatWindow owns the list and
@@ -227,11 +244,22 @@ export function MessageThreadContextMenu({
         {revealTarget && (
           <ContextMenuItem
             disabled={!canReveal}
-            onSelect={() => revealPath.mutate(revealTarget)}
+            onSelect={() =>
+              linkIsFolder && !imagePath
+                ? openPathInSystem(revealTarget)
+                : revealPath.mutate(revealTarget)
+            }
           >
             <FolderOpen className="h-4 w-4" />
-            Reveal in {getFileManagerName()}
+            {linkIsFolder && !imagePath ? 'Open' : 'Reveal'} in{' '}
+            {getFileManagerName()}
             {!canReveal && <HostOnlyHint />}
+          </ContextMenuItem>
+        )}
+        {linkPath && (
+          <ContextMenuItem onSelect={handleCopyPath}>
+            <Copy className="h-4 w-4" />
+            Copy path
           </ContextMenuItem>
         )}
         {imagePath && sessionId && (
@@ -248,7 +276,7 @@ export function MessageThreadContextMenu({
             Copy image
           </ContextMenuItem>
         )}
-        {linkUrl && (
+        {linkUrl && !isLocalFileLink && (
           <ContextMenuItem onSelect={handleCopyUrl}>
             <Copy className="h-4 w-4" />
             Copy URL

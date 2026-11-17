@@ -136,7 +136,12 @@ function resolvePageUrl(
   return path ? { path, url: `${toFileUrl(path)}${suffix}` } : null
 }
 
-function openPathInSystem(path: string): void {
+/**
+ * Open a path with the system: a folder opens in Finder / Explorer / the
+ * file manager, a file in its default app. Callers gate it with
+ * `canOpenNativeApps()`.
+ */
+export function openPathInSystem(path: string): void {
   invoke('open_path_in_default_app', { path }).catch(error => {
     toast.error(`Failed to open ${path}: ${error}`)
   })
