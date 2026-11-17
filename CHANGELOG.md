@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents know the chat can draw diagrams, charts and HTML.** The chat
+  rule now names the fenced blocks the chat renders: ` ```mermaid ` and
+  ` ```vega-lite ` as diagrams and charts, ` ```html ` and ` ```svg ` with an
+  inline preview. Before, an agent asked for an inline HTML page did not know
+  it could show one.
+
 ## [1.5.17] - 2026-11-15
 
 Built on Jean 0.1.73.
