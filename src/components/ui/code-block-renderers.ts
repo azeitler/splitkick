@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 
 /**
  * Registry of rich renderers for fenced code blocks, keyed by language.
@@ -7,7 +7,8 @@ import type { ComponentType } from 'react'
  *
  * - `auto`: the block renders in place (diagrams, charts). The normal code
  *   block shows while the renderer loads.
- * - `preview`: the code block stays and gets a Preview action (HTML/SVG).
+ * - `preview`: active content (HTML/SVG). The sandboxed preview shows once
+ *   the block is complete; "Show source" in its header opens the code.
  *
  * `load` must be a dynamic import, so a renderer and its library only load
  * when a matching block is shown.
@@ -16,7 +17,11 @@ export interface CodeBlockRenderer {
   languages: string[]
   mode: 'auto' | 'preview'
   load: () => Promise<{
-    default: ComponentType<{ code: string; isComplete: boolean }>
+    default: ComponentType<{
+      code: string
+      isComplete: boolean
+      actions?: ReactNode
+    }>
   }>
 }
 

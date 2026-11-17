@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **HTML in the chat shows as a page at once.** A ` ```html ` or ` ```svg `
+  block now renders as a sandboxed preview (scripts only, no network) as soon
+  as it is complete; "Show source" in its header shows the code. Before, the
+  code showed and the page needed a click on Preview.
 - **Agents know the chat can draw diagrams, charts and HTML.** The chat
   rule now names the fenced blocks the chat renders: ` ```mermaid ` and
   ` ```vega-lite ` as diagrams and charts, ` ```html ` and ` ```svg ` with an
