@@ -3863,6 +3863,7 @@ pub async fn send_chat_message(
                 &worktree_id,
                 &worktree_path,
                 &backend_name,
+                claude_account_dir.as_deref(),
             )
             .await;
             log::info!(
@@ -9855,19 +9856,25 @@ pub struct McpHealthResult {
 /// - Grok:     ~/.grok/config.toml + project .grok/config.toml (+ Claude/Cursor/.mcp.json compat)
 /// - Antigravity: ~/.gemini/config/mcp_config.json + <worktree>/.agents/mcp_config.json
 pub async fn get_mcp_servers(
+    app: AppHandle,
     backend: Option<String>,
     worktree_path: Option<String>,
 ) -> Result<Vec<McpServerInfo>, String> {
+    let prefs = crate::load_preferences_sync(&app).unwrap_or_default();
+    let account = crate::claude_cli::accounts::active_account(&prefs);
     Ok(discover_mcp_servers(
         backend.as_deref(),
         worktree_path.as_deref(),
+        account.config_dir.as_deref(),
     ))
 }
 
 /// Sync core of [`get_mcp_servers`], shared with `mcp_resolve`.
+/// `claude_config_dir` is the active Claude account folder (`None` = root).
 pub(crate) fn discover_mcp_servers(
     backend: Option<&str>,
     worktree_path: Option<&str>,
+    claude_config_dir: Option<&str>,
 ) -> Vec<McpServerInfo> {
     let wt = worktree_path;
     match backend {
@@ -9877,7 +9884,7 @@ pub(crate) fn discover_mcp_servers(
         Some("kimi") => crate::kimi_cli::mcp::get_mcp_servers(wt),
         Some("antigravity") => crate::antigravity_cli::mcp::get_mcp_servers(wt),
         Some("grok") => crate::grok_cli::mcp::get_mcp_servers(wt),
-        _ => crate::claude_cli::mcp::get_mcp_servers(wt),
+        _ => crate::claude_cli::mcp::get_mcp_servers(claude_config_dir, wt),
     }
 }
 

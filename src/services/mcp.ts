@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { isTauri } from '@/services/projects'
 import { queryClient } from '@/lib/query-client'
+import { usePreferences } from '@/services/preferences'
 import type {
   McpServerInfo,
   McpHealthResult,
@@ -52,7 +53,7 @@ export function invalidateAllMcpServers(
 /**
  * Fetch available MCP servers for the given backend.
  * Reads from backend-specific config files:
- * - Claude:   ~/.claude.json + .mcp.json
+ * - Claude:   <active account>/.claude.json (~/.claude.json for root) + .mcp.json
  * - Codex:    ~/.codex/config.toml + .codex/config.toml
  * - OpenCode: ~/.config/opencode/opencode.json + opencode.json
  * - Cursor:   ~/.cursor/mcp.json + .cursor/mcp.json
@@ -64,8 +65,12 @@ export function useMcpServers(
   worktreePath: string | null | undefined,
   backend: CliBackend = 'claude'
 ) {
+  // Claude reads the active account's .claude.json, so a switch must re-read.
+  const { data: preferences } = usePreferences()
+  const claudeAccount =
+    backend === 'claude' ? (preferences?.claude_active_account ?? null) : null
   return useQuery({
-    queryKey: [MCP_SERVERS_KEY, worktreePath ?? '', backend],
+    queryKey: [MCP_SERVERS_KEY, worktreePath ?? '', backend, claudeAccount],
     queryFn: async () => {
       if (!isTauri()) return []
       return invoke<McpServerInfo[]>('get_mcp_servers', {
