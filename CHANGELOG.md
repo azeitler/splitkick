@@ -32,6 +32,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The schedule list no longer sends MCP secrets to clients.** A schedule
+  made in the composer stores the MCP config of that moment, with the env of
+  each MCP server (tokens too). The schedule list, and the answer to create,
+  edit, pause and resume, sent it to every client, also web access. Now
+  clients get the schedule without the MCP config; the stored schedule still
+  uses it when it runs. Refs #122.
 - **Run now sends a one-off schedule once.** "Run now" a few seconds before
   a one-off was due could send its prompt twice: the scheduler also took it.
   Now Run now takes the one-off out of the list before it runs. Also, a

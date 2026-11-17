@@ -185,6 +185,16 @@ impl Schedule {
         }
     }
 
+    /// The schedule as clients (also web access) see it: without the
+    /// template's `mcpConfig`, which holds MCP server env such as tokens.
+    /// The frontend never reads it back; the stored copy keeps it (#122).
+    pub fn for_client(mut self) -> Self {
+        if let Some(Value::Object(template)) = &mut self.template {
+            template.remove("mcpConfig");
+        }
+        self
+    }
+
     /// The shape the frontend already renders for a pending wakeup.
     pub fn to_wakeup(&self) -> ScheduledWakeup {
         ScheduledWakeup {
@@ -1385,6 +1395,24 @@ mod tests {
         assert_eq!(short.unwrap().delay_seconds, MIN_DELAY_SECS);
         let long = schedule_from_tool_input(&app, "clamp-2", "w1", "t2", &tool_input(100_000));
         assert_eq!(long.unwrap().delay_seconds, MAX_DELAY_SECS);
+    }
+
+    #[test]
+    fn clients_get_no_mcp_config() {
+        let mut schedule = repeating("with-mcp", 100);
+        schedule.template = Some(serde_json::json!({
+            "executionMode": "build",
+            "mcpConfig": "{\"mcpServers\":{\"x\":{\"env\":{\"TOKEN\":\"tok-123\"}}}}",
+        }));
+
+        let sent = schedule.for_client();
+
+        assert_eq!(
+            sent.template,
+            Some(serde_json::json!({ "executionMode": "build" }))
+        );
+        assert!(!serde_json::to_string(&sent).unwrap().contains("tok-123"));
+        assert_eq!(repeating("plain", 100).for_client().template, None);
     }
 
     #[test]

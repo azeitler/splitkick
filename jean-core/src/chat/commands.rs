@@ -11251,7 +11251,10 @@ pub async fn list_pending_wakeups() -> Result<Vec<super::schedules::PendingWakeu
 
 /// List every pending schedule, soonest first.
 pub async fn list_schedules() -> Result<Vec<super::schedules::Schedule>, String> {
-    Ok(super::schedules::list())
+    Ok(super::schedules::list()
+        .into_iter()
+        .map(super::schedules::Schedule::for_client)
+        .collect())
 }
 
 /// Schedule a prompt into a session: once at `fire_at_unix` (seconds), or
@@ -11272,6 +11275,7 @@ pub async fn create_schedule(
         recurrence,
         options,
     )
+    .map(super::schedules::Schedule::for_client)
 }
 
 /// Change a schedule's prompt, name, target and time (Scheduled view).
@@ -11280,7 +11284,7 @@ pub async fn update_schedule(
     schedule_id: String,
     changes: super::schedules::ScheduleEdit,
 ) -> Result<super::schedules::Schedule, String> {
-    super::schedules::edit(&app, &schedule_id, changes)
+    super::schedules::edit(&app, &schedule_id, changes).map(super::schedules::Schedule::for_client)
 }
 
 /// Pause or resume a schedule.
@@ -11290,6 +11294,7 @@ pub async fn set_schedule_enabled(
     enabled: bool,
 ) -> Result<super::schedules::Schedule, String> {
     super::schedules::set_enabled(&app, &schedule_id, enabled)
+        .map(super::schedules::Schedule::for_client)
 }
 
 /// Run a schedule now. Returns the session the prompt went into.
