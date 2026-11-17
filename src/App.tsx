@@ -71,6 +71,8 @@ import {
   resolveInstallPendingAction,
   describeUpdateCheckFailure,
   markAppUpdateReady,
+  offerAppUpdate,
+  UPDATE_AVAILABLE_TOAST_ID,
   shouldOfferUpdateCheck,
   installAndRelaunch,
   updateChecksEnabledForThisApp,
@@ -275,6 +277,8 @@ function App() {
 
       let totalBytes = 0
       let downloadedBytes = 0
+      // The progress replaces the "available" toast.
+      toast.dismiss(UPDATE_AVAILABLE_TOAST_ID)
       const toastId = toast.loading(`Downloading update ${update.version}...`)
 
       // Mark in-progress so auto-check cannot re-open the modal mid-download.
@@ -1450,7 +1454,10 @@ function App() {
 
           logger.info(`Update available: ${update.version}`)
           pendingUpdateRef.current = update
-          useUIStore.getState().setUpdateModalVersion(update.version)
+          // A toast, not a modal over the work. The toolbar's "Update
+          // available" stays after the toast is dismissed (#135); Check for
+          // Updates opens the prompt.
+          offerAppUpdate(update.version)
         }
       } catch (checkError) {
         // Silent fail for update checks - don't bother user with network

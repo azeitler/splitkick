@@ -217,7 +217,14 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
   const sidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const updateReady = useUIStore(state => state.updateReadyVersion !== null)
+  // Found, downloading or downloaded: the update is offered by a toast, and
+  // this button keeps it in sight after the toast is gone (#135).
+  const appUpdate = useUIStore(
+    state =>
+      state.updateReadyVersion !== null ||
+      state.pendingUpdateVersion !== null ||
+      state.isUpdateInstalling
+  )
   const hasTitle = useToolbarHasTitle()
   const titleRef = useToolbarSlotRef('title')
   const subtitleRef = useToolbarSlotRef('subtitle')
@@ -282,10 +289,10 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
 
       <div {...drag} className="h-full min-w-4 flex-1" />
 
-      {/* A downloaded update keeps its restart in sight, also with the
-          sidebar (and its Updates button) hidden and in zen; so does a host
-          update, which its toast promises (#135). */}
-      {updateReady && <UpdateIndicator />}
+      {/* An app update keeps its button in sight, also with the sidebar (and
+          its Updates button) hidden and in zen; so does a host update, which
+          its toast promises (#135). */}
+      {appUpdate && <UpdateIndicator />}
       <ServerUpdateIndicator />
 
       {zenMode ? (

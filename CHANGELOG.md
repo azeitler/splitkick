@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **A found update shows a toast, not a modal.** "Splitkick X is available"
+  comes with an Update button, and the toolbar shows "Update available" until
+  you install it. Check for Updates still opens the update prompt.
 - **Questions take an own answer and a note.** A question from an agent now
   has an "Other…" row with its own text field, for when no option fits, and
   a separate Note field for extra context on any answer. Before, one text
