@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.20] - 2026-11-17
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **A found update shows a toast, not a modal.** "Splitkick X is available"
@@ -3177,7 +3181,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.19...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.20...HEAD
+[1.5.20]: https://github.com/azeitler/jean/compare/splitkick-v1.5.19...splitkick-v1.5.20
 [1.5.19]: https://github.com/azeitler/jean/compare/splitkick-v1.5.18...splitkick-v1.5.19
 [1.5.18]: https://github.com/azeitler/jean/compare/splitkick-v1.5.17...splitkick-v1.5.18
 [1.5.17]: https://github.com/azeitler/jean/compare/splitkick-v1.5.16...splitkick-v1.5.17
