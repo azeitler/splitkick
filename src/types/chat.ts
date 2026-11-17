@@ -1103,9 +1103,7 @@ export function isAskUserQuestion(
 export function getQuestionToolError(
   output: string | null | undefined
 ): string | null {
-  const trimmed = (output ?? '')
-    .replace(/<\/?tool_use_error>/g, '')
-    .trim()
+  const trimmed = (output ?? '').replace(/<\/?tool_use_error>/g, '').trim()
   return trimmed.startsWith('Error:') ||
     trimmed.startsWith('Error calling tool')
     ? trimmed
@@ -1414,7 +1412,12 @@ export function isCollabToolCall(toolCall: ToolCall): boolean {
 export interface QuestionAnswer {
   questionIndex: number
   selectedOptions: number[]
+  /** Own answer from the "Other…" row (sent only while that row is selected). */
   customText?: string
+  /** The "Other…" row is selected (form state; dropped on submit). */
+  otherSelected?: boolean
+  /** Extra context for the answer, from the Note field. */
+  note?: string
 }
 
 // ============================================================================

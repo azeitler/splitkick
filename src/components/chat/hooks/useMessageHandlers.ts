@@ -425,9 +425,14 @@ export function useMessageHandlers({
           const labels = answer.selectedOptions
             .map(idx => q.options[idx]?.label)
             .filter((l): l is string => !!l)
-          // Custom text adds to the chosen options.
+          // "Other…" text adds to the chosen options; the note goes last.
           const text = answer.customText?.trim()
-          return text ? [...labels, text] : labels
+          const note = answer.note?.trim()
+          return [
+            ...labels,
+            ...(text ? [text] : []),
+            ...(note ? [`Note: ${note}`] : []),
+          ]
         })
 
         // Put session back into sending state (model continues after answer)

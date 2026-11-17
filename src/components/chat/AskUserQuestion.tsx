@@ -172,9 +172,11 @@ export function AskUserQuestion({
           selectedOptions: [],
         }
 
+        // A radio choice replaces "Other…" (its text stays as a draft).
         newAnswers.set(questionIndex, {
           ...existing,
           selectedOptions: [optionIndex],
+          otherSelected: false,
         })
         return newAnswers
       })
@@ -182,8 +184,52 @@ export function AskUserQuestion({
     [setAnswers]
   )
 
-  // Update custom text
+  // Select or toggle the "Other…" row. In single-select it replaces the
+  // chosen option, like any radio.
+  const setOther = useCallback(
+    (questionIndex: number, selected: boolean, exclusive: boolean) => {
+      setAnswers(prev => {
+        const newAnswers = new Map(prev)
+        const existing = newAnswers.get(questionIndex) || {
+          questionIndex,
+          selectedOptions: [],
+        }
+        newAnswers.set(questionIndex, {
+          ...existing,
+          selectedOptions:
+            selected && exclusive ? [] : existing.selectedOptions,
+          otherSelected: selected,
+        })
+        return newAnswers
+      })
+    },
+    [setAnswers]
+  )
+
+  // Text of the "Other…" row. Typing selects the row.
   const updateCustomText = useCallback(
+    (questionIndex: number, text: string, exclusive: boolean) => {
+      setAnswers(prev => {
+        const newAnswers = new Map(prev)
+        const existing = newAnswers.get(questionIndex) || {
+          questionIndex,
+          selectedOptions: [],
+        }
+        const select = !!text
+        newAnswers.set(questionIndex, {
+          ...existing,
+          customText: text || undefined,
+          otherSelected: select || existing.otherSelected,
+          selectedOptions: select && exclusive ? [] : existing.selectedOptions,
+        })
+        return newAnswers
+      })
+    },
+    [setAnswers]
+  )
+
+  // The Note field: extra context for any answer.
+  const updateNote = useCallback(
     (questionIndex: number, text: string) => {
       setAnswers(prev => {
         const newAnswers = new Map(prev)
@@ -191,11 +237,7 @@ export function AskUserQuestion({
           questionIndex,
           selectedOptions: [],
         }
-
-        newAnswers.set(questionIndex, {
-          ...existing,
-          customText: text || undefined,
-        })
+        newAnswers.set(questionIndex, { ...existing, note: text || undefined })
         return newAnswers
       })
     },
@@ -204,7 +246,19 @@ export function AskUserQuestion({
 
   // Submit answers
   const handleSubmit = useCallback(() => {
-    const answersArray = Array.from(answers.values())
+    // The "Other…" text counts only while that row is selected.
+    const answersArray = Array.from(answers.values()).map(
+      ({ otherSelected, ...answer }) => {
+        const customText = otherSelected ? answer.customText?.trim() : ''
+        const note = answer.note?.trim()
+        return {
+          questionIndex: answer.questionIndex,
+          selectedOptions: answer.selectedOptions,
+          ...(customText ? { customText } : {}),
+          ...(note ? { note } : {}),
+        }
+      }
+    )
     setLocalSubmittedAnswers(answersArray) // Preserve for display when transitioning to read-only
     draftAnswers.delete(toolCallId)
     onSubmit(toolCallId, answersArray)
@@ -248,12 +302,13 @@ export function AskUserQuestion({
         const label = question.options[idx]?.label
         return label ? [label] : []
       })
-      const part = [
-        selectedLabels.join(', '),
-        answer.customText ? `"${answer.customText}"` : '',
-      ]
-        .filter(Boolean)
-        .join(' + ')
+      const choice = [
+        ...selectedLabels,
+        ...(answer.customText ? [`"${answer.customText}"`] : []),
+      ].join(', ')
+      const part = answer.note
+        ? `${choice}${choice ? ' ' : ''}(note: ${answer.note})`
+        : choice
       if (part) summaryParts.push(part)
     }
 
@@ -322,6 +377,25 @@ export function AskUserQuestion({
 
   // Render full question content (used both inline and in collapsible)
   function renderQuestionContent() {
+    // The text field of the "Other…" row. Typing selects the row.
+    const otherInput = (
+      qIndex: number,
+      question: Question,
+      exclusive: boolean
+    ) => (
+      <Input
+        aria-label="Other answer"
+        placeholder="Other: type your own answer..."
+        type={question.isSecret ? 'password' : 'text'}
+        value={answers.get(qIndex)?.customText ?? ''}
+        onChange={e => updateCustomText(qIndex, e.target.value, exclusive)}
+        onFocus={() => {
+          if (answers.get(qIndex)?.customText) setOther(qIndex, true, exclusive)
+        }}
+        className="h-8 flex-1 cursor-text font-mono text-base select-text bg-white dark:bg-input md:text-sm"
+      />
+    )
+
     return (
       <div className="space-y-6">
         {/* Intro text (e.g., "Before we continue, I have some questions:") */}
@@ -424,12 +498,39 @@ export function AskUserQuestion({
                         </Label>
                       </div>
                     ))}
+                    {allowsCustomText && (
+                      <div
+                        className={cn(
+                          'flex items-center gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
+                          answer?.otherSelected
+                            ? 'border-green-500/40 bg-green-500/10'
+                            : 'border-transparent bg-muted/25 hover:bg-muted/40'
+                        )}
+                      >
+                        <Checkbox
+                          id={`${toolCallId}-q${qIndex}-other`}
+                          aria-label="Other"
+                          checked={!!answer?.otherSelected}
+                          onCheckedChange={checked =>
+                            setOther(qIndex, checked === true, false)
+                          }
+                          className="cursor-pointer"
+                        />
+                        {otherInput(qIndex, question, false)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <RadioGroup
-                    value={answer?.selectedOptions[0]?.toString() ?? ''}
+                    value={
+                      answer?.otherSelected
+                        ? 'other'
+                        : (answer?.selectedOptions[0]?.toString() ?? '')
+                    }
                     onValueChange={value =>
-                      selectOption(qIndex, parseInt(value, 10))
+                      value === 'other'
+                        ? setOther(qIndex, true, true)
+                        : selectOption(qIndex, parseInt(value, 10))
                     }
                     className="space-y-2.5"
                   >
@@ -463,38 +564,65 @@ export function AskUserQuestion({
                         </Label>
                       </div>
                     ))}
+                    {allowsCustomText && (
+                      <div
+                        className={cn(
+                          'flex items-center gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
+                          answer?.otherSelected
+                            ? 'border-green-500/40 bg-green-500/10'
+                            : 'border-transparent bg-muted/25 hover:bg-muted/40'
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="other"
+                          id={`${toolCallId}-q${qIndex}-other`}
+                          aria-label="Other"
+                          className="cursor-pointer"
+                        />
+                        {otherInput(qIndex, question, true)}
+                      </div>
+                    )}
                   </RadioGroup>
                 )}
 
-                {/* Show custom text if provided (read-only) or input field (editable) */}
                 {readOnly ? (
-                  answer?.customText ? (
-                    <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-foreground">
-                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">
-                        {answer.selectedOptions.length > 0
-                          ? 'Note'
-                          : 'Custom Answer'}
+                  <>
+                    {answer?.customText && (
+                      <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-foreground">
+                        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">
+                          Custom Answer
+                        </div>
+                        <div className="italic">
+                          &ldquo;{answer.customText}&rdquo;
+                        </div>
                       </div>
-                      <div className="italic">
-                        &ldquo;{answer.customText}&rdquo;
+                    )}
+                    {answer?.note && (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-foreground">
+                        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Note
+                        </div>
+                        <div className="italic">
+                          &ldquo;{answer.note}&rdquo;
+                        </div>
                       </div>
-                    </div>
-                  ) : !answer ? (
-                    <div className="pt-1 text-sm text-muted-foreground italic">
-                      {toolError
-                        ? `The question failed: ${toolError}`
-                        : 'Answer details unavailable.'}
-                    </div>
-                  ) : null
-                ) : allowsCustomText ? (
+                    )}
+                    {!answer && (
+                      <div className="pt-1 text-sm text-muted-foreground italic">
+                        {toolError
+                          ? `The question failed: ${toolError}`
+                          : 'Answer details unavailable.'}
+                      </div>
+                    )}
+                  </>
+                ) : allowsCustomText && !question.isSecret ? (
                   <div className="pt-1">
                     <Input
-                      placeholder="Add a note or your own answer..."
-                      type={question.isSecret ? 'password' : 'text'}
-                      value={answers.get(qIndex)?.customText ?? ''}
-                      onChange={e => updateCustomText(qIndex, e.target.value)}
-                      disabled={readOnly}
-                      className="cursor-text font-mono text-base select-text bg-white dark:bg-input md:text-sm"
+                      aria-label="Note"
+                      placeholder="Add a note (optional)..."
+                      value={answers.get(qIndex)?.note ?? ''}
+                      onChange={e => updateNote(qIndex, e.target.value)}
+                      className="cursor-text text-base select-text bg-white dark:bg-input md:text-sm"
                     />
                   </div>
                 ) : null}

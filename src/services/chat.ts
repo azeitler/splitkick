@@ -2886,8 +2886,8 @@ export async function saveCancelledMessage(
  * These are spliced back into the tool's own input via the permission
  * response, which is how the answers reach the model — the tool's `call()` is
  * a passthrough that reads `answers` out of its input, which Claude renders as
- * "The user answered: ...". Freeform text alone is the answer; next to chosen
- * options it is a note: "Memcached (note: ...)".
+ * "The user answered: ...". The "Other…" text is one more answer next to the
+ * chosen labels; a note follows them: "Memcached (note: ...)".
  */
 export function formatAnswersForClaude(
   questions: Question[],
@@ -2904,10 +2904,11 @@ export function formatAnswersForClaude(
       return label ? [label] : []
     })
 
-    // The text is the answer on its own, or a note on the chosen options.
-    const labels = selectedLabels.join(', ')
-    const text = answer.customText?.trim() ?? ''
-    const value = labels && text ? `${labels} (note: ${text})` : labels || text
+    // "Other…" text is one more chosen answer; the note adds context.
+    const custom = answer.customText?.trim()
+    const choice = [...selectedLabels, ...(custom ? [custom] : [])].join(', ')
+    const note = answer.note?.trim() ?? ''
+    const value = choice && note ? `${choice} (note: ${note})` : choice || note
     if (value) formatted[question.question] = value
   }
 
@@ -2939,7 +2940,7 @@ export function formatAnswersAsNaturalLanguage(
       return label ? [label] : []
     })
 
-    if (selectedLabels.length > 0 || answer.customText) {
+    if (selectedLabels.length > 0 || answer.customText || answer.note) {
       let text = `For "${question.question}"`
 
       if (selectedLabels.length > 0) {
@@ -2951,6 +2952,10 @@ export function formatAnswersAsNaturalLanguage(
           selectedLabels.length > 0
             ? `\n\nAdditionally: ${answer.customText}`
             : `: ${answer.customText}`
+      }
+
+      if (answer.note) {
+        text += `\n\nNote: ${answer.note}`
       }
 
       parts.push(text)
