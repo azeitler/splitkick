@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { isNativeApp } from '@/lib/environment'
+import { invoke } from '@/lib/transport'
 import {
   ARTIFACT_MESSAGE,
   ARTIFACT_READY_MESSAGE,
   PREVIEW_IFRAME_SANDBOX,
-  artifactFrameUrl,
   buildSandboxedSrcdoc,
   svgToDataUrl,
   type ArtifactKind,
@@ -21,9 +22,11 @@ interface SandboxedHtmlFrameProps {
  * An HTML page in a sandboxed iframe: opaque origin, inline scripts only,
  * no network. Remount it (change its `key`) to reload.
  *
- * Web Access uses `srcdoc`. The native app loads the `splitkick-artifact:`
- * bootstrap page and posts the page to it: a `srcdoc` frame would inherit
- * the app's CSP, which blocks inline scripts in release builds.
+ * Web Access uses `srcdoc`. The native app loads the bootstrap page from
+ * its loopback origin (`artifact_preview.rs`) and posts the page to it: a
+ * `srcdoc` frame would inherit the app's CSP, which blocks inline scripts in
+ * release builds. The loopback origin is remote for Tauri, so its ACL
+ * rejects every IPC call from the frame (#82).
  */
 export function SandboxedHtmlFrame({
   html,
@@ -33,6 +36,12 @@ export function SandboxedHtmlFrame({
   const srcDoc = useMemo(() => buildSandboxedSrcdoc(html), [html])
   const native = isNativeApp()
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const { data: frameUrl, isError } = useQuery({
+    queryKey: ['artifact-frame-url'],
+    queryFn: () => invoke<string>('get_artifact_frame_url'),
+    enabled: native,
+    staleTime: Infinity,
+  })
 
   useEffect(() => {
     if (!native) return
@@ -50,6 +59,15 @@ export function SandboxedHtmlFrame({
     return () => window.removeEventListener('message', onMessage)
   }, [native, srcDoc])
 
+  // Never fall back to srcdoc in the native app: it would not run scripts.
+  if (native && !frameUrl) {
+    return isError ? (
+      <p className={cn('p-3 text-sm text-muted-foreground', className)}>
+        Preview unavailable.
+      </p>
+    ) : null
+  }
+
   return (
     <iframe
       // New content needs a fresh bootstrap document.
@@ -57,7 +75,7 @@ export function SandboxedHtmlFrame({
       ref={frameRef}
       title={title}
       sandbox={PREVIEW_IFRAME_SANDBOX}
-      {...(native ? { src: artifactFrameUrl() } : { srcDoc })}
+      {...(native ? { src: frameUrl } : { srcDoc })}
       referrerPolicy="no-referrer"
       // Pages expect a white canvas, like in a browser.
       className={cn('block w-full border-0 bg-white', className)}

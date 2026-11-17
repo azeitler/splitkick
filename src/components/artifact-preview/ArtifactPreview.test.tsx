@@ -4,6 +4,9 @@ import { ArtifactPreview } from './ArtifactPreview'
 
 const env = vi.hoisted(() => ({ native: false }))
 vi.mock('@/lib/environment', () => ({ isNativeApp: () => env.native }))
+const FRAME_URL = 'http://127.0.0.1:49152/frame'
+const transport = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('@/lib/transport', () => transport)
 
 describe('ArtifactPreview', () => {
   it('renders HTML in a sandboxed srcdoc iframe', () => {
@@ -34,20 +37,16 @@ describe('ArtifactPreview', () => {
 describe('ArtifactPreview in the native app', () => {
   afterEach(() => {
     env.native = false
-    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    transport.invoke.mockReset()
   })
 
-  it('loads the dedicated origin and posts the page once to its own frame', () => {
+  it('loads the loopback origin and posts the page once to its own frame', async () => {
     env.native = true
-    ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
-      convertFileSrc: (path: string, protocol: string) =>
-        `${protocol}://localhost/${path}`,
-    }
+    transport.invoke.mockResolvedValue(FRAME_URL)
     render(<ArtifactPreview kind="html" content="<p>hi</p>" title="Preview" />)
-    const frame = screen.getByTitle('Preview') as HTMLIFrameElement
-    expect(frame.getAttribute('src')).toBe(
-      'splitkick-artifact://localhost/frame'
-    )
+    const frame = (await screen.findByTitle('Preview')) as HTMLIFrameElement
+    expect(transport.invoke).toHaveBeenCalledWith('get_artifact_frame_url')
+    expect(frame.getAttribute('src')).toBe(FRAME_URL)
     expect(frame.getAttribute('srcdoc')).toBeNull()
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
 
@@ -82,5 +81,13 @@ describe('ArtifactPreview in the native app', () => {
       new MessageEvent('message', { data: ready, source: target })
     )
     expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('never falls back to srcdoc when the origin is missing', async () => {
+    env.native = true
+    transport.invoke.mockRejectedValue(new Error('no listener'))
+    render(<ArtifactPreview kind="html" content="<p>hi</p>" title="Preview" />)
+    expect(await screen.findByText('Preview unavailable.')).toBeTruthy()
+    expect(document.querySelector('iframe')).toBeNull()
   })
 })

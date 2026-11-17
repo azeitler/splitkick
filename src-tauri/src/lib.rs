@@ -474,10 +474,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
-        // Dedicated origin for HTML artifact previews (#76).
-        .register_uri_scheme_protocol(artifact_preview::SCHEME, |_ctx, _request| {
-            artifact_preview::response()
-        })
         // Not VISIBLE: windows hidden to keep running sessions alive would
         // otherwise come back hidden — present, but impossible to reach.
         .plugin(
@@ -500,6 +496,8 @@ pub fn run() {
         .setup(setup_runtime)
         .invoke_handler(tauri::generate_handler![
             dispatch_core_command,
+            // Origin of HTML artifact previews (#76 and #82).
+            artifact_preview::get_artifact_frame_url,
             desktop_commands::set_window_vibrancy,
             app_menu::set_menu_accelerators,
             dock::set_dock_badge,
