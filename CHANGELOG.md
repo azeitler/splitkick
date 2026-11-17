@@ -33,6 +33,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Copy image works for local images on macOS.** The app's content policy
+  showed `asset://` images but blocked reading them, so Copy image in the
+  image context menu (and in the image viewer) failed for them.
 - **HTML previews in the desktop app can no longer reach the app's IPC.**
   The preview frame ran on an app URI scheme, which Tauri treats as a local
   origin: only the secret invoke key stopped a preview script from calling
