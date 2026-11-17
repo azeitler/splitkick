@@ -27,6 +27,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A new MCP schedule no longer deletes an earlier one.** The Splitkick MCP
+  tool `create_schedule` replaced the session's earlier agent schedule
+  without a word, so an agent that set up two schedules kept only the last.
+  Callers without a session lost all but their newest. Now MCP schedules
+  never replace another schedule; only a new `ScheduleWakeup` (`/loop`)
+  replaces the session's previous wakeup. Closes #118.
 - **Agent tool calls no longer move you to another session.** The Splitkick
   MCP tool `import_worktree` told the app to open the imported worktree, so
   the app left the session you worked in. Now it only adds the worktree to
