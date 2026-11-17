@@ -97,5 +97,11 @@ incremental = true       # Reuse compilation across local rebuilds
 
 [dev-dependencies]
 tempfile = "3.23.0"
-# Mock runtime for the IPC origin test in artifact_preview.rs (#82).
+
+# Mock runtime for the IPC origin test in artifact_preview.rs (#82). Not on
+# Windows: with it the lib test program fails to start there
+# (STATUS_ENTRYPOINT_NOT_FOUND, 0xc0000139), because test programs get no
+# Common Controls 6 manifest. The origin rule is Tauri's own and the same on
+# every platform, so the macOS/Linux runs cover it.
+[target.'cfg(not(windows))'.dev-dependencies]
 tauri = { version = "2", features = ["test"] }

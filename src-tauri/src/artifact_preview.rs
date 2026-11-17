@@ -144,6 +144,9 @@ mod tests {
         assert!(response("").starts_with(b"HTTP/1.1 404"));
     }
 
+    // The mock-runtime tests need tauri's `test` feature, which is not built on
+    // Windows (see Cargo.toml).
+    #[cfg(not(windows))]
     #[tauri::command]
     fn ping() -> &'static str {
         "pong"
@@ -151,6 +154,7 @@ mod tests {
 
     /// What Tauri does with an IPC message from a frame at `url`, even with
     /// the correct invoke key (a preview could reach `webkit.messageHandlers.ipc`).
+    #[cfg(not(windows))]
     fn invoke_from(url: &str) -> Result<String, serde_json::Value> {
         let app = tauri::test::mock_builder()
             .invoke_handler(tauri::generate_handler![ping])
@@ -178,6 +182,7 @@ mod tests {
     }
 
     /// #82: the preview frame's origin must get no command, key or not.
+    #[cfg(not(windows))]
     #[test]
     fn tauri_rejects_every_command_from_the_frame_origin() {
         let frame = get_artifact_frame_url().unwrap();
@@ -185,14 +190,8 @@ mod tests {
         assert!(error.to_string().contains("not allowed"), "{error}");
 
         // Control: the app's own origin gets the same command.
-        let app_url = if cfg!(windows) {
-            "http://tauri.localhost"
-        } else {
-            "tauri://localhost"
-        };
-        assert_eq!(invoke_from(app_url).unwrap(), "pong");
+        assert_eq!(invoke_from("tauri://localhost").unwrap(), "pong");
         // Why an app URI scheme was not enough: Tauri treats it as local.
-        #[cfg(not(windows))]
         assert_eq!(
             invoke_from("splitkick-artifact://localhost/frame").unwrap(),
             "pong"
