@@ -97,3 +97,5 @@ incremental = true       # Reuse compilation across local rebuilds
 
 [dev-dependencies]
 tempfile = "3.23.0"
+# Mock runtime for the IPC origin test in artifact_preview.rs (#82).
+tauri = { version = "2", features = ["test"] }

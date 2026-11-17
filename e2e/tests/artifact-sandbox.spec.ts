@@ -18,6 +18,8 @@ const read = (path: string) =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
 
 const attackPage = read('../fixtures/sandbox-escape.html')
+// Also pasted into a chat of the native dev build to check WKWebView (#82).
+const ipcProbePage = read('../fixtures/tauri-ipc-probe.html')
 const bootstrapPage = read(
   '../../src-tauri/src/artifact_preview_bootstrap.html'
 )
@@ -26,12 +28,12 @@ const nativeCsp = /pub const CSP: &str = "([^"]+)";/.exec(
 )?.[1]
 
 const HOST_URL = 'http://localhost:1421/__sandbox-host'
-// The Windows/Android form of the native scheme; Chromium has no custom ones.
-const ARTIFACT_URL = 'http://splitkick-artifact.localhost/frame'
+// The native app's loopback preview origin (artifact_preview.rs).
+const ARTIFACT_URL = 'http://127.0.0.1:49152/frame'
 // Like a release build: Tauri adds hashes to `script-src`, which turns
 // `'unsafe-inline'` off (and a srcdoc frame inherits this policy).
 const RELEASE_LIKE_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='; style-src 'self' 'unsafe-inline'; frame-src 'self' http://splitkick-artifact.localhost"
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='; style-src 'self' 'unsafe-inline'; frame-src 'self' http://127.0.0.1:*"
 
 const ATTACKS = [
   'read parent DOM',
@@ -93,7 +95,7 @@ async function openHost(page: Page, csp?: string) {
 }
 
 /** What `SandboxedHtmlFrame` renders in Web Access. */
-async function mountSrcdocFrame(page: Page) {
+async function mountSrcdocFrame(page: Page, html = attackPage) {
   await page.evaluate(
     ({ srcdoc, sandbox }) => {
       const frame = document.createElement('iframe')
@@ -103,14 +105,14 @@ async function mountSrcdocFrame(page: Page) {
       document.body.appendChild(frame)
     },
     {
-      srcdoc: buildSandboxedSrcdoc(attackPage),
+      srcdoc: buildSandboxedSrcdoc(html),
       sandbox: PREVIEW_IFRAME_SANDBOX,
     }
   )
 }
 
 /** What `SandboxedHtmlFrame` renders in the native app. */
-async function mountNativeFrame(page: Page) {
+async function mountNativeFrame(page: Page, html = attackPage) {
   await page.evaluate(
     ({ html, sandbox, url, ready, message }) => {
       const frame = document.createElement('iframe')
@@ -127,7 +129,7 @@ async function mountNativeFrame(page: Page) {
       document.body.appendChild(frame)
     },
     {
-      html: buildSandboxedSrcdoc(attackPage),
+      html: buildSandboxedSrcdoc(html),
       sandbox: PREVIEW_IFRAME_SANDBOX,
       url: ARTIFACT_URL,
       ready: ARTIFACT_READY_MESSAGE,
@@ -184,13 +186,62 @@ test('Web Access: a srcdoc preview cannot escape its sandbox', async ({
   await expectNoEscape(page, log)
 })
 
-test('native app: the splitkick-artifact origin preview cannot escape', async ({
+test('native app: the loopback origin preview cannot escape', async ({
   page,
 }) => {
   expect(nativeCsp).toBeTruthy()
   const log = await openHost(page, RELEASE_LIKE_CSP)
   await mountNativeFrame(page)
   await expectNoEscape(page, log)
+})
+
+// The IPC probe (#82): no Tauri global, IPC handler or IPC URL in the frame.
+// The native-only part (WKWebView shows the IPC handler to every frame) is
+// guarded in Rust: artifact_preview.rs checks that Tauri rejects every
+// command from the loopback origin. Manual check: docs/developer/artifact-preview.md.
+const IPC_CHECKS = [
+  'typeof __TAURI_INTERNALS__',
+  'typeof __TAURI__',
+  'typeof ipc',
+  'typeof __TAURI_IPC__',
+  'webkit.messageHandlers keys',
+  'typeof webkit.messageHandlers.ipc',
+  'document.URL',
+  'origin',
+  'document.domain',
+  'parent.document',
+  'top.__TAURI_INTERNALS__',
+  'ipc.postMessage without key',
+  'postMessage to parent',
+  'fetch localhost',
+  'fetch ipc.localhost',
+]
+
+async function expectNoIpc(page: Page) {
+  const frame = page.frameLocator('iframe')
+  await expect(frame.locator('#done')).toHaveText('No IPC path reachable.', {
+    timeout: 10_000,
+  })
+  await expect(frame.locator('#control')).toHaveText('Inline scripts run.')
+  const checks = await frame
+    .locator('#results tr')
+    .evaluateAll(rows => rows.map(tr => (tr as HTMLElement).dataset.check))
+  // The two fetch rows arrive in any order.
+  expect([...checks].sort()).toEqual([...IPC_CHECKS].sort())
+}
+
+test('IPC probe: a srcdoc preview has no Tauri IPC', async ({ page }) => {
+  await openHost(page)
+  await mountSrcdocFrame(page, ipcProbePage)
+  await expectNoIpc(page)
+})
+
+test('IPC probe: a loopback origin preview has no Tauri IPC', async ({
+  page,
+}) => {
+  await openHost(page, RELEASE_LIKE_CSP)
+  await mountNativeFrame(page, ipcProbePage)
+  await expectNoIpc(page)
 })
 
 // Why the native app needs its own origin: under a release build's CSP, a

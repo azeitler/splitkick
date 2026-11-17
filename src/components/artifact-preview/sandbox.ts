@@ -28,29 +28,11 @@ export const PREVIEW_CSP = [
 ].join('; ')
 
 /**
- * The native app's preview origin (`src-tauri/src/artifact_preview.rs`). It
- * serves a bootstrap page that waits for `ARTIFACT_MESSAGE` from the parent.
+ * Messages between the app and the native preview bootstrap page
+ * (`src-tauri/src/artifact_preview_bootstrap.html`).
  */
-export const ARTIFACT_SCHEME = 'splitkick-artifact'
 export const ARTIFACT_READY_MESSAGE = 'splitkick-artifact-ready'
 export const ARTIFACT_MESSAGE = 'splitkick-artifact'
-
-/** `splitkick-artifact://localhost/` (`http://splitkick-artifact.localhost/` on Windows). */
-export function artifactFrameUrl(): string {
-  // Not `convertFileSrc` from transport: connection windows use the WebSocket
-  // branch there, but the scheme is always this app's own.
-  const internals = (
-    window as unknown as {
-      __TAURI_INTERNALS__?: {
-        convertFileSrc?: (path: string, protocol: string) => string
-      }
-    }
-  ).__TAURI_INTERNALS__
-  return (
-    internals?.convertFileSrc?.('frame', ARTIFACT_SCHEME) ??
-    `${ARTIFACT_SCHEME}://localhost/frame`
-  )
-}
 
 export type ArtifactKind = 'html' | 'svg'
 

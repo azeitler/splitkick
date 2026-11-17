@@ -33,6 +33,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **HTML previews in the desktop app can no longer reach the app's IPC.**
+  The preview frame ran on an app URI scheme, which Tauri treats as a local
+  origin: only the secret invoke key stopped a preview script from calling
+  app commands. The frame now runs on a loopback origin, and Tauri rejects
+  every command from it. Closes #82.
+
 - **The schedule list no longer sends MCP secrets to clients.** A schedule
   made in the composer stores the MCP config of that moment, with the env of
   each MCP server (tokens too). The schedule list, and the answer to create,

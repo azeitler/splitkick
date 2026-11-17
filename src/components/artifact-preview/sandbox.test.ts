@@ -82,7 +82,8 @@ describe('native artifact origin', () => {
     const conf = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))
     const csp: string = conf.app.security.csp
     const frameSrc = csp.split(';').find(d => d.trim().startsWith('frame-src'))
-    expect(frameSrc).toContain('splitkick-artifact:')
-    expect(frameSrc).toContain('http://splitkick-artifact.localhost')
+    expect(frameSrc).toContain('http://127.0.0.1:*')
+    // An app URI scheme is a local origin for Tauri: full IPC access (#82).
+    expect(frameSrc).not.toContain('splitkick-artifact')
   })
 })

@@ -1,0 +1,149 @@
+<!doctype html>
+<title>Tauri IPC probe</title>
+<style>
+  body {
+    font:
+      13px system-ui,
+      sans-serif;
+    margin: 12px;
+    color: #111;
+  }
+  td {
+    padding: 2px 8px;
+    border-bottom: 1px solid #ddd;
+  }
+  .ok {
+    color: #166534;
+  }
+  .note {
+    color: #92400e;
+  }
+  .bad {
+    color: #b91c1c;
+    font-weight: bold;
+  }
+</style>
+<h3>Tauri IPC probe (#82)</h3>
+<p id="control">Inline scripts do not run.</p>
+<table id="results"></table>
+<script>
+  // Prints into its own DOM: the preview CSP blocks every way out.
+  // ok = no IPC by this path. note = WKWebView shows the IPC handler to every
+  // frame, but this frame's origin is remote for Tauri, so its ACL rejects
+  // every command (#82). REACHABLE = a frame on a local origin can invoke.
+  const rows = document.getElementById('results')
+  // A document.write'd page keeps the URL of the bootstrap page.
+  const remoteOrigin = /^http:\/\/127\.0\.0\.1:\d+\//.test(document.URL)
+  function row(name, value, ok) {
+    const status = ok === true ? 'ok' : ok === 'note' ? 'note' : 'REACHABLE'
+    const tr = rows.insertRow()
+    tr.dataset.check = name
+    tr.dataset.ok = String(ok !== false)
+    tr.className = status === 'REACHABLE' ? 'bad' : status
+    tr.insertCell().textContent = name
+    tr.insertCell().textContent = value
+    tr.insertCell().textContent = status
+  }
+  const handlerOk = v =>
+    v === 'undefined' || v === 'no handler' || (remoteOrigin && 'note')
+  function check(name, fn, isOk) {
+    let value
+    try {
+      value = fn()
+    } catch (e) {
+      return row(name, 'throws ' + (e && e.name), true)
+    }
+    row(name, JSON.stringify(value) ?? String(value), isOk(value))
+  }
+  document.getElementById('control').textContent = 'Inline scripts run.'
+  const undef = v => v === 'undefined'
+  check(
+    'typeof __TAURI_INTERNALS__',
+    () => typeof window.__TAURI_INTERNALS__,
+    undef
+  )
+  check('typeof __TAURI__', () => typeof window.__TAURI__, undef)
+  check('typeof ipc', () => typeof window.ipc, undef)
+  check('typeof __TAURI_IPC__', () => typeof window.__TAURI_IPC__, undef)
+  check(
+    'webkit.messageHandlers keys',
+    () => Object.keys(window.webkit?.messageHandlers ?? {}),
+    v => v.length === 0
+  )
+  // Handlers are named getters, so Object.keys does not list them.
+  check(
+    'typeof webkit.messageHandlers.ipc',
+    () => typeof window.webkit?.messageHandlers?.ipc,
+    handlerOk
+  )
+  check(
+    'document.URL',
+    () => document.URL,
+    () => true
+  )
+  check(
+    'origin',
+    () => window.origin,
+    v => v === 'null'
+  )
+  check(
+    'document.domain',
+    () => document.domain,
+    v => v === ''
+  )
+  check(
+    'parent.document',
+    () => typeof window.parent.document,
+    () => false
+  )
+  check(
+    'top.__TAURI_INTERNALS__',
+    () => typeof window.top.__TAURI_INTERNALS__,
+    undef
+  )
+  // An invoke without the invoke key: Tauri must drop it (dev log shows
+  // "__TAURI_INVOKE_KEY__ expected ...").
+  check(
+    'ipc.postMessage without key',
+    () => {
+      const h = window.webkit?.messageHandlers?.ipc
+      if (!h) return 'no handler'
+      h.postMessage(
+        JSON.stringify({
+          cmd: 'plugin:app|version',
+          callback: 1,
+          error: 2,
+          payload: {},
+          __TAURI_INVOKE_KEY__: 'probe-82',
+        })
+      )
+      return 'sent (check the app log)'
+    },
+    handlerOk
+  )
+  window.parent.postMessage({ type: 'splitkick-artifact-ready' }, '*')
+  window.parent.postMessage(
+    { cmd: 'plugin:app|version', __TAURI_INVOKE_KEY__: 'probe-82' },
+    '*'
+  )
+  row('postMessage to parent', 'sent, origin "null"', true)
+  const pending = [
+    'ipc://localhost/plugin%3Aapp%7Cversion',
+    'http://ipc.localhost/plugin%3Aapp%7Cversion',
+  ].map(url =>
+    fetch(url, { method: 'POST', body: '{}' })
+      .then(r => row('fetch ' + url.split('/')[2], 'status ' + r.status, false))
+      .catch(e =>
+        row('fetch ' + url.split('/')[2], 'blocked ' + (e && e.name), true)
+      )
+  )
+  Promise.all(pending).then(() => {
+    const done = document.createElement('p')
+    done.id = 'done'
+    const bad = rows.querySelectorAll('[data-ok="false"]').length
+    done.textContent = bad
+      ? bad + ' IPC path(s) REACHABLE'
+      : 'No IPC path reachable.'
+    document.body.appendChild(done)
+  })
+</script>
