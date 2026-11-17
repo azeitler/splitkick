@@ -33,6 +33,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   such as Playwright were missing for that turn. Splitkick now uses the same
   servers as a message you type: session choice, then project, then global
   default. Closes #103.
+- **MCP servers of the active Claude account load.** Splitkick read the
+  MCP servers only from `~/.claude.json`, also when another Claude account
+  was active. Now it reads the `.claude.json` of the active account, as
+  Claude does. Servers of type `http` and `sse` load like `stdio` servers.
+  Closes #138.
 
 ## [1.5.17] - 2026-11-15
 

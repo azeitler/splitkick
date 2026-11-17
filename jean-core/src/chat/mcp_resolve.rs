@@ -101,14 +101,22 @@ pub fn build_mcp_config_json(
 
 /// The config the UI would send for this session: discovers the backend's
 /// servers and applies the saved session/project/global choices.
+///
+/// `claude_config_dir` is the active Claude account folder, so discovery reads
+/// the same `.claude.json` that the Claude CLI reads (#138).
 pub async fn default_mcp_config(
     app: &AppHandle,
     session_enabled: Option<&[String]>,
     worktree_id: &str,
     worktree_path: &str,
     backend: &str,
+    claude_config_dir: Option<&str>,
 ) -> Option<String> {
-    let available = super::commands::discover_mcp_servers(Some(backend), Some(worktree_path));
+    let available = super::commands::discover_mcp_servers(
+        Some(backend),
+        Some(worktree_path),
+        claude_config_dir,
+    );
     let prefs = crate::load_preferences(app.clone())
         .await
         .unwrap_or_default();

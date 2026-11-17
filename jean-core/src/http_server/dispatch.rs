@@ -3763,7 +3763,7 @@ pub async fn dispatch_command(
         "get_mcp_servers" => {
             let backend: Option<String> = from_field_opt(&args, "backend")?;
             let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
-            let result = crate::chat::get_mcp_servers(backend, worktree_path).await?;
+            let result = crate::chat::get_mcp_servers(app.clone(), backend, worktree_path).await?;
             to_value(result)
         }
         "read_clipboard_image" => {
