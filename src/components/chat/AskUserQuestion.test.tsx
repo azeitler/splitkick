@@ -195,7 +195,7 @@ describe('AskUserQuestion', () => {
     )
 
     expect(
-      screen.queryByPlaceholderText('Or type your own answer...')
+      screen.queryByPlaceholderText('Add a note or your own answer...')
     ).not.toBeInTheDocument()
   })
 
@@ -220,7 +220,7 @@ describe('AskUserQuestion', () => {
     )
 
     const input = screen.getByPlaceholderText(
-      'Or type your own answer...'
+      'Add a note or your own answer...'
     ) as HTMLInputElement
     expect(input.type).toBe('password')
 
@@ -242,7 +242,7 @@ describe('AskUserQuestion', () => {
       />
     )
     const [firstInput] = screen.getAllByPlaceholderText(
-      'Or type your own answer...'
+      'Add a note or your own answer...'
     )
     const toneRadio = screen.getAllByRole('radio')[3]
     if (!firstInput || !toneRadio) throw new Error('form not rendered')
@@ -258,9 +258,51 @@ describe('AskUserQuestion', () => {
       />
     )
     expect(
-      screen.getAllByPlaceholderText('Or type your own answer...')[0]
+      screen.getAllByPlaceholderText('Add a note or your own answer...')[0]
     ).toHaveValue('Owls at night')
     expect(screen.getAllByRole('radio')[3]).toBeChecked()
+  })
+
+  it('sends a picked option and a typed note together', () => {
+    const onSubmit = vi.fn()
+    render(
+      <AskUserQuestion
+        toolCallId="tool-both"
+        questions={questions}
+        onSubmit={onSubmit}
+      />
+    )
+    const radio = screen.getAllByRole('radio')[1]
+    const [input] = screen.getAllByPlaceholderText(
+      'Add a note or your own answer...'
+    )
+    if (!radio || !input) throw new Error('form not rendered')
+    // Either order keeps both: the option survives typing, the text a click.
+    fireEvent.click(radio)
+    fireEvent.change(input, { target: { value: 'only owls' } })
+    fireEvent.click(screen.getAllByRole('radio')[0] as HTMLElement)
+    expect(input).toHaveValue('only owls')
+    fireEvent.click(screen.getByText('Answer'))
+    expect(onSubmit).toHaveBeenCalledWith('tool-both', [
+      { questionIndex: 0, selectedOptions: [0], customText: 'only owls' },
+    ])
+  })
+
+  it('shows the option and the note in the answered summary', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-both-done"
+        questions={questions}
+        onSubmit={noopSubmit}
+        readOnly
+        submittedAnswers={[
+          { questionIndex: 0, selectedOptions: [1], customText: 'macro lens' },
+        ]}
+      />
+    )
+    expect(
+      screen.getAllByText(/Bird photography \+ "macro lens"/).length
+    ).toBeGreaterThan(0)
   })
 
   it('drops the draft once the answer is sent', () => {
@@ -272,7 +314,9 @@ describe('AskUserQuestion', () => {
         onSubmit={onSubmit}
       />
     )
-    const [input] = screen.getAllByPlaceholderText('Or type your own answer...')
+    const [input] = screen.getAllByPlaceholderText(
+      'Add a note or your own answer...'
+    )
     if (!input) throw new Error('form not rendered')
     fireEvent.change(input, { target: { value: 'Owls' } })
     fireEvent.click(screen.getByText('Answer'))
@@ -289,7 +333,7 @@ describe('AskUserQuestion', () => {
       />
     )
     expect(
-      screen.getAllByPlaceholderText('Or type your own answer...')[0]
+      screen.getAllByPlaceholderText('Add a note or your own answer...')[0]
     ).toHaveValue('')
   })
 })

@@ -2885,8 +2885,9 @@ export async function saveCancelledMessage(
  *
  * These are spliced back into the tool's own input via the permission
  * response, which is how the answers reach the model — the tool's `call()` is
- * a passthrough that reads `answers` out of its input. Freeform text takes the
- * place of the label, which Claude renders as "The user answered: ...".
+ * a passthrough that reads `answers` out of its input, which Claude renders as
+ * "The user answered: ...". Freeform text alone is the answer; next to chosen
+ * options it is a note: "Memcached (note: ...)".
  */
 export function formatAnswersForClaude(
   questions: Question[],
@@ -2903,9 +2904,10 @@ export function formatAnswersForClaude(
       return label ? [label] : []
     })
 
-    const value = answer.customText?.trim()
-      ? answer.customText.trim()
-      : selectedLabels.join(', ')
+    // The text is the answer on its own, or a note on the chosen options.
+    const labels = selectedLabels.join(', ')
+    const text = answer.customText?.trim() ?? ''
+    const value = labels && text ? `${labels} (note: ${text})` : labels || text
     if (value) formatted[question.question] = value
   }
 

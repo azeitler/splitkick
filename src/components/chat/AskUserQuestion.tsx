@@ -154,12 +154,8 @@ export function AskUserQuestion({
           ? existing.selectedOptions.filter(i => i !== optionIndex)
           : [...existing.selectedOptions, optionIndex]
 
-        newAnswers.set(questionIndex, {
-          ...existing,
-          selectedOptions,
-          // Clear custom text when an option is selected
-          customText: undefined,
-        })
+        // Options and custom text add up: the text is a note on the choice.
+        newAnswers.set(questionIndex, { ...existing, selectedOptions })
         return newAnswers
       })
     },
@@ -179,8 +175,6 @@ export function AskUserQuestion({
         newAnswers.set(questionIndex, {
           ...existing,
           selectedOptions: [optionIndex],
-          // Clear custom text when an option is selected
-          customText: undefined,
         })
         return newAnswers
       })
@@ -200,8 +194,6 @@ export function AskUserQuestion({
 
         newAnswers.set(questionIndex, {
           ...existing,
-          // Clear selected options when custom text is provided
-          selectedOptions: text ? [] : existing.selectedOptions,
           customText: text || undefined,
         })
         return newAnswers
@@ -252,16 +244,17 @@ export function AskUserQuestion({
       const question = questions[answer.questionIndex]
       if (!question) continue
 
-      // Custom text takes precedence
-      if (answer.customText) {
-        summaryParts.push(`"${answer.customText}"`)
-      } else if (answer.selectedOptions.length > 0) {
-        const selectedLabels = answer.selectedOptions.flatMap(idx => {
-          const label = question.options[idx]?.label
-          return label ? [label] : []
-        })
-        summaryParts.push(selectedLabels.join(', '))
-      }
+      const selectedLabels = answer.selectedOptions.flatMap(idx => {
+        const label = question.options[idx]?.label
+        return label ? [label] : []
+      })
+      const part = [
+        selectedLabels.join(', '),
+        answer.customText ? `"${answer.customText}"` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ')
+      if (part) summaryParts.push(part)
     }
 
     return summaryParts.length > 0
@@ -478,7 +471,9 @@ export function AskUserQuestion({
                   answer?.customText ? (
                     <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-foreground">
                       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">
-                        Custom Answer
+                        {answer.selectedOptions.length > 0
+                          ? 'Note'
+                          : 'Custom Answer'}
                       </div>
                       <div className="italic">
                         &ldquo;{answer.customText}&rdquo;
@@ -494,7 +489,7 @@ export function AskUserQuestion({
                 ) : allowsCustomText ? (
                   <div className="pt-1">
                     <Input
-                      placeholder="Or type your own answer..."
+                      placeholder="Add a note or your own answer..."
                       type={question.isSecret ? 'password' : 'text'}
                       value={answers.get(qIndex)?.customText ?? ''}
                       onChange={e => updateCustomText(qIndex, e.target.value)}
@@ -512,8 +507,8 @@ export function AskUserQuestion({
           <div className="flex items-start gap-2 text-muted-foreground">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
             <span>
-              The question failed: {toolError}. Your answer goes to the agent
-              as a new message.
+              The question failed: {toolError}. Your answer goes to the agent as
+              a new message.
             </span>
           </div>
         )}

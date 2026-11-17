@@ -422,10 +422,12 @@ export function useMessageHandlers({
         const openCodeAnswers: string[][] = questions.map((q, qIndex) => {
           const answer = answers.find(a => a.questionIndex === qIndex)
           if (!answer) return []
-          if (answer.customText) return [answer.customText]
-          return answer.selectedOptions
+          const labels = answer.selectedOptions
             .map(idx => q.options[idx]?.label)
             .filter((l): l is string => !!l)
+          // Custom text adds to the chosen options.
+          const text = answer.customText?.trim()
+          return text ? [...labels, text] : labels
         })
 
         // Put session back into sending state (model continues after answer)
