@@ -37,48 +37,47 @@ describe('code block renderer registry', () => {
 })
 
 describe('Markdown preview code blocks', () => {
-  it('keeps an HTML block as code until Preview is clicked', async () => {
+  it('shows an HTML block as a sandboxed preview at once, source on click', async () => {
     const user = userEvent.setup()
     render(<Markdown>{htmlBlock}</Markdown>)
-
-    expect(screen.getByText('<p id="x">Hello</p>')).toBeInTheDocument()
-    expect(document.querySelector('iframe')).toBeNull()
-
-    await user.click(screen.getByRole('button', { name: 'Preview' }))
 
     const frame = await screen.findByTitle('HTML preview')
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
     expect(frame.getAttribute('srcdoc')).toContain('<p id="x">Hello</p>')
-    // The code stays visible next to the preview.
-    expect(screen.getByText('<p id="x">Hello</p>')).toBeInTheDocument()
+    // The source is hidden until asked for.
+    expect(screen.queryByText('<p id="x">Hello</p>')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Hide preview' }))
-    expect(document.querySelector('iframe')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Show source' }))
+    expect(screen.getByText('<p id="x">Hello</p>')).toBeInTheDocument()
+    // The preview stays above the source.
+    expect(screen.getByTitle('HTML preview')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Hide source' }))
+    expect(screen.queryByText('<p id="x">Hello</p>')).toBeNull()
   })
 
-  it('previews an SVG block as image', async () => {
-    const user = userEvent.setup()
+  it('previews an SVG block as image at once', async () => {
     render(<Markdown>{'```svg\n<svg viewBox="0 0 1 1"></svg>\n```'}</Markdown>)
-
-    await user.click(screen.getByRole('button', { name: 'Preview' }))
 
     const img = await screen.findByAltText('SVG preview')
     expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/)
   })
 
-  it('offers no preview while the block is still streaming', () => {
+  it('shows the code while the block is still streaming', () => {
     render(<Markdown streaming>{'```html\n<p id="x">Hel'}</Markdown>)
-    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull()
+    expect(document.querySelector('iframe')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show source' })).toBeNull()
+    expect(screen.getByText(/<p id="x">Hel/)).toBeInTheDocument()
   })
 
-  it('offers the preview once the fence is closed, even while streaming', () => {
+  it('shows the preview once the fence is closed, even while streaming', async () => {
     render(<Markdown streaming>{htmlBlock}</Markdown>)
-    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument()
+    expect(await screen.findByTitle('HTML preview')).toBeInTheDocument()
   })
 
-  it('offers no preview for other languages', () => {
+  it('renders other languages as plain code', () => {
     render(<Markdown>{'```js\nconst a = 1\n```'}</Markdown>)
-    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show source' })).toBeNull()
     expect(
       screen.getByRole('button', { name: 'Copy code' })
     ).toBeInTheDocument()

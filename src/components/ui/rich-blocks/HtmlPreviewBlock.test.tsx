@@ -5,11 +5,8 @@ import HtmlPreviewBlock from './HtmlPreviewBlock'
 vi.mock('@/components/artifact-preview/ArtifactPreview', () => ({
   ArtifactPreview: () => <div>preview frame</div>,
 }))
-vi.mock('@/lib/chat-composer-metrics', () => ({
-  getChatComposerBottomOffset: () => 120,
-}))
 
-describe('HtmlPreviewBlock (#81)', () => {
+describe('HtmlPreviewBlock', () => {
   const scrollIntoView = vi.fn()
   const original = HTMLElement.prototype.scrollIntoView
 
@@ -18,17 +15,30 @@ describe('HtmlPreviewBlock (#81)', () => {
     scrollIntoView.mockReset()
   })
 
-  it('scrolls itself into view above the composer when it opens', () => {
+  // It mounts for every complete block, also when an older chat loads, so it
+  // must not pull the view to itself (it did while it opened only on click, #81).
+  it('does not scroll itself into view when it mounts', () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView
 
     render(<HtmlPreviewBlock code="<p>hi</p>" isComplete />)
 
-    const root = screen.getByTestId('html-preview-block')
-    expect(root.style.scrollMarginBottom).toBe('136px')
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: 'nearest',
-      behavior: 'smooth',
-    })
+    expect(screen.getByTestId('html-preview-block')).toBeInTheDocument()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('shows the actions in its header bar', () => {
+    render(
+      <HtmlPreviewBlock
+        code="<p>hi</p>"
+        isComplete
+        actions={<button type="button">Show source</button>}
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: 'Show source' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Reload preview' })
+    ).toBeInTheDocument()
   })
 })

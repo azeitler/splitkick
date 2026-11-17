@@ -26,7 +26,12 @@ export function findCodeBlockRenderer(
 ```
 
 - `auto`: the block renders in place (diagrams, charts).
-- `preview`: the code block stays and gets a Preview action (HTML/SVG).
+- `preview`: active content (HTML/SVG). Once the block is complete, the
+  preview shows at once in the artifact sandbox (`allow-scripts` only, opaque
+  origin, CSP without network). "Show source" in the preview's header opens
+  the code below it. The component gets the toggle as its `actions` prop.
+  It must not scroll itself into view: it mounts for every complete block,
+  also when an older chat loads.
 - `load` must be a dynamic `import()`. The renderer and its library go into
   their own chunks and load only when a matching block is shown, so the main
   bundle does not grow.

@@ -35,15 +35,7 @@ import {
   findCodeBlockRenderer,
   type CodeBlockRenderer,
 } from '@/components/ui/code-block-renderers'
-import {
-  Copy,
-  Check,
-  Table,
-  ListChecks,
-  ImageOff,
-  Eye,
-  EyeOff,
-} from 'lucide-react'
+import { Copy, Check, Table, ListChecks, ImageOff, Code } from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -116,14 +108,7 @@ const WINDOWS_DRIVE_RE = /^[a-z]:(?:[\\/]|%5c)/i
 const codeBlockButtonClass =
   'opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer'
 
-function CodeBlock({
-  children,
-  preview,
-}: {
-  children: ReactNode
-  /** Adds a Preview toggle (registry entries with mode `preview`). */
-  preview?: { open: boolean; onToggle: () => void }
-}) {
+function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -138,35 +123,12 @@ function CodeBlock({
     <div className="relative my-5 min-w-0 max-w-full">
       <pre
         className={cn(
-          'max-w-full overflow-x-auto rounded-lg bg-muted p-4 text-sm',
-          preview ? 'pr-20' : 'pr-10'
+          'max-w-full overflow-x-auto rounded-lg bg-muted p-4 pr-10 text-sm'
         )}
       >
         {children}
       </pre>
       <div className="absolute right-2 top-2 flex items-center gap-1">
-        {preview && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={preview.onToggle}
-                aria-label={preview.open ? 'Hide preview' : 'Preview'}
-                aria-pressed={preview.open}
-                className={codeBlockButtonClass}
-              >
-                {preview.open ? (
-                  <EyeOff className="size-4" />
-                ) : (
-                  <Eye className="size-4" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {preview.open ? 'Hide preview' : 'Preview'}
-            </TooltipContent>
-          </Tooltip>
-        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -189,7 +151,12 @@ function CodeBlock({
   )
 }
 
-type RichBlockComponent = ComponentType<{ code: string; isComplete: boolean }>
+type RichBlockComponent = ComponentType<{
+  code: string
+  isComplete: boolean
+  /** Buttons for the block's header bar (the preview's source toggle). */
+  actions?: ReactNode
+}>
 
 /** The Markdown source and streaming flag, so a code block can tell if its fence is closed. */
 const MarkdownSourceContext = createContext({ source: '', streaming: false })
@@ -219,8 +186,10 @@ const lazyRenderers = new Map<
 const CLOSING_FENCE_RE = /\n[ \t>]*(`{3,}|~{3,})[ \t]*$/
 
 /**
- * A `preview` entry (HTML/SVG): untrusted active content renders only after
- * the user clicks Preview, and only once the block is complete.
+ * A `preview` entry (HTML/SVG): the preview shows as soon as the block is
+ * complete, in the artifact sandbox (scripts only, opaque origin, no
+ * network). "Show source" in its header opens the code below it. While the
+ * block still streams, the code shows.
  */
 function PreviewCodeBlock({
   Renderer,
@@ -231,35 +200,34 @@ function PreviewCodeBlock({
   isComplete: boolean
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
+  if (!isComplete) return <CodeBlock>{children}</CodeBlock>
+  const sourceToggle = (
+    <button
+      type="button"
+      onClick={() => setSourceOpen(value => !value)}
+      aria-pressed={sourceOpen}
+      className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-background/80 hover:text-foreground cursor-pointer"
+    >
+      <Code className="size-3.5" />
+      {sourceOpen ? 'Hide source' : 'Show source'}
+    </button>
+  )
   return (
-    <>
-      <CodeBlock
-        preview={
-          isComplete
-            ? { open, onToggle: () => setOpen(value => !value) }
-            : undefined
-        }
-      >
-        {children}
-      </CodeBlock>
-      {open && isComplete && (
-        <div className="-mt-3 mb-5 min-w-0 max-w-full">
-          <Suspense
-            fallback={
-              <div className="py-4 text-sm text-muted-foreground">
-                Loading preview…
-              </div>
-            }
-          >
-            {createElement(Renderer, {
-              code: extractText(children).replace(/\n$/, ''),
-              isComplete: true,
-            })}
-          </Suspense>
+    <div className="my-5 min-w-0 max-w-full">
+      <Suspense fallback={<CodeBlock>{children}</CodeBlock>}>
+        {createElement(Renderer, {
+          code: extractText(children).replace(/\n$/, ''),
+          isComplete: true,
+          actions: sourceToggle,
+        })}
+      </Suspense>
+      {sourceOpen && (
+        <div className="-mb-5 -mt-3">
+          <CodeBlock>{children}</CodeBlock>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
