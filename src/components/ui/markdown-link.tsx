@@ -1,5 +1,6 @@
 import { useContext, useState, type MouseEvent, type ReactNode } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Folder } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   Tooltip,
   TooltipTrigger,
@@ -12,8 +13,12 @@ import {
   classifyChatLink,
   LocalPathRootContext,
   openChatLink,
+  openPathInSystem,
   toLocalReferencePath,
 } from '@/lib/chat-links'
+import { copyToClipboard } from '@/lib/clipboard'
+import { canOpenNativeApps } from '@/lib/environment'
+import { getFileManagerName } from '@/lib/platform'
 import { splitFileRefSuffix } from '@/lib/path-utils'
 import { useFileReference } from '@/lib/file-reference'
 import { parseSplitkickLink } from '@/lib/splitkick-links'
@@ -35,13 +40,21 @@ const LINK_CLASS = 'underline underline-offset-2 hover:text-foreground'
  * - None → no link, but still marked as a file, with a question-mark icon
  *   and a tooltip that says why. A link that can only open an error is worse
  *   than no link, because it looks the same as one that works.
+ * - A folder → a link with a folder icon that opens it in the file manager
+ *   (Finder, Explorer). Where that cannot work for the user (web access, a
+ *   remote backend), the click copies the path instead.
+ *
+ * `pathCandidate` marks inline code that only looks like a path
+ * (`remarkLocalFileLinks`). It stays plain code until the path resolves.
  */
 export function MarkdownLink({
   href,
   children,
+  pathCandidate = false,
 }: {
   href?: string
   children: ReactNode
+  pathCandidate?: boolean
 }) {
   const linkRef = parseSplitkickLink(href)
   if (href && linkRef) {
@@ -51,10 +64,22 @@ export function MarkdownLink({
       </SplitkickLink>
     )
   }
-  return <ChatLink href={href}>{children}</ChatLink>
+  return (
+    <ChatLink href={href} pathCandidate={pathCandidate}>
+      {children}
+    </ChatLink>
+  )
 }
 
-function ChatLink({ href, children }: { href?: string; children: ReactNode }) {
+function ChatLink({
+  href,
+  children,
+  pathCandidate,
+}: {
+  href?: string
+  children: ReactNode
+  pathCandidate: boolean
+}) {
   const rootPath = useContext(LocalPathRootContext)
   const kind = classifyChatLink(href)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -81,6 +106,23 @@ function ChatLink({ href, children }: { href?: string; children: ReactNode }) {
       rootPath,
       resolvedPath: path ?? reference.path,
     })
+
+  // A guess from inline code: no link until the backend confirms the path.
+  if (
+    pathCandidate &&
+    reference.status !== 'found' &&
+    reference.status !== 'ambiguous'
+  ) {
+    return <>{children}</>
+  }
+
+  if (reference.status === 'found' && reference.isDir && reference.path) {
+    return (
+      <FolderLink href={href} path={reference.path}>
+        {children}
+      </FolderLink>
+    )
+  }
 
   if (reference.status === 'missing') {
     return (
@@ -154,5 +196,56 @@ function ChatLink({ href, children }: { href?: string; children: ReactNode }) {
         </Tooltip>
       )}
     </>
+  )
+}
+
+/**
+ * A link to a folder. A folder cannot open in the file viewer, so the click
+ * opens it in the file manager, or copies its path where the file manager is
+ * on another machine (`canOpenNativeApps`).
+ */
+function FolderLink({
+  href,
+  path,
+  children,
+}: {
+  href?: string
+  path: string
+  children: ReactNode
+}) {
+  const canOpen = canOpenNativeApps()
+  const label = canOpen ? `Open in ${getFileManagerName()}` : 'Copy path'
+
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    if (canOpen) {
+      openPathInSystem(path)
+      return
+    }
+    void copyToClipboard(path)
+      .then(() => toast.success('Path copied'))
+      .catch(() => toast.error('Failed to copy'))
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <a
+          href={href}
+          data-chat-link=""
+          data-file-reference="found"
+          data-folder=""
+          onClick={handleClick}
+          className={LINK_CLASS}
+        >
+          <Folder
+            aria-hidden="true"
+            className="mr-0.5 inline size-3 align-[-0.125em] text-muted-foreground"
+          />
+          {children}
+        </a>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }

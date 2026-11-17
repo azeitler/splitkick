@@ -24,7 +24,10 @@ import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
-import { remarkLocalFileLinks } from '@/lib/remark-local-file-links'
+import {
+  PATH_CANDIDATE_PROPERTY,
+  remarkLocalFileLinks,
+} from '@/lib/remark-local-file-links'
 import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import { MarkdownLink } from '@/components/ui/markdown-link'
 import { ImagePreviewDialog } from '@/components/chat/ImageLightbox'
@@ -687,8 +690,13 @@ const components: Components = {
   img: ({ src, alt }) => <MarkdownImage key={src} src={src} alt={alt} />,
 
   // Links
-  a: ({ href, children }) => (
-    <MarkdownLink href={href}>{children}</MarkdownLink>
+  a: ({ href, children, node }) => (
+    <MarkdownLink
+      href={href}
+      pathCandidate={node?.properties?.[PATH_CANDIDATE_PROPERTY] != null}
+    >
+      {children}
+    </MarkdownLink>
   ),
 
   // Lists - generous spacing and indentation

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { MdastNode } from './remark-fix-interrupted-lists'
-import { remarkLocalFileLinks } from './remark-local-file-links'
+import {
+  PATH_CANDIDATE_PROPERTY,
+  pathLikeInlineCode,
+  remarkLocalFileLinks,
+} from './remark-local-file-links'
 
 function paragraph(...children: MdastNode[]): MdastNode {
   return { type: 'root', children: [{ type: 'paragraph', children }] }
@@ -253,5 +257,68 @@ describe('remarkLocalFileLinks', () => {
     remarkLocalFileLinks()(tree)
 
     expect(tree).toEqual(before)
+  })
+})
+
+describe('pathLikeInlineCode', () => {
+  it.each([
+    '/Users/me/Projects/jean',
+    '~/Projects/jean/docs',
+    './scripts',
+    '../shared/api.md',
+    'C:\\Users\\me\\repo',
+    'src/lib/',
+    'src/lib/chat-links.ts',
+    'app/[id]/page.tsx',
+  ])('takes %s as a path', value => {
+    expect(pathLikeInlineCode(value)).toBe(true)
+  })
+
+  it.each([
+    '1/2',
+    'README.md',
+    'npm run dev',
+    '/Users/me/My Documents',
+    'https://example.com/a',
+    'ssh://host/path',
+    'src/**/*.ts',
+    '{a,b}/c',
+    '$HOME/x',
+    'a=b/c',
+    '/',
+    '~/',
+    '//comment',
+    '',
+  ])('does not take %s as a path', value => {
+    expect(pathLikeInlineCode(value)).toBe(false)
+  })
+})
+
+describe('remarkLocalFileLinks — path candidates in inline code', () => {
+  it('wraps path-like inline code in a candidate link', () => {
+    const nodes = run(paragraph({ type: 'inlineCode', value: 'src/lib/' }))
+    const link = nodes[0]
+    expect(link?.type).toBe('link')
+    expect(link?.url).toBe('src/lib/')
+    expect(
+      (link?.data as { hProperties?: Record<string, unknown> })?.hProperties
+    ).toEqual({ [PATH_CANDIDATE_PROPERTY]: '' })
+  })
+
+  it('keeps a browsable file a plain link, not a candidate', () => {
+    const nodes = run(
+      paragraph({ type: 'inlineCode', value: '/tmp/report.html' })
+    )
+    expect(nodes[0]?.type).toBe('link')
+    expect(nodes[0]?.data).toBeUndefined()
+  })
+
+  it('leaves code blocks alone', () => {
+    const tree: MdastNode = {
+      type: 'root',
+      children: [{ type: 'code', value: 'src/lib/' }],
+    }
+    remarkLocalFileLinks()(tree)
+    expect(tree.children?.[0]?.type).toBe('code')
   })
 })

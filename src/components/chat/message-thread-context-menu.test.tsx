@@ -156,7 +156,7 @@ describe('MessageThreadContextMenu', () => {
     fireEvent.contextMenu(screen.getByText('report'))
 
     expect(
-      await screen.findByRole('menuitem', { name: /copy url/i })
+      await screen.findByRole('menuitem', { name: /copy path/i })
     ).toBeInTheDocument()
     expect(
       screen.getByRole('menuitem', { name: /open in default browser/i })
@@ -173,7 +173,7 @@ describe('MessageThreadContextMenu', () => {
     fireEvent.contextMenu(screen.getByText('source'))
 
     expect(
-      await screen.findByRole('menuitem', { name: /copy url/i })
+      await screen.findByRole('menuitem', { name: /copy path/i })
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('menuitem', { name: /open in default browser/i })
@@ -330,7 +330,7 @@ describe('MessageThreadContextMenu', () => {
     render(
       <MessageThreadContextMenu messageText="Full message body">
         <div>
-          <a href="/docs">
+          <a href="https://example.com/docs">
             <span>documentation</span>
           </a>
         </div>
@@ -342,7 +342,7 @@ describe('MessageThreadContextMenu', () => {
 
     await waitFor(() => {
       expect(mocks.copyToClipboard).toHaveBeenCalledWith(
-        'http://localhost:3000/docs'
+        'https://example.com/docs'
       )
       expect(mocks.toastSuccess).toHaveBeenCalledWith('Copied to clipboard')
     })
@@ -470,7 +470,7 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     openMenuOn('gone', 'docs/gone.md')
 
     expect(
-      await screen.findByRole('menuitem', { name: /copy url/i })
+      await screen.findByRole('menuitem', { name: /copy path/i })
     ).toBeInTheDocument()
     await waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith(
@@ -479,6 +479,68 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
       )
     )
     expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+  })
+
+  it('copies the resolved path of a local link, and offers no Copy URL', async () => {
+    const user = userEvent.setup()
+    openMenuOn('notes', 'docs/notes.md')
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        'resolve_file_reference',
+        expect.anything()
+      )
+    )
+    expect(screen.queryByRole('menuitem', { name: /copy url/i })).toBeNull()
+    await user.click(
+      await screen.findByRole('menuitem', { name: /copy path/i })
+    )
+
+    await waitFor(() =>
+      expect(mocks.copyToClipboard).toHaveBeenCalledWith(REVEALED)
+    )
+  })
+
+  it('opens a folder link in the file manager instead of revealing it', async () => {
+    const folder = '/Users/me/Projects/jean/docs'
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'resolve_file_reference'
+        ? { path: folder, candidates: [folder], searched: false, isDir: true }
+        : undefined
+    )
+    const user = userEvent.setup()
+    openMenuOn('docs', '~/Projects/jean/docs')
+
+    const open = await screen.findByRole('menuitem', { name: /^open in/i })
+    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeVisible()
+    await user.click(open)
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('open_path_in_default_app', {
+        path: folder,
+      })
+    )
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      'reveal_path_in_file_manager',
+      expect.anything()
+    )
+  })
+
+  it('keeps Copy path but disables Open for a folder on another machine', async () => {
+    const folder = '/home/me/repo/docs'
+    mocks.isLocalBackend.mockReturnValue(false)
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'resolve_file_reference'
+        ? { path: folder, candidates: [folder], searched: false, isDir: true }
+        : undefined
+    )
+    openMenuOn('docs', 'docs/')
+
+    const open = await screen.findByRole('menuitem', { name: /^open in/i })
+    expect(open).toHaveAttribute('aria-disabled', 'true')
+    expect(open).toHaveTextContent('Host only')
+    expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeVisible()
   })
 
   it('offers no reveal for a web link', async () => {

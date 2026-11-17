@@ -29,6 +29,11 @@
  *   ambiguous and `` `q#1?draft.html` `` works. A space still is: nothing
  *   tells `` `open out/report.html` `` (a command) from `` `04 report.html` ``
  *   (a name), so neither is linked. Write the second as a markdown link.
+ * - **Inline code that looks like any other path** (`` `~/Projects/jean` ``,
+ *   `` `src/lib/` ``) becomes a *candidate* link (`PATH_CANDIDATE_PROPERTY`).
+ *   The renderer draws it as plain code until the backend confirms the path
+ *   exists, so `` `and/or` `` never turns into a link. See
+ *   `pathLikeInlineCode` for what counts.
  */
 
 import type { MdastNode } from '@/lib/remark-fix-interrupted-lists'
@@ -122,8 +127,41 @@ function inlineCodeLinkTarget(text: string): string | null {
   return isBrowsableFile(splitFileRefSuffix(value)[0]) ? value : null
 }
 
-function linkTo(url: string, child: MdastNode): MdastNode {
-  return { type: 'link', url, title: null, children: [child] }
+/**
+ * hast property on a candidate link. The renderer reads it from the link's
+ * hast node and shows the link only once the path resolves.
+ */
+export const PATH_CANDIDATE_PROPERTY = 'dataPathCandidate'
+
+// Characters a path in an answer never holds, but globs, shell snippets and
+// code do: `src/**/*.ts`, `a=b/c`, `{a,b}/c`, `$HOME/x`.
+const NOT_A_PATH_RE = /[*?<>|"'`{},;=$!\\]/
+
+/**
+ * Whether inline code is clearly a path (folder or file), and so worth
+ * asking the backend about.
+ *
+ * - Rooted: `/…`, `~/…`, `./…`, `../…` or a Windows drive (`C:\…`).
+ * - Relative: holds a `/` and a letter (`src/lib/`), so `1/2` is not one.
+ *
+ * Whitespace, URL schemes and glob or shell characters rule it out. A
+ * candidate is only a guess: the link appears once the path exists.
+ */
+export function pathLikeInlineCode(text: string): boolean {
+  const value = text.trim()
+  if (!value || value.length > 1024 || /\s/.test(value)) return false
+  if (/^[A-Za-z]:[\\/]./.test(value)) return !/[*?<>|"`{},;=$!]/.test(value)
+  if (/^[a-z][a-z\d+.-]*:/i.test(value)) return false
+  if (NOT_A_PATH_RE.test(value)) return false
+  if (value.startsWith('//')) return false
+  if (/^(?:\/|~\/|\.{1,2}\/)./.test(value)) return true
+  return value.includes('/') && /\p{L}/u.test(value)
+}
+
+function linkTo(url: string, child: MdastNode, candidate = false): MdastNode {
+  const link: MdastNode = { type: 'link', url, title: null, children: [child] }
+  if (candidate) link.data = { hProperties: { [PATH_CANDIDATE_PROPERTY]: '' } }
+  return link
 }
 
 /** Link the paths in one line, which holds no newline of its own. */
@@ -193,6 +231,11 @@ function visit(node: MdastNode): void {
       const url = inlineCodeLinkTarget(value)
       if (url) {
         next.push(linkTo(url, child))
+        changed = true
+        continue
+      }
+      if (pathLikeInlineCode(value)) {
+        next.push(linkTo(value.trim(), child, true))
         changed = true
         continue
       }

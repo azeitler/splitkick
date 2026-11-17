@@ -5781,6 +5781,9 @@ pub struct ResolvedFileReference {
     pub candidates: Vec<String>,
     /// True when the worktree search ran, because no offered candidate existed.
     pub searched: bool,
+    /// True when `path` is a directory. A folder cannot open in the file
+    /// viewer, so the UI opens it in the file manager instead.
+    pub is_dir: bool,
 }
 
 /// How many entries the fallback search visits before it gives up.
@@ -5995,10 +5998,13 @@ pub async fn resolve_file_reference(
             }
         }
 
+        let path = found.first().cloned();
+        let is_dir = path.as_deref().is_some_and(|p| Path::new(p).is_dir());
         ResolvedFileReference {
-            path: found.first().cloned(),
+            path,
             candidates: found,
             searched,
+            is_dir,
         }
     })
     .await
@@ -14723,6 +14729,36 @@ mod tests {
         assert_eq!(resolved.path.as_deref(), Some(real.as_str()));
         assert_eq!(resolved.candidates, vec![real]);
         assert!(!resolved.searched);
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_reports_whether_the_match_is_a_folder() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docs")).expect("docs");
+        std::fs::write(root.join("docs/api.md"), "ok\n").expect("api");
+
+        let folder = root.join("docs").to_string_lossy().to_string();
+        let resolved = resolve_file_reference("docs".to_string(), vec![folder.clone()], None)
+            .await
+            .expect("resolve folder");
+        assert_eq!(resolved.path, Some(native(PathBuf::from(folder))));
+        assert!(resolved.is_dir);
+
+        let file = root.join("docs/api.md").to_string_lossy().to_string();
+        let resolved = resolve_file_reference("docs/api.md".to_string(), vec![file], None)
+            .await
+            .expect("resolve file");
+        assert!(!resolved.is_dir);
+
+        let missing = root.join("gone").to_string_lossy().to_string();
+        let resolved = resolve_file_reference("gone".to_string(), vec![missing], None)
+            .await
+            .expect("resolve missing");
+        assert!(!resolved.is_dir);
+
+        let json = serde_json::to_value(&resolved).expect("serialize");
+        assert_eq!(json.get("isDir"), Some(&serde_json::Value::Bool(false)));
     }
 
     #[tokio::test]

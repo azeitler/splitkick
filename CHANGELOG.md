@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Folder paths in a reply open in Finder.** A path in inline code
+  (`` `~/Projects/app/docs` ``, `` `src/lib/` ``) becomes a link once the
+  backend confirms that it exists; a token that only looks like a path stays
+  plain code. A folder, from inline code or a Markdown link, shows a folder
+  icon and opens in Finder (Explorer on Windows). Files still open in the
+  file viewer. The right-click menu on a path has "Open in Finder" (folder) or
+  "Reveal in Finder" (file) and "Copy path". Where Finder is on another
+  machine (web access, phone, remote backend), a click on a folder copies its
+  path.
+
 ## [1.5.20] - 2026-11-17
 
 Built on Jean 0.1.73.

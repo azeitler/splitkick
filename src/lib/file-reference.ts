@@ -44,6 +44,8 @@ export interface ResolvedFileReference {
   candidates: string[]
   /** True when the backend searched the worktree. */
   searched: boolean
+  /** True when `path` is a folder. Missing from older backends. */
+  isDir?: boolean
 }
 
 /**
@@ -231,9 +233,16 @@ export interface FileReferenceResult {
   candidates: string[]
   /** The primary root, for showing a candidate as a relative path. */
   root: string | null
+  /** True when `path` is a folder, which opens in the file manager. */
+  isDir: boolean
 }
 
-const EMPTY = { path: null, candidates: [] as string[], root: null }
+const EMPTY = {
+  path: null,
+  candidates: [] as string[],
+  root: null,
+  isDir: false,
+}
 
 /**
  * Resolve one reference against the surrounding session.
@@ -301,12 +310,13 @@ export function useFileReference(
     // link that works.
     return { ...EMPTY, status: query.isError ? 'disabled' : 'resolving', root }
   }
-  const { path, candidates } = query.data
+  const { path, candidates, isDir } = query.data
   if (!path) return { ...EMPTY, status: 'missing', root }
   return {
     status: candidates.length > 1 ? 'ambiguous' : 'found',
     path,
     candidates,
     root,
+    isDir: isDir ?? false,
   }
 }
