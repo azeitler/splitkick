@@ -596,20 +596,16 @@ fn apply_enabled(schedule: &mut Schedule, enabled: bool, now: u64) {
 /// next time; a one-off that ran is done and leaves the list. Returns the
 /// session the prompt went into.
 pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, String> {
-    let schedule = SCHEDULES
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|s| s.id == schedule_id)
-        .cloned()
-        .ok_or_else(|| format!("Schedule not found: {schedule_id}"))?;
+    let schedule = update(app, |list| {
+        let taken = take_for_run_now(list, schedule_id);
+        let changed = taken.as_ref().is_some_and(|s| s.recurrence.is_none());
+        (changed, taken)
+    })?
+    .ok_or_else(|| format!("Schedule not found: {schedule_id}"))?;
     let result = fire(app, &schedule).await;
     let now = now_unix();
     update(app, |list| {
-        if result.is_ok() && schedule.recurrence.is_none() {
-            list.retain(|s| s.id != schedule.id);
-            return (true, ());
-        }
+        apply_fire_result(list, &schedule, &result);
         if let Some(stored) = list.iter_mut().find(|s| s.id == schedule.id) {
             stored.last_run_unix = Some(now);
             if result.is_ok() {
@@ -617,11 +613,22 @@ pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, Strin
                 stored.last_error = None;
             }
         }
-        apply_fire_result(list, &schedule, &result);
         (true, ())
     })?;
     emit_changed(app);
     result
+}
+
+/// The schedule to run now. A one-off leaves the list here, under the lock,
+/// so the scheduler tick cannot fire it a second time while it runs (#123).
+/// A failed run brings it back paused (`apply_fire_result`).
+fn take_for_run_now(list: &mut Vec<Schedule>, schedule_id: &str) -> Option<Schedule> {
+    let index = list.iter().position(|s| s.id == schedule_id)?;
+    if list[index].recurrence.is_none() {
+        Some(list.remove(index))
+    } else {
+        Some(list[index].clone())
+    }
 }
 
 /// A schedule an agent makes through the Splitkick MCP `create_schedule`.
@@ -1082,8 +1089,10 @@ fn record_fire(app: &AppHandle, schedule: &Schedule, result: Result<String, Stri
 fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result<String, String>) {
     let index = match list.iter().position(|s| s.id == fired.id) {
         Some(index) => index,
-        // A one-off that ran is done; one that failed comes back paused.
-        None if result.is_err() => {
+        // A one-off that ran is done; one that failed comes back paused. A
+        // repeat stays in the list while it fires, so a missing repeat was
+        // deleted by the user meanwhile and stays deleted (#123).
+        None if result.is_err() && fired.recurrence.is_none() => {
             list.push(fired.clone());
             list.len() - 1
         }
@@ -1764,6 +1773,59 @@ mod tests {
             list[0].last_error.as_deref(),
             Some("The session no longer exists")
         );
+    }
+
+    #[test]
+    fn a_deleted_repeat_that_fails_stays_deleted() {
+        let fired = repeating("deleted", 100);
+        let mut list = Vec::new();
+
+        apply_fire_result(
+            &mut list,
+            &fired,
+            &Err("The session no longer exists".into()),
+        );
+
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn a_failed_repeat_that_still_exists_is_paused() {
+        let mut list = vec![repeating("still-there", 10_000)];
+        let fired = list[0].clone();
+
+        apply_fire_result(
+            &mut list,
+            &fired,
+            &Err("The worktree no longer exists".into()),
+        );
+
+        assert_eq!(list.len(), 1);
+        assert!(!list[0].enabled);
+        assert_eq!(list[0].last_outcome, Some(RunOutcome::Failed));
+    }
+
+    // Run now takes a one-off out of the list before it fires, so the
+    // scheduler tick cannot take it too.
+    #[test]
+    fn run_now_takes_a_one_off_out_once() {
+        let mut one_off = repeating("once", 100);
+        one_off.recurrence = None;
+        let mut list = vec![one_off.clone()];
+
+        assert_eq!(take_for_run_now(&mut list, "once"), Some(one_off));
+        assert!(list.is_empty());
+        assert!(take_due(&mut list, 10_000, false).is_empty());
+        assert_eq!(take_for_run_now(&mut list, "once"), None);
+    }
+
+    #[test]
+    fn run_now_keeps_a_repeat_in_the_list() {
+        let repeat = repeating("rep-now", 10_000);
+        let mut list = vec![repeat.clone()];
+
+        assert_eq!(take_for_run_now(&mut list, "rep-now"), Some(repeat.clone()));
+        assert_eq!(list, vec![repeat]);
     }
 
     #[test]
