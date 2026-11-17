@@ -9,10 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
-- **Questions take an option and a note.** In a question from an agent you
-  can pick an option and also type text. Before, typing cleared the option
-  and a click cleared the text. The agent gets both, for example "Redis
-  (note: keep the TTL at 5 minutes)". Text alone is still the answer.
+- **Questions take an own answer and a note.** A question from an agent now
+  has an "Other…" row with its own text field, for when no option fits, and
+  a separate Note field for extra context on any answer. Before, one text
+  field was the custom answer and was cleared by a click on an option. The
+  agent gets for example "Redis (note: keep the TTL at 5 minutes)".
 
 ## [1.5.19] - 2026-11-17
 

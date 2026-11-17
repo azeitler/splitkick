@@ -194,9 +194,8 @@ describe('AskUserQuestion', () => {
       />
     )
 
-    expect(
-      screen.queryByPlaceholderText('Add a note or your own answer...')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Other answer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Note')).not.toBeInTheDocument()
   })
 
   it('submits secret custom answers when other answers are allowed', () => {
@@ -219,10 +218,10 @@ describe('AskUserQuestion', () => {
       />
     )
 
-    const input = screen.getByPlaceholderText(
-      'Add a note or your own answer...'
-    ) as HTMLInputElement
+    const input = screen.getByLabelText('Other answer') as HTMLInputElement
     expect(input.type).toBe('password')
+    // No plain-text note next to a secret.
+    expect(screen.queryByLabelText('Note')).not.toBeInTheDocument()
 
     fireEvent.change(input, { target: { value: 'shhh' } })
     fireEvent.click(screen.getByText('Answer'))
@@ -241,12 +240,14 @@ describe('AskUserQuestion', () => {
         onSubmit={noopSubmit}
       />
     )
-    const [firstInput] = screen.getAllByPlaceholderText(
-      'Add a note or your own answer...'
-    )
-    const toneRadio = screen.getAllByRole('radio')[3]
-    if (!firstInput || !toneRadio) throw new Error('form not rendered')
-    fireEvent.change(firstInput, { target: { value: 'Owls at night' } })
+    const [firstOther] = screen.getAllByLabelText('Other answer')
+    const [, secondNote] = screen.getAllByLabelText('Note')
+    // Question 2's second option (question 1 has 2 options + Other).
+    const toneRadio = screen.getAllByRole('radio')[4]
+    if (!firstOther || !secondNote || !toneRadio)
+      throw new Error('form not rendered')
+    fireEvent.change(firstOther, { target: { value: 'Owls at night' } })
+    fireEvent.change(secondNote, { target: { value: 'short please' } })
     fireEvent.click(toneRadio)
     view.unmount()
 
@@ -257,13 +258,14 @@ describe('AskUserQuestion', () => {
         onSubmit={noopSubmit}
       />
     )
-    expect(
-      screen.getAllByPlaceholderText('Add a note or your own answer...')[0]
-    ).toHaveValue('Owls at night')
-    expect(screen.getAllByRole('radio')[3]).toBeChecked()
+    expect(screen.getAllByLabelText('Other answer')[0]).toHaveValue(
+      'Owls at night'
+    )
+    expect(screen.getAllByLabelText('Note')[1]).toHaveValue('short please')
+    expect(screen.getAllByRole('radio')[4]).toBeChecked()
   })
 
-  it('sends a picked option and a typed note together', () => {
+  it('sends a picked option and a note together', () => {
     const onSubmit = vi.fn()
     render(
       <AskUserQuestion
@@ -273,22 +275,58 @@ describe('AskUserQuestion', () => {
       />
     )
     const radio = screen.getAllByRole('radio')[1]
-    const [input] = screen.getAllByPlaceholderText(
-      'Add a note or your own answer...'
-    )
-    if (!radio || !input) throw new Error('form not rendered')
-    // Either order keeps both: the option survives typing, the text a click.
+    const [note] = screen.getAllByLabelText('Note')
+    if (!radio || !note) throw new Error('form not rendered')
     fireEvent.click(radio)
-    fireEvent.change(input, { target: { value: 'only owls' } })
-    fireEvent.click(screen.getAllByRole('radio')[0] as HTMLElement)
-    expect(input).toHaveValue('only owls')
+    fireEvent.change(note, { target: { value: 'only owls' } })
     fireEvent.click(screen.getByText('Answer'))
     expect(onSubmit).toHaveBeenCalledWith('tool-both', [
-      { questionIndex: 0, selectedOptions: [0], customText: 'only owls' },
+      { questionIndex: 0, selectedOptions: [1], note: 'only owls' },
     ])
   })
 
-  it('shows the option and the note in the answered summary', () => {
+  it('gives an own answer through Other when no option fits', () => {
+    const onSubmit = vi.fn()
+    render(
+      <AskUserQuestion
+        toolCallId="tool-other"
+        questions={questions}
+        onSubmit={onSubmit}
+      />
+    )
+    // Pick an option first, then change your mind: typing in Other replaces it.
+    fireEvent.click(screen.getAllByRole('radio')[0] as HTMLElement)
+    const [other] = screen.getAllByLabelText('Other answer')
+    if (!other) throw new Error('form not rendered')
+    fireEvent.change(other, { target: { value: 'Owls at night' } })
+    expect(screen.getAllByRole('radio')[0]).not.toBeChecked()
+    expect(screen.getAllByRole('radio', { name: 'Other' })[0]).toBeChecked()
+    fireEvent.click(screen.getByText('Answer'))
+    expect(onSubmit).toHaveBeenCalledWith('tool-other', [
+      { questionIndex: 0, selectedOptions: [], customText: 'Owls at night' },
+    ])
+  })
+
+  it('drops the Other text when an option is picked after it', () => {
+    const onSubmit = vi.fn()
+    render(
+      <AskUserQuestion
+        toolCallId="tool-other-then-option"
+        questions={questions}
+        onSubmit={onSubmit}
+      />
+    )
+    const [other] = screen.getAllByLabelText('Other answer')
+    if (!other) throw new Error('form not rendered')
+    fireEvent.change(other, { target: { value: 'Owls' } })
+    fireEvent.click(screen.getAllByRole('radio')[1] as HTMLElement)
+    fireEvent.click(screen.getByText('Answer'))
+    expect(onSubmit).toHaveBeenCalledWith('tool-other-then-option', [
+      { questionIndex: 0, selectedOptions: [1] },
+    ])
+  })
+
+  it('shows the option, the own answer and the note when answered', () => {
     render(
       <AskUserQuestion
         toolCallId="tool-both-done"
@@ -296,13 +334,19 @@ describe('AskUserQuestion', () => {
         onSubmit={noopSubmit}
         readOnly
         submittedAnswers={[
-          { questionIndex: 0, selectedOptions: [1], customText: 'macro lens' },
+          { questionIndex: 0, selectedOptions: [1], note: 'macro lens' },
+          {
+            questionIndex: 1,
+            selectedOptions: [],
+            customText: 'dry humour',
+          },
         ]}
       />
     )
     expect(
-      screen.getAllByText(/Bird photography \+ "macro lens"/).length
+      screen.getAllByText(/Bird photography \(note: macro lens\)/).length
     ).toBeGreaterThan(0)
+    expect(screen.getAllByText(/"dry humour"/).length).toBeGreaterThan(0)
   })
 
   it('drops the draft once the answer is sent', () => {
@@ -314,9 +358,7 @@ describe('AskUserQuestion', () => {
         onSubmit={onSubmit}
       />
     )
-    const [input] = screen.getAllByPlaceholderText(
-      'Add a note or your own answer...'
-    )
+    const [input] = screen.getAllByLabelText('Other answer')
     if (!input) throw new Error('form not rendered')
     fireEvent.change(input, { target: { value: 'Owls' } })
     fireEvent.click(screen.getByText('Answer'))
@@ -332,8 +374,6 @@ describe('AskUserQuestion', () => {
         onSubmit={noopSubmit}
       />
     )
-    expect(
-      screen.getAllByPlaceholderText('Add a note or your own answer...')[0]
-    ).toHaveValue('')
+    expect(screen.getAllByLabelText('Other answer')[0]).toHaveValue('')
   })
 })
