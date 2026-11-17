@@ -12,6 +12,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Star Splitkick on GitHub.** Help → "Star Splitkick on GitHub…" and a
   "Star on GitHub…" button in the About dialog open the repository in the
   browser. The sidebar's More menu item is now "Star on GitHub". Refs #130
+- **Image viewer: keyboard zoom and Open in browser pane.** In the image
+  viewer, ⌘+ / ⌘− zoom the image and ⌘0 fits it again (Ctrl on Windows and
+  Linux); the app zoom stays as it is while the viewer is open. A local image
+  also gets "Open in browser pane", which shows the file in the browser pane
+  (desktop app, local session only). Closes #48
 
 ### Changed
 
