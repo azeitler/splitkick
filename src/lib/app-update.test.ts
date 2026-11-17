@@ -9,6 +9,8 @@ import {
   installAndRelaunch,
   isUpdateCheckEnabled,
   markAppUpdateReady,
+  offerAppUpdate,
+  UPDATE_AVAILABLE_TOAST_ID,
   UPDATE_READY_TOAST_ID,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
@@ -202,6 +204,7 @@ const updater = vi.hoisted(() => ({
   loading: vi.fn(() => 'checking-toast'),
   dismiss: vi.fn(),
   success: vi.fn(),
+  info: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/app', () => ({
@@ -224,6 +227,7 @@ vi.mock('sonner', () => ({
     loading: updater.loading,
     dismiss: updater.dismiss,
     success: updater.success,
+    info: updater.info,
   },
 }))
 
@@ -349,6 +353,41 @@ describe('checkForUpdatesManually (#100)', () => {
       'The update check failed: Error: offline (could not reach github.com: timeout)',
       { title: 'Check for Updates', kind: 'error' }
     )
+  })
+})
+
+describe('offerAppUpdate', () => {
+  it('shows a toast with Update and marks the update pending, no modal', () => {
+    const useUIStore = staticUIStore
+    useUIStore.setState({
+      pendingUpdateVersion: null,
+      updateModalVersion: null,
+    })
+    updater.info.mockReset()
+
+    offerAppUpdate('2.1.0')
+
+    const state = useUIStore.getState()
+    // The toolbar's "Update available" reads this; it outlives the toast.
+    expect(state.pendingUpdateVersion).toBe('2.1.0')
+    expect(state.updateModalVersion).toBeNull()
+    const [text, options] = updater.info.mock.calls[0] as unknown as [
+      string,
+      {
+        id: string
+        duration: number
+        action: { label: string; onClick: () => void }
+      },
+    ]
+    expect(text).toContain('2.1.0 is available')
+    expect(options.id).toBe(UPDATE_AVAILABLE_TOAST_ID)
+    expect(options.duration).toBe(Infinity)
+    expect(options.action.label).toBe('Update')
+    const install = vi.fn()
+    window.addEventListener('install-pending-update', install)
+    options.action.onClick()
+    window.removeEventListener('install-pending-update', install)
+    expect(install).toHaveBeenCalledTimes(1)
   })
 })
 

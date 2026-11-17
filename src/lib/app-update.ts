@@ -80,6 +80,31 @@ export function resolveInstallPendingAction(state: {
 /** localStorage key: the last version the "ready" notification was sent for. */
 export const READY_NOTIFIED_KEY = 'splitkick.update-ready-notified'
 
+/** Toast id of the "update is available" toast. */
+export const UPDATE_AVAILABLE_TOAST_ID = 'app-update-available'
+
+/**
+ * The background check found an update. Mark it pending, so the toolbar shows
+ * "Update available" (it stays after the toast is dismissed, #135), and show
+ * a toast with Update. No modal over the work; Check for Updates still opens
+ * the "Update Available" prompt.
+ */
+export function offerAppUpdate(version: string): void {
+  useUIStore.getState().setPendingUpdateVersion(version)
+  logNativeInfo(`Update ${version} found; update toast shown`)
+  toast.info(`${PRODUCT_NAME} ${version} is available.`, {
+    id: UPDATE_AVAILABLE_TOAST_ID,
+    duration: Infinity,
+    action: {
+      label: 'Update',
+      // Same path as Update Now: download, then the ready toast.
+      onClick: () => {
+        window.dispatchEvent(new Event('install-pending-update'))
+      },
+    },
+  })
+}
+
 /** Toast id of the "update is ready" toast, so a second download replaces it. */
 export const UPDATE_READY_TOAST_ID = 'app-update-ready'
 

@@ -8,8 +8,10 @@ Automatic update checking and installation system using Tauri's updater plugin, 
 
 - Only the released app (`app.splitkick.desktop`) checks: 5 s after launch,
   then every 30 minutes (`App.tsx`, `src/lib/app-update.ts`).
-- An update opens the "Update Available" prompt (`UpdateAvailableModal`).
-  Update Now downloads it; a toast shows the progress.
+- A found update shows a toast with Update (`offerAppUpdate()`), and the
+  window toolbar shows "Update available" until it is installed. Check for
+  Updates opens the "Update Available" prompt (`UpdateAvailableModal`).
+  Update (or Update Now) downloads it; a toast shows the progress.
 - When the download is done, `markAppUpdateReady()` shows a toast with
   Restart (no modal, so the work is not interrupted), shows "Restart to
   update" in the window toolbar, adds "Restart to update to X" to the menu bar (tray) menu

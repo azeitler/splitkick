@@ -80,17 +80,25 @@ const calls = (page: Page) =>
         .calls
   )
 
-/** The auto check runs 5 s after start and offers the update. */
+/** The auto check runs 5 s after start and offers the update in a toast,
+ * not a modal; the toolbar also shows "Update available". */
 async function expectOffer(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Update Available' })
-  await expect(dialog).toBeVisible({ timeout: 15_000 })
-  await expect(dialog).toContainText(`Version ${VERSION}`)
-  return dialog
+  const offer = page.locator('[data-sonner-toast]', {
+    hasText: `${VERSION} is available`,
+  })
+  await expect(offer).toBeInViewport({ timeout: 15_000 })
+  await expect(
+    page.getByRole('dialog', { name: 'Update Available' })
+  ).toHaveCount(0)
+  await expect(
+    page.getByTestId('window-toolbar').getByTestId('app-update-indicator')
+  ).toHaveText('Update available')
+  return offer
 }
 
 async function downloadToReady(page: Page) {
   const offer = await expectOffer(page)
-  await offer.getByRole('button', { name: 'Update Now' }).click()
+  await offer.getByRole('button', { name: 'Update' }).click()
   // Progress shows while the package downloads.
   await expect(
     page.locator('[data-sonner-toast]', { hasText: /Downloading update/ })
@@ -175,7 +183,7 @@ test.describe('App update flow (#135)', () => {
       'set_tray_update_ready {"version":null}',
       'check',
     ])
-    await offer.getByRole('button', { name: 'Update Now' }).click()
+    await offer.getByRole('button', { name: 'Update' }).click()
     await expect(
       mockPage.locator('[data-sonner-toast]', {
         hasText: `${VERSION} is ready`,
