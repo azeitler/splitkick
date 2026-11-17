@@ -17,7 +17,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   file viewer. The right-click menu on a path has "Open in Finder" (folder) or
   "Reveal in Finder" (file) and "Copy path". Where Finder is on another
   machine (web access, phone, remote backend), a click on a folder copies its
-  path.
+  path. Closes #142
 
 ## [1.5.20] - 2026-11-17
 
