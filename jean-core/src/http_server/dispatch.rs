@@ -2234,7 +2234,11 @@ pub async fn dispatch_command(
         "import_worktree" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let path: String = from_field(&args, "path")?;
-            let result = crate::projects::import_worktree(app.clone(), project_id, path).await?;
+            let auto_open_in_jean: Option<bool> =
+                field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
+            let result =
+                crate::projects::import_worktree(app.clone(), project_id, path, auto_open_in_jean)
+                    .await?;
             emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }

@@ -482,9 +482,9 @@ fn tool_registry_core() -> Value {
         {"name":"list_security_issues","description":"List Dependabot security alerts for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["open","dismissed","fixed","auto_dismissed","all"],"default":"open"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_security_advisories","description":"List repository security advisories for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["draft","published","triage","closed","all"],"default":"all"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_linear_issues","description":"List Linear issues for a project using the same backend command as the UI. Pass projectId; Linear API config is resolved from project/global settings.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
-        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue, or ghsaId (e.g. \"GHSA-xxxx-xxxx-xxxx\") for a repository security advisory; these are mutually exclusive. Splitkick fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Splitkick UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating (and magic-fix when the Magic Prompts execution mode is yolo) the issue/PR/Linear issue/security advisory with the Magic Prompts settings default backend/model. This never switches/opens Splitkick's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber/ghsaId."},"ghsaId":{"type":"string","description":"Repository security advisory GHSA id like \"GHSA-xxxx-xxxx-xxxx\". Mutually exclusive with issueNumber/prNumber/linearIssueIdentifier."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
+        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue, or ghsaId (e.g. \"GHSA-xxxx-xxxx-xxxx\") for a repository security advisory; these are mutually exclusive. Splitkick fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Splitkick UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating (and magic-fix when the Magic Prompts execution mode is yolo) the issue/PR/Linear issue/security advisory with the Magic Prompts settings default backend/model. This never switches/opens Splitkick's UI unless the user opens the worktree separately. Returns once the worktree is saved, so its id works for create_session at once; if git takes longer, the result has ready: false — then poll get_worktree with that id.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber/ghsaId."},"ghsaId":{"type":"string","description":"Repository security advisory GHSA id like \"GHSA-xxxx-xxxx-xxxx\". Mutually exclusive with issueNumber/prNumber/linearIssueIdentifier."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
         {"name":"create_worktree_from_existing_branch","description":"Create a Splitkick worktree from an existing local or remote-tracking branch (branch name is used as the worktree name). Does not open Splitkick's UI. Prefer create_worktree for new branches; use this when the branch already exists.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"branchName":{"type":"string","description":"Existing branch name to check out into a new worktree path."}},"required":["projectId","branchName"],"additionalProperties":false}},
-        {"name":"import_worktree","description":"Import an existing git worktree/directory on disk into a Splitkick project. Path must already exist and be a git worktree or repo. Does not create a new git worktree.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"path":{"type":"string","description":"Absolute path to an existing git worktree directory."}},"required":["projectId","path"],"additionalProperties":false}},
+        {"name":"import_worktree","description":"Import an existing git worktree/directory on disk into a Splitkick project. Path must already exist and be a git worktree or repo. Does not create a new git worktree. Does not open Splitkick's UI.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"path":{"type":"string","description":"Absolute path to an existing git worktree directory."}},"required":["projectId","path"],"additionalProperties":false}},
         {"name":"rename_worktree","description":"Rename a worktree's display name in Splitkick (does not rename the git branch or folder).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"newName":{"type":"string","description":"New display name. Must be unique within the project."}},"required":["worktreeId","newName"],"additionalProperties":false}},
         {"name":"archive_worktree","description":"Archive a worktree (hide from the active project canvas). Cancels running sessions for the worktree. Base sessions cannot be archived. Prefer this over delete when work may still be needed.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"unarchive_worktree","description":"Restore an archived worktree to the active project canvas. Fails if the worktree directory no longer exists on disk.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
@@ -831,7 +831,7 @@ async fn run_tool(
             let project_id = require_str(&args, "projectId")?;
             let branch_name = require_nonempty_str(&args, "branchName")
                 .or_else(|_| require_nonempty_str(&args, "branch_name"))?;
-            dispatch_command(
+            let worktree = dispatch_command(
                 app,
                 "create_worktree_from_existing_branch",
                 json!({
@@ -841,15 +841,17 @@ async fn run_tool(
                 }),
             )
             .await
-            .map_err(ToolError::internal)
+            .map_err(ToolError::internal)?;
+            finish_mcp_create_worktree(app, worktree).await
         }
         "import_worktree" => {
             let project_id = require_str(&args, "projectId")?;
             let path = require_nonempty_str(&args, "path")?;
+            // Background only: the UI must not open the imported worktree (#137).
             dispatch_command(
                 app,
                 "import_worktree",
-                json!({ "projectId": project_id, "path": path }),
+                json!({ "projectId": project_id, "path": path, "autoOpenInJean": false }),
             )
             .await
             .map_err(ToolError::internal)
@@ -1177,7 +1179,7 @@ async fn run_tool(
                 };
                 start_autoinvestigating(app, &worktree, kind, source).await
             } else {
-                Ok(worktree)
+                finish_mcp_create_worktree(app, worktree).await
             }
         }
         "update_worktree_labels" => {
@@ -4301,24 +4303,67 @@ pub async fn start_background_investigation(
 }
 
 async fn wait_for_worktree_ready(app: &AppHandle, worktree_id: &str) -> Result<Value, ToolError> {
+    poll_saved_worktree(app, worktree_id, Duration::from_secs(15))
+        .await
+        .map_err(|err| {
+            ToolError::internal(format!(
+                "Timed out waiting for worktree {worktree_id} to be ready after 15s. Creation likely failed before persistence; check worktree:path_exists/worktree:branch_exists events or use a different customName. Last error: {err}"
+            ))
+        })
+}
+
+/// `create_worktree` returns a pending record and saves it from a background
+/// thread after `git worktree add`. Polls until the saved record exists;
+/// returns the last lookup error after `timeout`.
+async fn poll_saved_worktree(
+    app: &AppHandle,
+    worktree_id: &str,
+    timeout: Duration,
+) -> Result<Value, String> {
     let started = Instant::now();
     loop {
         match dispatch_command(app, "get_worktree", json!({ "worktreeId": worktree_id })).await {
             Ok(worktree) => return Ok(worktree),
-            Err(err) if started.elapsed() < Duration::from_secs(15) => {
+            Err(err) if started.elapsed() < timeout => {
                 if started.elapsed().as_millis() % 1000 < 500 {
                     log::debug!("Splitkick MCP waiting for worktree {worktree_id}: {err}");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-            Err(err) => {
-                return Err(ToolError::internal(format!(
-                    "Timed out waiting for worktree {worktree_id} to be ready after 15s. Creation likely failed before persistence; check worktree:path_exists/worktree:branch_exists events or use a different customName. Last error: {err}"
-                )));
-            }
+            Err(err) => return Err(err),
         }
     }
 }
+
+/// Plain MCP `create_worktree`: hand back the saved worktree, so the id
+/// works for `create_session` at once (#137). A slow creation (large
+/// checkout) returns the pending record with `ready: false` instead of
+/// failing — the worktree still appears when git is done.
+async fn finish_mcp_create_worktree(
+    app: &AppHandle,
+    mut pending: Value,
+) -> Result<Value, ToolError> {
+    let Some(id) = pending
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
+        return Ok(pending);
+    };
+    match poll_saved_worktree(app, &id, MCP_CREATE_WORKTREE_WAIT).await {
+        Ok(saved) => Ok(saved),
+        Err(err) => {
+            log::warn!("Splitkick MCP create_worktree: worktree {id} not saved yet: {err}");
+            pending["ready"] = json!(false);
+            pending["note"] = json!(format!(
+                "The worktree is still being created (or creation failed). Call get_worktree with id {id} until it succeeds before create_session. Do not import_worktree its path."
+            ));
+            Ok(pending)
+        }
+    }
+}
+
+const MCP_CREATE_WORKTREE_WAIT: Duration = Duration::from_secs(90);
 
 fn resolve_investigation_selection(
     app: &AppHandle,

@@ -19,6 +19,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   inline preview. Before, an agent asked for an inline HTML page did not know
   it could show one.
 
+### Fixed
+
+- **Agent tool calls no longer move you to another session.** The Splitkick
+  MCP tool `import_worktree` told the app to open the imported worktree, so
+  the app left the session you worked in. Now it only adds the worktree to
+  the sidebar. `create_worktree` now returns when the worktree is saved, so
+  `create_session` accepts its id at once (before, the id was unknown for
+  some seconds). Closes #137.
+
 ## [1.5.17] - 2026-11-15
 
 Built on Jean 0.1.73.

@@ -4460,10 +4460,14 @@ pub async fn list_archived_worktrees(app: AppHandle) -> Result<Vec<Worktree>, St
 ///
 /// Used when a directory exists at the worktree path but isn't tracked by Jean.
 /// Validates that the path is a valid git worktree and extracts the branch name.
+///
+/// `auto_open_in_jean` (default `true`) tells the UI to open the worktree.
+/// Splitkick MCP imports pass `false`: an agent must never move the user (#137).
 pub async fn import_worktree(
     app: AppHandle,
     project_id: String,
     path: String,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Importing worktree: path={path}, project_id={project_id}");
 
@@ -4571,7 +4575,7 @@ pub async fn import_worktree(
     // Emit created event
     let event = WorktreeCreatedEvent {
         worktree: worktree.clone(),
-        auto_open_in_jean: true,
+        auto_open_in_jean: auto_open_in_jean.unwrap_or(true),
     };
     if let Err(e) = app.emit_all("worktree:created", &event) {
         log::error!("Failed to emit worktree:created event: {e}");
