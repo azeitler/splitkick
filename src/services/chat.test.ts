@@ -499,13 +499,28 @@ describe('formatAnswersForClaude', () => {
     ).toEqual({ 'Which features?': 'TTL, Pub/Sub' })
   })
 
-  it('prefers freeform text over the selected labels', async () => {
+  it('adds freeform text as a note to the selected labels', async () => {
     const { formatAnswersForClaude } = await import('./chat')
     expect(
       formatAnswersForClaude(questions, [
         {
           questionIndex: 0,
           selectedOptions: [0],
+          customText: '  but keep the TTL short  ',
+        },
+      ])
+    ).toEqual({
+      'Which cache backend?': 'Redis (note: but keep the TTL short)',
+    })
+  })
+
+  it('sends freeform text alone when no option is selected', async () => {
+    const { formatAnswersForClaude } = await import('./chat')
+    expect(
+      formatAnswersForClaude(questions, [
+        {
+          questionIndex: 0,
+          selectedOptions: [],
           customText: '  neither, use Postgres  ',
         },
       ])
