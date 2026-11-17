@@ -498,7 +498,7 @@ jobs:
 
           ---
 
-          Built on Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · in-app update: $UPDATE
+          Commit \`${GITHUB_SHA:0:7}\` · in-app update: $UPDATE
 
           $INSTALL
 

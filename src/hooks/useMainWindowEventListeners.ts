@@ -40,6 +40,8 @@ import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
 import { handleSessionMoved, type SessionMovedEvent } from '@/lib/session-move'
 import { checkForUpdatesManually } from '@/lib/app-update'
+import { openExternal } from '@/lib/platform'
+import { REPO_URL } from '@/lib/release-url'
 import { logNativeInfo } from '@/lib/native-log'
 import {
   eventToShortcutString,
@@ -1216,10 +1218,17 @@ export function useMainWindowEventListeners() {
           ])
           // Show simple about dialog with dynamic version
           const appVersion = await getVersion()
-          await message(
+          const starLabel = 'Star on GitHub…'
+          // Custom buttons resolve to their label (#130).
+          const choice = await message(
             `${PRODUCT_NAME}\n\nVersion: ${appVersion}\nBuilt on Jean ${UPSTREAM_BASE_VERSION}\n\nBuilt with Tauri v2 + React + TypeScript`,
-            { title: `About ${PRODUCT_NAME}`, kind: 'info' }
+            {
+              title: `About ${PRODUCT_NAME}`,
+              kind: 'info',
+              buttons: { ok: 'OK', cancel: starLabel },
+            }
           )
+          if (choice === starLabel) void openExternal(REPO_URL)
         }),
 
         listenMenu('menu-check-updates', () => {

@@ -6,15 +6,15 @@
 
 Your local-first, cross-device workbench for all your agents.
 
-Multi-project, multi-worktree, multi-session and multi-agent: Claude Code, Codex, Cursor, OpenCode, Pi, Command Code, Grok, Kimi Code and Antigravity, side by side, with git as the safety net.
+Multi-project, multi-worktree, multi-session and multi-agent: Claude Code, Codex, Cursor, OpenCode, Pi, Command Code, Grok, Kimi Code, Antigravity and CodeRabbit, side by side, with git as the safety net.
 
 [splitkick.app](https://splitkick.app) · [Docs](https://docs.splitkick.app) · [Download](https://github.com/azeitler/splitkick/releases/latest)
 
-</div>
+[![GitHub stars](https://img.shields.io/github/stars/azeitler/splitkick?style=social)](https://github.com/azeitler/splitkick/stargazers)
 
-> **Splitkick is built on [Jean](https://github.com/coollabsio/jean)** by **[Andras Bacsai](https://github.com/andrasbacsai)** at [coolLabs](https://coollabs.io). Almost all of the code is his work and that of the upstream contributors. Splitkick is the free power-user edition, published by Planetfall Software.
->
-> Licensed under Apache-2.0. See [LICENSE.md](LICENSE.md) and [NOTICE](NOTICE).
+If Splitkick is useful to you, a ⭐ on GitHub helps others find it.
+
+</div>
 
 ## What Splitkick is
 
@@ -75,7 +75,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and [docs/devel
 
 ## Platform support
 
-macOS on Apple Silicon. Linux and Windows desktop builds are planned. The headless server `splitkick-server` for Linux (amd64, arm64) has its own pre-release track (`splitkick-server-v<version>`); see [docs/headless-server.md](docs/headless-server.md).
+- **macOS** on Apple Silicon (arm64): desktop app, signed and notarized.
+- **Windows** x64 (Windows 10 or 11): desktop app, since v1.5.
+- **Linux**: no desktop build yet. The headless server `splitkick-server` for Linux (amd64, arm64) has its own pre-release track (`splitkick-server-v<version>`); see [docs/headless-server.md](docs/headless-server.md).
 
 ## Security
 
@@ -93,3 +95,5 @@ Splitkick is made by **Andreas Zeitler** (Planetfall Software).
 <a href="https://planetfall.co"><img src="https://api.iconify.design/mdi:web.svg" width="25px" alt="planetfall.co"></a>
 
 Splitkick is built on [Jean](https://github.com/coollabsio/jean). Jean, and almost all of the code in this repository, is the work of [Andras Bacsai](https://github.com/andrasbacsai) ([coolLabs](https://coollabs.io)) and the upstream contributors.
+
+Licensed under Apache-2.0. See [LICENSE.md](LICENSE.md) and [NOTICE](NOTICE).

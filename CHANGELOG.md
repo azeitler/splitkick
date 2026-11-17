@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Star Splitkick on GitHub.** Help → "Star Splitkick on GitHub…" and a
+  "Star on GitHub…" button in the About dialog open the repository in the
+  browser. The sidebar's More menu item is now "Star on GitHub". Refs #130
+
 ### Changed
 
 - **HTML in the chat shows as a page at once.** A ` ```html ` or ` ```svg `

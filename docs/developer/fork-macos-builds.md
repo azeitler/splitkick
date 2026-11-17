@@ -141,7 +141,8 @@ A pre-release server does not update itself (`prerelease_update_block` in
 
 Splitkick uses plain semver from `1.0.0`, independent of the Jean version it is
 built on. That base version stays in `tauri.conf.json` (upstream's file) and
-shows in About and in each release as "Built on Jean 0.1.73". A later upstream
+shows in About and in each CHANGELOG version section as "Built on Jean 0.1.73"
+(the GitHub release notes leave it out, #130). A later upstream
 merge changes it without touching the Splitkick version.
 
 - Tags are `splitkick-v<version>`. Upstream's `v<version>` tags (`v1.0.0` …
