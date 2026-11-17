@@ -16,7 +16,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   viewer, ⌘+ / ⌘− zoom the image and ⌘0 fits it again (Ctrl on Windows and
   Linux); the app zoom stays as it is while the viewer is open. A local image
   also gets "Open in browser pane", which shows the file in the browser pane
-  (desktop app, local session only). Closes #48
+  (desktop app, local session only). A trackpad pinch now also zooms the
+  image in the macOS desktop app, at the pinch point. Closes #48
 
 ### Changed
 

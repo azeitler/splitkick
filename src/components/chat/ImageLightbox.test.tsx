@@ -227,6 +227,61 @@ describe('ImagePreviewDialog', () => {
     })
   })
 
+  describe('pointer zoom', () => {
+    const wrapperEl = () => {
+      const el = screen
+        .getByRole('img', { name: 'shot' })
+        .closest<HTMLElement>('.react-transform-wrapper')
+      if (!el) throw new Error('zoom wrapper not found')
+      return el
+    }
+    const scaleOf = () => {
+      const content = screen
+        .getByRole('img', { name: 'shot' })
+        .closest<HTMLElement>('.react-transform-component')
+      const match = /scale\(([\d.]+)\)/.exec(content?.style.transform ?? '')
+      return match ? Number(match[1]) : 1
+    }
+    const gesture = (type: string, scale: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.assign(event, { scale, clientX: 0, clientY: 0 })
+      wrapperEl().dispatchEvent(event)
+      return event
+    }
+
+    it('zooms in with the mouse wheel', async () => {
+      renderDialog('asset://localhost/shot.png', '/tmp/shot.png')
+      fireEvent.wheel(wrapperEl(), { deltaY: -100 })
+      await waitFor(() => expect(scaleOf()).toBeGreaterThan(1))
+    })
+
+    it('zooms with a WebKit trackpad pinch and keeps the page from zooming', async () => {
+      renderDialog('asset://localhost/shot.png', '/tmp/shot.png')
+
+      expect(gesture('gesturestart', 1).defaultPrevented).toBe(true)
+      const change = gesture('gesturechange', 2)
+      expect(change.defaultPrevented).toBe(true)
+      await waitFor(() => expect(scaleOf()).toBeCloseTo(2, 1))
+
+      // A ctrl+wheel for the same pinch does not zoom a second time.
+      fireEvent.wheel(wrapperEl(), { deltaY: -100, ctrlKey: true })
+      expect(scaleOf()).toBeCloseTo(2, 1)
+
+      gesture('gestureend', 2)
+      expect(scaleOf()).toBeCloseTo(2, 1)
+    })
+
+    it('pinching back to the minimum re-centers the image', async () => {
+      renderDialog('asset://localhost/shot.png', '/tmp/shot.png')
+      gesture('gesturestart', 1)
+      gesture('gesturechange', 2)
+      await waitFor(() => expect(scaleOf()).toBeCloseTo(2, 1))
+      gesture('gesturechange', 0.3)
+      gesture('gestureend', 0.3)
+      await waitFor(() => expect(scaleOf()).toBe(1))
+    })
+  })
+
   describe('Open in browser pane', () => {
     it('opens the file URL in the browser pane and closes the viewer', async () => {
       const user = userEvent.setup()

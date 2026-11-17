@@ -41,6 +41,13 @@ import {
 } from 'react-zoom-pan-pinch'
 import { HostOnlyHint } from '@/components/ui/host-only-hint'
 
+/** WebKit's non-standard pinch event (no DOM lib type). */
+interface WebKitGestureEvent extends UIEvent {
+  scale: number
+  clientX: number
+  clientY: number
+}
+
 interface ZoomableImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   /**
    * Zoom with Cmd/Ctrl + = / - / 0 while mounted. The keys then zoom the
@@ -50,8 +57,8 @@ interface ZoomableImageProps extends ImgHTMLAttributes<HTMLImageElement> {
 }
 
 /**
- * An image you can zoom and pan: pinch, wheel, or double-click to toggle. It
- * fills its parent, so give the parent a size.
+ * An image you can zoom and pan: trackpad or touch pinch, mouse wheel, or
+ * double-click to toggle. It fills its parent, so give the parent a size.
  */
 export function ZoomableImage({
   className,
@@ -82,6 +89,56 @@ export function ZoomableImage({
     return () =>
       window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [keyboardZoom])
+
+  // WebKit (the macOS desktop app, Safari) reports a trackpad pinch as
+  // gesturestart/gesturechange/gestureend with a running `scale`, not as the
+  // ctrl+wheel events react-zoom-pan-pinch reads. Map the gesture to a zoom at
+  // the pinch point. Chrome and mouse wheels keep going through the library.
+  useEffect(() => {
+    const transform = transformRef.current
+    const wrapper = transform?.instance.wrapperComponent
+    if (!transform || !wrapper) return
+    let startScale: number | null = null
+
+    const onGestureStart = (e: Event) => {
+      e.preventDefault()
+      startScale = transform.instance.state.scale
+    }
+    const onGestureChange = (e: Event) => {
+      e.preventDefault()
+      if (startScale === null) return
+      const g = e as WebKitGestureEvent
+      void transform.zoomToPoint(startScale * g.scale, g.clientX, g.clientY, 0)
+    }
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault()
+      startScale = null
+      // Back at the minimum: re-center like a double-click toggle does.
+      if (transform.instance.state.scale <= 1.001) transform.resetTransform()
+    }
+    // If WebKit also sends ctrl+wheel for the same pinch, let only the gesture
+    // events zoom, or the pinch would zoom twice.
+    const onWheel = (e: WheelEvent) => {
+      if (startScale !== null && e.ctrlKey) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+      }
+    }
+
+    wrapper.addEventListener('gesturestart', onGestureStart)
+    wrapper.addEventListener('gesturechange', onGestureChange)
+    wrapper.addEventListener('gestureend', onGestureEnd)
+    wrapper.addEventListener('wheel', onWheel, {
+      capture: true,
+      passive: false,
+    })
+    return () => {
+      wrapper.removeEventListener('gesturestart', onGestureStart)
+      wrapper.removeEventListener('gesturechange', onGestureChange)
+      wrapper.removeEventListener('gestureend', onGestureEnd)
+      wrapper.removeEventListener('wheel', onWheel, { capture: true })
+    }
+  }, [])
 
   return (
     <TransformWrapper
