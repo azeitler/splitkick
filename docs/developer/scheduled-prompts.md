@@ -53,7 +53,9 @@ Every new field has `#[serde(default)]`: older files still load.
   `ScheduleDialog`.
 - MCP: `capped_mode()` = the lower of the calling session's and the target's
   mode (plan < build < yolo). An agent never schedules a run with more rights
-  than it has. A session keeps one agent schedule (last wins).
+  than it has. MCP schedules never replace another schedule; only a new
+  `ScheduleWakeup` replaces the session's previous `ScheduleWakeup` (last
+  wins, keyed by `tool_call_id`, never for an empty session id) (#118).
 
 ## Notifications
 

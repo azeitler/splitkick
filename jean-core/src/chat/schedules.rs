@@ -463,8 +463,8 @@ pub fn create(
     Ok(schedule)
 }
 
-/// Save a schedule. A new agent schedule replaces the session's previous
-/// agent schedule (last wins, as `/loop` expects).
+/// Save a schedule. A new `ScheduleWakeup` schedule replaces the session's
+/// previous one (last wins, as `/loop` expects); see `take_agent_schedule`.
 fn add(app: &AppHandle, schedule: Schedule) -> Result<(), String> {
     let replaced = update(app, |list| {
         let replaced = take_agent_schedule(list, &schedule);
@@ -488,14 +488,18 @@ fn add(app: &AppHandle, schedule: Schedule) -> Result<(), String> {
     Ok(())
 }
 
-/// Remove the session's agent schedule when `new` is an agent schedule.
+/// Remove the session's `ScheduleWakeup` schedule when `new` is one too
+/// (last wins, as `/loop` expects). MCP `create_schedule` schedules have no
+/// `tool_call_id`: they never replace and are never replaced, and nothing
+/// is replaced for a caller without a session (#118).
 fn take_agent_schedule(list: &mut Vec<Schedule>, new: &Schedule) -> Option<Schedule> {
-    if new.origin != ScheduleOrigin::Agent {
+    let is_wakeup = |s: &Schedule| s.origin == ScheduleOrigin::Agent && s.tool_call_id.is_some();
+    if !is_wakeup(new) || new.session_id.is_empty() {
         return None;
     }
     let index = list
         .iter()
-        .position(|s| s.origin == ScheduleOrigin::Agent && s.session_id == new.session_id)?;
+        .position(|s| is_wakeup(s) && s.session_id == new.session_id)?;
     Some(list.remove(index))
 }
 
@@ -657,8 +661,8 @@ fn capped_mode(caller: Option<&str>, target: Option<&str>) -> String {
     }
 }
 
-/// Save an agent schedule (origin `agent`). Like `ScheduleWakeup`, the new
-/// one replaces the session's previous agent schedule.
+/// Save an agent schedule (origin `agent`). Unlike `ScheduleWakeup`, it
+/// never replaces another schedule: a session can hold many (#118).
 pub fn create_for_agent(
     app: &AppHandle,
     request: AgentScheduleRequest,
@@ -1384,24 +1388,65 @@ mod tests {
         assert_eq!(of_session("disk-1"), vec![schedule]);
     }
 
+    fn mcp_schedule(app: &RuntimeContext, session_id: &str, prompt: &str) -> Schedule {
+        create_for_agent(
+            app,
+            AgentScheduleRequest {
+                caller_session_id: Some(session_id.into()),
+                prompt: prompt.into(),
+                fire_at_unix: Some(4_000_000_000),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
     #[test]
     fn a_new_agent_wakeup_replaces_only_the_old_agent_wakeup() {
         let (_temp, app) = app();
         session(&app, "agent-1");
         let user =
             create_simple(&app, "agent-1", "user prompt", Some(4_000_000_000), None).unwrap();
+        let mcp = mcp_schedule(&app, "agent-1", "mcp prompt");
         schedule_from_tool_input(&app, "agent-1", "w1", "t1", &tool_input(60)).unwrap();
         schedule_from_tool_input(&app, "agent-1", "w1", "t2", &tool_input(60)).unwrap();
 
         let schedules = of_session("agent-1");
-        assert_eq!(schedules.len(), 2);
+        assert_eq!(schedules.len(), 3);
         assert!(schedules.contains(&user));
-        let agent: Vec<_> = schedules
+        assert!(schedules.contains(&mcp));
+        let wakeups: Vec<_> = schedules
             .iter()
-            .filter(|s| s.origin == ScheduleOrigin::Agent)
+            .filter(|s| s.tool_call_id.is_some())
             .collect();
-        assert_eq!(agent.len(), 1);
-        assert_eq!(agent[0].tool_call_id.as_deref(), Some("t2"));
+        assert_eq!(wakeups.len(), 1);
+        assert_eq!(wakeups[0].tool_call_id.as_deref(), Some("t2"));
+    }
+
+    #[test]
+    fn mcp_schedules_never_replace_each_other() {
+        let (_temp, app) = app();
+        session(&app, "mcp-two");
+        let digest = mcp_schedule(&app, "mcp-two", "PR digest");
+        let deps = mcp_schedule(&app, "mcp-two", "dependency check");
+
+        let schedules = of_session("mcp-two");
+        assert_eq!(schedules.len(), 2);
+        assert!(schedules.contains(&digest));
+        assert!(schedules.contains(&deps));
+    }
+
+    #[test]
+    fn a_wakeup_without_a_session_replaces_nothing() {
+        let mut first = Schedule::new(ScheduleOrigin::Agent, "", "w1", "a".into(), 1, 0);
+        first.tool_call_id = Some("t1".into());
+        let mut second = first.clone();
+        second.id = "other".into();
+        second.tool_call_id = Some("t2".into());
+        let mut list = vec![first];
+
+        assert_eq!(take_agent_schedule(&mut list, &second), None);
+        assert_eq!(list.len(), 1);
     }
 
     #[test]
