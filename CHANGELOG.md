@@ -32,6 +32,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Run now sends a one-off schedule once.** "Run now" a few seconds before
+  a one-off was due could send its prompt twice: the scheduler also took it.
+  Now Run now takes the one-off out of the list before it runs. Also, a
+  repeating schedule that you delete while it runs no longer comes back
+  paused when that run fails. Refs #123.
 - **A new MCP schedule no longer deletes an earlier one.** The Splitkick MCP
   tool `create_schedule` replaced the session's earlier agent schedule
   without a word, so an agent that set up two schedules kept only the last.
