@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.18] - 2026-11-17
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Star Splitkick on GitHub.** Help → "Star Splitkick on GitHub…" and a
@@ -3152,7 +3156,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.17...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.18...HEAD
+[1.5.18]: https://github.com/azeitler/jean/compare/splitkick-v1.5.17...splitkick-v1.5.18
 [1.5.17]: https://github.com/azeitler/jean/compare/splitkick-v1.5.16...splitkick-v1.5.17
 [1.5.16]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...splitkick-v1.5.16
 [1.5.15]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...splitkick-v1.5.15
