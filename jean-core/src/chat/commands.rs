@@ -3213,6 +3213,7 @@ pub async fn send_chat_message(
     let session_selected_thinking_level = session.selected_thinking_level.clone();
     let session_selected_effort_level = session.selected_effort_level.clone();
     let session_selected_provider = session.selected_provider.clone();
+    let session_enabled_mcp_servers = session.enabled_mcp_servers.clone();
 
     // Note: User message is stored in NDJSON run entry (run.user_message),
     // not in sessions JSON. Messages are loaded from NDJSON on demand.
@@ -3846,6 +3847,35 @@ pub async fn send_chat_message(
     let thread_allowed_tools = allowed_tools_for_cli.clone();
     let thread_parallel_prompt = parallel_execution_prompt.clone();
     let thread_ai_language = ai_language.clone();
+    // A send without `mcpConfig` (Splitkick MCP tool, schedules, queue,
+    // auto-fix) gets the servers the UI would have sent (#103). Otherwise
+    // Claude runs with only Splitkick's servers and `--strict-mcp-config`.
+    let mcp_config = match mcp_config {
+        Some(config) => Some(config),
+        None => {
+            let backend_name = serde_json::to_value(&effective_backend)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            let resolved = super::mcp_resolve::default_mcp_config(
+                &app,
+                session_enabled_mcp_servers.as_deref(),
+                &worktree_id,
+                &worktree_path,
+                &backend_name,
+            )
+            .await;
+            log::info!(
+                "[SendChat] session={session_id} no mcpConfig sent; resolved {} saved MCP server(s)",
+                resolved
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str::<Value>(json).ok())
+                    .and_then(|v| v.get("mcpServers").and_then(Value::as_object).map(|m| m.len()))
+                    .unwrap_or(0)
+            );
+            resolved
+        }
+    };
     // Always inject Jean MCP for backends that honor runtime mcp_config.
     // Claude uses --mcp-config/--strict-mcp-config; Grok/Cursor use the same
     // JSON to decide which servers (including jean) stay enabled for the turn.
@@ -9828,8 +9858,19 @@ pub async fn get_mcp_servers(
     backend: Option<String>,
     worktree_path: Option<String>,
 ) -> Result<Vec<McpServerInfo>, String> {
-    let wt = worktree_path.as_deref();
-    let servers = match backend.as_deref() {
+    Ok(discover_mcp_servers(
+        backend.as_deref(),
+        worktree_path.as_deref(),
+    ))
+}
+
+/// Sync core of [`get_mcp_servers`], shared with `mcp_resolve`.
+pub(crate) fn discover_mcp_servers(
+    backend: Option<&str>,
+    worktree_path: Option<&str>,
+) -> Vec<McpServerInfo> {
+    let wt = worktree_path;
+    match backend {
         Some("codex") => crate::codex_cli::mcp::get_mcp_servers(wt),
         Some("opencode") => crate::opencode_cli::mcp::get_mcp_servers(wt),
         Some("cursor") => crate::cursor_cli::mcp::get_mcp_servers(wt),
@@ -9837,8 +9878,7 @@ pub async fn get_mcp_servers(
         Some("antigravity") => crate::antigravity_cli::mcp::get_mcp_servers(wt),
         Some("grok") => crate::grok_cli::mcp::get_mcp_servers(wt),
         _ => crate::claude_cli::mcp::get_mcp_servers(wt),
-    };
-    Ok(servers)
+    }
 }
 
 /// Parse `claude mcp list` text output into server health statuses.

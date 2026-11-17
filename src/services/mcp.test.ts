@@ -7,6 +7,7 @@ import {
   mcpKey,
 } from './mcp'
 import type { McpServerInfo } from '@/types/chat'
+import sharedCases from './mcp-resolution-cases.json'
 
 const invokeMock = vi.fn()
 
@@ -151,4 +152,48 @@ describe('resolveMcpConfigForSend', () => {
     expect(result.enabledServers).toEqual([])
     expect(result.mcpConfig).toBeUndefined()
   })
+})
+
+// The same cases run in Rust (`jean-core/src/chat/mcp_resolve.rs`), which
+// builds the config for sends without one (#103). Both must agree.
+describe('shared MCP resolution cases (frontend and backend)', () => {
+  interface SharedCase {
+    name: string
+    backend: string
+    availableServers: {
+      name: string
+      backend: string
+      disabled?: boolean
+      config: Record<string, unknown>
+    }[]
+    sessionEnabled?: string[]
+    projectEnabled?: string[]
+    globalEnabled?: string[]
+    knownServers?: string[]
+    expectedEnabled: string[]
+    expectedConfig: Record<string, unknown> | null
+  }
+
+  it.each((sharedCases as SharedCase[]).map(c => [c.name, c] as const))(
+    '%s',
+    (_name, c) => {
+      const available: McpServerInfo[] = c.availableServers.map(s => ({
+        name: s.name,
+        backend: s.backend,
+        config: s.config,
+        scope: 'user',
+        disabled: s.disabled ?? false,
+      }))
+      const enabled = resolveEnabledMcpServers({
+        availableServers: available,
+        sessionEnabled: c.sessionEnabled,
+        projectEnabled: c.projectEnabled,
+        globalEnabled: c.globalEnabled,
+        knownServers: c.knownServers,
+      })
+      expect(enabled).toEqual(c.expectedEnabled)
+      const json = buildMcpConfigJson(available, enabled, c.backend)
+      expect(json ? JSON.parse(json) : null).toEqual(c.expectedConfig)
+    }
+  )
 })

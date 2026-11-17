@@ -27,6 +27,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the sidebar. `create_worktree` now returns when the worktree is saved, so
   `create_session` accepts its id at once (before, the id was unknown for
   some seconds). Closes #137.
+- **Turns that an agent starts get your MCP servers.** A message sent with
+  the Splitkick MCP tool `send_chat_message` (and schedules, queued messages
+  and auto-fix) started Claude with only Splitkick's own servers, so tools
+  such as Playwright were missing for that turn. Splitkick now uses the same
+  servers as a message you type: session choice, then project, then global
+  default. Closes #103.
 
 ## [1.5.17] - 2026-11-15
 
