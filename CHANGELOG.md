@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.19] - 2026-11-17
+
+Built on Jean 0.1.73.
+
+### Fixed
+
+- **Windows gets the 1.5.18 changes.** The 1.5.18 Windows build stopped in
+  its tests, so 1.5.18 shipped for macOS only. This release carries the same
+  changes for Windows too.
+
 ## [1.5.18] - 2026-11-17
 
 Built on Jean 0.1.73.
@@ -3156,7 +3166,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.18...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.19...HEAD
+[1.5.19]: https://github.com/azeitler/jean/compare/splitkick-v1.5.18...splitkick-v1.5.19
 [1.5.18]: https://github.com/azeitler/jean/compare/splitkick-v1.5.17...splitkick-v1.5.18
 [1.5.17]: https://github.com/azeitler/jean/compare/splitkick-v1.5.16...splitkick-v1.5.17
 [1.5.16]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...splitkick-v1.5.16
