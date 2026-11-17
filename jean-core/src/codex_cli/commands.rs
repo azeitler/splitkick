@@ -656,8 +656,11 @@ fn load_codex_auth_for_binary(
 
     #[cfg(target_os = "macos")]
     {
-        if let Some(auth) = load_codex_auth_from_keychain() {
-            return Ok((CodexAuthSource::Keychain, auth));
+        // A dev build skips the Keychain: each rebuild would ask for access.
+        if crate::secret_store::keychain_allowed() {
+            if let Some(auth) = load_codex_auth_from_keychain() {
+                return Ok((CodexAuthSource::Keychain, auth));
+            }
         }
     }
 

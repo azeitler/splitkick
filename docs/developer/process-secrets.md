@@ -8,17 +8,17 @@ Splitkick starts (#102). This includes:
 
 - inline JSON flags (`claude --mcp-config '{…}'`, `--settings '{…}'`),
 - config overrides (`codex -c key=value`),
-- `sh -c "<script>"` strings — the script *is* an argument, so
+- `sh -c "<script>"` strings — the script _is_ an argument, so
   `sh -c "KEY=secret cli …"` leaks `secret`,
 - `env KEY=secret cli …` and `--token secret`.
 
 ## Where secrets go instead
 
-| Channel | Use it for | Helper |
-|---|---|---|
-| Child environment | Env vars of the CLI itself (profile env, account dir) | `Command::env` / `.envs()`; for the detached `sh -c` spawn, set them on the `sh` command so the child inherits them (`chat/detached.rs`) |
-| stdin | Scripts that need values (WSL launcher) | `build_wsl_claude_script` exports env in the stdin-fed launcher, not in the inner `sh -c` |
-| Private file (0600) | Config blobs that contain secrets (MCP configs) | `chat/run_secrets.rs` |
+| Channel             | Use it for                                            | Helper                                                                                                                                   |
+| ------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Child environment   | Env vars of the CLI itself (profile env, account dir) | `Command::env` / `.envs()`; for the detached `sh -c` spawn, set them on the `sh` command so the child inherits them (`chat/detached.rs`) |
+| stdin               | Scripts that need values (WSL launcher)               | `build_wsl_claude_script` exports env in the stdin-fed launcher, not in the inner `sh -c`                                                |
+| Private file (0600) | Config blobs that contain secrets (MCP configs)       | `chat/run_secrets.rs`                                                                                                                    |
 
 ## Per-run MCP config files
 
@@ -48,16 +48,16 @@ own placeholder. `--mcp-config` accepts file paths
 
 ## Backend status (audited for #102)
 
-| Backend | How MCP/secrets reach it |
-|---|---|
-| Claude (chat) | `--mcp-config <private file>`; profile via `--settings <path>`; inline `--settings` JSON holds only `effortLevel`, `alwaysThinkingEnabled`, `fastMode` |
-| Claude (one-shot magic prompts) | No MCP config; profile env via `.env()` |
-| Codex | MCP servers from `~/.codex/config.toml`; `-c` overrides hold only provider id, name, base URL and the env-key *name* |
-| OpenCode | `serve --hostname --port`; MCP from the opencode config file |
-| Cursor | MCP config only parsed for server names |
-| PI / PI RPC host | Host argv holds paths and PI flags; provider keys by env-var *name* |
-| Grok | ACP host gets `--mcp-servers-file <0600 file>`, sends `mcpServers` over stdin JSON-RPC, deletes the file |
-| Kimi, Antigravity, Command Code | No MCP secrets in argv |
+| Backend                         | How MCP/secrets reach it                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude (chat)                   | `--mcp-config <private file>`; profile via `--settings <path>`; inline `--settings` JSON holds only `effortLevel`, `alwaysThinkingEnabled`, `fastMode` |
+| Claude (one-shot magic prompts) | No MCP config; profile env via `.env()`                                                                                                                |
+| Codex                           | MCP servers from `~/.codex/config.toml`; `-c` overrides hold only provider id, name, base URL and the env-key _name_                                   |
+| OpenCode                        | `serve --hostname --port`; MCP from the opencode config file                                                                                           |
+| Cursor                          | MCP config only parsed for server names                                                                                                                |
+| PI / PI RPC host                | Host argv holds paths and PI flags; provider keys by env-var _name_                                                                                    |
+| Grok                            | ACP host gets `--mcp-servers-file <0600 file>`, sends `mcpServers` over stdin JSON-RPC, deletes the file                                               |
+| Kimi, Antigravity, Command Code | No MCP secrets in argv                                                                                                                                 |
 
 ## Remote server install over SSH (#105)
 
@@ -75,3 +75,19 @@ When you add a spawn site, write a test that builds its arguments with a fake
 token (`"SECRET-TOKEN-123"`) and asserts the token is in no argument — see
 `mcp_secrets_never_appear_in_claude_args` (`chat/claude.rs`) and
 `detached_claude_env_reaches_the_child_but_not_any_argv` (`chat/detached.rs`).
+
+## Dev builds do not use the Keychain
+
+A dev build (`debug_assertions`, e.g. `bun run tauri:dev`, `cargo test`) is
+signed ad hoc, and every rebuild gets a new signature. macOS ties "Always
+Allow" to the signature, so each rebuild asked for Keychain access again and
+stopped unattended dev runs. `secret_store::keychain_allowed()` is therefore
+`false` in dev builds:
+
+- Splitkick's own secrets (remote connection tokens, the Playwright token)
+  go to the `0600` file in the dev data folder.
+- The Claude and Codex logins are not read from the Keychain; the usage
+  figures fall back to the credential files, or show no data.
+
+Set `SPLITKICK_DEV_KEYCHAIN=1` to use the Keychain in a dev run that must test
+exactly this. Release builds always use the Keychain.

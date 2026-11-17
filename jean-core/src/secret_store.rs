@@ -13,6 +13,28 @@ use std::path::{Path, PathBuf};
 /// instances set it, so a test run never writes to the login Keychain.
 pub const TOKEN_STORE_ENV: &str = "SPLITKICK_REMOTE_TOKEN_STORE";
 
+/// `1` lets a dev build use the login Keychain (to test exactly that).
+pub const DEV_KEYCHAIN_ENV: &str = "SPLITKICK_DEV_KEYCHAIN";
+
+/// Whether this build may touch the macOS login Keychain at all: its own
+/// secrets, and reading the Claude and Codex logins.
+///
+/// A dev build is signed ad hoc, and each rebuild gets a new signature. macOS
+/// ties "Always Allow" to the signature, so every rebuild asked for Keychain
+/// access again and stopped unattended dev runs. Dev builds therefore keep
+/// their secrets in the `0600` file and skip the Keychain reads, unless
+/// [`DEV_KEYCHAIN_ENV`] is `1`. Release builds always use the Keychain.
+pub fn keychain_allowed() -> bool {
+    keychain_allowed_for(
+        cfg!(debug_assertions),
+        std::env::var(DEV_KEYCHAIN_ENV).ok().as_deref(),
+    )
+}
+
+fn keychain_allowed_for(dev_build: bool, dev_keychain: Option<&str>) -> bool {
+    !dev_build || dev_keychain == Some("1")
+}
+
 #[cfg(target_os = "macos")]
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
@@ -34,7 +56,7 @@ impl SecretStore {
         #[cfg(target_os = "macos")]
         {
             let forced_file = std::env::var(TOKEN_STORE_ENV).is_ok_and(|v| v == "file");
-            if !forced_file {
+            if !forced_file && keychain_allowed() {
                 return Self::Keychain {
                     service,
                     account_prefix: dir.display().to_string(),
@@ -143,4 +165,25 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .and_then(|()| file.sync_all())
         .map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("Failed to write {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keychain_allowed_for;
+
+    #[test]
+    fn release_builds_use_the_keychain() {
+        assert!(keychain_allowed_for(false, None));
+        assert!(keychain_allowed_for(false, Some("0")));
+    }
+
+    /// Each rebuild of a dev build gets a new ad-hoc signature, and macOS asks
+    /// for Keychain access again, which stops unattended dev runs.
+    #[test]
+    fn dev_builds_skip_the_keychain_unless_asked() {
+        assert!(!keychain_allowed_for(true, None));
+        assert!(!keychain_allowed_for(true, Some("0")));
+        assert!(!keychain_allowed_for(true, Some("true")));
+        assert!(keychain_allowed_for(true, Some("1")));
+    }
 }

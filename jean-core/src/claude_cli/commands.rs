@@ -1051,9 +1051,12 @@ fn load_claude_credentials(config_dir: Option<&str>) -> Result<ClaudeCredentials
     // over a potentially stale ~/.claude/.credentials.json.
     #[cfg(target_os = "macos")]
     {
-        if let Some((_, parsed)) = load_credentials_from_keychain(config_dir) {
-            // `pick_freshest_credentials` already dropped items with no access token.
-            return Ok(parsed);
+        // A dev build skips the Keychain: each rebuild would ask for access.
+        if crate::secret_store::keychain_allowed() {
+            if let Some((_, parsed)) = load_credentials_from_keychain(config_dir) {
+                // `pick_freshest_credentials` already dropped items with no access token.
+                return Ok(parsed);
+            }
         }
     }
 
