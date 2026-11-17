@@ -1,10 +1,29 @@
-import { useState, useCallback, type ImgHTMLAttributes } from 'react'
-import { Copy, ExternalLink, FolderOpen } from 'lucide-react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type ImgHTMLAttributes,
+} from 'react'
+import { Copy, ExternalLink, FolderOpen, PanelRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { convertFileSrc } from '@/lib/transport'
 import { copyImageToClipboard } from '@/lib/clipboard'
-import { canOpenNativeApps, isLocalBackend } from '@/lib/environment'
-import { getFileManagerName, openExternal } from '@/lib/platform'
+import {
+  canOpenNativeApps,
+  isLocalBackend,
+  isNativeApp,
+} from '@/lib/environment'
+import {
+  getFileManagerName,
+  getModifierSymbol,
+  isClientMacOS,
+  openExternal,
+} from '@/lib/platform'
+import { toFileUrl } from '@/lib/path-utils'
+import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Kbd } from '@/components/ui/kbd'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,8 +34,20 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
+import {
+  TransformWrapper,
+  TransformComponent,
+  type ReactZoomPanPinchRef,
+} from 'react-zoom-pan-pinch'
 import { HostOnlyHint } from '@/components/ui/host-only-hint'
+
+interface ZoomableImageProps extends ImgHTMLAttributes<HTMLImageElement> {
+  /**
+   * Zoom with Cmd/Ctrl + = / - / 0 while mounted. The keys then zoom the
+   * image instead of the app, so only set this in a modal viewer.
+   */
+  keyboardZoom?: boolean
+}
 
 /**
  * An image you can zoom and pan: pinch, wheel, or double-click to toggle. It
@@ -24,10 +55,37 @@ import { HostOnlyHint } from '@/components/ui/host-only-hint'
  */
 export function ZoomableImage({
   className,
+  keyboardZoom = false,
   ...imageProps
-}: ImgHTMLAttributes<HTMLImageElement>) {
+}: ZoomableImageProps) {
+  const transformRef = useRef<ReactZoomPanPinchRef>(null)
+
+  useEffect(() => {
+    if (!keyboardZoom) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Same modifier rule as the app zoom (useZoom).
+      const mod = isClientMacOS && isNativeApp() ? e.metaKey : e.ctrlKey
+      if (!mod || e.shiftKey || e.altKey) return
+      const key = e.key
+      if (key !== '=' && key !== '+' && key !== '-' && key !== '0') return
+      // Window capture runs before the app zoom's document capture listener,
+      // so stopping here keeps the app zoom unchanged.
+      e.preventDefault()
+      e.stopPropagation()
+      const transform = transformRef.current
+      if (!transform) return
+      if (key === '0') transform.resetTransform()
+      else if (key === '-') transform.zoomOut()
+      else transform.zoomIn()
+    }
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () =>
+      window.removeEventListener('keydown', handleKeyDown, { capture: true })
+  }, [keyboardZoom])
+
   return (
     <TransformWrapper
+      ref={transformRef}
       minScale={1}
       maxScale={8}
       centerOnInit
@@ -87,6 +145,20 @@ export function ImagePreviewDialog({
   const local = isLocalBackend()
   const canReveal = canOpenNativeApps()
   const canOpenInBrowser = !local && !INLINE_IMAGE_SRC_RE.test(src)
+  // The browser pane is a native webview that loads the file from disk, so it
+  // needs the local desktop backend (as the file browser's Open in browser pane).
+  const canOpenInBrowserPane = Boolean(path) && local
+  const isMobile = useIsMobile()
+  const showKeyboardHints = isNativeApp() && !isMobile
+  const mod = getModifierSymbol()
+
+  const handleOpenInBrowserPane = useCallback(async () => {
+    if (!path) return
+    const opened = await openUrlInEmbeddedBrowser(toFileUrl(path))
+    if (opened) onOpenChange(false)
+    else
+      toast.error('Open a session first to show the image in the browser pane')
+  }, [path, onOpenChange])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,6 +174,7 @@ export function ImagePreviewDialog({
             zoom comes from react-zoom-pan-pinch. */}
         <div className="flex-1 min-h-0 touch-none sm:flex-none">
           <ZoomableImage
+            keyboardZoom
             src={src}
             alt={alt}
             className="max-w-full max-h-full sm:max-h-[calc(85vh-6rem)] object-contain rounded-md"
@@ -118,6 +191,16 @@ export function ImagePreviewDialog({
               <FolderOpen className="h-4 w-4" />
               Reveal in {getFileManagerName()}
               {!canReveal && <HostOnlyHint />}
+            </Button>
+          )}
+          {canOpenInBrowserPane && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleOpenInBrowserPane()}
+            >
+              <PanelRight className="h-4 w-4" />
+              Open in browser pane
             </Button>
           )}
           {canOpenInBrowser && (
@@ -138,6 +221,18 @@ export function ImagePreviewDialog({
             <Copy className="h-4 w-4" />
             Copy image
           </Button>
+          {showKeyboardHints && (
+            <span
+              className="ml-2 hidden items-center gap-1 text-xs text-muted-foreground sm:flex"
+              data-testid="image-zoom-hints"
+            >
+              <Kbd>{mod}+</Kbd>
+              <Kbd>{mod}−</Kbd>
+              <span>zoom</span>
+              <Kbd>{mod}0</Kbd>
+              <span>fit</span>
+            </span>
+          )}
         </div>
       </DialogContent>
     </Dialog>
