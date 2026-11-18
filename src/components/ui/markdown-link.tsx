@@ -200,6 +200,52 @@ function ChatLink({
 }
 
 /**
+ * A link to a path the backend has already confirmed (`check_paths`), so it
+ * needs no lookup of its own. Used for paths in tool output, which are checked
+ * in one batch per output. A click acts as on a resolved link in a reply: a
+ * folder opens in the file manager, a file in the file viewer (a page in the
+ * embedded browser). The `href` is the resolved path, so the right-click menu
+ * offers Open/Reveal and Copy path for it.
+ */
+export function LocalPathLink({
+  path,
+  isDir,
+  children,
+}: {
+  path: string
+  isDir: boolean
+  children: ReactNode
+}) {
+  if (isDir) {
+    return (
+      <FolderLink href={path} path={path}>
+        {children}
+      </FolderLink>
+    )
+  }
+
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    openChatLink(path, {
+      system: event.metaKey || event.ctrlKey,
+      resolvedPath: path,
+    })
+  }
+
+  return (
+    <a
+      href={path}
+      data-chat-link=""
+      data-file-reference="found"
+      onClick={handleClick}
+      className={LINK_CLASS}
+    >
+      {children}
+    </a>
+  )
+}
+
+/**
  * A link to a folder. A folder cannot open in the file viewer, so the click
  * opens it in the file manager, or copies its path where the file manager is
  * on another machine (`canOpenNativeApps`).

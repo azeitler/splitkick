@@ -6011,6 +6011,69 @@ pub async fn resolve_file_reference(
     .map_err(|e| format!("Failed to resolve file reference: {e}"))
 }
 
+/// Most paths one `check_paths` call looks at. More are reported as missing.
+const CHECK_PATHS_MAX: usize = 200;
+/// Longest path `check_paths` looks at. A longer one is reported as missing.
+const CHECK_PATH_MAX_LEN: usize = 1024;
+
+/// One reply entry from `check_paths`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckedPath {
+    /// The path as the caller sent it.
+    pub path: String,
+    pub exists: bool,
+    pub is_dir: bool,
+    /// The absolute path that was checked, when it exists.
+    pub resolved_path: Option<String>,
+}
+
+/// Check which of the paths in one tool output exist, in a single call.
+///
+/// Exact checks only: a relative path is joined onto `root`, `~` is expanded,
+/// and nothing is searched. Tool output can hold hundreds of path-like tokens,
+/// so a fallback search per token (as `resolve_file_reference` does) would be
+/// far too slow. Read-only, and bounded by `CHECK_PATHS_MAX` and
+/// `CHECK_PATH_MAX_LEN`. The reply has one entry per path sent, in order.
+pub async fn check_paths(
+    paths: Vec<String>,
+    root: Option<String>,
+) -> Result<Vec<CheckedPath>, String> {
+    tokio::task::spawn_blocking(move || {
+        let root = root.filter(|r| !r.is_empty()).map(PathBuf::from);
+        paths
+            .into_iter()
+            .enumerate()
+            .map(|(index, path)| {
+                let target = if index >= CHECK_PATHS_MAX
+                    || path.is_empty()
+                    || path.len() > CHECK_PATH_MAX_LEN
+                {
+                    None
+                } else {
+                    let expanded = expand_home(&path);
+                    if expanded.is_absolute() {
+                        Some(expanded)
+                    } else {
+                        root.as_ref().map(|root| root.join(&expanded))
+                    }
+                };
+                let found = target
+                    .map(|p| normalize_lexically(&p))
+                    .filter(|p| p.exists());
+                CheckedPath {
+                    path,
+                    exists: found.is_some(),
+                    is_dir: found.as_ref().is_some_and(|p| p.is_dir()),
+                    resolved_path: found.map(|p| p.to_string_lossy().to_string()),
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| format!("Failed to check paths: {e}"))
+}
+
 /// Get available branches for a project (prefers remote branches if available)
 ///
 /// This command fetches from origin first to get the latest branches,
@@ -14598,6 +14661,106 @@ mod tests {
             .collect::<PathBuf>()
             .to_string_lossy()
             .to_string()
+    }
+
+    #[tokio::test]
+    async fn check_paths_reports_files_folders_and_missing_paths() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src/lib")).expect("src/lib");
+        std::fs::write(root.join("src/lib/a.ts"), "x\n").expect("a.ts");
+        let absolute = root.join("src/lib/a.ts").to_string_lossy().to_string();
+
+        let checked = check_paths(
+            vec![
+                "src/lib/a.ts".to_string(),
+                "src/lib/".to_string(),
+                "./src/../src/lib/a.ts".to_string(),
+                "src/missing.ts".to_string(),
+                absolute.clone(),
+            ],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("check");
+
+        assert_eq!(checked.len(), 5);
+        assert!(checked[0].exists && !checked[0].is_dir);
+        assert_eq!(checked[0].path, "src/lib/a.ts");
+        assert_eq!(
+            checked[0].resolved_path,
+            Some(native(root.join("src/lib/a.ts")))
+        );
+        assert!(checked[1].exists && checked[1].is_dir);
+        assert_eq!(
+            checked[2].resolved_path,
+            Some(native(root.join("src/lib/a.ts")))
+        );
+        assert!(!checked[3].exists && checked[3].resolved_path.is_none());
+        assert!(checked[4].exists);
+    }
+
+    #[tokio::test]
+    async fn check_paths_does_not_search_and_needs_a_root_for_relative_paths() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("packages/web/docs")).expect("docs");
+        std::fs::write(root.join("packages/web/docs/api.md"), "x\n").expect("api");
+
+        // Only a tail match exists: no fallback search.
+        let checked = check_paths(
+            vec!["docs/api.md".to_string()],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("check");
+        assert!(!checked[0].exists);
+
+        // Relative without a root: nothing to join onto.
+        let checked = check_paths(vec!["packages/web/docs/api.md".to_string()], None)
+            .await
+            .expect("check");
+        assert!(!checked[0].exists);
+    }
+
+    #[tokio::test]
+    async fn check_paths_expands_home() {
+        let home = dirs::home_dir().expect("home dir");
+        let dir = tempfile::tempdir_in(&home).expect("temp dir in home");
+        let name = dir
+            .path()
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .to_string();
+
+        let checked = check_paths(vec![format!("~/{name}")], None)
+            .await
+            .expect("check");
+        assert!(checked[0].exists && checked[0].is_dir);
+        assert_eq!(
+            checked[0].resolved_path,
+            Some(dir.path().to_string_lossy().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn check_paths_caps_count_and_length() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::write(dir.path().join("a.txt"), "x\n").expect("a.txt");
+
+        let mut paths = vec!["a.txt".to_string(); CHECK_PATHS_MAX + 5];
+        paths[0] = format!("{}/a.txt", "x".repeat(CHECK_PATH_MAX_LEN));
+        let checked = check_paths(paths, Some(root)).await.expect("check");
+
+        assert_eq!(checked.len(), CHECK_PATHS_MAX + 5);
+        // Too long.
+        assert!(!checked[0].exists);
+        assert!(checked[1].exists);
+        assert!(checked[CHECK_PATHS_MAX - 1].exists);
+        // Past the cap.
+        assert!(checked[CHECK_PATHS_MAX..].iter().all(|c| !c.exists));
     }
 
     #[tokio::test]

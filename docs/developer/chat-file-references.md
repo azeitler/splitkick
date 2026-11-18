@@ -134,3 +134,24 @@ something else contributes no evidence until it is added there. Nothing breaks
 — resolution falls back to the roots — but the monorepo case stops working for
 that backend, so add the key and a case to
 `src/lib/file-reference.test.ts`.
+
+## Paths in tool output
+
+Expanded tool output (`ToolOutputText` in `src/components/chat/`) links paths
+too, with different rules, because one output can hold hundreds of tokens:
+
+- `tokenizeToolOutput` (`src/lib/tool-output-paths.ts`) splits the text on
+  whitespace and tests each token with `pathLikeInlineCode`, the same test
+  inline code uses. It strips brackets, quotes and trailing punctuation, and
+  reads grep's `path:12:` / `path:12:3:` form (the link covers `path:12`). The
+  segments always join back to the exact text. At most 200 distinct paths.
+- One `check_paths(paths, root)` call per output answers all of them: exact
+  checks only (relative to the worktree, `~` expanded), **no** fallback search
+  and no tool-call evidence. Its query key starts with `file-reference`, so the
+  re-check at the end of a turn covers it.
+- `LocalPathLink` (`markdown-link.tsx`) draws a confirmed path with no lookup
+  of its own. Its `href` is the resolved absolute path, so the thread's
+  right-click menu resolves it exactly and offers Open/Reveal and Copy path.
+- It only mounts while the tool call is expanded, so a collapsed call costs
+  nothing. The file viewer cannot jump to a line yet; a grep hit opens the
+  file at the top.

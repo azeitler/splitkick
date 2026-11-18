@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Paths in tool output are links.** In an expanded tool call (Bash, Grep and
+  other raw output), a path that exists becomes a link: a folder opens in
+  Finder, a file in the file viewer. A `grep -n` line such as
+  `src/lib/a.ts:12:…` links `src/lib/a.ts:12` and opens the file (at the top;
+  the viewer does not jump to the line yet). The right-click menu has
+  "Open/Reveal in Finder" and "Copy path", as for paths in replies. The output
+  text does not change, and a path that does not exist stays plain text. The
+  check is one backend call per expanded output, with no search, and at most
+  200 paths.
+
 ## [1.5.21] - 2026-11-17
 
 Built on Jean 0.1.73.
