@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/collapsible'
 import { InlineFileDiff } from './InlineFileDiff'
 import { getLinkedSessionId, SessionLinkInsert } from './SessionLinkInsert'
+import { ToolOutputText } from './ToolOutputText'
 
 /** Placeholder outputs that add no value next to already-rendered tool details. */
 function isPlaceholderToolOutput(output: string | undefined | null): boolean {
@@ -479,7 +480,7 @@ export function ToolCallInline({
                   Output:
                 </div>
                 <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs font-mono text-foreground/80 bg-muted/50 rounded p-2">
-                  {toolCall.output}
+                  <ToolOutputText text={toolCall.output ?? ''} />
                 </pre>
               </>
             )}
@@ -854,7 +855,7 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
                   Output:
                 </div>
                 <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] font-mono text-foreground/70 bg-muted/30 rounded p-1.5">
-                  {toolCall.output}
+                  <ToolOutputText text={toolCall.output ?? ''} />
                 </pre>
               </>
             )}
@@ -1395,7 +1396,7 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
                 Output:
               </div>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs font-mono text-foreground/80 bg-muted/50 rounded p-2">
-                {output}
+                <ToolOutputText text={output ?? ''} />
               </pre>
             </div>
           </div>

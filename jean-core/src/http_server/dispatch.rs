@@ -900,6 +900,12 @@ pub async fn dispatch_command(
             to_value(result)
         }
 
+        "check_paths" => {
+            let paths: Vec<String> = from_field(&args, "paths")?;
+            let root: Option<String> = from_field_opt(&args, "root")?;
+            to_value(crate::projects::check_paths(paths, root).await?)
+        }
+
         // =====================================================================
         // GitHub Issues & PRs
         // =====================================================================
