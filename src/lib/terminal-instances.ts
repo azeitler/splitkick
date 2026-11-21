@@ -16,7 +16,9 @@ import {
   Terminal as GhosttyWebTerminal,
   FitAddon as GhosttyWebFitAddon,
 } from 'ghostty-web'
+import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
+import { requestDebugSession } from '@/lib/debug-session'
 import { attachOrphanCompositionEndGuard } from '@/lib/terminal-composition-guard'
 import { LocalTerminalLinkProvider } from '@/lib/terminal-local-links'
 import { ensureTerminalFontLoaded } from '@/lib/terminal-font-loading'
@@ -80,7 +82,14 @@ interface PersistentTerminal {
   touchScrollCleanup: (() => void) | null
   compositionGuardCleanup: (() => void) | null
   onStopped?: (exitCode: number | null, signal: string | null) => void
+  /** Last raw output of a run terminal, for "Debug in new Session" (#143) */
+  outputTail: string
+  /** How the run terminal last exited ("code 1", "signal …"), if it did */
+  exitLabel: string | null
 }
+
+/** Raw characters (ANSI included) kept per run terminal. */
+const RUN_OUTPUT_TAIL_CHARS = 64_000
 
 // Module-level Map - persists across React mount/unmount cycles
 const instances = new Map<string, PersistentTerminal>()
@@ -856,9 +865,19 @@ function ensureTerminalBackendListeners(): Promise<void> {
         const terminalId = event.payload.terminal_id
         const inst = instances.get(terminalId)
         if (!inst) return
+        if (inst.command != null) {
+          inst.outputTail = (inst.outputTail + event.payload.data).slice(
+            -RUN_OUTPUT_TAIL_CHARS
+          )
+        }
         queueTerminalOutput(inst, event.payload.data)
       }),
       listen<TerminalStartedEvent>('terminal:started', event => {
+        const inst = instances.get(event.payload.terminal_id)
+        if (inst) {
+          inst.outputTail = ''
+          inst.exitLabel = null
+        }
         useTerminalStore
           .getState()
           .setTerminalRunning(event.payload.terminal_id, true)
@@ -911,6 +930,7 @@ function handleTerminalStopped(event: TerminalStoppedEvent): void {
   const exitLabel =
     signal != null ? `signal ${signal}` : `code ${exitCode ?? 'unknown'}`
   if (inst) {
+    inst.exitLabel = exitLabel
     queueTerminalOutput(
       inst,
       `\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m\r\n`
@@ -956,7 +976,36 @@ function handleTerminalStopped(event: TerminalStoppedEvent): void {
   } else if (isRunTerminal) {
     // Non-zero exit on a run terminal → mark as failed (red indicator in sidebar)
     useTerminalStore.getState().setTerminalFailed(terminalId, true)
+    // A user stop (kill) carries neither code nor signal: no failure toast.
+    if (inst && (exitCode != null || signal != null)) {
+      toast.error('Run script failed', {
+        description: `${inst.command} exited with ${exitLabel}.`,
+        action: {
+          label: 'Debug in new Session',
+          onClick: () => requestRunTerminalDebugSession(terminalId),
+        },
+      })
+    }
   }
+}
+
+/**
+ * Start a "Debug in new Session" for a failed run terminal (#143), with the
+ * terminal's last output. No-op when the terminal is gone.
+ */
+export function requestRunTerminalDebugSession(terminalId: string): void {
+  const inst = instances.get(terminalId)
+  if (!inst) return
+  requestDebugSession({
+    kind: 'run-script',
+    worktreeId: inst.worktreeId,
+    command: [inst.command, ...(inst.commandArgs ?? [])]
+      .filter(Boolean)
+      .join(' '),
+    workdir: inst.worktreePath,
+    exitLabel: inst.exitLabel,
+    output: inst.outputTail,
+  })
 }
 
 function getTerminalTheme(): ResolvedTerminalTheme {
@@ -1041,6 +1090,8 @@ export function getOrCreateTerminal(
     appearanceResizeTimer: null,
     touchScrollCleanup: null,
     compositionGuardCleanup: null,
+    outputTail: '',
+    exitLabel: null,
   }
 
   // Apply any pending onStopped callback registered before creation

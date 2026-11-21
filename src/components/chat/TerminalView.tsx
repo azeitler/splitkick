@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, memo, useState } from 'react'
-import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
+import { Bug, Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { middleClickClose } from '@/lib/middle-click'
 import { useTerminal } from '@/hooks/useTerminal'
@@ -16,6 +16,7 @@ import { useUIStore } from '@/store/ui-store'
 import {
   disposeTerminal,
   disposePanelWorktreeTerminals,
+  requestRunTerminalDebugSession,
 } from '@/lib/terminal-instances'
 import {
   AlertDialog,
@@ -242,6 +243,9 @@ export function TerminalView({
     state => state.activeTerminalIds[worktreeId]
   )
   const runningTerminals = useTerminalStore(state => state.runningTerminals)
+  const isActiveTerminalFailed = useTerminalStore(
+    state => !!activeTerminalId && state.failedTerminals.has(activeTerminalId)
+  )
   const hasRunningPanelTerminal = terminals.some(terminal =>
     runningTerminals.has(terminal.id)
   )
@@ -573,6 +577,17 @@ export function TerminalView({
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {isActiveTerminalFailed && activeTerminalId && (
+          <button
+            type="button"
+            onClick={() => requestRunTerminalDebugSession(activeTerminalId)}
+            className="flex h-full shrink-0 items-center gap-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <Bug className="h-3.5 w-3.5" />
+            Debug in new Session
+          </button>
+        )}
 
         {!hideControls && (
           <>

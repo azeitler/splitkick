@@ -115,6 +115,7 @@ import { OpenCodePermissionsRequest } from './OpenCodePermissionsRequest'
 import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
 import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
+import { requestDebugSession } from '@/lib/debug-session'
 import { isFirstWorktreeSession } from './setup-script-visibility'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -3296,6 +3297,15 @@ export function ChatWindow({
                                   result={setupScriptResult}
                                   onDismiss={() =>
                                     dismissSetupScript(activeWorktreeId)
+                                  }
+                                  onDebug={() =>
+                                    requestDebugSession({
+                                      kind: 'setup-script',
+                                      worktreeId: activeWorktreeId,
+                                      command: setupScriptResult.script,
+                                      workdir: setupScriptResult.worktreePath,
+                                      output: setupScriptResult.output,
+                                    })
                                   }
                                 />
                               )}

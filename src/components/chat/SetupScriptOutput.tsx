@@ -4,7 +4,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2, XCircle, X } from 'lucide-react'
+import { Bug, ChevronRight, CheckCircle2, XCircle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SetupScriptResult } from '@/types/chat'
 
@@ -13,6 +13,8 @@ interface SetupScriptOutputProps {
   result: SetupScriptResult
   /** Callback when user dismisses the output */
   onDismiss: () => void
+  /** Start a new session that debugs the failure (shown only on failure) */
+  onDebug?: () => void
 }
 
 /**
@@ -21,6 +23,7 @@ interface SetupScriptOutputProps {
 export function SetupScriptOutput({
   result,
   onDismiss,
+  onDebug,
 }: SetupScriptOutputProps) {
   // Collapsed by default on success, expanded on failure
   const [isExpanded, setIsExpanded] = useState(!result.success)
@@ -52,6 +55,16 @@ export function SetupScriptOutput({
             <StatusIcon className={cn('h-4 w-4 shrink-0', statusColor)} />
             <span className="truncate text-muted-foreground">{statusText}</span>
           </CollapsibleTrigger>
+          {!result.success && onDebug && (
+            <button
+              type="button"
+              onClick={onDebug}
+              className="mr-1 flex shrink-0 items-center gap-1 rounded px-2 py-1 font-sans text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Bug className="h-3.5 w-3.5" />
+              Debug in new Session
+            </button>
+          )}
           <button
             type="button"
             onClick={onDismiss}

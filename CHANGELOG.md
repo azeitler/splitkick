@@ -19,6 +19,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   an agent and follows it through a restart: use **New Schedule…** on the
   agent, or Send later… / Repeat… in its session. New MCP tools: `list_agents` and
   `send_to_agent`; `create_schedule` takes `agent`.
+- **Debug in new Session.** When a worktree setup script, a worktree creation
+  or a run script fails, a **Debug in new Session** button starts a new session
+  that gets the command, the working directory, the exit result and the last
+  part of the output. The button is on the failed setup-script card, on the
+  failure notifications, and in the terminal tab bar of a failed run script.
+  When the worktree could not be created, the session opens in the project's
+  base session. Closes #143.
 
 ### Changed
 

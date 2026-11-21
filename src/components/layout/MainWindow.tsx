@@ -17,6 +17,7 @@ import { SidebarHeader } from '@/components/sidebar/SidebarHeader'
 import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useDebugSessionListener } from '@/hooks/useDebugSessionListener'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeDown } from '@/hooks/useSwipeDown'
 import { useVisualViewportShell } from '@/hooks/useVisualViewportShell'
@@ -477,6 +478,9 @@ export function MainWindow() {
   // Listen for background worktree events (creation/deletion) - must be here
   // (not in sidebar) so events are received even when sidebar is closed
   useWorktreeEvents()
+
+  // "Debug in new Session" buttons on setup/run-script failures (#143)
+  useDebugSessionListener()
 
   // Handle CMD+N keybinding to create new worktree
   useCreateWorktreeKeybinding()

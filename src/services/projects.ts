@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke, useWsConnectionStatus, setAppDataDir } from '@/lib/transport'
 import { listen, type UnlistenFn } from '@/lib/transport'
+import { requestDebugSession } from '@/lib/debug-session'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances'
@@ -1303,6 +1304,17 @@ export function useWorktreeEvents() {
           toast.error('Setup script failed', {
             description:
               'Worktree is ready but the setup script exited with an error.',
+            action: {
+              label: 'Debug in new Session',
+              onClick: () =>
+                requestDebugSession({
+                  kind: 'setup-script',
+                  worktreeId: id,
+                  command: setup_script,
+                  workdir: cachedWorktree?.path,
+                  output: setup_output,
+                }),
+            },
           })
         }
       })
@@ -1344,7 +1356,18 @@ export function useWorktreeEvents() {
             // Worktree from a PR runs `gh pr checkout`
             toastGitHubError('Failed to create worktree', error)
           } else {
-            toast.error('Failed to create worktree', { description: error })
+            toast.error('Failed to create worktree', {
+              description: error,
+              action: {
+                label: 'Debug in new Session',
+                onClick: () =>
+                  requestDebugSession({
+                    kind: 'worktree-create',
+                    projectId: project_id,
+                    output: error,
+                  }),
+              },
+            })
           }
         }
       })
