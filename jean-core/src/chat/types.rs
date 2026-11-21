@@ -966,9 +966,9 @@ pub struct Session {
     /// Graph refs this session serves (read-only, from metadata)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub serves: Vec<String>,
-    /// Agent profile this session was started from (read-only, from metadata)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
+    /// Role (session preset) this session was started from (read-only, from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "agent_id")]
+    pub role_id: Option<String>,
     /// Graph permission override (read-only, from metadata)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_permission: Option<String>,
@@ -1139,7 +1139,7 @@ impl Session {
             started_by_session_id: None,
             forked_from_session_id: None,
             serves: vec![],
-            agent_id: None,
+            role_id: None,
             graph_permission: None,
             plan_file_path: None,
             pending_plan_message_id: None,
@@ -1377,7 +1377,7 @@ impl SessionMetadata {
             started_by_session_id: self.started_by_session_id.clone(),
             forked_from_session_id: self.forked_from_session_id.clone(),
             serves: self.serves.clone(),
-            agent_id: self.agent_id.clone(),
+            role_id: self.role_id.clone(),
             graph_permission: self.graph_permission.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
@@ -2038,9 +2038,9 @@ pub struct SessionMetadata {
     /// Written only by the graph commands; never synced back from `Session`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub serves: Vec<String>,
-    /// Agent profile this session was started from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
+    /// Role (session preset) this session was started from.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "agent_id")]
+    pub role_id: Option<String>,
     /// Graph permission override: `read` | `write` | `manage`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_permission: Option<String>,
@@ -2184,7 +2184,7 @@ impl SessionMetadata {
             forked_from_session_id: None,
             started_by_session_id: None,
             serves: vec![],
-            agent_id: None,
+            role_id: None,
             graph_permission: None,
             pending_fork: None,
             pending_move: None,

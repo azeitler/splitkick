@@ -865,7 +865,7 @@ mod tests {
         let mut source = metadata_with_every_resume_id(Backend::Codex);
         source.started_by_session_id = Some("parent-of-source".to_string());
         source.serves = vec!["g1#a1b2c3".to_string()];
-        source.agent_id = Some("agent-1".to_string());
+        source.role_id = Some("agent-1".to_string());
         source.graph_permission = Some("write".to_string());
         let forked_session =
             prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Handoff);
@@ -891,7 +891,7 @@ mod tests {
         );
         assert_eq!(metadata.pending_fork, Some(PendingFork::Handoff));
         assert_eq!(metadata.serves, vec!["g1#a1b2c3".to_string()]);
-        assert_eq!(metadata.agent_id.as_deref(), Some("agent-1"));
+        assert_eq!(metadata.role_id.as_deref(), Some("agent-1"));
         assert_eq!(metadata.graph_permission.as_deref(), Some("write"));
         assert_eq!(forked_session.serves, metadata.serves);
         assert_eq!(metadata.runs.len(), 3);

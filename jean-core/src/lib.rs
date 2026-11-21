@@ -471,15 +471,17 @@ pub struct AppPreferences {
     pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
     #[serde(default = "default_sidebar_recent_limit")]
     pub sidebar_recent_limit: u32, // Sessions in the sidebar Recent tab (default 30)
-    #[serde(default)]
-    pub agent_profiles: Vec<AgentProfile>, // Saved agent profiles (graph layer)
+    #[serde(default, alias = "agent_profiles")]
+    pub role_profiles: Vec<RoleProfile>, // Saved roles: session presets (graph layer)
     #[serde(default)]
     pub browser_engine: agent_browser::playwright::BrowserEngine, // Browser MCP for agents (#104)
 }
 
-/// A saved agent profile. A session started from it stores `agent_id`.
+/// A saved role: a session preset (persona, backend, model, graph permission).
+/// Any number of sessions can use it; a session started from it stores `role_id`.
+/// Before the agents feature this was the "agent profile".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AgentProfile {
+pub struct RoleProfile {
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -3085,7 +3087,7 @@ impl Default for AppPreferences {
             jean_mcp_max_depth: default_jean_mcp_max_depth(),
             jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
             sidebar_recent_limit: default_sidebar_recent_limit(),
-            agent_profiles: Vec::new(),
+            role_profiles: Vec::new(),
             browser_engine: Default::default(),
         }
     }

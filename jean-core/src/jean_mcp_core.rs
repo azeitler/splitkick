@@ -500,7 +500,7 @@ fn tool_registry_session() -> Value {
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars, the To-Do mark (todoAt) and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
         {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Each result has a link for a markdown link to the session. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
-        {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"agentId":{"type":"string","description":"Start the session as this saved agent profile (its graph permission applies). Needs graph permission manage."}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"roleId":{"type":"string","description":"Start the session with this saved role, a session preset (its persona and graph permission apply). Needs graph permission manage."},"agentId":{"type":"string","description":"Deprecated name of roleId."}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. If the session waits for the user's answer to a question, the new turn skips that question and the result has skippedPendingQuestion: true. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"unarchive_session","description":"Restore an archived chat session so it can run again. Also unarchives the parent worktree when it is archived. Call this before send_chat_message if a previous attempt failed because the session was archived.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
@@ -521,7 +521,7 @@ fn tool_registry_session() -> Value {
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the active Claude account (the one every Claude run uses); claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), agentId and graphPermission (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), roleId and graphPermission (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"get_run_environments","description":"List Splitkick Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
         ,{"name":"start_run_environment","description":"Start or reuse a Splitkick-managed Run environment for a worktree using a run command configured in splitkick.json (or jean.json). When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
         ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Splitkick's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Splitkick desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
@@ -1247,23 +1247,26 @@ async fn run_tool(
             if let Some(serves) = &serves {
                 validate_serves(app, serves)?;
             }
-            let agent = match optional_str(&args, "agentId") {
-                Some(agent_id) => {
-                    require_graph_permission(
-                        app,
-                        source,
-                        GraphPermission::Manage,
-                        "create_session with agentId",
-                    )?;
-                    let agent = crate::graphs::permissions::find_agent(app, &agent_id).ok_or_else(
-                        || ToolError::invalid_params(format!("Unknown agentId: {agent_id}")),
-                    )?;
-                    let level = crate::graphs::permissions::parse_permission(&agent.permission)
-                        .map_err(ToolError::internal)?;
-                    Some((agent_id, level))
-                }
-                None => None,
-            };
+            // `agentId` is the name from before profiles became roles.
+            let agent =
+                match optional_str(&args, "roleId").or_else(|| optional_str(&args, "agentId")) {
+                    Some(role_id) => {
+                        require_graph_permission(
+                            app,
+                            source,
+                            GraphPermission::Manage,
+                            "create_session with roleId",
+                        )?;
+                        let agent = crate::graphs::permissions::find_role(app, &role_id)
+                            .ok_or_else(|| {
+                                ToolError::invalid_params(format!("Unknown roleId: {role_id}"))
+                            })?;
+                        let level = crate::graphs::permissions::parse_permission(&agent.permission)
+                            .map_err(ToolError::internal)?;
+                        Some((role_id, level))
+                    }
+                    None => None,
+                };
             // Fail fast when the worktree is archived (also enforced in create_session).
             ensure_mcp_worktree_not_archived(app, &worktree_id)?;
             let worktree_path = resolve_worktree_path(app, &worktree_id)?;
@@ -1305,11 +1308,11 @@ async fn run_tool(
                         .await
                         .map_err(ToolError::internal)?;
                 }
-                if let Some((agent_id, level)) = agent {
-                    crate::graphs::set_session_agent(
+                if let Some((role_id, level)) = agent {
+                    crate::graphs::set_session_role(
                         app.clone(),
                         id.to_string(),
-                        Some(agent_id),
+                        Some(role_id),
                         Some(level),
                     )
                     .await
@@ -2311,7 +2314,7 @@ async fn run_tool(
                 "worktreeLink": crate::links::splitkick_link("worktree", &worktree_id),
                 "projectLink": crate::links::splitkick_link("project", &project_id),
                 "serves": describe_serves(app, &metadata.as_ref().map(|m| m.serves.clone()).unwrap_or_default()),
-                "agentId": metadata.and_then(|m| m.agent_id),
+                "roleId": metadata.and_then(|m| m.role_id),
                 "graphPermission": crate::graphs::effective_permission(app, source).as_str(),
             }))
         }
@@ -3419,12 +3422,12 @@ fn compact_change(
         }
         GraphActor::Session {
             session_name,
-            agent_id,
+            role_id,
             ..
         } => {
             o.insert("actor".into(), json!(session_name));
-            if let Some(agent_id) = agent_id {
-                o.insert("agentId".into(), json!(agent_id));
+            if let Some(role_id) = role_id {
+                o.insert("roleId".into(), json!(role_id));
             }
         }
     }
@@ -4826,7 +4829,7 @@ fn untouched_default_session<'a>(
     }
     let untouched = s.id != source
         && s.started_by_session_id.is_none()
-        && s.agent_id.is_none()
+        && s.role_id.is_none()
         && s.serves.is_empty()
         && s.primary_surface.is_none()
         && s.total_runs == 0
@@ -7163,17 +7166,17 @@ mod tests {
         block_on(run_tool(app, name, args, source))
     }
 
-    fn save_agent_profiles(app: &AppHandle, profiles: Vec<crate::AgentProfile>) {
+    fn save_role_profiles(app: &AppHandle, profiles: Vec<crate::RoleProfile>) {
         let prefs = crate::AppPreferences {
-            agent_profiles: profiles,
+            role_profiles: profiles,
             ..Default::default()
         };
         let path = crate::get_preferences_path(app).unwrap();
         std::fs::write(path, serde_json::to_string(&prefs).unwrap()).unwrap();
     }
 
-    fn agent_profile(id: &str, permission: &str, persona: &str) -> crate::AgentProfile {
-        crate::AgentProfile {
+    fn role_profile(id: &str, permission: &str, persona: &str) -> crate::RoleProfile {
+        crate::RoleProfile {
             id: id.into(),
             name: format!("Agent {id}"),
             color: String::new(),
@@ -7249,7 +7252,7 @@ mod tests {
         assert!(!RATE_LIMITED_TOOLS.contains(&"read_graph"));
         let create_session = find_tool(&tools, "create_session");
         assert!(create_session["inputSchema"]["properties"]["serves"].is_object());
-        assert!(create_session["inputSchema"]["properties"]["agentId"].is_object());
+        assert!(create_session["inputSchema"]["properties"]["roleId"].is_object());
     }
 
     #[test]
@@ -7509,7 +7512,7 @@ mod tests {
         let ctx = call_as(&app, "get_current_context", json!({}), "tool-s1").unwrap();
 
         assert_eq!(ctx["graphPermission"], "write");
-        assert_eq!(ctx["agentId"], Value::Null);
+        assert_eq!(ctx["roleId"], Value::Null);
         assert_eq!(
             ctx["serves"],
             json!([{
@@ -7669,7 +7672,7 @@ mod tests {
     #[test]
     fn create_session_with_agent_sets_agent_and_permission() {
         let (_temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
-        save_agent_profiles(&app, vec![agent_profile("planner", "write", "Plan well.")]);
+        save_role_profiles(&app, vec![role_profile("planner", "write", "Plan well.")]);
         let r = format!("{graph_id}#{node_id}");
 
         // dispatch_command's future is larger than a debug test thread's 2 MB stack.
@@ -7680,7 +7683,7 @@ mod tests {
                     call_as(
                         &app,
                         "create_session",
-                        json!({ "worktreeId": "tool-wt", "agentId": "planner", "serves": [r.clone()] }),
+                        json!({ "worktreeId": "tool-wt", "roleId": "planner", "serves": [r.clone()] }),
                         "tool-s1",
                     )
                 })
@@ -7693,7 +7696,7 @@ mod tests {
         let m = crate::chat::storage::load_metadata(&app, &id)
             .unwrap()
             .unwrap();
-        assert_eq!(m.agent_id.as_deref(), Some("planner"));
+        assert_eq!(m.role_id.as_deref(), Some("planner"));
         assert_eq!(m.graph_permission.as_deref(), Some("write"));
         assert_eq!(m.serves, vec![r]);
         assert_eq!(
@@ -7704,11 +7707,33 @@ mod tests {
         let error = call_as(
             &app,
             "create_session",
+            json!({ "worktreeId": "tool-wt", "roleId": "ghost" }),
+            "tool-s1",
+        )
+        .unwrap_err();
+        assert!(error.message.contains("Unknown roleId"));
+    }
+
+    // Callers written before profiles became roles still pass `agentId`.
+    #[test]
+    fn create_session_still_reads_the_old_agent_id_argument() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(Some("manage"));
+        let error = call_as(
+            &app,
+            "create_session",
             json!({ "worktreeId": "tool-wt", "agentId": "ghost" }),
             "tool-s1",
         )
         .unwrap_err();
-        assert!(error.message.contains("Unknown agentId"));
+        assert!(error.message.contains("Unknown roleId: ghost"));
+
+        let dispatched = block_on(dispatch_command(
+            &app,
+            "create_session",
+            json!({ "worktreeId": "tool-wt", "worktreePath": "/nowhere", "agentId": "ghost" }),
+        ))
+        .unwrap_err();
+        assert!(dispatched.contains("Unknown role: ghost"), "{dispatched}");
     }
 
     /// The UI `create_session` command (New Session dialog, agent dialog)
@@ -7717,11 +7742,11 @@ mod tests {
     fn ui_create_session_with_agent_applies_profile_defaults() {
         let (temp, app, graph_id, node_id) = graph_fixture(Some("manage"));
         let r = format!("{graph_id}#{node_id}");
-        let mut agent = agent_profile("reviewer", "write", "Review well.");
+        let mut agent = role_profile("reviewer", "write", "Review well.");
         agent.backend = Some("codex".into());
         agent.model = Some("gpt-5.5".into());
         agent.default_serves = Some(r.clone());
-        save_agent_profiles(&app, vec![agent]);
+        save_role_profiles(&app, vec![agent]);
         let worktree_path = temp.path().join("tool-wt").to_string_lossy().to_string();
 
         let dispatch = |args: Value| {
@@ -7740,18 +7765,18 @@ mod tests {
         let session = dispatch(json!({
             "worktreeId": "tool-wt",
             "worktreePath": worktree_path,
-            "agentId": "reviewer",
+            "roleId": "reviewer",
         }))
         .unwrap();
         assert_eq!(session["name"], "Agent reviewer");
         assert_eq!(session["backend"], "codex");
         assert_eq!(session["selected_model"], "gpt-5.5");
-        assert_eq!(session["agent_id"], "reviewer");
+        assert_eq!(session["role_id"], "reviewer");
         let id = created_session_id(&session);
         let m = crate::chat::storage::load_metadata(&app, &id)
             .unwrap()
             .unwrap();
-        assert_eq!(m.agent_id.as_deref(), Some("reviewer"));
+        assert_eq!(m.role_id.as_deref(), Some("reviewer"));
         assert_eq!(m.graph_permission.as_deref(), Some("write"));
         assert_eq!(m.serves, vec![r]);
         assert_eq!(m.selected_model.as_deref(), Some("gpt-5.5"));
@@ -7760,7 +7785,7 @@ mod tests {
         let session = dispatch(json!({
             "worktreeId": "tool-wt",
             "worktreePath": worktree_path,
-            "agentId": "reviewer",
+            "roleId": "reviewer",
             "graphPermission": "read",
             "serves": [],
         }))
@@ -7775,7 +7800,7 @@ mod tests {
         let error = dispatch(json!({
             "worktreeId": "tool-wt",
             "worktreePath": worktree_path,
-            "agentId": "reviewer",
+            "roleId": "reviewer",
             "graphPermission": "manage",
         }))
         .unwrap_err();
@@ -7783,7 +7808,7 @@ mod tests {
         let error = dispatch(json!({
             "worktreeId": "tool-wt",
             "worktreePath": worktree_path,
-            "agentId": "reviewer",
+            "roleId": "reviewer",
             "primarySurface": "terminal",
         }))
         .unwrap_err();
@@ -7791,10 +7816,10 @@ mod tests {
         let error = dispatch(json!({
             "worktreeId": "tool-wt",
             "worktreePath": worktree_path,
-            "agentId": "ghost",
+            "roleId": "ghost",
         }))
         .unwrap_err();
-        assert!(error.contains("Unknown agent"), "{error}");
+        assert!(error.contains("Unknown role"), "{error}");
     }
 
     // ------------------------------------------------------------------
@@ -7866,11 +7891,11 @@ mod tests {
     #[test]
     fn create_session_reuses_the_untouched_default_session() {
         let (_temp, app, default_id, serves) = fresh_worktree_fixture();
-        save_agent_profiles(&app, vec![agent_profile("planner", "write", "")]);
+        save_role_profiles(&app, vec![role_profile("planner", "write", "")]);
 
         let session = create_in_fresh_worktree(
             &app,
-            json!({ "name": "Worker", "backend": "codex", "agentId": "planner", "serves": [serves.clone()] }),
+            json!({ "name": "Worker", "backend": "codex", "roleId": "planner", "serves": [serves.clone()] }),
         );
 
         assert_eq!(created_session_id(&session), default_id);
@@ -7889,7 +7914,7 @@ mod tests {
         assert_eq!(m.backend, crate::chat::types::Backend::Codex);
         assert_eq!(m.started_by_session_id.as_deref(), Some("tool-s1"));
         assert_eq!(m.serves, vec![serves]);
-        assert_eq!(m.agent_id.as_deref(), Some("planner"));
+        assert_eq!(m.role_id.as_deref(), Some("planner"));
         assert_eq!(m.graph_permission.as_deref(), Some("write"));
     }
 
@@ -8095,7 +8120,7 @@ mod tests {
     #[test]
     fn create_session_with_agent_is_refused_without_manage() {
         let (_temp, app, _graph_id, _node_id) = graph_fixture(Some("write"));
-        save_agent_profiles(&app, vec![agent_profile("planner", "write", "")]);
+        save_role_profiles(&app, vec![role_profile("planner", "write", "")]);
 
         let before = crate::chat::storage::load_sessions(&app, "", "tool-wt")
             .unwrap()
@@ -8104,7 +8129,7 @@ mod tests {
         let error = call_as(
             &app,
             "create_session",
-            json!({ "worktreeId": "tool-wt", "agentId": "planner" }),
+            json!({ "worktreeId": "tool-wt", "roleId": "planner" }),
             "tool-s1",
         )
         .unwrap_err();
@@ -8122,9 +8147,9 @@ mod tests {
         assert!(crate::graphs::session_prompt_parts(&app, "tool-s1").is_empty());
         assert!(crate::graphs::session_prompt_parts(&app, "anon").is_empty());
 
-        save_agent_profiles(&app, vec![agent_profile("planner", "write", "Plan well.")]);
+        save_role_profiles(&app, vec![role_profile("planner", "write", "Plan well.")]);
         crate::chat::storage::with_existing_metadata_mut(&app, "tool-s1", |m| {
-            m.agent_id = Some("planner".into());
+            m.role_id = Some("planner".into());
             m.serves = vec![format!("{graph_id}#{node_id}")];
         })
         .unwrap();
@@ -8221,7 +8246,7 @@ mod tests {
             &GraphActor::Session {
                 session_id: "tool-s2".into(),
                 session_name: "other".into(),
-                agent_id: None,
+                role_id: None,
             },
         )
         .unwrap();

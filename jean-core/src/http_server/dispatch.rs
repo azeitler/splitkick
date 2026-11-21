@@ -1404,12 +1404,16 @@ pub async fn dispatch_command(
                 .await?,
             )
         }
-        "set_session_agent" => {
+        "set_session_role" | "set_session_agent" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let agent_id: Option<String> = field_opt(&args, "agentId", "agent_id")?;
+            // `agentId` is the name from before profiles became roles.
+            let role_id: Option<String> = match field_opt(&args, "roleId", "role_id")? {
+                Some(id) => Some(id),
+                None => field_opt(&args, "agentId", "agent_id")?,
+            };
             let permission: Option<crate::graphs::GraphPermission> =
                 from_field_opt(&args, "permission")?;
-            crate::graphs::set_session_agent(app.clone(), session_id, agent_id, permission).await?;
+            crate::graphs::set_session_role(app.clone(), session_id, role_id, permission).await?;
             Ok(Value::Null)
         }
         "set_session_graph_permission" => {
@@ -1594,11 +1598,15 @@ pub async fn dispatch_command(
                 field_opt(&args, "terminalLabel", "terminal_label")?;
             let native_session_id: Option<String> =
                 field_opt(&args, "nativeSessionId", "native_session_id")?;
-            let agent_id: Option<String> = field_opt(&args, "agentId", "agent_id")?;
-            let agent = agent_id
-                .map(|agent_id| -> Result<_, String> {
-                    Ok(crate::graphs::permissions::SessionAgentStart {
-                        agent_id,
+            // `agentId` is the name from before profiles became roles.
+            let role_id: Option<String> = match field_opt(&args, "roleId", "role_id")? {
+                Some(id) => Some(id),
+                None => field_opt(&args, "agentId", "agent_id")?,
+            };
+            let agent = role_id
+                .map(|role_id| -> Result<_, String> {
+                    Ok(crate::graphs::permissions::SessionRoleStart {
+                        role_id,
                         permission: field_opt(&args, "graphPermission", "graph_permission")?,
                         serves: from_field_opt(&args, "serves")?,
                     })

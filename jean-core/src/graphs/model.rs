@@ -375,7 +375,7 @@ pub struct ServingSession {
     pub worktree_id: String,
     pub worktree_name: String,
     pub status: String,
-    pub agent_id: Option<String>,
+    pub role_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -431,8 +431,8 @@ pub enum GraphActor {
         session_id: String,
         #[serde(rename = "sessionName")]
         session_name: String,
-        #[serde(rename = "agentId", default)]
-        agent_id: Option<String>,
+        #[serde(rename = "roleId", alias = "agentId", default)]
+        role_id: Option<String>,
     },
 }
 
@@ -455,10 +455,10 @@ impl GraphActor {
         }
     }
 
-    pub fn agent_id(&self) -> Option<&str> {
+    pub fn role_id(&self) -> Option<&str> {
         match self {
             GraphActor::User => None,
-            GraphActor::Session { agent_id, .. } => agent_id.as_deref(),
+            GraphActor::Session { role_id, .. } => role_id.as_deref(),
         }
     }
 }
@@ -536,8 +536,8 @@ pub struct GraphRequest {
     pub from_session_id: Option<String>,
     #[serde(default)]
     pub from_session_name: Option<String>,
-    #[serde(default)]
-    pub agent_id: Option<String>,
+    #[serde(default, alias = "agentId")]
+    pub role_id: Option<String>,
     pub created_at: u64,
     pub status: GraphRequestStatus,
     #[serde(default)]

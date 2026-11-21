@@ -97,7 +97,7 @@ pub fn create_request(
         blocker: blocker.filter(|b| !b.trim().is_empty()),
         from_session_id: actor.session_id().map(str::to_string),
         from_session_name: actor.session_name().map(str::to_string),
-        agent_id: actor.agent_id().map(str::to_string),
+        role_id: actor.role_id().map(str::to_string),
         created_at: store::now_ms(),
         status: GraphRequestStatus::Open,
         answer: None,

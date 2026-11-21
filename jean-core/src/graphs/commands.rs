@@ -12,7 +12,7 @@ use super::changes::{self, append_change, new_change};
 use super::derive::{self, OtherGraph, ServingEntry};
 use super::location;
 use super::model::*;
-use super::permissions::{find_agent, parse_permission};
+use super::permissions::{find_role, parse_permission};
 use super::requests;
 use super::store::{self, emit_graphs_changed};
 
@@ -373,7 +373,7 @@ async fn serving_entries(app: &AppHandle) -> Vec<ServingEntry> {
                     worktree_id: entry.worktree_id.clone(),
                     worktree_name: entry.worktree_name.clone(),
                     status: session_status(&s),
-                    agent_id: s.agent_id.clone(),
+                    role_id: s.role_id.clone(),
                 },
             });
         }
@@ -750,14 +750,14 @@ pub async fn change_session_serves(
         .map(|(_, after)| after)
 }
 
-pub async fn set_session_agent(
+pub async fn set_session_role(
     app: AppHandle,
     session_id: String,
-    agent_id: Option<String>,
+    role_id: Option<String>,
     permission: Option<GraphPermission>,
 ) -> Result<(), String> {
-    if let Some(id) = &agent_id {
-        let agent = find_agent(&app, id).ok_or_else(|| format!("Unknown agent: {id}"))?;
+    if let Some(id) = &role_id {
+        let agent = find_role(&app, id).ok_or_else(|| format!("Unknown role: {id}"))?;
         let level = parse_permission(&agent.permission)?;
         if permission.is_some_and(|p| p > level) {
             return Err(format!(
@@ -767,7 +767,7 @@ pub async fn set_session_agent(
         }
     }
     let worktree_id = crate::chat::storage::with_existing_metadata_mut(&app, &session_id, |m| {
-        m.agent_id = agent_id;
+        m.role_id = role_id;
         m.graph_permission = permission.map(|p| p.as_str().to_string());
         m.worktree_id.clone()
     })?;
@@ -796,9 +796,9 @@ pub fn session_prompt_parts(app: &AppHandle, session_id: &str) -> Vec<String> {
         return Vec::new();
     };
     let agent = metadata
-        .agent_id
+        .role_id
         .as_deref()
-        .and_then(|id| find_agent(app, id));
+        .and_then(|id| find_role(app, id));
     if agent.is_none() && metadata.serves.is_empty() {
         return Vec::new();
     }

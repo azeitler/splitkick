@@ -1094,14 +1094,14 @@ pub async fn create_session(
     terminal_command_args: Option<Vec<String>>,
     terminal_label: Option<String>,
     native_session_id: Option<String>,
-    agent: Option<crate::graphs::permissions::SessionAgentStart>,
+    agent: Option<crate::graphs::permissions::SessionRoleStart>,
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
     if native_session_id.is_some() && primary_surface.as_deref() != Some("terminal") {
         return Err("Native session IDs are only valid for terminal sessions".to_string());
     }
     if agent.is_some() && primary_surface.as_deref() == Some("terminal") {
-        return Err("Agents only apply to chat sessions".to_string());
+        return Err("Roles only apply to chat sessions".to_string());
     }
 
     // Archived worktrees must be restored before creating new sessions.
@@ -1110,14 +1110,14 @@ pub async fn create_session(
     // The agent fills name, backend, model, permission and serves (#109).
     let agent = match agent {
         Some(start) => {
-            let profile = crate::graphs::permissions::find_agent(&app, &start.agent_id)
-                .ok_or_else(|| format!("Unknown agent: {}", start.agent_id))?;
-            let defaults = crate::graphs::permissions::agent_session_defaults(
+            let profile = crate::graphs::permissions::find_role(&app, &start.role_id)
+                .ok_or_else(|| format!("Unknown role: {}", start.role_id))?;
+            let defaults = crate::graphs::permissions::role_session_defaults(
                 &profile,
                 &start,
                 backend.as_deref(),
             )?;
-            Some((start.agent_id, defaults))
+            Some((start.role_id, defaults))
         }
         None => None,
     };
@@ -1173,14 +1173,14 @@ pub async fn create_session(
     // One metadata write for all graph fields (#101), before any client
     // learns about the session.
     let mut session = session;
-    if let Some((agent_id, defaults)) = agent {
+    if let Some((role_id, defaults)) = agent {
         let permission = defaults.permission.as_str().to_string();
         with_existing_metadata_mut(&app, &session.id, |m| {
-            m.agent_id = Some(agent_id.clone());
+            m.role_id = Some(role_id.clone());
             m.graph_permission = Some(permission.clone());
             m.serves = defaults.serves.clone();
         })?;
-        session.agent_id = Some(agent_id);
+        session.role_id = Some(role_id);
         session.graph_permission = Some(permission);
         session.serves = defaults.serves;
     }

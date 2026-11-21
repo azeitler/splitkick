@@ -196,7 +196,7 @@ fn serving(id: &str, status: &str, serves: &[&str]) -> ServingEntry {
             worktree_id: "w".into(),
             worktree_name: "w".into(),
             status: status.into(),
-            agent_id: None,
+            role_id: None,
         },
     }
 }
@@ -305,7 +305,7 @@ async fn change_log_and_revert() {
     let agent = GraphActor::Session {
         session_id: "s1".into(),
         session_name: "Agent".into(),
-        agent_id: Some("a1".into()),
+        role_id: Some("a1".into()),
     };
     let patch = GraphNodePatch {
         title: Some("Second".into()),
@@ -779,24 +779,24 @@ fn session_graph_fields_reach_session_and_are_not_synced_back() {
     let fresh = SessionMetadata::new("s".into(), "wt".into(), "S".into(), 0);
     let json = serde_json::to_value(&fresh).unwrap();
     assert!(json.get("serves").is_none());
-    assert!(json.get("agent_id").is_none());
+    assert!(json.get("role_id").is_none());
     let mut m: SessionMetadata = serde_json::from_value(json).unwrap();
     assert!(m.serves.is_empty());
 
     m.serves = vec!["g1#a1b2c3".into()];
-    m.agent_id = Some("a1".into());
+    m.role_id = Some("a1".into());
     m.graph_permission = Some("write".into());
     let mut session = m.to_session();
     assert_eq!(session.serves, vec!["g1#a1b2c3".to_string()]);
-    assert_eq!(session.agent_id.as_deref(), Some("a1"));
+    assert_eq!(session.role_id.as_deref(), Some("a1"));
     assert_eq!(session.graph_permission.as_deref(), Some("write"));
 
     session.serves.clear();
-    session.agent_id = None;
+    session.role_id = None;
     session.graph_permission = None;
     m.update_from_session(&session);
     assert_eq!(m.serves.len(), 1);
-    assert_eq!(m.agent_id.as_deref(), Some("a1"));
+    assert_eq!(m.role_id.as_deref(), Some("a1"));
     assert_eq!(m.graph_permission.as_deref(), Some("write"));
 }
 
@@ -824,11 +824,11 @@ async fn session_metadata_commands() {
     assert_eq!(effective_permission(&app, "anon"), GraphPermission::Read);
 
     assert!(
-        set_session_agent(app.clone(), "s1".into(), Some("nope".into()), None)
+        set_session_role(app.clone(), "s1".into(), Some("nope".into()), None)
             .await
             .is_err()
     );
-    set_session_agent(app.clone(), "s1".into(), None, None)
+    set_session_role(app.clone(), "s1".into(), None, None)
         .await
         .unwrap();
     assert_eq!(effective_permission(&app, "s1"), GraphPermission::Read);
@@ -937,4 +937,60 @@ fn permission_change_survives_concurrent_open_marks() {
         stop.store(true, Ordering::Relaxed);
     });
     assert_eq!(lost, 0, "lost {lost} of 300 permission changes");
+}
+
+// Profiles were renamed to roles; files written before the rename must load.
+#[test]
+fn old_agent_field_names_still_load() {
+    let mut prefs = serde_json::to_value(crate::AppPreferences::default()).unwrap();
+    prefs.as_object_mut().unwrap().remove("role_profiles");
+    prefs["agent_profiles"] =
+        json!([{ "id": "planner", "name": "Planner", "permission": "write" }]);
+    let prefs: crate::AppPreferences = serde_json::from_value(prefs).unwrap();
+    assert_eq!(prefs.role_profiles.len(), 1);
+    assert_eq!(prefs.role_profiles[0].id, "planner");
+
+    let mut meta = serde_json::to_value(crate::chat::types::SessionMetadata::new(
+        "s1".into(),
+        "wt".into(),
+        "name".into(),
+        0,
+    ))
+    .unwrap();
+    meta["agent_id"] = json!("planner");
+    let meta: crate::chat::types::SessionMetadata = serde_json::from_value(meta).unwrap();
+    assert_eq!(meta.role_id.as_deref(), Some("planner"));
+
+    let actor: GraphActor = serde_json::from_value(json!({
+        "kind": "session", "sessionId": "s1", "sessionName": "S", "agentId": "planner"
+    }))
+    .unwrap();
+    assert_eq!(actor.role_id(), Some("planner"));
+}
+
+#[test]
+fn new_role_field_names_are_written() {
+    let prefs = crate::AppPreferences {
+        role_profiles: vec![crate::RoleProfile {
+            id: "r".into(),
+            name: "R".into(),
+            color: String::new(),
+            persona: String::new(),
+            permission: "read".into(),
+            backend: None,
+            model: None,
+            default_serves: None,
+        }],
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&prefs).unwrap();
+    assert!(json.get("role_profiles").is_some());
+    assert!(json.get("agent_profiles").is_none());
+
+    let mut meta =
+        crate::chat::types::SessionMetadata::new("s1".into(), "wt".into(), "n".into(), 0);
+    meta.role_id = Some("r".into());
+    let json = serde_json::to_value(&meta).unwrap();
+    assert_eq!(json["role_id"], "r");
+    assert!(json.get("agent_id").is_none());
 }

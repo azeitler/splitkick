@@ -3,7 +3,7 @@
 use tauri::AppHandle;
 
 use super::model::{GraphActor, GraphPermission};
-use crate::AgentProfile;
+use crate::RoleProfile;
 
 /// MCP `source` for callers that are not a Splitkick session.
 pub const ANON_SOURCE: &str = "anon";
@@ -16,26 +16,26 @@ pub fn parse_permission(s: &str) -> Result<GraphPermission, String> {
     GraphPermission::parse(s).ok_or_else(|| format!("Unknown graph permission: {s}"))
 }
 
-pub fn agent_profiles(app: &AppHandle) -> Vec<AgentProfile> {
+pub fn role_profiles(app: &AppHandle) -> Vec<RoleProfile> {
     crate::load_preferences_sync(app)
-        .map(|p| p.agent_profiles)
+        .map(|p| p.role_profiles)
         .unwrap_or_default()
 }
 
-pub fn find_agent(app: &AppHandle, agent_id: &str) -> Option<AgentProfile> {
-    agent_profiles(app).into_iter().find(|a| a.id == agent_id)
+pub fn find_role(app: &AppHandle, role_id: &str) -> Option<RoleProfile> {
+    role_profiles(app).into_iter().find(|a| a.id == role_id)
 }
 
 /// `graph_permission`, else the agent's level, else `read`.
 fn resolve(
     graph_permission: Option<&str>,
-    agent_id: Option<&str>,
-    profiles: &[AgentProfile],
+    role_id: Option<&str>,
+    profiles: &[RoleProfile],
 ) -> GraphPermission {
     if let Some(p) = graph_permission.and_then(GraphPermission::parse) {
         return p;
     }
-    agent_id
+    role_id
         .and_then(|id| profiles.iter().find(|a| a.id == id))
         .and_then(|a| GraphPermission::parse(&a.permission))
         .unwrap_or(GraphPermission::Read)
@@ -49,8 +49,8 @@ pub fn effective_permission(app: &AppHandle, session_id: &str) -> GraphPermissio
     match crate::chat::storage::load_metadata(app, session_id) {
         Ok(Some(m)) => resolve(
             m.graph_permission.as_deref(),
-            m.agent_id.as_deref(),
-            &agent_profiles(app),
+            m.role_id.as_deref(),
+            &role_profiles(app),
         ),
         _ => GraphPermission::Read,
     }
@@ -67,15 +67,15 @@ pub fn session_actor(app: &AppHandle, session_id: &str) -> GraphActor {
             .as_ref()
             .map(|m| m.name.clone())
             .unwrap_or_else(|| session_id.to_string()),
-        agent_id: metadata.and_then(|m| m.agent_id),
+        role_id: metadata.and_then(|m| m.role_id),
     }
 }
 
-/// A session started from a saved agent profile (#109). UI `create_session`
+/// A session started from a saved role (#109). UI `create_session`
 /// takes it; the agent fills what the caller leaves open.
 #[derive(Debug, Clone, Default)]
-pub struct SessionAgentStart {
-    pub agent_id: String,
+pub struct SessionRoleStart {
+    pub role_id: String,
     /// Lower than the agent's level for this session. `None` = the agent's level.
     pub permission: Option<String>,
     /// Graph refs. `None` = the agent's default serves; `Some(vec![])` = none.
@@ -84,7 +84,7 @@ pub struct SessionAgentStart {
 
 /// What a new session takes from its agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentSessionDefaults {
+pub struct RoleSessionDefaults {
     pub name: String,
     pub backend: Option<String>,
     pub model: Option<String>,
@@ -102,11 +102,11 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 /// Resolve the agent's defaults for a new session, as the agent dialog does:
 /// the caller's backend wins; the agent's model applies only with the agent's
 /// own backend; the permission may be lowered, never raised.
-pub fn agent_session_defaults(
-    agent: &AgentProfile,
-    start: &SessionAgentStart,
+pub fn role_session_defaults(
+    agent: &RoleProfile,
+    start: &SessionRoleStart,
     backend: Option<&str>,
-) -> Result<AgentSessionDefaults, String> {
+) -> Result<RoleSessionDefaults, String> {
     let level = parse_permission(&agent.permission)?;
     let permission = match start.permission.as_deref() {
         Some(p) => {
@@ -138,7 +138,7 @@ pub fn agent_session_defaults(
             .into_iter()
             .collect(),
     };
-    Ok(AgentSessionDefaults {
+    Ok(RoleSessionDefaults {
         name: agent.name.clone(),
         backend: backend.or(agent_backend),
         model,
@@ -151,8 +151,8 @@ pub fn agent_session_defaults(
 mod tests {
     use super::*;
 
-    fn agent(id: &str, permission: &str) -> AgentProfile {
-        AgentProfile {
+    fn agent(id: &str, permission: &str) -> RoleProfile {
+        RoleProfile {
             id: id.into(),
             name: id.into(),
             color: String::new(),
@@ -164,9 +164,9 @@ mod tests {
         }
     }
 
-    fn start(agent_id: &str) -> SessionAgentStart {
-        SessionAgentStart {
-            agent_id: agent_id.into(),
+    fn start(role_id: &str) -> SessionRoleStart {
+        SessionRoleStart {
+            role_id: role_id.into(),
             ..Default::default()
         }
     }
@@ -177,10 +177,10 @@ mod tests {
         a.backend = Some("codex".into());
         a.model = Some("gpt-5.5".into());
         a.default_serves = Some("g1#n1".into());
-        let d = agent_session_defaults(&a, &start("reviewer"), None).unwrap();
+        let d = role_session_defaults(&a, &start("reviewer"), None).unwrap();
         assert_eq!(
             d,
-            AgentSessionDefaults {
+            RoleSessionDefaults {
                 name: "reviewer".into(),
                 backend: Some("codex".into()),
                 model: Some("gpt-5.5".into()),
@@ -196,32 +196,32 @@ mod tests {
         a.backend = Some("codex".into());
         a.model = Some("gpt-5.5".into());
         a.default_serves = Some("g1#n1".into());
-        let req = SessionAgentStart {
-            agent_id: "reviewer".into(),
+        let req = SessionRoleStart {
+            role_id: "reviewer".into(),
             permission: Some("read".into()),
             serves: Some(vec![]),
         };
-        let d = agent_session_defaults(&a, &req, Some("claude")).unwrap();
+        let d = role_session_defaults(&a, &req, Some("claude")).unwrap();
         assert_eq!(d.backend.as_deref(), Some("claude"));
         // The agent's model belongs to its own backend.
         assert_eq!(d.model, None);
         assert_eq!(d.permission, GraphPermission::Read);
         assert!(d.serves.is_empty());
         // Same backend as the agent: its model applies.
-        let d = agent_session_defaults(&a, &req, Some("codex")).unwrap();
+        let d = role_session_defaults(&a, &req, Some("codex")).unwrap();
         assert_eq!(d.model.as_deref(), Some("gpt-5.5"));
     }
 
     #[test]
     fn agent_defaults_never_raise_the_permission() {
         let a = agent("reader", "read");
-        let req = SessionAgentStart {
-            agent_id: "reader".into(),
+        let req = SessionRoleStart {
+            role_id: "reader".into(),
             permission: Some("manage".into()),
             serves: None,
         };
-        assert!(agent_session_defaults(&a, &req, None).is_err());
-        let d = agent_session_defaults(&a, &start("reader"), None).unwrap();
+        assert!(role_session_defaults(&a, &req, None).is_err());
+        let d = role_session_defaults(&a, &start("reader"), None).unwrap();
         assert_eq!(d.backend, None);
         assert!(d.serves.is_empty());
     }
