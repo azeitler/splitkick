@@ -26,6 +26,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   `create_schedule` and the custom cron field also warn when a `*/N` step does
   not divide the hour or day: `*/45` runs at minutes 0 and 45, not every 45
   minutes. Closes #144
+- **An answered question no longer shows a second time.** While the next turn
+  ran, the chat could draw the question you had just answered again, as an open
+  form below the answered one. The live view now leaves out a question that a
+  message above already shows. Closes #146
 
 ## [1.5.22] - 2026-11-19
 

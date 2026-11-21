@@ -257,7 +257,10 @@ import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
 import { useActiveTodosAndAgents } from './hooks/useActiveTodosAndAgents'
 import { usePendingAttachments } from './hooks/usePendingAttachments'
-import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
+import {
+  dedupeInFlightAssistantMessage,
+  withoutRenderedQuestions,
+} from './in-flight-message-dedupe'
 import { shouldShowPermissionApproval } from './permission-approval-utils'
 import { useSessionFork } from './hooks/useSessionFork'
 
@@ -2978,6 +2981,18 @@ export function ChatWindow({
     ]
   )
 
+  // What the streaming copy draws: without questions a rendered message
+  // already shows, so one question draws one form (#146).
+  const streamingDisplay = useMemo(
+    () =>
+      withoutRenderedQuestions(
+        messages,
+        currentStreamingContentBlocks,
+        currentToolCalls
+      ),
+    [messages, currentStreamingContentBlocks, currentToolCalls]
+  )
+
   // Let the links and @-mentions inside this thread resolve their own paths
   // against the files it has actually touched (src/lib/file-reference.ts).
   useFileReferenceEvidence({
@@ -3480,16 +3495,16 @@ export function ChatWindow({
                             {/* Streaming response + elapsed timer in one wrapper to avoid space-y-4 gap */}
                             {isSending && activeSessionId && (
                               <div>
-                                {(currentStreamingContentBlocks.length > 0 ||
-                                  currentToolCalls.length > 0 ||
+                                {(streamingDisplay.contentBlocks.length > 0 ||
+                                  streamingDisplay.toolCalls.length > 0 ||
                                   streamingContent.trim().length > 0) &&
                                   (preferences?.compact_chat_view_enabled ? (
                                     <CompactStreamingTicker
                                       sessionId={activeSessionId}
                                       contentBlocks={
-                                        currentStreamingContentBlocks
+                                        streamingDisplay.contentBlocks
                                       }
-                                      toolCalls={currentToolCalls}
+                                      toolCalls={streamingDisplay.toolCalls}
                                       streamingContent={streamingContent}
                                       onQuestionAnswer={
                                         handleResolvedQuestionAnswer
@@ -3508,9 +3523,9 @@ export function ChatWindow({
                                     <StreamingMessage
                                       sessionId={activeSessionId}
                                       contentBlocks={
-                                        currentStreamingContentBlocks
+                                        streamingDisplay.contentBlocks
                                       }
-                                      toolCalls={currentToolCalls}
+                                      toolCalls={streamingDisplay.toolCalls}
                                       streamingContent={streamingContent}
                                       onQuestionAnswer={
                                         handleResolvedQuestionAnswer

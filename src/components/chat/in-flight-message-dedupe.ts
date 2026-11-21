@@ -1,4 +1,9 @@
-import type { ChatMessage, ContentBlock, ToolCall } from '@/types/chat'
+import {
+  isAskUserQuestion,
+  type ChatMessage,
+  type ContentBlock,
+  type ToolCall,
+} from '@/types/chat'
 
 interface InFlightMessageDedupOptions {
   isSending: boolean
@@ -137,4 +142,46 @@ export function dedupeInFlightAssistantMessage(
   return isTransientTrailingAssistant(lastMessage, options)
     ? messages.slice(0, -1)
     : messages
+}
+
+/**
+ * Drop questions from the streaming copy that a rendered message already
+ * holds, so one question draws one form (#146).
+ *
+ * The saved copy wins: it knows the question was answered (a user message
+ * follows it). A streaming copy of an earlier turn's question only knows the
+ * in-memory answered set, so it would draw a second, open form below the
+ * answered one. Returns the inputs unchanged when nothing overlaps.
+ */
+export function withoutRenderedQuestions(
+  messages: ChatMessage[],
+  streamingContentBlocks: ContentBlock[],
+  streamingToolCalls: ToolCall[]
+): { contentBlocks: ContentBlock[]; toolCalls: ToolCall[] } {
+  const unchanged = {
+    contentBlocks: streamingContentBlocks,
+    toolCalls: streamingToolCalls,
+  }
+  const streamingQuestionIds = new Set(
+    streamingToolCalls.filter(isAskUserQuestion).map(toolCall => toolCall.id)
+  )
+  if (streamingQuestionIds.size === 0) return unchanged
+
+  const rendered = new Set<string>()
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue
+    for (const toolCall of message.tool_calls ?? []) {
+      if (streamingQuestionIds.has(toolCall.id)) rendered.add(toolCall.id)
+    }
+  }
+  if (rendered.size === 0) return unchanged
+
+  return {
+    contentBlocks: streamingContentBlocks.filter(
+      block => block.type !== 'tool_use' || !rendered.has(block.tool_call_id)
+    ),
+    toolCalls: streamingToolCalls.filter(
+      toolCall => !rendered.has(toolCall.id)
+    ),
+  }
 }

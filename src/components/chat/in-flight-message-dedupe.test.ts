@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatMessage } from '@/types/chat'
-import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
+import type { ChatMessage, ContentBlock, ToolCall } from '@/types/chat'
+import {
+  dedupeInFlightAssistantMessage,
+  withoutRenderedQuestions,
+} from './in-flight-message-dedupe'
 
 function createMessage(overrides: Partial<ChatMessage>): ChatMessage {
   return {
@@ -193,5 +196,95 @@ describe('dedupeInFlightAssistantMessage', () => {
         streamingToolCalls: [],
       })
     ).toEqual([messages[0]])
+  })
+})
+
+describe('withoutRenderedQuestions (#146)', () => {
+  const question: ToolCall = {
+    id: 'toolu_question',
+    name: 'AskUserQuestion',
+    input: {
+      questions: [
+        {
+          question: 'Which scope?',
+          header: 'Scope',
+          multiSelect: false,
+          options: [{ label: 'Project' }, { label: 'Global' }],
+        },
+      ],
+    },
+  }
+  const read: ToolCall = { id: 'toolu_read', name: 'Read', input: {} }
+  const blocks: ContentBlock[] = [
+    { type: 'text', text: 'I need one answer first.' },
+    { type: 'tool_use', tool_call_id: question.id },
+    { type: 'text', text: 'Thanks, going on.' },
+    { type: 'tool_use', tool_call_id: read.id },
+  ]
+  const answered = [
+    createMessage({ id: 'user-1', role: 'user', content: 'Prompt' }),
+    createMessage({
+      id: 'assistant-1',
+      tool_calls: [question],
+      content_blocks: [{ type: 'tool_use', tool_call_id: question.id }],
+    }),
+    createMessage({ id: 'user-2', role: 'user', content: 'Global' }),
+  ]
+
+  it('drops an answered question from a stale streaming copy of the next turn', () => {
+    const result = withoutRenderedQuestions(answered, blocks, [question, read])
+
+    expect(result.toolCalls).toEqual([read])
+    expect(result.contentBlocks).toEqual([
+      { type: 'text', text: 'I need one answer first.' },
+      { type: 'text', text: 'Thanks, going on.' },
+      { type: 'tool_use', tool_call_id: read.id },
+    ])
+  })
+
+  it('keeps a pending question the messages do not hold', () => {
+    const messages = [answered[0] as ChatMessage]
+    const toolCalls = [question]
+
+    const result = withoutRenderedQuestions(messages, blocks, toolCalls)
+
+    expect(result.contentBlocks).toBe(blocks)
+    expect(result.toolCalls).toBe(toolCalls)
+  })
+
+  it('leaves other tools alone when a message holds the same tool call', () => {
+    const messages = [
+      answered[0] as ChatMessage,
+      createMessage({ id: 'assistant-1', tool_calls: [read] }),
+    ]
+    const toolCalls = [read]
+
+    const result = withoutRenderedQuestions(messages, blocks, toolCalls)
+
+    expect(result.toolCalls).toBe(toolCalls)
+    expect(result.contentBlocks).toBe(blocks)
+  })
+
+  it('keeps the live question when the dedupe already hid its running placeholder', () => {
+    const waiting = [
+      answered[0] as ChatMessage,
+      createMessage({
+        id: 'running-run-1',
+        tool_calls: [question],
+        content_blocks: [{ type: 'tool_use', tool_call_id: question.id }],
+      }),
+    ]
+    const toolCalls = [question]
+    const rendered = dedupeInFlightAssistantMessage(waiting, {
+      isSending: true,
+      streamingContent: '',
+      streamingContentBlocks: blocks,
+      streamingToolCalls: toolCalls,
+    })
+
+    const result = withoutRenderedQuestions(rendered, blocks, toolCalls)
+
+    expect(rendered).toEqual([waiting[0]])
+    expect(result.toolCalls).toBe(toolCalls)
   })
 })
