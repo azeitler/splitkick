@@ -52,11 +52,13 @@ export interface StartRoleSessionTarget {
   serves?: string
 }
 
-/** The agent dialog: create one, make a session an agent, or rename one. */
+/** The agent dialog: create one, make a session an agent, rename one, or
+ *  schedule a prompt for one. */
 export type AgentDialogTarget =
   | { mode: 'new' }
   | { mode: 'make'; sessionId: string; sessionName: string }
   | { mode: 'rename'; agentId: string; name: string }
+  | { mode: 'schedule'; agentId: string; sessionId: string; name: string }
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 

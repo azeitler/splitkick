@@ -122,6 +122,18 @@ describe('SessionContextMenuItems — agents', () => {
     })
   })
 
+  it('opens a new schedule for the agent', async () => {
+    mocks.agent = agent
+    const user = await openMenu()
+    await user.click(await screen.findByText('New Schedule…'))
+    expect(useUIStore.getState().agentDialog).toEqual({
+      mode: 'schedule',
+      agentId: 'a1',
+      sessionId: 'session-a',
+      name: 'Release manager',
+    })
+  })
+
   it('restarts the agent in a fresh session', async () => {
     mocks.agent = agent
     const user = await openMenu()

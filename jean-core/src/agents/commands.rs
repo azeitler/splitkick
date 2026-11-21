@@ -1178,6 +1178,56 @@ mod tests {
         assert_eq!(b.worktree_id, base.id);
     }
 
+    // "Send later…" and "Repeat…" in the session of an agent, and "New
+    // Schedule…" on the agent: the schedule is the agent's.
+    #[test]
+    fn a_schedule_made_in_an_agent_session_follows_the_agent() {
+        use crate::chat::schedules::{self, ScheduleOptions, ScheduleTarget};
+        let (_t, app) = fixture();
+        add_session(&app, "s2", "plain session");
+        let a = block_on(make_session_agent(
+            app.clone(),
+            "s1".into(),
+            "A".into(),
+            true,
+        ))
+        .unwrap();
+        let later = Some(now() + 3600);
+        let with = |target| ScheduleOptions {
+            target,
+            ..Default::default()
+        };
+
+        let into_session =
+            schedules::create(&app, "s1", "p", later, None, with(ScheduleTarget::Session)).unwrap();
+        assert_eq!(into_session.target, ScheduleTarget::Agent);
+        assert_eq!(into_session.agent_id.as_deref(), Some(a.id.as_str()));
+
+        // A new session per run is a different wish: it stays.
+        let fresh = schedules::create(
+            &app,
+            "s1",
+            "p",
+            later,
+            None,
+            with(ScheduleTarget::NewSession),
+        )
+        .unwrap();
+        assert_eq!(fresh.target, ScheduleTarget::NewSession);
+        assert_eq!(fresh.agent_id, None);
+
+        // A session that is no agent is not touched, and cannot ask for one.
+        let plain =
+            schedules::create(&app, "s2", "p", later, None, with(ScheduleTarget::Session)).unwrap();
+        assert_eq!(plain.target, ScheduleTarget::Session);
+        let refused = schedules::create(&app, "s2", "p", later, None, with(ScheduleTarget::Agent));
+        assert!(refused.unwrap_err().contains("not an agent"));
+
+        for id in [into_session.id, fresh.id, plain.id] {
+            schedules::delete(&app, &id).unwrap();
+        }
+    }
+
     /// dispatch_command's future needs more than a debug test thread's stack.
     fn dispatch(
         app: &AppHandle,

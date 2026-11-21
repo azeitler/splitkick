@@ -46,6 +46,24 @@ describe('ScheduleDialog', () => {
     )
   })
 
+  // In the session of an agent the schedule is the agent's by default: it
+  // then follows the agent into a fresh session after a restart.
+  it('offers the agent as the target in an agent session', async () => {
+    const onSubmit = renderDialog({ kind: 'repeat', agentName: 'Assistant' })
+    const target = screen.getByLabelText('Run in')
+    expect(target).toHaveValue('agent')
+    expect(
+      Array.from(target.querySelectorAll('option')).map(o => o.textContent)
+    ).toEqual([
+      'Agent Assistant, in its current session',
+      'A new session in this worktree each run',
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ target: 'agent' })
+    )
+  })
+
   // Plan Q3: nothing is saved in yolo mode before the explicit confirm.
   it('asks before an unattended yolo run', async () => {
     const onSubmit = renderDialog({ yolo: true })

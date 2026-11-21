@@ -1,4 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import {
+  ScheduleDialog,
+  type ScheduleFormValues,
+} from '@/components/chat/ScheduleDialog'
 import { useRoleProfiles } from '@/components/graphs/role-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,20 +20,25 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { isNativeApp } from '@/lib/environment'
+import { formatMessageTimestamp, formatTimeUntil } from '@/lib/relative-time'
 import {
   useCreateAgent,
   useMakeSessionAgent,
   useUpdateAgent,
 } from '@/services/agents'
 import { useProjects } from '@/services/projects'
+import { createSchedule, schedulesQueryKeys } from '@/services/schedules'
 import { useUIStore, type AgentDialogTarget } from '@/store/ui-store'
 import { isFolder, isVisibleProject } from '@/types/projects'
 import { defaultAgentFolder } from './agent-rows'
 
 const close = () => useUIStore.getState().setAgentDialog(null)
 
+type AgentFormTarget = Exclude<AgentDialogTarget, { mode: 'schedule' }>
+type AgentScheduleTarget = Extract<AgentDialogTarget, { mode: 'schedule' }>
+
 const COPY: Record<
-  AgentDialogTarget['mode'],
+  AgentFormTarget['mode'],
   { title: string; description: string; submit: string }
 > = {
   new: {
@@ -51,11 +62,12 @@ const COPY: Record<
 
 /**
  * The agent dialog, mounted once in `MainWindow` and opened through
- * `ui-store.agentDialog`: create an agent, make a session an agent, or
- * rename one.
+ * `ui-store.agentDialog`: create an agent, make a session an agent, rename
+ * one, or schedule a prompt for one.
  */
 export function AgentDialog() {
   const target = useUIStore(state => state.agentDialog)
+  if (target?.mode === 'schedule') return <AgentSchedule target={target} />
   return (
     <Dialog
       open={target !== null}
@@ -68,7 +80,41 @@ export function AgentDialog() {
   )
 }
 
-function AgentForm({ target }: { target: AgentDialogTarget }) {
+/**
+ * "New Schedule…" on an agent: a repeating prompt that belongs to the agent,
+ * so it follows the agent into a fresh session after a restart.
+ */
+function AgentSchedule({ target }: { target: AgentScheduleTarget }) {
+  const queryClient = useQueryClient()
+  const onSubmit = async (values: ScheduleFormValues) => {
+    const schedule = await createSchedule({
+      sessionId: target.sessionId,
+      prompt: values.prompt,
+      fireAtUnix: values.fireAtUnix,
+      recurrence: values.recurrence,
+      name: values.name || undefined,
+      target: 'agent',
+    })
+    await queryClient.invalidateQueries({ queryKey: schedulesQueryKeys.all })
+    toast.success(
+      `Scheduled for ${target.name} · ${formatTimeUntil(schedule.fire_at_unix)} (${formatMessageTimestamp(schedule.fire_at_unix)})`
+    )
+  }
+  return (
+    <ScheduleDialog
+      open
+      onOpenChange={open => {
+        if (!open) close()
+      }}
+      kind="repeat"
+      initial={{ prompt: '', target: 'agent' }}
+      title={`New schedule for ${target.name}`}
+      onSubmit={onSubmit}
+    />
+  )
+}
+
+function AgentForm({ target }: { target: AgentFormTarget }) {
   const copy = COPY[target.mode]
   const createAgent = useCreateAgent()
   const makeAgent = useMakeSessionAgent()

@@ -16,7 +16,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   session and select **Make Agent…**. A global agent works in a folder that
   you select and shows in the Agents tab only. **Restart Agent** continues in
   a fresh session that gets the history of the old one. A schedule can target
-  an agent and follows it through a restart. New MCP tools: `list_agents` and
+  an agent and follows it through a restart: use **New Schedule…** on the
+  agent, or Send later… / Repeat… in its session. New MCP tools: `list_agents` and
   `send_to_agent`; `create_schedule` takes `agent`.
 
 ### Changed

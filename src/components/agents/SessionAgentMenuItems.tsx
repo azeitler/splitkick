@@ -1,4 +1,10 @@
-import { BotMessageSquare, BotOff, Pencil, RotateCcw } from 'lucide-react'
+import {
+  BotMessageSquare,
+  BotOff,
+  CalendarClock,
+  Pencil,
+  RotateCcw,
+} from 'lucide-react'
 import {
   ContextMenuItem,
   ContextMenuRadioGroup,
@@ -94,6 +100,20 @@ export function SessionAgentMenuItems({
           </ContextMenuSubContent>
         </ContextMenuSub>
       )}
+      {/* The schedule is the agent's: it follows the agent after a restart. */}
+      <ContextMenuItem
+        onSelect={() =>
+          useUIStore.getState().setAgentDialog({
+            mode: 'schedule',
+            agentId: agent.id,
+            sessionId,
+            name: agent.name,
+          })
+        }
+      >
+        <CalendarClock className="mr-2 h-4 w-4" />
+        New Schedule…
+      </ContextMenuItem>
       {/* A fresh session takes over; this one stays as a normal session. */}
       <ContextMenuItem
         onSelect={() => restartAgent.mutate({ agentId: agent.id })}

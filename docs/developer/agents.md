@@ -129,7 +129,17 @@ session is removed again.
 when the schedule fires (`schedules::resolve_agent_target`), so the schedule
 follows the agent through a restart. `cancel_session` leaves such a schedule
 alone. A missing agent or session fails the run with a clear error and pauses
-the schedule. It is made with MCP `create_schedule { agent }`.
+the schedule.
+
+Three ways make one, and all end in the same target:
+
+- MCP `create_schedule { agent }`.
+- **New Schedule…** in the agent's context menu (`AgentDialog`, mode
+  `schedule`), which sends `target: 'agent'` with the agent's session.
+- **Send later…** / **Repeat…** in the composer of an agent's session.
+  `schedules::create` turns a schedule into the session of an agent into an
+  agent schedule; "a new session each run" stays what it is. The dialog
+  (`ScheduleDialog`, prop `agentName`) names the agent as the target.
 
 ## UI
 
@@ -144,5 +154,5 @@ the schedule. It is made with MCP `create_schedule { agent }`.
 
 ## Not built
 
-A reply from the agent into the calling session, event triggers, an Agents
-tab in the phone layout, and a click path to schedule an agent.
+A reply from the agent into the calling session, event triggers, and an
+Agents tab in the phone layout.

@@ -525,7 +525,25 @@ pub fn create(
     );
     schedule.recurrence = recurrence;
     schedule.name = options.name.unwrap_or_default().trim().to_string();
-    schedule.target = options.target;
+    // A schedule into the session of an agent is the agent's: it follows the
+    // agent through a restart. A new session per run is a different wish.
+    let agent_id = match options.target {
+        ScheduleTarget::NewSession => None,
+        ScheduleTarget::Session | ScheduleTarget::Agent => {
+            crate::agents::store::load(app).ok().and_then(|agents| {
+                crate::agents::store::for_session(&agents, session_id).map(|a| a.id.clone())
+            })
+        }
+    };
+    if options.target == ScheduleTarget::Agent && agent_id.is_none() {
+        return Err("Schedule: this session is not an agent".to_string());
+    }
+    schedule.target = if agent_id.is_some() {
+        ScheduleTarget::Agent
+    } else {
+        options.target
+    };
+    schedule.agent_id = agent_id;
     schedule.template = options.template.filter(Value::is_object);
     add(app, schedule.clone())?;
     Ok(schedule)

@@ -7,6 +7,7 @@ import {
   toScheduleTemplate,
   type ScheduleKind,
 } from '@/lib/schedule-compose'
+import { useAgentForSession } from '@/services/agents'
 import { createSchedule, schedulesQueryKeys } from '@/services/schedules'
 import type { ScheduleDraft } from './hooks/useMessageSending'
 import { ScheduleDialog, type ScheduleFormValues } from './ScheduleDialog'
@@ -23,6 +24,8 @@ export function useComposerSchedule(
   const queryClient = useQueryClient()
   const [kind, setKind] = useState<ScheduleKind | null>(null)
   const [draft, setDraft] = useState<ScheduleDraft | null>(null)
+  // In the session of an agent the schedule is the agent's by default.
+  const agent = useAgentForSession(draft?.sessionId)
 
   const onSchedule = useCallback(
     (next: ScheduleKind) => {
@@ -69,6 +72,7 @@ export function useComposerSchedule(
         kind={kind}
         initial={{ prompt: draft.prompt }}
         yolo={needsYoloConfirm(draft.queued)}
+        agentName={agent?.name}
         onSubmit={onSubmit}
       />
     ) : null

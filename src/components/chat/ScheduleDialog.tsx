@@ -68,6 +68,11 @@ interface ScheduleDialogProps {
   submitLabel?: string
   /** Defaults to "Send later" / "Repeat" */
   title?: string
+  /**
+   * The session is the session of this agent: the schedule then belongs to
+   * the agent by default and follows it into a fresh session after a restart.
+   */
+  agentName?: string
   onSubmit: (values: ScheduleFormValues) => Promise<void>
 }
 
@@ -126,13 +131,14 @@ export function ScheduleDialog({
   yolo = false,
   submitLabel = 'Schedule',
   title,
+  agentName,
   onSubmit,
 }: ScheduleDialogProps) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const [prompt, setPrompt] = useState(initial.prompt)
   const [name, setName] = useState(initial.name ?? '')
   const [target, setTarget] = useState<ScheduleTarget>(
-    initial.target ?? defaultTarget(kind)
+    initial.target ?? (agentName ? 'agent' : defaultTarget(kind))
   )
   const [at, setAt] = useState(() =>
     toDateTimeLocal(
@@ -154,7 +160,7 @@ export function ScheduleDialog({
     if (!open) return
     setPrompt(initial.prompt)
     setName(initial.name ?? '')
-    setTarget(initial.target ?? defaultTarget(kind))
+    setTarget(initial.target ?? (agentName ? 'agent' : defaultTarget(kind)))
     setAt(
       toDateTimeLocal(
         initial.fireAtUnix
@@ -334,8 +340,9 @@ export function ScheduleDialog({
             )}
 
             {/* An agent schedule keeps its agent: an edit changes the prompt
-                and the time, never where it runs. */}
-            {target !== 'agent' && (
+                and the time, never where it runs. In the agent's own session
+                (`agentName`) the choice is the agent or a new session. */}
+            {(agentName !== undefined || target !== 'agent') && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="schedule-target">Run in</Label>
                 <NativeSelect
@@ -343,9 +350,15 @@ export function ScheduleDialog({
                   value={target}
                   onChange={e => setTarget(e.target.value as ScheduleTarget)}
                 >
-                  <NativeSelectOption value="session">
-                    This session
-                  </NativeSelectOption>
+                  {agentName !== undefined ? (
+                    <NativeSelectOption value="agent">
+                      Agent {agentName}, in its current session
+                    </NativeSelectOption>
+                  ) : (
+                    <NativeSelectOption value="session">
+                      This session
+                    </NativeSelectOption>
+                  )}
                   <NativeSelectOption value="new_session">
                     A new session in this worktree each run
                   </NativeSelectOption>

@@ -9,6 +9,12 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   make: vi.fn(),
   update: vi.fn(),
+  createSchedule: vi.fn(),
+}))
+
+vi.mock('@/services/schedules', () => ({
+  schedulesQueryKeys: { all: ['schedules'] },
+  createSchedule: mocks.createSchedule,
 }))
 
 vi.mock('@/services/agents', () => ({
@@ -40,6 +46,7 @@ describe('AgentDialog', () => {
     mocks.create.mockReset().mockResolvedValue({})
     mocks.make.mockReset().mockResolvedValue({})
     mocks.update.mockReset().mockResolvedValue({})
+    mocks.createSchedule.mockReset()
     useUIStore.setState({ agentDialog: null })
   })
 
@@ -110,6 +117,35 @@ describe('AgentDialog', () => {
       name: 'Release manager',
       projectId: 'p1',
     })
+  })
+
+  it('schedules a repeating prompt for an agent', async () => {
+    mocks.createSchedule.mockResolvedValue({
+      fire_at_unix: Math.floor(Date.now() / 1000) + 3600,
+    })
+    useUIStore.setState({
+      agentDialog: {
+        mode: 'schedule',
+        agentId: 'a1',
+        sessionId: 's1',
+        name: 'Assistant',
+      },
+    })
+    render(<AgentDialog />)
+    expect(screen.getByText('New schedule for Assistant')).toBeInTheDocument()
+    // The agent is the target; there is nothing to choose.
+    expect(screen.queryByLabelText('Run in')).toBeNull()
+    await userEvent.type(screen.getByLabelText('Prompt'), 'Send me a summary')
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }))
+    expect(mocks.createSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 's1',
+        prompt: 'Send me a summary',
+        target: 'agent',
+        recurrence: expect.objectContaining({ cron: '0 9 * * *' }),
+      })
+    )
+    await waitFor(() => expect(useUIStore.getState().agentDialog).toBeNull())
   })
 
   it('renames an agent', async () => {

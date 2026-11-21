@@ -86,9 +86,11 @@ other sessions can send work to it by name.
 - **Send it work:** in any session, write "Tell the Release manager to cut
   1.5.23". The session sends the message to the agent. If the agent is busy,
   the message waits in its queue and runs next.
-- **Run it on a timer:** in a session, write "Every day at 7:00, tell the
+- **Run it on a timer:** right-click the agent's session and select
+  **New Schedule…**. Or use **Send later…** / **Repeat…** next to Send in the
+  agent's session, or write in any session "Every day at 7:00, tell the
   Assistant to move my open to-dos to today and send me a summary". The
-  schedule shows in **Scheduled** with the agent's name.
+  schedule belongs to the agent and shows in **Scheduled** with its name.
 - **Restart:** right-click the agent's session and select **Restart Agent**
   when its context is full. A fresh session takes over and gets the history of
   the old one with its first message. The old session stays as a normal
