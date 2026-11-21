@@ -44,7 +44,8 @@ test('Copy image and Open in browser for a chat image (#68)', async ({
   await image.click()
   const viewer = page.getByRole('dialog')
   await expect(viewer.getByRole('button', { name: 'Copy image' })).toBeVisible()
-  await expect(viewer.getByRole('button', { name: /Reveal in/ })).toHaveCount(0)
+  // Host-only: shown, but disabled with its reason in web access.
+  await expect(viewer.getByRole('button', { name: /Reveal in/ })).toBeDisabled()
   await page.waitForTimeout(500)
   await shot(page, 'image-viewer-web-access')
 
