@@ -50,6 +50,7 @@ mod codex_cli;
 mod commandcode_cli;
 mod cursor_cli;
 mod gh_cli;
+pub mod agents;
 pub mod graphs;
 mod grok_cli;
 pub mod http_server;
