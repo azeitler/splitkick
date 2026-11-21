@@ -30,6 +30,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
+import { AgentBadge } from '@/components/agents/AgentBadge'
 import { RoleBadge } from '@/components/graphs/RoleBadge'
 import { BaseSessionBadge } from './BaseSessionBadge'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
@@ -1099,6 +1100,10 @@ export function WorktreeItem({
                           >
                             {card.session.name || 'Untitled'}
                           </span>
+                          <AgentBadge
+                            sessionId={card.session.id}
+                            sessionName={card.session.name}
+                          />
                           <RoleBadge
                             roleId={card.session.role_id}
                             sessionName={card.session.name}

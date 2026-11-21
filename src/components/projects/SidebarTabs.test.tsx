@@ -40,13 +40,14 @@ describe('SidebarTabs', () => {
     useProjectsStore.setState({ starredSessions: [] })
   })
 
-  it('shows Projects, Recent, Starred, To-Do and Graphs, Projects selected', () => {
+  it('shows Projects, Recent, Starred, Agents, To-Do and Graphs, Projects selected', () => {
     renderTabs()
     const names = screen.getAllByRole('tab').map(t => t.getAttribute('id'))
     expect(names).toEqual([
       'sidebar-tab-projects',
       'sidebar-tab-recent',
       'sidebar-tab-starred',
+      'sidebar-tab-agents',
       'sidebar-tab-todo',
       'sidebar-tab-graphs',
     ])
@@ -138,7 +139,14 @@ describe('SidebarTabs', () => {
 
 describe('isSidebarTab', () => {
   it('accepts every tab and rejects an unknown stored value', () => {
-    for (const id of ['projects', 'recent', 'starred', 'todo', 'graphs']) {
+    for (const id of [
+      'projects',
+      'recent',
+      'starred',
+      'agents',
+      'todo',
+      'graphs',
+    ]) {
       expect(isSidebarTab(id)).toBe(true)
     }
     expect(isSidebarTab('pinned')).toBe(false)

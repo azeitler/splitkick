@@ -1,3 +1,4 @@
+import { SessionAgentMenuItems } from '@/components/agents/SessionAgentMenuItems'
 import {
   Archive,
   ArrowDown,
@@ -213,6 +214,10 @@ export function SessionContextMenuItems({
           )}
         </ContextMenuItem>
       )}
+      <SessionAgentMenuItems
+        sessionId={session.id}
+        sessionName={session.name}
+      />
       {reorder && (
         <>
           <ContextMenuItem

@@ -109,6 +109,7 @@ import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { DraftGlyph } from './DraftGlyph'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { AgentBadge } from '@/components/agents/AgentBadge'
 import { RoleBadge } from '@/components/graphs/RoleBadge'
 import { NewSessionButtonMenuContent } from './NewSessionButtonMenu'
 import {
@@ -1531,10 +1532,16 @@ export function SessionChatModal({
                               </Tooltip>
                             )}
                             {renamingSessionId !== session.id && (
-                              <RoleBadge
-                                roleId={session.role_id}
-                                sessionName={session.name}
-                              />
+                              <>
+                                <AgentBadge
+                                  sessionId={session.id}
+                                  sessionName={session.name}
+                                />
+                                <RoleBadge
+                                  roleId={session.role_id}
+                                  sessionName={session.name}
+                                />
+                              </>
                             )}
                             <SessionNetworkGlyph
                               sessionId={session.id}

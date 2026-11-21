@@ -120,6 +120,11 @@ const LinkToGraphDialog = lazy(() =>
     default: mod.LinkToGraphDialog,
   }))
 )
+const AgentDialog = lazy(() =>
+  import('@/components/agents/AgentDialog').then(mod => ({
+    default: mod.AgentDialog,
+  }))
+)
 const StartRoleSessionDialog = lazy(() =>
   import('@/components/graphs/StartRoleSessionDialog').then(mod => ({
     default: mod.StartRoleSessionDialog,
@@ -299,6 +304,7 @@ export function MainWindow() {
   )
   const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
   const linkToGraphOpen = useUIStore(state => state.linkToGraphTarget !== null)
+  const agentDialogOpen = useUIStore(state => state.agentDialog !== null)
   const startRoleSessionOpen = useUIStore(
     state => state.startRoleSessionTarget !== null
   )
@@ -563,6 +569,7 @@ export function MainWindow() {
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
   const shouldRenderLinkToGraphDialog = useRetainedMount(linkToGraphOpen)
+  const shouldRenderAgentDialog = useRetainedMount(agentDialogOpen)
   const shouldRenderStartRoleSessionDialog =
     useRetainedMount(startRoleSessionOpen)
   const shouldRenderNewGraphDialog = useRetainedMount(newGraphDialogOpen)
@@ -887,6 +894,11 @@ export function MainWindow() {
       {shouldRenderLinkToGraphDialog && (
         <Suspense fallback={null}>
           <LinkToGraphDialog />
+        </Suspense>
+      )}
+      {shouldRenderAgentDialog && (
+        <Suspense fallback={null}>
+          <AgentDialog />
         </Suspense>
       )}
       {shouldRenderStartRoleSessionDialog && (

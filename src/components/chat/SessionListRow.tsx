@@ -10,6 +10,7 @@ import {
   Shield,
   Trash2,
 } from 'lucide-react'
+import { AgentBadge } from '@/components/agents/AgentBadge'
 import { RoleBadge } from '@/components/graphs/RoleBadge'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
@@ -154,6 +155,10 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                 <span className="flex-1 truncate text-sm">
                   {card.session.name}
                 </span>
+                <AgentBadge
+                  sessionId={card.session.id}
+                  sessionName={card.session.name}
+                />
                 <RoleBadge
                   roleId={card.session.role_id}
                   sessionName={card.session.name}

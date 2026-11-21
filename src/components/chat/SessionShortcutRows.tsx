@@ -1,5 +1,6 @@
 import { useMemo, useState, type DragEvent, type ReactNode } from 'react'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
+import { AgentBadge } from '@/components/agents/AgentBadge'
 import { RoleBadge } from '@/components/graphs/RoleBadge'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -292,6 +293,7 @@ export function SessionShortcutRows({
         )
         const markGlyphs = (
           <>
+            <AgentBadge sessionId={session.id} sessionName={session.name} />
             <RoleBadge roleId={session.role_id} sessionName={session.name} />
             <SessionNetworkGlyph
               sessionId={session.id}

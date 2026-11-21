@@ -44,6 +44,7 @@ export const SIDEBAR_TABS = [
   'projects',
   'recent',
   'starred',
+  'agents',
   'todo',
   'graphs',
 ] as const

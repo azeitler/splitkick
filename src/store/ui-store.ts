@@ -52,6 +52,12 @@ export interface StartRoleSessionTarget {
   serves?: string
 }
 
+/** The agent dialog: create one, make a session an agent, or rename one. */
+export type AgentDialogTarget =
+  | { mode: 'new' }
+  | { mode: 'make'; sessionId: string; sessionName: string }
+  | { mode: 'rename'; agentId: string; name: string }
+
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
 export type WorktreePrimarySurface = 'chat' | 'terminal'
@@ -260,6 +266,8 @@ interface UIState {
   editingRoleId: string | null
   /** Open "Start session from agent" dialog with its presets, or null. */
   startRoleSessionTarget: StartRoleSessionTarget | null
+  /** The open agent dialog, or null. Not persisted. */
+  agentDialog: AgentDialogTarget | null
   /** Global New graph dialog (command palette). Not persisted. */
   newGraphDialogOpen: boolean
   /** Whether the follow-up list (#46) is open next to the send button.
@@ -420,6 +428,7 @@ interface UIState {
   /** Open Settings → Agents on one agent (or the first when null). */
   openRoleEditor: (roleId: string | null) => void
   setStartRoleSessionTarget: (target: StartRoleSessionTarget | null) => void
+  setAgentDialog: (target: AgentDialogTarget | null) => void
   setNewGraphDialogOpen: (open: boolean) => void
   setFollowUpsOpen: (open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
@@ -560,6 +569,7 @@ export const useUIStore = create<UIState>()(
       graphFocusNodeId: null,
       editingRoleId: null,
       startRoleSessionTarget: null,
+      agentDialog: null,
       newGraphDialogOpen: false,
       followUpsOpen: false,
       pendingProjectHomeId: null,
@@ -1302,6 +1312,14 @@ export const useUIStore = create<UIState>()(
               : { startRoleSessionTarget: target },
           undefined,
           'setStartRoleSessionTarget'
+        ),
+
+      setAgentDialog: target =>
+        set(
+          state =>
+            state.agentDialog === target ? state : { agentDialog: target },
+          undefined,
+          'setAgentDialog'
         ),
 
       setNewGraphDialogOpen: open =>

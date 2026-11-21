@@ -1,5 +1,12 @@
 import { useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react'
-import { Clock, FolderTree, ListTodo, Star, Workflow } from 'lucide-react'
+import {
+  BotMessageSquare,
+  Clock,
+  FolderTree,
+  ListTodo,
+  Star,
+  Workflow,
+} from 'lucide-react'
 import {
   resolveStarredSessions,
   resolveTodoSessions,
@@ -16,6 +23,7 @@ const TAB_META: Record<SidebarTab, { label: string; icon: ReactNode }> = {
   projects: { label: 'Projects', icon: <FolderTree /> },
   recent: { label: 'Recent', icon: <Clock /> },
   starred: { label: 'Starred', icon: <Star /> },
+  agents: { label: 'Agents', icon: <BotMessageSquare /> },
   todo: { label: 'To-Do', icon: <ListTodo /> },
   graphs: { label: 'Graphs', icon: <Workflow /> },
 }
@@ -47,11 +55,11 @@ function useSidebarTabCounts(): Partial<Record<SidebarTab, number>> {
 
 /**
  * The tab bar at the top of the sidebar, below the Home row: Projects,
- * Recent, Starred, To-Do and Graphs.
+ * Recent, Starred, Agents, To-Do and Graphs.
  *
  * A WAI-ARIA tablist with automatic activation: the arrow keys (and Home /
  * End) move the focus and select the tab. The choice is persisted with the
- * rest of the UI state. Five labels do not fit a default-width sidebar, so
+ * rest of the UI state. Six labels do not fit a default-width sidebar, so
  * only the selected tab shows its label until the sidebar is wide.
  */
 export function SidebarTabs() {

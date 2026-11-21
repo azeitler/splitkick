@@ -15,6 +15,7 @@ import { SidebarArchivedRow } from './SidebarArchivedRow'
 import { SidebarScheduledRow } from './SidebarScheduledRow'
 import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
+import { SidebarAgentsSection } from './SidebarAgentsSection'
 import { SidebarTodoSection } from './SidebarTodoSection'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
 import { SidebarRecentSessions } from './SidebarRecentSessions'
@@ -32,6 +33,7 @@ import type { SidebarTab } from '@/types/ui-state'
 const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
   recent: <SidebarRecentSessions />,
   starred: <SidebarStarredSection />,
+  agents: <SidebarAgentsSection />,
   todo: <SidebarTodoSection />,
   graphs: <SidebarGraphsSection />,
 }
