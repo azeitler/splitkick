@@ -91,6 +91,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "push_worktree",
     "run_review",
     "send_chat_message",
+    "send_to_agent",
     "set_session_model",
     "rename_session",
     "set_session_label",
@@ -166,6 +167,8 @@ const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "and search_sessions finds a session by topic or name. Both answer in one call. ",
     "Do not loop list_sessions over every worktree.\n",
     "- read_session_messages reads one session. Pass role \"user\" or excludeTools true to keep the output small.\n",
+    "- An agent is one named, unique session in a role. To give work to one (\"tell the Release manager to ...\"), ",
+    "call list_agents, then send_to_agent with its name.\n",
     "- sessionId, worktreeId and projectId are Splitkick ids, not git branch or directory names. ",
     "Take them from the list and search tools.\n",
     "- Sessions come with a link (splitkick://session/<id>). To point the user to a session, ",
@@ -498,6 +501,8 @@ fn tool_registry_core() -> Value {
 fn tool_registry_session() -> Value {
     json!([
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"list_agents","description":"List the named agents. An agent is one unique, long-lived session that acts in a role (for example \"Release manager\" or \"Assistant\"); its scope is global or one project, and it has one current session. To give work to an agent (\"tell the Release manager to ...\"), call send_to_agent with its name. session is null when the agent's session was archived or deleted: the user must restart the agent in the Agents tab.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only the agents of this project, plus the global agents."}},"additionalProperties":false}},
+        {"name":"send_to_agent","description":"Send a message to a named agent. The message goes into the queue of the agent's current session and runs as its next turn, after the turn that runs now, if any. Returns at once with the session id and link; it does not wait for the answer. Read the result later with get_session_status and read_session_messages. A name is looked up in your own project first, then among the global agents.","inputSchema":{"type":"object","properties":{"agent":{"type":"string","description":"Agent name (any case) or id from list_agents."},"message":{"type":"string","description":"What the agent must do. Give the full context: the agent does not see your conversation."},"projectId":{"type":"string","description":"Look the name up in this project instead of your own."}},"required":["agent","message"],"additionalProperties":false}},
         {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars, the To-Do mark (todoAt) and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
         {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Each result has a link for a markdown link to the session. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"roleId":{"type":"string","description":"Start the session with this saved role, a session preset (its persona and graph permission apply). Needs graph permission manage."},"agentId":{"type":"string","description":"Deprecated name of roleId."}},"required":["worktreeId"],"additionalProperties":false}},
@@ -521,7 +526,7 @@ fn tool_registry_session() -> Value {
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). claude is the active Claude account (the one every Claude run uses); claude_accounts lists every configured Claude account (label, active flag, usage or error). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), roleId and graphPermission (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName, sessionLink/worktreeLink/projectLink for markdown links in chat, and its graph context: serves (refs with graphTitle and nodeTitle), roleId and graphPermission; agent ({ id, name, scope }) when the session is a named agent (read, write or manage). Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"get_run_environments","description":"List Splitkick Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
         ,{"name":"start_run_environment","description":"Start or reuse a Splitkick-managed Run environment for a worktree using a run command configured in splitkick.json (or jean.json). When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
         ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Splitkick's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Splitkick desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
@@ -2320,7 +2325,115 @@ async fn run_tool(
                 "projectLink": crate::links::splitkick_link("project", &project_id),
                 "serves": describe_serves(app, &metadata.as_ref().map(|m| m.serves.clone()).unwrap_or_default()),
                 "roleId": metadata.and_then(|m| m.role_id),
+                "agent": current_agent_json(app, source),
                 "graphPermission": crate::graphs::effective_permission(app, source).as_str(),
+            }))
+        }
+        "list_agents" => {
+            let project_id = optional_str(&args, "projectId");
+            let agents = crate::agents::list_agents(app.clone())
+                .await
+                .map_err(ToolError::internal)?;
+            let agents: Vec<Value> = agents
+                .into_iter()
+                .filter(|a| {
+                    a.scope == "global" || project_id.is_none() || a.project_id == project_id
+                })
+                .map(|a| {
+                    let session = match &a.session_id {
+                        Some(id) => json!({
+                            "id": id,
+                            "name": a.session_name,
+                            "link": crate::links::splitkick_link("session", id),
+                        }),
+                        None => Value::Null,
+                    };
+                    // A global agent's project is only its home folder.
+                    let project = (a.scope == "project").then_some((a.project_id, a.project_name));
+                    json!({
+                        "id": a.id,
+                        "name": a.name,
+                        "scope": a.scope,
+                        "projectId": project.as_ref().map(|p| p.0.clone()),
+                        "projectName": project.as_ref().map(|p| p.1.clone()),
+                        "roleId": a.role_id,
+                        "folder": a.worktree_path,
+                        "session": session,
+                    })
+                })
+                .collect();
+            Ok(json!({ "agents": agents }))
+        }
+        "send_to_agent" => {
+            let key = require_nonempty_str(&args, "agent")?;
+            let message = require_nonempty_str(&args, "message")?;
+            // The caller's project, unless projectId names another one.
+            let project_id = optional_str(&args, "projectId").or_else(|| {
+                resolve_session_worktree(app, source)
+                    .ok()
+                    .and_then(|(worktree_id, _)| resolve_worktree_project(app, &worktree_id).ok())
+                    .map(|(id, _, _)| id)
+            });
+            let agents = crate::agents::store::load(app).map_err(ToolError::internal)?;
+            let agent = match crate::agents::store::resolve(&agents, &key, project_id.as_deref()) {
+                crate::agents::store::Resolved::One(agent) => agent.clone(),
+                crate::agents::store::Resolved::None => {
+                    return Err(ToolError::invalid_params(format!(
+                        "No agent named \"{key}\". Call list_agents to see the agents."
+                    )))
+                }
+                crate::agents::store::Resolved::Many(candidates) => {
+                    return Err(ToolError::invalid_params(format!(
+                        "More than one agent is named \"{key}\". Pass projectId, or one of these ids: {}",
+                        candidates
+                            .iter()
+                            .map(|a| a.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )))
+                }
+            };
+            let session_id = crate::agents::current_session(app, &agent.id)
+                .map_err(ToolError::internal)?
+                .ok_or_else(|| {
+                    ToolError::invalid_params(format!(
+                        "The agent \"{}\" has no session: it was archived or deleted. Ask the user to restart the agent in the Agents tab.",
+                        agent.name
+                    ))
+                })?;
+            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
+            ensure_mcp_session_can_run(app, &session_id, &worktree_id)?;
+            let metadata = crate::chat::storage::load_metadata(app, &session_id)
+                .map_err(ToolError::internal)?
+                .ok_or_else(|| ToolError::internal("The agent's session has no metadata"))?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let queued = crate::chat::schedules::queued_prompt(&metadata, &message, now);
+            crate::chat::session_links::record_started_by(app, &session_id, source, true);
+            // The queue, not a direct send: a busy agent takes it as its next turn.
+            crate::chat::enqueue_message(
+                app.clone(),
+                worktree_id.clone(),
+                worktree_path.clone(),
+                session_id.clone(),
+                queued,
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            crate::chat::trigger_backend_queue_drain(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id.clone(),
+            );
+            Ok(json!({
+                "agentId": agent.id,
+                "agentName": agent.name,
+                "sessionId": session_id,
+                "link": crate::links::splitkick_link("session", &session_id),
+                "queued": true,
             }))
         }
         "list_graphs" | "read_graph" | "create_node" | "update_node" | "set_node_state"
@@ -2328,6 +2441,24 @@ async fn run_tool(
             run_graph_tool(app, name, &args, source).await
         }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
+    }
+}
+
+/// `{ id, name, scope }` when the calling session is an agent, else null.
+fn current_agent_json(app: &AppHandle, session_id: &str) -> Value {
+    let Ok(agents) = crate::agents::store::load(app) else {
+        return Value::Null;
+    };
+    match crate::agents::store::for_session(&agents, session_id) {
+        Some(agent) => json!({
+            "id": agent.id,
+            "name": agent.name,
+            "scope": match agent.scope {
+                crate::agents::AgentScope::Global => "global",
+                crate::agents::AgentScope::Project { .. } => "project",
+            },
+        }),
+        None => Value::Null,
     }
 }
 
@@ -7717,6 +7848,143 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message.contains("Unknown roleId"));
+    }
+
+    // ---- Agents ----------------------------------------------------------
+
+    /// Like `call_as`, on a big stack: these tools reach dispatch_command,
+    /// whose future overflows a debug test thread's 2 MB stack.
+    fn agent_call(
+        app: &AppHandle,
+        name: &str,
+        args: Value,
+        source: &str,
+    ) -> Result<Value, ToolError> {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(32 * 1024 * 1024)
+                .spawn_scoped(scope, || block_on(run_tool(app, name, args, source)))
+                .unwrap()
+                .join()
+                .unwrap()
+        })
+    }
+
+    fn make_agent(app: &AppHandle, session_id: &str, name: &str, global: bool) -> String {
+        block_on(crate::agents::make_session_agent(
+            app.clone(),
+            session_id.to_string(),
+            name.to_string(),
+            global,
+        ))
+        .unwrap()
+        .id
+    }
+
+    #[test]
+    fn send_to_agent_queues_into_the_agents_session() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(None);
+        let agent_id = make_agent(&app, "tool-s1", "Release manager", false);
+
+        let listed = agent_call(&app, "list_agents", json!({}), "anon").unwrap();
+        assert_eq!(listed["agents"][0]["name"], "Release manager");
+        assert_eq!(listed["agents"][0]["scope"], "project");
+        assert_eq!(listed["agents"][0]["projectName"], "jean");
+        assert_eq!(listed["agents"][0]["session"]["id"], "tool-s1");
+        assert!(listed["agents"][0]["session"]["link"]
+            .as_str()
+            .unwrap()
+            .contains("tool-s1"));
+
+        // By name, any case, from outside a session.
+        let sent = agent_call(
+            &app,
+            "send_to_agent",
+            json!({ "agent": "release MANAGER", "message": "cut 1.5.23" }),
+            "anon",
+        )
+        .unwrap();
+        assert_eq!(sent["agentId"], agent_id);
+        assert_eq!(sent["sessionId"], "tool-s1");
+        assert_eq!(sent["queued"], true);
+        let meta = crate::chat::storage::load_metadata(&app, "tool-s1")
+            .unwrap()
+            .unwrap();
+        let queued = meta.queued_messages.last().expect("a queued message");
+        assert_eq!(queued["message"], "cut 1.5.23");
+        assert!(queued["id"].is_string());
+        assert!(queued["pendingImages"].is_array());
+    }
+
+    #[test]
+    fn send_to_agent_explains_unknown_and_sessionless_agents() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(None);
+        let unknown = agent_call(
+            &app,
+            "send_to_agent",
+            json!({ "agent": "Nobody", "message": "x" }),
+            "anon",
+        )
+        .unwrap_err();
+        assert!(
+            unknown.message.contains("No agent named \"Nobody\""),
+            "{}",
+            unknown.message
+        );
+
+        make_agent(&app, "tool-s1", "A", true);
+        crate::agents::session_gone(&app, "tool-s1");
+        let gone = agent_call(
+            &app,
+            "send_to_agent",
+            json!({ "agent": "A", "message": "x" }),
+            "anon",
+        )
+        .unwrap_err();
+        assert!(gone.message.contains("has no session"), "{}", gone.message);
+        let empty = agent_call(
+            &app,
+            "send_to_agent",
+            json!({ "agent": "A", "message": " " }),
+            "anon",
+        );
+        assert!(empty.is_err());
+    }
+
+    #[test]
+    fn an_agent_session_knows_its_name() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(None);
+        let before = agent_call(&app, "get_current_context", json!({}), "tool-s1").unwrap();
+        assert_eq!(before["agent"], Value::Null);
+
+        let agent_id = make_agent(&app, "tool-s1", "Release manager", false);
+        let ctx = agent_call(&app, "get_current_context", json!({}), "tool-s1").unwrap();
+        assert_eq!(ctx["agent"]["id"], agent_id);
+        assert_eq!(ctx["agent"]["name"], "Release manager");
+        assert_eq!(ctx["agent"]["scope"], "project");
+
+        // In the system prompt too, also with no role and no graph link.
+        let parts = crate::graphs::session_prompt_parts(&app, "tool-s1");
+        assert!(
+            parts.iter().any(|p| p.contains(
+                "You are the Splitkick agent \"Release manager\" of the project \"jean\""
+            )),
+            "{parts:?}"
+        );
+        assert!(
+            !parts.iter().any(|p| p.contains("## Splitkick graph")),
+            "{parts:?}"
+        );
+    }
+
+    #[test]
+    fn the_agent_tools_are_listed_and_rate_limited() {
+        let tools = tool_registry();
+        for name in ["list_agents", "send_to_agent"] {
+            assert!(find_tool(&tools, name).is_object(), "{name}");
+        }
+        assert!(RATE_LIMITED_TOOLS.contains(&"send_to_agent"));
+        assert!(JEAN_MCP_INSTRUCTIONS.contains("send_to_agent"));
     }
 
     // The home of a global agent is a hidden plain project: not a project

@@ -788,6 +788,26 @@ pub async fn set_session_graph_permission(
     Ok(())
 }
 
+/// One line for the session of a named agent (`crate::agents`).
+fn agent_identity(app: &AppHandle, session_id: &str) -> Option<String> {
+    let agents = crate::agents::store::load(app).ok()?;
+    let agent = crate::agents::store::for_session(&agents, session_id)?;
+    let place = match &agent.scope {
+        crate::agents::AgentScope::Global => ", a global agent".to_string(),
+        crate::agents::AgentScope::Project { project_id } => {
+            let name = crate::projects::storage::load_projects_data(app)
+                .ok()
+                .and_then(|data| data.find_project(project_id).map(|p| p.name.clone()))
+                .unwrap_or_else(|| project_id.clone());
+            format!(" of the project \"{name}\"")
+        }
+    };
+    Some(format!(
+        "You are the Splitkick agent \"{}\"{place}. You are the only session with this name: the user and other sessions send you work by it, also while you are busy (it then waits in your queue).",
+        agent.name
+    ))
+}
+
 /// System prompt parts for a session: the agent persona and a short graph
 /// context (served nodes with refs and file, permission level, tools).
 /// Empty when the session has no agent and serves nothing.
@@ -799,12 +819,16 @@ pub fn session_prompt_parts(app: &AppHandle, session_id: &str) -> Vec<String> {
         .role_id
         .as_deref()
         .and_then(|id| find_role(app, id));
-    if agent.is_none() && metadata.serves.is_empty() {
-        return Vec::new();
-    }
     let mut parts = Vec::new();
+    // A named agent knows who it is, whatever its role and graph links.
+    if let Some(identity) = agent_identity(app, session_id) {
+        parts.push(identity);
+    }
+    if agent.is_none() && metadata.serves.is_empty() {
+        return parts;
+    }
     if let Some(agent) = &agent {
-        let mut persona = format!("You act as the Splitkick agent \"{}\".", agent.name);
+        let mut persona = format!("You act in the Splitkick role \"{}\".", agent.name);
         if !agent.persona.trim().is_empty() {
             persona.push_str("\n\n");
             persona.push_str(agent.persona.trim());

@@ -907,7 +907,7 @@ test('persona and graph context reach the agent; plain sessions get none', async
   // --append-system-prompt-file; it lives under the instance's temp root.
   expect(combined(served).startsWith(a.root)).toBe(true)
   const prompt = readFileSync(combined(served), 'utf8')
-  expect(prompt).toContain(`You act as the Splitkick agent "${agent.name}".`)
+  expect(prompt).toContain(`You act in the Splitkick role "${agent.name}".`)
   expect(prompt).toContain('## Splitkick graph')
   expect(prompt).toContain(
     `- node "E2E-NODE-${tag}" (${g.id}#${node}, proposed) in graph "${g.title}", file ${g.path}`
@@ -924,7 +924,7 @@ test('persona and graph context reach the agent; plain sessions get none', async
     ? readFileSync(combined(plain), 'utf8')
     : ''
   expect(plainPrompt).not.toContain('## Splitkick graph')
-  expect(plainPrompt).not.toContain('You act as the Splitkick agent')
+  expect(plainPrompt).not.toContain('You act in the Splitkick role')
 
   // Edit the persona in Settings → Agents. The persona is read when a
   // message is sent: the existing session gets the new one from its next

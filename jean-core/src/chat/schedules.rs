@@ -1256,17 +1256,28 @@ fn deleted_from_index(app: &AppHandle, worktree_id: &str, session_id: &str) -> b
 /// `send_chat_message` resolves it from the session and preferences instead
 /// of a hard-coded default. `scheduleId` lets the drain report the run's end.
 fn queued_message(metadata: &SessionMetadata, schedule: &Schedule, now: u64) -> Value {
-    let mut message = session_settings(metadata);
+    let mut message = queued_prompt(metadata, &schedule.prompt, now);
     let fields = message.as_object_mut().expect("json object");
     if let Some(Value::Object(template)) = &schedule.template {
         for (key, value) in template {
-            fields.insert(key.clone(), value.clone());
+            // The template sets the run's settings, never what is sent.
+            if !matches!(key.as_str(), "id" | "message" | "queuedAt") {
+                fields.insert(key.clone(), value.clone());
+            }
         }
     }
-    fields.insert("id".into(), Value::from(uuid::Uuid::new_v4().to_string()));
-    fields.insert("message".into(), Value::from(schedule.prompt.clone()));
-    fields.insert("queuedAt".into(), Value::from(now.saturating_mul(1000)));
     fields.insert("scheduleId".into(), Value::from(schedule.id.clone()));
+    message
+}
+
+/// A queued message (frontend `QueuedMessage` shape) that sends `prompt`
+/// with the session's saved selections. Also what `send_to_agent` queues.
+pub(crate) fn queued_prompt(metadata: &SessionMetadata, prompt: &str, now: u64) -> Value {
+    let mut message = session_settings(metadata);
+    let fields = message.as_object_mut().expect("json object");
+    fields.insert("id".into(), Value::from(uuid::Uuid::new_v4().to_string()));
+    fields.insert("message".into(), Value::from(prompt));
+    fields.insert("queuedAt".into(), Value::from(now.saturating_mul(1000)));
     for key in [
         "pendingImages",
         "pendingFiles",
