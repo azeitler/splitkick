@@ -17,6 +17,11 @@ sidebar group (`Project.is_folder`).
 | `is_git`       | `bool`, `#[serde(default = "default_is_git")]` (true) | `is_git?: boolean`       | False = plain project. Old `projects.json` files have no field and stay git projects.                             |
 | `git_detected` | `bool`, recomputed in `load_projects_data_internal`   | `git_detected?: boolean` | Plain projects only: the folder has a `.git` now. The UI offers "Switch to git project". Never trusted from disk. |
 
+A plain project with `hidden: true` is the home of a global agent
+(`agents.md`). It shows in the Agents tab only: lists of projects filter it
+with `isVisibleProject`, MCP `list_projects` leaves it out, and lookups by id
+still find it.
+
 `default_branch` is empty for a plain project. Its base session is named
 after the folder (`base_session_name` in `projects/commands.rs`).
 

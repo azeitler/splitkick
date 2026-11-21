@@ -45,10 +45,11 @@ The **Review** tab shows:
 - **Changes since you last looked**, with who, when and why. Mark them seen, or
   revert one.
 
-## Agents
+## Roles
 
-An agent is a saved profile: a persona prompt, a graph permission and a default
-model. Edit them in **Settings → Agents**.
+A role is a session preset: a persona prompt, a graph permission and a default
+model. Any number of sessions can use the same role. Edit roles in
+**Settings → Roles**. (Earlier versions called a role an agent.)
 
 | Permission | May |
 | --- | --- |
@@ -56,10 +57,10 @@ model. Edit them in **Settings → Agents**.
 | write | also create and edit nodes, and send requests |
 | manage | also commit, accept done and drop nodes |
 
-Start a session from an agent with **Start session…** (in a graph, on a node, in
-Settings → Agents, or in the command palette). The persona and the nodes the
+Start a session with a role with **Start session…** (in a graph, on a node, in
+Settings → Roles, or in the command palette). The persona and the nodes the
 session serves are added to its system prompt. An edit to the persona reaches
-every session of that agent, also running ones, with its next message. In the
+every session with that role, also running ones, with its next message. In the
 session, the **Graph** button (or ⌘K **Toggle Graph Panel**, or
 <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>) opens the **Graph** tab of the
 side panel on the left, next to **Files** and **Network**. It has one card: its node, what it
@@ -67,3 +68,33 @@ waits for and what comes next (or, for a whole-graph session, the progress,
 requests and new changes). **Change link…** opens **Link to Graph…**;
 **Relationships** shows before and after and the siblings; **Show details**
 adds other sessions, the permission and the links.
+
+## Agents
+
+An agent is one named session in a role. It exists once: once in the whole app
+(a **global** agent, for example "Assistant") or once in a project (for example
+the "Release manager" of one project). Because the name is unique, you and
+other sessions can send work to it by name.
+
+- **Create one:** open the **Agents** tab in the sidebar, next to Starred, and
+  select **New**. Give a name, select Global or a project, and optionally a
+  role. A global agent works in a folder that you select (the default is
+  `~/splitkick/agents/<name>`), for example your notes folder. It shows in the
+  Agents tab only, not in the project list.
+- **Make a session an agent:** right-click a session and select
+  **Make Agent…**.
+- **Send it work:** in any session, write "Tell the Release manager to cut
+  1.5.23". The session sends the message to the agent. If the agent is busy,
+  the message waits in its queue and runs next.
+- **Run it on a timer:** in a session, write "Every day at 7:00, tell the
+  Assistant to move my open to-dos to today and send me a summary". The
+  schedule shows in **Scheduled** with the agent's name.
+- **Restart:** right-click the agent's session and select **Restart Agent**
+  when its context is full. A fresh session takes over and gets the history of
+  the old one with its first message. The old session stays as a normal
+  session. Schedules and the name go to the new session.
+- **Rename, change the role, remove:** right-click the agent's session.
+  **Remove Agent** keeps the session and its history.
+
+If you archive or delete the session of an agent, the agent shows
+**No session** in the Agents tab. Select **Restart** to give it a new one.

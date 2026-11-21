@@ -15,8 +15,11 @@ when the contract changes.
   computed, never written.
 - **Sessions point up**: `SessionMetadata.serves` lists node refs. The graph never
   lists sessions.
-- **Agents**: saved profiles in preferences (`agent_profiles`). A session started
-  from an agent stores `agent_id`; its effective graph permission is
+- **Roles** (called "agents" in this document's older parts): saved session
+  presets in preferences (`role_profiles`). A session started from a role
+  stores `role_id`. A named, unique *agent* is a different thing: see
+  `agents.md`. The old names `agent_profiles`, `agent_id` and `agentId` still
+  load through serde aliases; its effective graph permission is
   `graph_permission` (`read` | `write` | `manage`).
 - **The user** (UI commands) always has `manage`. Every change is in the change
   log (per machine). Agents must give a `why`.
@@ -104,7 +107,7 @@ interface GraphSummary {
 interface ServingSession {
   sessionId: string; sessionName: string; projectId: string; worktreeId: string
   worktreeName: string; status: string   // run status label: running | idle | waiting | review | …
-  agentId: string | null
+  roleId: string | null
 }
 interface NodeDerived {
   active: boolean; blocked: boolean; blockers: string[]  // human text, e.g. "depends-on Graph layer design"
@@ -125,7 +128,7 @@ interface GraphDetail {
 }
 type GraphActor =
   | { kind: 'user' }
-  | { kind: 'session'; sessionId: string; sessionName: string; agentId: string | null }
+  | { kind: 'session'; sessionId: string; sessionName: string; roleId: string | null }
 interface GraphChange {
   id: string; graphId: string; nodeId: string | null; at: number   // ms epoch
   actor: GraphActor; action: string   // node.create | node.update | node.state | node.delete | graph.create | graph.update | request.answer | session.serves | revert
@@ -143,7 +146,7 @@ interface GraphRequest {
   kind: 'accept-done' | 'decision'
   title: string; body: string; evidence: string[]; options: string[]
   blocker: string | null            // decision: the blocked-by text it resolves
-  fromSessionId: string | null; fromSessionName: string | null; agentId: string | null
+  fromSessionId: string | null; fromSessionName: string | null; roleId: string | null
   createdAt: number
   status: 'open' | 'accepted' | 'sent-back' | 'answered'
   answer: string | null; answeredAt: number | null
@@ -177,9 +180,9 @@ interface GraphLocationInfo {
 | `commit_graph` | `graphId, message?` (stages and commits only this file: `git add -- f` + `git commit --only -- f`) | commit sha |
 | `set_session_serves` | `sessionId, serves: string[]` (replaces) | `null` |
 | `change_session_serves` | `sessionId, add?: string[], remove?: string[]` (removing a missing ref is a no-op) | `string[]` resulting list |
-| `set_session_agent` | `sessionId, agentId: string \| null, permission?: GraphPermission` (≤ profile level) | `null` |
+| `set_session_role` | `sessionId, roleId: string \| null, permission?: GraphPermission` (≤ profile level) | `null` |
 | `set_session_graph_permission` | `sessionId, permission` | `null` |
-| `create_session` (chat, #109) | also `agentId?, graphPermission? (≤ profile level), serves?` — the agent fills name, backend, model (only with its own backend), permission and serves (`serves` omitted = the profile's `default_serves`, `[]` = none) in one metadata write; refused for terminal sessions | `Session` |
+| `create_session` (chat, #109) | also `roleId?, graphPermission? (≤ profile level), serves?` — the agent fills name, backend, model (only with its own backend), permission and serves (`serves` omitted = the profile's `default_serves`, `[]` = none) in one metadata write; refused for terminal sessions | `Session` |
 
 Answer semantics: `accept` (accept-done) sets the node `done`; `send-back` keeps the
 state and adds the answer as a follow-up note in the requesting session
@@ -190,13 +193,13 @@ format) and also adds a follow-up note. Every answer is in the change log.
 
 - `serves: Vec<String>` (`#[serde(default, skip_serializing_if = "Vec::is_empty")]`):
   `<graph-id>#<node-id>` or `<graph-id>` (whole graph).
-- `agent_id: Option<String>`, `graph_permission: Option<String>`.
+- `role_id: Option<String>`, `graph_permission: Option<String>`.
 - Copied to `Session` in `to_session()`; not synced back in `update_from_session`
-  (as `started_by_session_id`). Fork: keep `serves` and `agent_id`, keep
+  (as `started_by_session_id`). Fork: keep `serves` and `role_id`, keep
   `graph_permission`. Move: keep.
 - Effective permission: `graph_permission`, else the agent's level, else `read`.
 
-## Agent profiles (`AppPreferences.agent_profiles`, snake_case)
+## Agent profiles (`AppPreferences.role_profiles`, snake_case)
 
 ```ts
 interface AgentProfile {
@@ -223,10 +226,10 @@ system prompt of every backend through one helper
 | `send_request` | write | `graphId, nodeId, kind, title, body?, evidence?, options?, blocker?` |
 | `set_serves` | read / manage | `serves` (replaces) **or** `add`/`remove` (arrays of refs; removing a missing ref is a no-op), `sessionId?`, `reason?`. Own session (no `sessionId`): any permission, not logged. Another session: manage and `reason`; logs one `session.serves` change per touched graph (actor = caller, `serves.sessionId` = target, `why` = reason), revertable in Review. Added refs are validated, removed ones not. Returns `{ sessionId, serves, refs }` |
 | `list_requests` | read | `graphId, status? (open \| answered \| all, default all; answered = accepted, sent-back, answered), mine?, nodeId?` — newest first, with `answer`/`answeredAt`; empty `body`/`options`/`blocker` left out |
-| `list_changes` | read | `graphId, nodeId?, limit? (30, max 200), since? (ms), withSnapshots?` — newest first; actor `you` or session name + `agentId`; `revertedBy`, `revertedByUser`, `serves` for `session.serves`; no `before`/`after` unless `withSnapshots`; never changes seen |
+| `list_changes` | read | `graphId, nodeId?, limit? (30, max 200), since? (ms), withSnapshots?` — newest first; actor `you` or session name + `roleId`; `revertedBy`, `revertedByUser`, `serves` for `session.serves`; no `before`/`after` unless `withSnapshots`; never changes seen |
 | `create_graph` | manage | `title, graphType, why` and either `path` (absolute `.yml`/`.yaml`, `~/` expanded) or `projectId` + `relativePath?` (default `.splitkick/graphs/<slug>.yml`, slug as the UI's `slugify`); logs `graph.create` with the session as actor |
-| `create_session` (existing) | — | new optional `serves`, `agentId` (agentId needs manage) |
-| `get_current_context` (existing) | — | also `serves` (`{ ref, graphId, graphTitle, nodeId, nodeTitle }`, titles null when gone), `agentId`, `graphPermission` (effective) |
+| `create_session` (existing) | — | new optional `serves`, `roleId` (roleId needs manage) |
+| `get_current_context` (existing) | — | also `serves` (`{ ref, graphId, graphTitle, nodeId, nodeTitle }`, titles null when gone), `roleId`, `graphPermission` (effective) |
 
 Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
 `anon` callers have `read`.
@@ -283,14 +286,14 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   (opens `LinkToGraphDialog`). Expert layer: file words (id, `state
   committed`), properties, attachments, history, delete; in the panel other
   sessions, lists, outline, permission, `ServesEditor`.
-- Settings → Agents pane; "Start session from agent" dialog; agent badge next to
+- Settings → Roles pane; "Start session from agent" dialog; agent badge next to
   session names (badge when the name differs from the agent name, glyph only when
   equal).
 - New Session dialog (#109): an Agent group under the chat choice ("No agent" +
   profiles, ↑↓ on native desktop, "Edit Agents…"). Right-click/long-press on the
   session tab "+", "New Session from Agent…" in the worktree "…" menu and the
   canvas row menu open it with intent `agent` (first agent chosen). All entry
-  points, and the ⌘K dialog, call the same `create_session` with `agentId`.
+  points, and the ⌘K dialog, call the same `create_session` with `roleId`.
 
 ## Implementation notes (2026-11-03)
 
@@ -349,14 +352,14 @@ Writes without `why` fail. Writes are rate-limited (`RATE_LIMITED_TOOLS`).
   to the Outline tab.
 - **Agents (asserted in `graphs-agents.spec.ts`):**
   - The persona and the agent name are read from the profile when a message
-    is sent, not copied into the session: an edit in Settings → Agents reaches
+    is sent, not copied into the session: an edit in Settings → Roles reaches
     every session of that agent from its next message (the pane says so).
   - The start dialog always writes `graph_permission` (the chosen level, ≤ the
     profile's), so a session keeps its level when the profile changes later.
-    MCP `create_session` with `agentId` writes the profile's level.
+    MCP `create_session` with `roleId` writes the profile's level.
   - Deleting a profile (with confirmation) keeps its sessions and their
-    `agent_id`: badges and the header chip disappear, the graph panel stays
-    (serves or `agent_id` keep it), at the session's own `graph_permission`.
+    `role_id`: badges and the header chip disappear, the graph panel stays
+    (serves or `role_id` keep it), at the session's own `graph_permission`.
   - The session graph panel's permission select is the user acting: it may
     set any level, also above the profile's.
   - A request whose session was deleted still shows its session name;

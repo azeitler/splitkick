@@ -25,7 +25,8 @@ so no window has to be open.
 | Field | Meaning |
 | --- | --- |
 | `origin` | `agent` (ScheduleWakeup, MCP) or `user` |
-| `target` | `session` (into `session_id`) or `new_session` (a new session in `worktree_id` per run) |
+| `target` | `session` (into `session_id`), `new_session` (a new session in `worktree_id` per run) or `agent` (into the current session of the agent `agent_id`, resolved when it fires; see `agents.md`) |
+| `agent_id` | `target: agent` only. `session_id` and `worktree_id` then hold where the agent was when the schedule was made. `cancel_session` does not cancel such a schedule |
 | `session_id` | Where the schedule was made; for `new_session` only where the chat banner shows it |
 | `template` | Queued-message fields overlaid on the session's saved settings at fire time |
 | `enabled` | `false` = paused |

@@ -514,6 +514,26 @@ When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, Command Code, or
 - [ ] Add TS/component/E2E tests for preferences, auth/login UI, execution mode normalization, backend selection, plan approval, cancellation, and magic prompt overrides
 - [ ] Update developer docs, user docs, troubleshooting, and all comments that list supported backends
 
+#### Agents and Roles
+
+Full details in `docs/developer/agents.md`. The parts that bite:
+
+- **A role is a session preset; an agent is one named, unique session.** The
+  old "agent profile" is `RoleProfile` (`role_profiles`, `role_id`). The names
+  `agent_profiles`, `agent_id`, `agentId` and `set_session_agent` still load
+  through serde aliases and fallbacks — do not remove them, files on disk use
+  them.
+- **An agent is a record with a pointer** (`agents.json`,
+  `jean-core/src/agents/`), not a flag on a session. Restart moves the pointer.
+- **A path that archives or deletes a session should call
+  `agents::session_gone`.** `list_agents` heals what is missed, but only when
+  it runs.
+- **Hidden plain projects** (`Project.hidden`) are the homes of global agents.
+  A list of projects for the user filters with `isVisibleProject`; a lookup by
+  id does not.
+- **MCP tests that reach `dispatch_command` need a 32 MB stack** in debug
+  builds (`agent_call` / `folder_call` in `jean_mcp_core.rs` tests).
+
 #### Session Forking
 
 Full details in `docs/developer/session-forking.md`. The parts that bite:

@@ -113,6 +113,14 @@ profile switch already replays the full Jean-local history:
 Only `NativeFork` (and `None`) leave the target's resume id in place;
 `HandoffKind::clears_target_resume()` encodes that.
 
+A restarted agent (`agents::restart_agent`, see `agents.md`) is a new, empty
+session with `SessionMetadata.pending_handoff_from` set to the agent's old
+session. `with_restart_handoff` turns a `None` result into `Fork`, and the
+injected history is then read from that old session instead of the session's
+own (empty) history. Every other handoff wins. The marker is cleared in
+`run_log::complete` like `pending_fork`, and `prepare_forked_metadata` drops
+it, so a fork of the new session does not take the handoff over.
+
 ## Moved sessions
 
 `chat/session_move.rs` moves a session to another worktree, in the same or another

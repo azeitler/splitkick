@@ -7,6 +7,26 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Agents: one named session in a role.** An agent exists once, in the whole
+  app or in one project, so you and other sessions can send it work by name
+  ("Tell the Release manager to cut 1.5.23"). A new **Agents** tab in the
+  sidebar, next to Starred, lists them. Create one there, or right-click a
+  session and select **Make Agent…**. A global agent works in a folder that
+  you select and shows in the Agents tab only. **Restart Agent** continues in
+  a fresh session that gets the history of the old one. A schedule can target
+  an agent and follows it through a restart. New MCP tools: `list_agents` and
+  `send_to_agent`; `create_schedule` takes `agent`.
+
+### Changed
+
+- **Agent profiles are now called Roles.** A role is a session preset
+  (persona, model, permissions) that any number of sessions can use. Settings
+  → Agents is Settings → Roles, and the menus say "role". Saved profiles and
+  sessions keep working. The MCP `create_session` argument is `roleId`;
+  `agentId` still works.
+
 ### Fixed
 
 - **No more "ResizeObserver loop" error toasts.** The browser reports a
