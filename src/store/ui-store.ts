@@ -46,8 +46,8 @@ export type PreferencePane =
   | 'opinionated'
 
 /** Presets of the "Start session from agent" dialog. */
-export interface StartAgentSessionTarget {
-  agentId?: string
+export interface StartRoleSessionTarget {
+  roleId?: string
   /** Graph ref: `<graph-id>` or `<graph-id>#<node-id>` */
   serves?: string
 }
@@ -257,9 +257,9 @@ interface UIState {
    *  cleared by the view). Not persisted. */
   graphFocusNodeId: string | null
   /** Agent the Settings → Agents pane opens on. Not persisted. */
-  editingAgentId: string | null
+  editingRoleId: string | null
   /** Open "Start session from agent" dialog with its presets, or null. */
-  startAgentSessionTarget: StartAgentSessionTarget | null
+  startRoleSessionTarget: StartRoleSessionTarget | null
   /** Global New graph dialog (command palette). Not persisted. */
   newGraphDialogOpen: boolean
   /** Whether the follow-up list (#46) is open next to the send button.
@@ -418,8 +418,8 @@ interface UIState {
   setActiveGraphId: (graphId: string | null) => void
   setGraphFocusNodeId: (nodeId: string | null) => void
   /** Open Settings → Agents on one agent (or the first when null). */
-  openAgentEditor: (agentId: string | null) => void
-  setStartAgentSessionTarget: (target: StartAgentSessionTarget | null) => void
+  openRoleEditor: (roleId: string | null) => void
+  setStartRoleSessionTarget: (target: StartRoleSessionTarget | null) => void
   setNewGraphDialogOpen: (open: boolean) => void
   setFollowUpsOpen: (open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
@@ -558,8 +558,8 @@ export const useUIStore = create<UIState>()(
       scheduledViewOpen: false,
       activeGraphId: null,
       graphFocusNodeId: null,
-      editingAgentId: null,
-      startAgentSessionTarget: null,
+      editingRoleId: null,
+      startRoleSessionTarget: null,
       newGraphDialogOpen: false,
       followUpsOpen: false,
       pendingProjectHomeId: null,
@@ -1283,25 +1283,25 @@ export const useUIStore = create<UIState>()(
           'setGraphFocusNodeId'
         ),
 
-      openAgentEditor: agentId =>
+      openRoleEditor: roleId =>
         set(
           {
-            editingAgentId: agentId,
+            editingRoleId: roleId,
             preferencesOpen: true,
             preferencesPane: 'agents',
           },
           undefined,
-          'openAgentEditor'
+          'openRoleEditor'
         ),
 
-      setStartAgentSessionTarget: target =>
+      setStartRoleSessionTarget: target =>
         set(
           state =>
-            state.startAgentSessionTarget === target
+            state.startRoleSessionTarget === target
               ? state
-              : { startAgentSessionTarget: target },
+              : { startRoleSessionTarget: target },
           undefined,
-          'setStartAgentSessionTarget'
+          'setStartRoleSessionTarget'
         ),
 
       setNewGraphDialogOpen: open =>

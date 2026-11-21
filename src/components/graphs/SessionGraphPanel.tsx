@@ -16,13 +16,13 @@ import {
 } from '@/services/graphs'
 import type { Session } from '@/types/chat'
 import type { GraphDetail, GraphNode, GraphPermission } from '@/types/graphs'
-import { AgentBadge } from './AgentBadge'
+import { RoleBadge } from './RoleBadge'
 import {
   effectivePermission,
   GRAPH_PERMISSIONS,
   PERMISSION_DESCRIPTIONS,
-  useAgentProfile,
-} from './agent-utils'
+  useRoleProfile,
+} from './role-utils'
 import {
   ActiveBadge,
   BlockedBadge,
@@ -51,14 +51,14 @@ import { ServesEditor } from './ServesEditor'
 
 type PanelSession = Pick<
   Session,
-  'id' | 'name' | 'serves' | 'agent_id' | 'graph_permission'
+  'id' | 'name' | 'serves' | 'role_id' | 'graph_permission'
 >
 
 /** Whether a session gets the graph panel (serves something or has an agent). */
 export function sessionHasGraphPanel(
-  session: Pick<Session, 'serves' | 'agent_id'> | null | undefined
+  session: Pick<Session, 'serves' | 'role_id'> | null | undefined
 ): boolean {
-  return !!session && ((session.serves?.length ?? 0) > 0 || !!session.agent_id)
+  return !!session && ((session.serves?.length ?? 0) > 0 || !!session.role_id)
 }
 
 /**
@@ -508,8 +508,8 @@ function WorkerDetails({
                   }
                 >
                   <span className="truncate">{other.sessionName}</span>
-                  <AgentBadge
-                    agentId={other.agentId}
+                  <RoleBadge
+                    roleId={other.roleId}
                     sessionName={other.sessionName}
                   />
                   <span className="truncate text-xs text-muted-foreground">
@@ -702,7 +702,7 @@ function CompactOutlineItem({
 }
 
 function PermissionSection({ session }: { session: PanelSession }) {
-  const agent = useAgentProfile(session.agent_id)
+  const agent = useRoleProfile(session.role_id)
   const setPermission = useSetSessionGraphPermission()
   const permission = effectivePermission(session.graph_permission, agent)
 
@@ -730,7 +730,7 @@ function PermissionSection({ session }: { session: PanelSession }) {
           {agent && (
             <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
               from
-              <AgentBadge agentId={agent.id} />
+              <RoleBadge roleId={agent.id} />
             </span>
           )}
         </div>

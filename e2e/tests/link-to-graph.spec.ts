@@ -59,7 +59,7 @@ const servesChange = {
     kind: 'session',
     sessionId: 'mgr',
     sessionName: 'Release orchestrator',
-    agentId: null,
+    roleId: null,
   },
   action: 'session.serves',
   summary: 'Session "Windows installer" linked to Windows build',

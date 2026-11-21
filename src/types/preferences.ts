@@ -1,7 +1,7 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
-import type { AgentProfile } from './graphs'
+import type { RoleProfile } from './graphs'
 import { getServerPlatform, isServerWindows } from '../lib/platform'
 
 export type CodexGoalExecutionMode = Extract<ExecutionMode, 'build' | 'yolo'>
@@ -1288,7 +1288,7 @@ export interface AppPreferences {
   /** PI custom providers mirrored into ~/.pi/agent/models.json */
   custom_pi_providers: PiProviderProfile[]
   /** Saved agent profiles for graph sessions (docs/developer/graph-layer.md) */
-  agent_profiles: AgentProfile[]
+  role_profiles: RoleProfile[]
   /** Browser MCP for agents (#104); written by `set_browser_engine` */
   browser_engine?:
     | 'off'
@@ -2530,7 +2530,7 @@ export const defaultPreferences: AppPreferences = {
   custom_codex_providers: [],
   default_codex_provider: null,
   custom_pi_providers: [],
-  agent_profiles: [],
+  role_profiles: [],
   browser_engine: 'agent_browser',
   favorite_models: [],
   favorite_package_scripts: [],

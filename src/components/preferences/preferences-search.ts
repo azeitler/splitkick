@@ -169,10 +169,18 @@ const paneEntries: PreferenceSearchEntry[] = [
   {
     id: 'pane-agents',
     pane: 'agents',
-    paneTitle: 'Agents',
+    paneTitle: 'Roles',
     type: 'pane',
-    title: 'Agents',
-    keywords: ['agent', 'persona', 'profile', 'graph', 'permission'],
+    title: 'Roles',
+    keywords: [
+      'role',
+      'preset',
+      'agent',
+      'persona',
+      'profile',
+      'graph',
+      'permission',
+    ],
     anchorId: 'pref-pane-agents',
   },
   {

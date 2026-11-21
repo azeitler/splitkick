@@ -120,10 +120,10 @@ export const test = base.extend<TauriMockFixtures>({
             // Like the backend (#109): an agent fills name, backend, model,
             // permission and serves.
             const prefs = responseMap.load_preferences as
-              | { agent_profiles?: Array<Record<string, unknown>> }
+              | { role_profiles?: Array<Record<string, unknown>> }
               | undefined
-            const agent = args?.agentId
-              ? prefs?.agent_profiles?.find(a => a.id === args.agentId)
+            const agent = args?.roleId
+              ? prefs?.role_profiles?.find(a => a.id === args.roleId)
               : undefined
             const name =
               (args?.name as string) ||
@@ -136,7 +136,7 @@ export const test = base.extend<TauriMockFixtures>({
               created_at: Date.now() / 1000,
               messages: [],
               ...(agent && {
-                agent_id: agent.id,
+                role_id: agent.id,
                 graph_permission:
                   (args?.graphPermission as string) ?? agent.permission,
                 backend: agent.backend ?? undefined,

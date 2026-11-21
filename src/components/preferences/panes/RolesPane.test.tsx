@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
-import { AgentsPane } from './AgentsPane'
+import { RolesPane } from './RolesPane'
 
 const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({ data: { agent_profiles: mocks.profiles } }),
+  usePreferences: () => ({ data: { role_profiles: mocks.profiles } }),
   usePatchPreferences: () => ({ mutateAsync: mocks.patch, isPending: false }),
 }))
 vi.mock('@/services/graphs', () => ({
@@ -29,19 +29,28 @@ const keeper = {
   default_serves: null,
 }
 
-describe('AgentsPane', () => {
+describe('RolesPane', () => {
   beforeEach(() => {
     mocks.patch.mockReset().mockResolvedValue(undefined)
     mocks.profiles = []
   })
 
-  it('creates a new agent in agent_profiles', async () => {
-    render(<AgentsPane />)
-    await userEvent.click(screen.getByRole('button', { name: /New agent/ }))
+  it('explains that a role is a session preset', () => {
+    render(<RolesPane />)
+    expect(
+      screen.getByText(
+        'A role is a session preset: persona, model and permissions. Any number of sessions can use it.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('creates a new agent in role_profiles', async () => {
+    render(<RolesPane />)
+    await userEvent.click(screen.getByRole('button', { name: /New role/ }))
     expect(mocks.patch).toHaveBeenCalledWith({
-      agent_profiles: [
+      role_profiles: [
         expect.objectContaining({
-          name: 'New agent',
+          name: 'New role',
           permission: 'read',
           id: expect.any(String),
         }),
@@ -50,10 +59,10 @@ describe('AgentsPane', () => {
   })
 
   it('offers templates while no agent exists', async () => {
-    render(<AgentsPane />)
+    render(<RolesPane />)
     expect(screen.getByTestId('agent-templates')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Vision keeper/ }))
-    const saved = mocks.patch.mock.calls[0]?.[0].agent_profiles
+    const saved = mocks.patch.mock.calls[0]?.[0].role_profiles
     expect(saved).toEqual([
       expect.objectContaining({
         name: 'Vision keeper',
@@ -67,39 +76,39 @@ describe('AgentsPane', () => {
 
   it('hides the templates once an agent exists', () => {
     mocks.profiles = [keeper]
-    render(<AgentsPane />)
+    render(<RolesPane />)
     expect(screen.queryByTestId('agent-templates')).not.toBeInTheDocument()
   })
 
   it('saves edits to the selected agent', async () => {
     mocks.profiles = [keeper]
-    render(<AgentsPane />)
+    render(<RolesPane />)
     const name = screen.getByLabelText('Name')
     await userEvent.clear(name)
     await userEvent.type(name, 'Roadmap keeper')
     await userEvent.click(screen.getByRole('radio', { name: 'write' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(mocks.patch).toHaveBeenCalledWith({
-      agent_profiles: [
+      role_profiles: [
         { ...keeper, name: 'Roadmap keeper', permission: 'write' },
       ],
     })
     expect(
-      screen.getByText(/Edits reach every session of this agent/)
+      screen.getByText(/Edits reach every session with this role/)
     ).toBeInTheDocument()
   })
 
   it('deletes the selected agent only after the confirmation', async () => {
     mocks.profiles = [keeper]
-    render(<AgentsPane />)
+    render(<RolesPane />)
     await userEvent.click(screen.getByRole('button', { name: /Delete/ }))
     const confirm = screen.getByRole('alertdialog')
-    expect(confirm).toHaveTextContent('Delete agent “Vision keeper”?')
+    expect(confirm).toHaveTextContent('Delete role “Vision keeper”?')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(mocks.patch).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: /Delete/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    expect(mocks.patch).toHaveBeenCalledWith({ agent_profiles: [] })
+    expect(mocks.patch).toHaveBeenCalledWith({ role_profiles: [] })
   })
 })

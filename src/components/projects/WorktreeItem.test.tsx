@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   // Workspaces of the project; two by default, so a selection shows.
   projectWorktreeCount: 2,
   sessions: [] as Session[],
-  // Saved agent profiles (`preferences.agent_profiles`); none by default.
+  // Saved agent profiles (`preferences.role_profiles`); none by default.
   agentProfiles: [] as unknown[],
 }))
 
@@ -76,7 +76,7 @@ vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({
     data:
       mocks.agentProfiles.length > 0
-        ? { agent_profiles: mocks.agentProfiles }
+        ? { role_profiles: mocks.agentProfiles }
         : null,
   }),
 }))
@@ -899,10 +899,10 @@ describe('WorktreeItem agent badge', () => {
       },
     ]
     mocks.sessions = [
-      session('a', 'Planner', { agent_id: 'agent-1' }),
-      session('b', 'Renamed work', { agent_id: 'agent-1' }),
+      session('a', 'Planner', { role_id: 'agent-1' }),
+      session('b', 'Renamed work', { role_id: 'agent-1' }),
       session('c', 'Plain'),
-      session('d', 'Gone agent', { agent_id: 'deleted' }),
+      session('d', 'Gone agent', { role_id: 'deleted' }),
     ]
     useProjectsStore.setState({
       selectedWorktreeId: null,

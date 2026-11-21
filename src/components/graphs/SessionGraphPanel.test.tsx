@@ -21,7 +21,7 @@ const serving = (sessionId: string, sessionName: string) => ({
   worktreeId: 'w1',
   worktreeName: 'issue-77',
   status: 'running',
-  agentId: null,
+  roleId: null,
 })
 
 const graph = detail({
@@ -71,7 +71,7 @@ vi.mock('@/services/graphs', () => ({
   useSetSessionGraphPermission: () => ({ mutate: mocks.setPermission }),
 }))
 vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({ data: { agent_profiles: [] } }),
+  usePreferences: () => ({ data: { role_profiles: [] } }),
 }))
 vi.mock('@/lib/graph-view', () => ({ openGraphView: mocks.openGraphView }))
 vi.mock('@/lib/navigate-to-session', () => ({ navigateToSession: vi.fn() }))
@@ -83,7 +83,7 @@ const worker = {
   id: 'me',
   name: 'Network view',
   serves: ['g1#n77'],
-  agent_id: null,
+  role_id: null,
   graph_permission: 'read',
 }
 
@@ -100,9 +100,9 @@ describe('SessionGraphPanel', () => {
 
   it('is only for sessions that serve something or have an agent', () => {
     expect(sessionHasGraphPanel(worker)).toBe(true)
-    expect(
-      sessionHasGraphPanel({ ...worker, serves: [], agent_id: 'a1' })
-    ).toBe(true)
+    expect(sessionHasGraphPanel({ ...worker, serves: [], role_id: 'a1' })).toBe(
+      true
+    )
     expect(sessionHasGraphPanel({ ...worker, serves: [] })).toBe(false)
     expect(sessionHasGraphPanel(null)).toBe(false)
   })
@@ -155,7 +155,7 @@ describe('SessionGraphPanel', () => {
   })
 
   it('offers Link to Graph… when the session is not linked', async () => {
-    const agentOnly = { ...worker, serves: [], agent_id: 'a1' }
+    const agentOnly = { ...worker, serves: [], role_id: 'a1' }
     render(<SessionGraphPanel session={agentOnly} />)
     expect(
       screen.getByText('This session is not linked to a graph.')

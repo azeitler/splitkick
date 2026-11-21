@@ -38,8 +38,8 @@ import { useAntigravityCliStatus } from '@/services/antigravity-cli'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore, type NewSessionModeTarget } from '@/store/ui-store'
 import { isNativeApp } from '@/lib/environment'
-import { useAgentProfiles } from '@/components/graphs/agent-utils'
-import type { AgentProfile } from '@/types/graphs'
+import { useRoleProfiles } from '@/components/graphs/role-utils'
+import type { RoleProfile } from '@/types/graphs'
 import {
   getBackendIcon,
   getBackendPlainLabel,
@@ -115,25 +115,25 @@ export function NewSessionModeModal() {
   const isMobile = useIsMobile()
   // Arrow keys move the agent choice: native desktop only (keyboard hints).
   const desktopKeys = !isMobile && isNativeApp()
-  const agents = useAgentProfiles()
+  const agents = useRoleProfiles()
   // The agent choice belongs to the target it was made for, so a new
   // target starts again at "No agent" (or the first agent for 'agent').
   const [agentPick, setAgentPick] = useState<{
     target: NewSessionModeTarget
-    agentId: string | null
+    roleId: string | null
   } | null>(null)
-  const selectedAgentId =
+  const selectedRoleId =
     agentPick && agentPick.target === target
-      ? agentPick.agentId
+      ? agentPick.roleId
       : target?.intent === 'agent'
         ? (agents[0]?.id ?? null)
         : null
-  const selectedAgent = selectedAgentId
-    ? agents.find(agent => agent.id === selectedAgentId)
+  const selectedAgent = selectedRoleId
+    ? agents.find(agent => agent.id === selectedRoleId)
     : undefined
   const selectAgent = useCallback(
-    (agentId: string | null) => {
-      if (target) setAgentPick({ target, agentId })
+    (roleId: string | null) => {
+      if (target) setAgentPick({ target, roleId })
     },
     [target]
   )
@@ -254,7 +254,7 @@ export function NewSessionModeModal() {
   )
 
   const chooseChat = useCallback(
-    (agent?: AgentProfile) => {
+    (agent?: RoleProfile) => {
       if (!target) return
       const { worktreeId, worktreePath } = target
       const defaultBackend = (preferences?.default_backend ??
@@ -264,7 +264,7 @@ export function NewSessionModeModal() {
         // An agent brings its own name, backend, model, permission and
         // serves; the backend applies them in the same call (#109).
         agent
-          ? { worktreeId, worktreePath, agentId: agent.id }
+          ? { worktreeId, worktreePath, roleId: agent.id }
           : { worktreeId, worktreePath, backend: defaultBackend },
         {
           onSuccess: session => {
@@ -308,7 +308,7 @@ export function NewSessionModeModal() {
   const editAgents = useCallback(() => {
     autoHandledTargetRef.current = null
     close()
-    useUIStore.getState().openAgentEditor(null)
+    useUIStore.getState().openRoleEditor(null)
   }, [close])
 
   const choosePlainTerminal = useCallback(() => {
@@ -386,7 +386,7 @@ export function NewSessionModeModal() {
       event.stopPropagation()
       const ids = [null, ...agents.map(agent => agent.id)]
       const step = event.key === 'ArrowDown' ? 1 : -1
-      const index = Math.max(0, ids.indexOf(selectedAgentId))
+      const index = Math.max(0, ids.indexOf(selectedRoleId))
       selectAgent(ids[(index + step + ids.length) % ids.length] ?? null)
       return
     }
@@ -454,7 +454,7 @@ export function NewSessionModeModal() {
                   title={`${PRODUCT_NAME} Chat`}
                   subtitle={
                     selectedAgent
-                      ? `As agent ${selectedAgent.name}`
+                      ? `With role ${selectedAgent.name}`
                       : `Normal ChatWindow session with ${PRODUCT_NAME} features`
                   }
                   badge="Default"
@@ -466,7 +466,7 @@ export function NewSessionModeModal() {
 
                 <AgentChoices
                   agents={agents}
-                  selectedAgentId={selectedAgentId}
+                  selectedRoleId={selectedRoleId}
                   showShortcut={desktopKeys}
                   disabled={createSession.isPending}
                   onSelect={selectAgent}
@@ -575,7 +575,7 @@ export function NewSessionModeModal() {
   )
 }
 
-function agentSummary(agent: AgentProfile): string {
+function agentSummary(agent: RoleProfile): string {
   return [agent.permission, agent.backend, agent.model]
     .filter(Boolean)
     .join(' · ')
@@ -584,23 +584,23 @@ function agentSummary(agent: AgentProfile): string {
 /** "No agent" plus the saved agent profiles; the chat choice uses the pick. */
 function AgentChoices({
   agents,
-  selectedAgentId,
+  selectedRoleId,
   showShortcut,
   disabled,
   onSelect,
   onEditAgents,
 }: {
-  agents: AgentProfile[]
-  selectedAgentId: string | null
+  agents: RoleProfile[]
+  selectedRoleId: string | null
   showShortcut: boolean
   disabled?: boolean
-  onSelect: (agentId: string | null) => void
+  onSelect: (roleId: string | null) => void
   onEditAgents: () => void
 }) {
   return (
     <div className="grid min-w-0 gap-1 pl-3" data-testid="new-session-agents">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <span id="new-session-agent-label">Agent</span>
+        <span id="new-session-agent-label">Role</span>
         {showShortcut && agents.length > 0 && (
           <Kbd className="text-[10px]">↑↓</Kbd>
         )}
@@ -609,13 +609,14 @@ function AgentChoices({
           onClick={onEditAgents}
           className="ml-auto rounded px-1 font-normal underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Edit Agents…
+          Edit Roles…
         </button>
       </div>
       {agents.length === 0 ? (
         <div className="text-xs text-muted-foreground">
-          No agents yet. An agent gives a session a persona, a graph permission
-          and a default model. Edit Agents… offers templates to start from.
+          No roles yet. A role is a session preset: a persona, a graph
+          permission and a default model. Edit Roles… offers templates to start
+          from.
         </div>
       ) : (
         <div
@@ -624,9 +625,9 @@ function AgentChoices({
           className="grid max-h-52 min-w-0 gap-1 overflow-y-auto"
         >
           <AgentChoiceRow
-            label="No agent"
+            label="No role"
             detail="A plain chat session"
-            checked={selectedAgentId === null}
+            checked={selectedRoleId === null}
             disabled={disabled}
             onClick={() => onSelect(null)}
           />
@@ -637,7 +638,7 @@ function AgentChoices({
               color={agent.color || 'currentColor'}
               detail={agentSummary(agent)}
               persona={agent.persona.trim().split('\n')[0]}
-              checked={selectedAgentId === agent.id}
+              checked={selectedRoleId === agent.id}
               disabled={disabled}
               onClick={() => onSelect(agent.id)}
             />

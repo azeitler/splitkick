@@ -162,7 +162,7 @@ export const navigationEntries: NavigationEntry[] = [
   {
     type: 'item',
     id: 'agents',
-    name: 'Agents',
+    name: 'Roles',
     icon: Bot,
   },
   {

@@ -1020,7 +1020,7 @@ export function useCreateSession() {
       terminalCommandArgs,
       terminalLabel,
       nativeSessionId,
-      agentId,
+      roleId,
       graphPermission,
       serves,
     }: {
@@ -1035,7 +1035,7 @@ export function useCreateSession() {
       nativeSessionId?: string
       /** Start from this agent profile: its name, backend, model, graph
        * permission and default serves fill what is not given (#109). */
-      agentId?: string
+      roleId?: string
       /** Lower than the agent's level for this session. */
       graphPermission?: GraphPermission
       /** Graph refs; omitted = the agent's default serves. */
@@ -1056,7 +1056,7 @@ export function useCreateSession() {
         terminalCommandArgs,
         terminalLabel,
         nativeSessionId,
-        agentId,
+        roleId,
         graphPermission,
         serves,
       })

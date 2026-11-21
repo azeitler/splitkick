@@ -59,7 +59,7 @@ describe('toggleActiveSessionGraphPanel (#84, #98)', () => {
 
   it('switches an open Files panel to the Graph tab', () => {
     useUIStore.setState({ fileBrowserVisible: true, contextPanelTab: 'files' })
-    toggleActiveSessionGraphPanel(seed({ agent_id: 'a1' }))
+    toggleActiveSessionGraphPanel(seed({ role_id: 'a1' }))
     expect(panel()).toBe('graph')
   })
 

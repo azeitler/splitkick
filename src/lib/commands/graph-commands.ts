@@ -23,13 +23,21 @@ export const graphCommands: AppCommand[] = [
   },
   {
     id: 'graphs.start-agent-session',
-    label: 'Start Session from Agent…',
-    description: 'Start a session from a saved agent profile',
+    label: 'Start Session with Role…',
+    description: 'Start a session with a saved role (a session preset)',
     icon: Play,
     group: 'sessions',
-    keywords: ['agent', 'session', 'start', 'persona', 'graph'],
+    keywords: [
+      'role',
+      'preset',
+      'agent',
+      'session',
+      'start',
+      'persona',
+      'graph',
+    ],
     execute: () => {
-      useUIStore.getState().setStartAgentSessionTarget({})
+      useUIStore.getState().setStartRoleSessionTarget({})
     },
   },
   {
@@ -66,13 +74,21 @@ export const graphCommands: AppCommand[] = [
   },
   {
     id: 'graphs.edit-agents',
-    label: 'Edit Agents…',
-    description: 'Open Settings → Agents',
+    label: 'Edit Roles…',
+    description: 'Open Settings → Roles',
     icon: Bot,
     group: 'settings',
-    keywords: ['agent', 'persona', 'profile', 'settings', 'permission'],
+    keywords: [
+      'role',
+      'preset',
+      'agent',
+      'persona',
+      'profile',
+      'settings',
+      'permission',
+    ],
     execute: () => {
-      useUIStore.getState().openAgentEditor(null)
+      useUIStore.getState().openRoleEditor(null)
     },
   },
 ]

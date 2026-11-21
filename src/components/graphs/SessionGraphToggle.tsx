@@ -19,7 +19,7 @@ import { sessionHasGraphPanel } from './SessionGraphPanel'
 export function SessionGraphToggle({
   session,
 }: {
-  session: Pick<Session, 'serves' | 'agent_id'> | null | undefined
+  session: Pick<Session, 'serves' | 'role_id'> | null | undefined
 }) {
   const visible = useUIStore(
     state => state.fileBrowserVisible && state.contextPanelTab === 'graph'

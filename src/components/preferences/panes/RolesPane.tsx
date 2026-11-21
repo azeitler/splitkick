@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Copy, Play, Plus, Trash2 } from 'lucide-react'
 import {
-  AGENT_COLORS,
-  AGENT_TEMPLATES,
+  ROLE_COLORS,
+  ROLE_TEMPLATES,
   GRAPH_PERMISSIONS,
   PERMISSION_DESCRIPTIONS,
   profileFromTemplate,
-} from '@/components/graphs/agent-utils'
+} from '@/components/graphs/role-utils'
 import { ServesPicker } from '@/components/graphs/ServesPicker'
 import {
   AlertDialog,
@@ -27,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { usePatchPreferences, usePreferences } from '@/services/preferences'
 import { useUIStore } from '@/store/ui-store'
-import type { AgentProfile, GraphPermission } from '@/types/graphs'
+import type { RoleProfile, GraphPermission } from '@/types/graphs'
 import {
   backendOptions,
   codexModelOptions,
@@ -43,11 +43,11 @@ function modelChoicesFor(
   return null
 }
 
-function newProfile(): AgentProfile {
+function newProfile(): RoleProfile {
   return {
     id: crypto.randomUUID(),
-    name: 'New agent',
-    color: AGENT_COLORS[0],
+    name: 'New role',
+    color: ROLE_COLORS[0],
     persona: '',
     permission: 'read',
     backend: null,
@@ -58,146 +58,150 @@ function newProfile(): AgentProfile {
 
 /**
  * Settings → Agents (mockup screen 5c): saved agent profiles
- * (`AppPreferences.agent_profiles`). The persona is read when a message is
+ * (`AppPreferences.role_profiles`). The persona is read when a message is
  * sent, so an edit reaches every session of the agent from its next message.
  */
-export function AgentsPane() {
+export function RolesPane() {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
-  const profiles = preferences?.agent_profiles ?? []
+  const profiles = preferences?.role_profiles ?? []
 
   // Opened on one agent (agent chip, "Edit agents…"): take it once.
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const editingAgentId = useUIStore(state => state.editingAgentId)
+  const editingRoleId = useUIStore(state => state.editingRoleId)
   useEffect(() => {
-    if (!editingAgentId) return
-    setSelectedId(editingAgentId)
-    useUIStore.setState({ editingAgentId: null })
-  }, [editingAgentId])
+    if (!editingRoleId) return
+    setSelectedId(editingRoleId)
+    useUIStore.setState({ editingRoleId: null })
+  }, [editingRoleId])
   const selected = profiles.find(p => p.id === selectedId) ?? profiles[0]
 
-  const save = (next: AgentProfile[]) =>
-    patchPreferences.mutateAsync({ agent_profiles: next })
+  const save = (next: RoleProfile[]) =>
+    patchPreferences.mutateAsync({ role_profiles: next })
 
-  const add = async (profile: AgentProfile) => {
+  const add = async (profile: RoleProfile) => {
     await save([...profiles, profile])
     setSelectedId(profile.id)
   }
 
   return (
-    <div className="flex min-h-[28rem] gap-4" data-testid="agents-pane">
-      <div className="flex w-52 shrink-0 flex-col gap-1">
-        {profiles.map(profile => (
-          <button
-            key={profile.id}
-            type="button"
-            onClick={() => setSelectedId(profile.id)}
-            className={cn(
-              'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-              selected?.id === profile.id && 'bg-accent'
-            )}
-          >
-            <span
-              className="size-2.5 shrink-0 rounded-sm"
-              style={{ backgroundColor: profile.color }}
-            />
-            <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-            <span className="rounded-full border px-1.5 text-[10px] text-muted-foreground">
-              {profile.permission}
-            </span>
-          </button>
-        ))}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="justify-start"
-          onClick={() => add(newProfile())}
-        >
-          <Plus className="size-4" aria-hidden="true" />
-          New agent
-        </Button>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        {selected ? (
-          <AgentEditor
-            key={selected.id}
-            profile={selected}
-            saving={patchPreferences.isPending}
-            onSave={profile =>
-              save(profiles.map(p => (p.id === profile.id ? profile : p)))
-            }
-            onDuplicate={() =>
-              add({
-                ...selected,
-                id: crypto.randomUUID(),
-                name: `${selected.name} copy`,
-              })
-            }
-            onDelete={async () => {
-              await save(profiles.filter(p => p.id !== selected.id))
-              setSelectedId(null)
-            }}
-          />
-        ) : (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              No agents yet. An agent is a saved profile: a persona prompt, a
-              graph permission and a default model. Start sessions from it.
-              Start from a template, then change it as you need.
-            </p>
-            <div
-              className="grid gap-2 sm:grid-cols-2"
-              data-testid="agent-templates"
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        A role is a session preset: persona, model and permissions. Any number
+        of sessions can use it.
+      </p>
+      <div className="flex min-h-[28rem] gap-4" data-testid="agents-pane">
+        <div className="flex w-52 shrink-0 flex-col gap-1">
+          {profiles.map(profile => (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => setSelectedId(profile.id)}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                selected?.id === profile.id && 'bg-accent'
+              )}
             >
-              {AGENT_TEMPLATES.map(template => (
-                <button
-                  key={template.name}
-                  type="button"
-                  disabled={patchPreferences.isPending}
-                  onClick={() => add(profileFromTemplate(template))}
-                  className="flex flex-col gap-1 rounded-md border px-3 py-2 text-left hover:bg-accent/50 disabled:opacity-50"
-                >
-                  <span className="flex items-center gap-2 text-sm font-medium">
-                    <span
-                      className="size-2.5 shrink-0 rounded-sm"
-                      style={{ backgroundColor: template.color }}
-                    />
-                    {template.name}
-                    <span className="ml-auto rounded-full border px-1.5 text-[10px] font-normal text-muted-foreground">
-                      {template.permission}
+              <span
+                className="size-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: profile.color }}
+              />
+              <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+              <span className="rounded-full border px-1.5 text-[10px] text-muted-foreground">
+                {profile.permission}
+              </span>
+            </button>
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="justify-start"
+            onClick={() => add(newProfile())}
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            New role
+          </Button>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {selected ? (
+            <RoleEditor
+              key={selected.id}
+              profile={selected}
+              saving={patchPreferences.isPending}
+              onSave={profile =>
+                save(profiles.map(p => (p.id === profile.id ? profile : p)))
+              }
+              onDuplicate={() =>
+                add({
+                  ...selected,
+                  id: crypto.randomUUID(),
+                  name: `${selected.name} copy`,
+                })
+              }
+              onDelete={async () => {
+                await save(profiles.filter(p => p.id !== selected.id))
+                setSelectedId(null)
+              }}
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                No roles yet. Start from a template, then change it as you need.
+              </p>
+              <div
+                className="grid gap-2 sm:grid-cols-2"
+                data-testid="agent-templates"
+              >
+                {ROLE_TEMPLATES.map(template => (
+                  <button
+                    key={template.name}
+                    type="button"
+                    disabled={patchPreferences.isPending}
+                    onClick={() => add(profileFromTemplate(template))}
+                    className="flex flex-col gap-1 rounded-md border px-3 py-2 text-left hover:bg-accent/50 disabled:opacity-50"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <span
+                        className="size-2.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: template.color }}
+                      />
+                      {template.name}
+                      <span className="ml-auto rounded-full border px-1.5 text-[10px] font-normal text-muted-foreground">
+                        {template.permission}
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {template.summary}
-                  </span>
-                </button>
-              ))}
+                    <span className="text-xs text-muted-foreground">
+                      {template.summary}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-function AgentEditor({
+function RoleEditor({
   profile,
   saving,
   onSave,
   onDuplicate,
   onDelete,
 }: {
-  profile: AgentProfile
+  profile: RoleProfile
   saving: boolean
-  onSave: (profile: AgentProfile) => Promise<unknown>
+  onSave: (profile: RoleProfile) => Promise<unknown>
   onDuplicate: () => void
   onDelete: () => void
 }) {
   const [draft, setDraft] = useState(profile)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const update = (patch: Partial<AgentProfile>) =>
+  const update = (patch: Partial<RoleProfile>) =>
     setDraft(current => ({ ...current, ...patch }))
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile)
   const models = modelChoicesFor(draft.backend)
@@ -216,7 +220,7 @@ function AgentEditor({
         <div className="flex flex-col gap-1.5">
           <Label>Colour</Label>
           <div className="flex h-9 items-center gap-1.5">
-            {AGENT_COLORS.map(color => (
+            {ROLE_COLORS.map(color => (
               <button
                 key={color}
                 type="button"
@@ -239,7 +243,7 @@ function AgentEditor({
         <Label htmlFor="agent-persona">
           Persona prompt{' '}
           <span className="font-normal text-muted-foreground">
-            added to the system prompt of every session started from this agent
+            added to the system prompt of every session that uses this role
           </span>
         </Label>
         <Textarea
@@ -249,8 +253,8 @@ function AgentEditor({
           onChange={e => update({ persona: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          What the agent may decide lives here, in words. The code enforces only
-          the permission below.
+          What a session with this role may decide lives here, in words. The
+          code enforces only the permission below.
         </p>
       </div>
 
@@ -360,7 +364,7 @@ function AgentEditor({
           onClick={() => {
             const ui = useUIStore.getState()
             ui.setPreferencesOpen(false)
-            ui.setStartAgentSessionTarget({ agentId: profile.id })
+            ui.setStartRoleSessionTarget({ roleId: profile.id })
           }}
         >
           <Play className="size-4" aria-hidden="true" />
@@ -377,14 +381,14 @@ function AgentEditor({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Edits reach every session of this agent from its next message: the
+        Edits reach every session with this role from its next message: the
         persona is read when a message is sent. A session keeps the permission
         it was started with.
       </p>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete agent “{profile.name}”?</AlertDialogTitle>
+            <AlertDialogTitle>Delete role “{profile.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
               Sessions started from it stay. They lose its persona and badge,
               and keep the permission they were started with.

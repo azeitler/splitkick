@@ -42,7 +42,7 @@ vi.mock('@/services/preferences', () => ({
       selected_codex_model: 'gpt-5.6-sol',
       default_effort_level: 'max',
       default_codex_reasoning_effort: 'xhigh',
-      agent_profiles: agentProfiles,
+      role_profiles: agentProfiles,
     },
   }),
 }))
@@ -1170,7 +1170,7 @@ describe('NewSessionModeModal', () => {
       openPicker()
       render(<NewSessionModeModal />)
 
-      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+      expect(screen.getByRole('radio', { name: /No role/ })).toHaveAttribute(
         'aria-checked',
         'true'
       )
@@ -1192,14 +1192,14 @@ describe('NewSessionModeModal', () => {
         'aria-checked',
         'true'
       )
-      expect(screen.getByText('As agent Reviewer')).toBeInTheDocument()
+      expect(screen.getByText('With role Reviewer')).toBeInTheDocument()
       fireEvent.keyDown(window, { key: 'Enter' })
 
       expect(mutate).toHaveBeenCalledWith(
         {
           worktreeId: 'worktree-1',
           worktreePath: '/tmp/worktree-1',
-          agentId: 'agent-reviewer',
+          roleId: 'agent-reviewer',
         },
         expect.any(Object)
       )
@@ -1219,13 +1219,13 @@ describe('NewSessionModeModal', () => {
       openPicker('agent')
       render(<NewSessionModeModal />)
       fireEvent.keyDown(window, { key: 'ArrowDown' })
-      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+      expect(screen.getByRole('radio', { name: /No role/ })).toHaveAttribute(
         'aria-checked',
         'true'
       )
       fireEvent.keyDown(window, { key: 'Enter' })
       expect(mutate).toHaveBeenCalledWith(
-        expect.not.objectContaining({ agentId: expect.anything() }),
+        expect.not.objectContaining({ roleId: expect.anything() }),
         expect.any(Object)
       )
     })
@@ -1244,15 +1244,15 @@ describe('NewSessionModeModal', () => {
       render(<NewSessionModeModal />)
       expect(screen.queryByText('↑↓')).not.toBeInTheDocument()
       fireEvent.keyDown(window, { key: 'ArrowDown' })
-      expect(screen.getByRole('radio', { name: /No agent/ })).toHaveAttribute(
+      expect(screen.getByRole('radio', { name: /No role/ })).toHaveAttribute(
         'aria-checked',
         'true'
       )
 
       await userEvent.click(screen.getByRole('radio', { name: /Reviewer/ }))
-      await userEvent.click(screen.getByText('As agent Reviewer'))
+      await userEvent.click(screen.getByText('With role Reviewer'))
       expect(mutate).toHaveBeenCalledWith(
-        expect.objectContaining({ agentId: 'agent-reviewer' }),
+        expect.objectContaining({ roleId: 'agent-reviewer' }),
         expect.any(Object)
       )
     })
@@ -1268,14 +1268,12 @@ describe('NewSessionModeModal', () => {
       ).toBeInTheDocument()
     })
 
-    it('"Edit Agents…" closes the dialog and opens Settings → Agents', async () => {
+    it('"Edit Roles…" closes the dialog and opens Settings → Agents', async () => {
       agentProfiles = []
       openPicker()
       render(<NewSessionModeModal />)
-      expect(screen.getByText(/No agents yet/)).toBeInTheDocument()
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Edit Agents…' })
-      )
+      expect(screen.getByText(/No roles yet/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Roles…' }))
       const state = useUIStore.getState()
       expect(state.newSessionModeTarget).toBeNull()
       expect(state.preferencesOpen).toBe(true)
@@ -1295,7 +1293,7 @@ describe('NewSessionModeModal', () => {
         expect.objectContaining({ backend: 'claude' }),
         expect.any(Object)
       )
-      expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('agentId')
+      expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('roleId')
     })
   })
 })

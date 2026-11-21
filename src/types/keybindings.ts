@@ -483,7 +483,7 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     action: 'toggle_session_graph',
     label: 'Toggle graph panel',
     description:
-      'Show or hide the graph panel of the session (desktop only; the session must serve a graph node or have an agent)',
+      'Show or hide the graph panel of the session (desktop only; the session must serve a graph node or have a role)',
     default_shortcut: 'mod+shift+g',
     category: 'chat',
   },

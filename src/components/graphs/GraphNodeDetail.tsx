@@ -53,7 +53,7 @@ import {
   type RelationKind,
 } from '@/types/graphs'
 import { useUIStore } from '@/store/ui-store'
-import { AgentBadge } from './AgentBadge'
+import { RoleBadge } from './RoleBadge'
 import {
   NodeStateGlyph,
   NotFound,
@@ -247,8 +247,8 @@ export function GraphNodeDetail({
                     }
                   >
                     <span className="truncate">{session.sessionName}</span>
-                    <AgentBadge
-                      agentId={session.agentId}
+                    <RoleBadge
+                      roleId={session.roleId}
                       sessionName={session.sessionName}
                     />
                     <span className="ml-auto shrink-0 text-xs text-muted-foreground">
@@ -271,7 +271,7 @@ export function GraphNodeDetail({
             onClick={() =>
               useUIStore
                 .getState()
-                .setStartAgentSessionTarget({ serves: `${graphId}#${node.id}` })
+                .setStartRoleSessionTarget({ serves: `${graphId}#${node.id}` })
             }
           >
             <Play className="size-3.5" aria-hidden="true" />

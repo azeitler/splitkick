@@ -224,7 +224,7 @@ export function WorktreeDropdownMenu({
             }
           >
             <Bot className="mr-2 h-4 w-4" />
-            New Session from Agent…
+            New Session with Role…
           </DropdownMenuItem>
 
           {!isMobile && runScripts.length === 1 && (

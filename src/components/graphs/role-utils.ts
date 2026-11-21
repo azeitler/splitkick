@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { usePreferences } from '@/services/preferences'
-import type { AgentProfile, GraphPermission } from '@/types/graphs'
+import type { RoleProfile, GraphPermission } from '@/types/graphs'
 
 /** Permission levels, lowest first. */
 export const GRAPH_PERMISSIONS: readonly GraphPermission[] = [
@@ -18,7 +18,7 @@ export const PERMISSION_DESCRIPTIONS: Record<GraphPermission, string> = {
 }
 
 /** Swatches of the agent editor. */
-export const AGENT_COLORS = [
+export const ROLE_COLORS = [
   '#f97316',
   '#3b82f6',
   '#22c55e',
@@ -28,14 +28,14 @@ export const AGENT_COLORS = [
 ] as const
 
 /** A starting point for a new agent: a profile without an id. */
-export type AgentTemplate = Omit<AgentProfile, 'id'> & { summary: string }
+export type RoleTemplate = Omit<RoleProfile, 'id'> & { summary: string }
 
 /** Templates the Agents pane offers while no agent exists. */
-export const AGENT_TEMPLATES: readonly AgentTemplate[] = [
+export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     name: 'Vision keeper',
     summary: 'Owns a whole graph: keeps it true, accepts done work.',
-    color: AGENT_COLORS[0],
+    color: ROLE_COLORS[0],
     permission: 'manage',
     backend: null,
     model: null,
@@ -50,7 +50,7 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = [
   {
     name: 'Project manager',
     summary: 'Turns graph nodes into issues and sessions, then follows up.',
-    color: AGENT_COLORS[1],
+    color: ROLE_COLORS[1],
     permission: 'write',
     backend: null,
     model: null,
@@ -65,7 +65,7 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = [
   {
     name: 'Worker',
     summary: 'Implements the one node it serves, asks when blocked.',
-    color: AGENT_COLORS[2],
+    color: ROLE_COLORS[2],
     permission: 'read',
     backend: null,
     model: null,
@@ -80,7 +80,7 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = [
   {
     name: 'Reviewer',
     summary: 'Checks finished work against its node before it is accepted.',
-    color: AGENT_COLORS[3],
+    color: ROLE_COLORS[3],
     permission: 'read',
     backend: null,
     model: null,
@@ -94,7 +94,7 @@ export const AGENT_TEMPLATES: readonly AgentTemplate[] = [
 ]
 
 /** A new profile made from `template`. */
-export function profileFromTemplate(template: AgentTemplate): AgentProfile {
+export function profileFromTemplate(template: RoleTemplate): RoleProfile {
   const { summary: _summary, ...profile } = template
   return { ...profile, id: crypto.randomUUID() }
 }
@@ -129,26 +129,26 @@ export function asPermission(
  */
 export function effectivePermission(
   sessionPermission: string | null | undefined,
-  agent: AgentProfile | undefined
+  agent: RoleProfile | undefined
 ): GraphPermission {
   return asPermission(sessionPermission) ?? agent?.permission ?? 'read'
 }
 
-const NO_PROFILES: AgentProfile[] = []
+const NO_PROFILES: RoleProfile[] = []
 
-/** Saved agent profiles (`AppPreferences.agent_profiles`). */
-export function useAgentProfiles(): AgentProfile[] {
+/** Saved agent profiles (`AppPreferences.role_profiles`). */
+export function useRoleProfiles(): RoleProfile[] {
   const { data } = usePreferences()
-  return data?.agent_profiles ?? NO_PROFILES
+  return data?.role_profiles ?? NO_PROFILES
 }
 
 /** One saved profile by id, or undefined. */
-export function useAgentProfile(
-  agentId: string | null | undefined
-): AgentProfile | undefined {
-  const profiles = useAgentProfiles()
+export function useRoleProfile(
+  roleId: string | null | undefined
+): RoleProfile | undefined {
+  const profiles = useRoleProfiles()
   return useMemo(
-    () => (agentId ? profiles.find(p => p.id === agentId) : undefined),
-    [profiles, agentId]
+    () => (roleId ? profiles.find(p => p.id === roleId) : undefined),
+    [profiles, roleId]
   )
 }

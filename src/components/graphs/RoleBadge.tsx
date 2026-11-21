@@ -1,9 +1,9 @@
 import { Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useAgentProfile } from './agent-utils'
+import { useRoleProfile } from './role-utils'
 
-interface AgentBadgeProps {
-  agentId: string | null | undefined
+interface RoleBadgeProps {
+  roleId: string | null | undefined
   /** Name of the session the badge sits next to. */
   sessionName?: string | null
   className?: string
@@ -14,14 +14,10 @@ interface AgentBadgeProps {
  * colour when the session was renamed; only the bot glyph when the session
  * still has the agent's name. Nothing for an unknown agent.
  */
-export function AgentBadge({
-  agentId,
-  sessionName,
-  className,
-}: AgentBadgeProps) {
-  const agent = useAgentProfile(agentId)
+export function RoleBadge({ roleId, sessionName, className }: RoleBadgeProps) {
+  const agent = useRoleProfile(roleId)
   if (!agent) return null
-  const title = `Started from agent ${agent.name}`
+  const title = `Role: ${agent.name}`
 
   if (sessionName?.trim() === agent.name.trim()) {
     return (

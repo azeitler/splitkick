@@ -91,19 +91,19 @@ test.beforeEach(({ page }) => {
 
 /** Graphs and agent profiles made by the test; removed after it (cleanup). */
 const registered: string[] = []
-const agentIds: string[] = []
+const roleIds: string[] = []
 
 test.afterEach(async () => {
   const { a } = readEnv()
   for (const id of registered.splice(0)) {
     await api(a, 'remove_graph', { graphId: id }).catch(() => undefined)
   }
-  const ids = agentIds.splice(0)
+  const ids = roleIds.splice(0)
   if (ids.length > 0) {
     const prefs = await api<Prefs>(a, 'load_preferences')
     await api(a, 'patch_preferences', {
       patch: {
-        agent_profiles: (prefs.agent_profiles ?? []).filter(
+        role_profiles: (prefs.role_profiles ?? []).filter(
           p => !ids.includes(p.id)
         ),
       },
@@ -132,7 +132,7 @@ interface Profile {
 }
 
 interface Prefs {
-  agent_profiles?: Profile[]
+  role_profiles?: Profile[]
 }
 
 /** Setup only: save an agent profile (Settings → Agents is test 1's job). */
@@ -151,9 +151,9 @@ async function addAgent(
   }
   const prefs = await api<Prefs>(a, 'load_preferences')
   await api(a, 'patch_preferences', {
-    patch: { agent_profiles: [...(prefs.agent_profiles ?? []), full] },
+    patch: { role_profiles: [...(prefs.role_profiles ?? []), full] },
   })
-  agentIds.push(full.id)
+  roleIds.push(full.id)
   return full
 }
 
@@ -163,7 +163,7 @@ interface Meta {
   worktree_id: string
   backend?: string
   selected_model?: string | null
-  agent_id?: string | null
+  role_id?: string | null
   graph_permission?: string | null
   serves?: string[]
   started_by_session_id?: string | null
@@ -201,17 +201,17 @@ async function agentSession(
   a: Instance,
   name: string,
   opts: {
-    agentId?: string
+    roleId?: string
     permission?: 'read' | 'write' | 'manage'
     serves?: string[]
   } = {}
 ): Promise<string> {
   const { alphaA } = readEnv()
   const id = await createSession(a, alphaA, name)
-  if (opts.agentId) {
-    await api(a, 'set_session_agent', {
+  if (opts.roleId) {
+    await api(a, 'set_session_role', {
       sessionId: id,
-      agentId: opts.agentId,
+      roleId: opts.roleId,
       permission: opts.permission ?? null,
     })
   }
@@ -536,7 +536,7 @@ async function closeSettings(page: Page) {
 }
 
 const startDialog = (page: Page) =>
-  page.getByRole('dialog').filter({ hasText: 'Start session from agent' })
+  page.getByRole('dialog').filter({ hasText: 'Start session with a role' })
 
 const graphPanel = (page: Page) => page.getByTestId('session-graph-panel')
 const panelToggle = (page: Page) =>
@@ -571,13 +571,13 @@ test('agents pane: create, edit every field, save persists, duplicate, delete wi
   const name = `Planner ${tag}`
 
   await openWithSidebar(page)
-  // Entry: command palette "Edit Agents…".
-  await runCommand(page, 'Edit Agents…')
+  // Entry: command palette "Edit Roles…".
+  await runCommand(page, 'Edit Roles…')
   const pane = agentsPane(page)
   await expect(pane).toBeVisible()
-  await pane.getByRole('button', { name: 'New agent' }).click()
-  // A new profile is saved at once as "New agent" and selected.
-  await expect(pane.getByLabel('Name')).toHaveValue('New agent')
+  await pane.getByRole('button', { name: 'New role' }).click()
+  // A new profile is saved at once as "New role" and selected.
+  await expect(pane.getByLabel('Name')).toHaveValue('New role')
 
   // Empty name: Save stays disabled.
   await pane.getByLabel('Name').fill('   ')
@@ -625,12 +625,12 @@ test('agents pane: create, edit every field, save persists, duplicate, delete wi
   const onDisk = () =>
     (
       JSON.parse(readFileSync(join(a.data, 'preferences.json'), 'utf8')) as {
-        agent_profiles?: Profile[]
+        role_profiles?: Profile[]
       }
-    ).agent_profiles ?? []
+    ).role_profiles ?? []
   await expect.poll(() => onDisk().some(p => p.name === name)).toBe(true)
   const saved = onDisk().find(p => p.name === name)!
-  agentIds.push(saved.id) // cleanup
+  roleIds.push(saved.id) // cleanup
   expect(saved).toEqual({
     id: expect.any(String),
     name,
@@ -641,13 +641,13 @@ test('agents pane: create, edit every field, save persists, duplicate, delete wi
     model: 'claude-sonnet-5-5',
     default_serves: `${g.id}#${nodeId}`,
   })
-  // Unsaved "New agent" placeholders are not left behind by this flow.
+  // Unsaved "New role" placeholders are not left behind by this flow.
   expect(onDisk().filter(p => p.id === saved.id)).toHaveLength(1)
 
   // A reload shows the same values.
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await runCommand(page, 'Edit Agents…')
+  await runCommand(page, 'Edit Roles…')
   await profileButton(page, name).click()
   await expect(pane.getByLabel('Name')).toHaveValue(name)
   await expect(pane.getByLabel('Persona prompt')).toHaveValue(
@@ -671,13 +671,13 @@ test('agents pane: create, edit every field, save persists, duplicate, delete wi
     .poll(() => onDisk().filter(p => p.name.startsWith(name)).length)
     .toBe(2)
   const copy = onDisk().find(p => p.name === `${name} copy`)!
-  agentIds.push(copy.id) // cleanup
+  roleIds.push(copy.id) // cleanup
   expect({ ...copy, id: saved.id, name }).toEqual(saved)
 
   // Delete asks first; Cancel keeps the profile.
   await pane.getByRole('button', { name: 'Delete' }).click()
   const confirm = page.getByRole('alertdialog')
-  await expect(confirm).toContainText(`Delete agent “${name} copy”?`)
+  await expect(confirm).toContainText(`Delete role “${name} copy”?`)
   await confirm.getByRole('button', { name: 'Cancel' }).click()
   await expect(confirm).toBeHidden()
   await expect(profileButton(page, `${name} copy`)).toBeVisible()
@@ -731,7 +731,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
     let found: Meta[] = []
     await expect
       .poll(() => {
-        found = allMeta(a).filter(m => !known.has(m.id) && m.agent_id)
+        found = allMeta(a).filter(m => !known.has(m.id) && m.role_id)
         return found.length
       })
       .toBe(1)
@@ -750,7 +750,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
     .click()
   let dialog = startDialog(page)
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel('Agent', { exact: true }).selectOption(writer.id)
+  await dialog.getByLabel('Role', { exact: true }).selectOption(writer.id)
   await expect(dialog.getByLabel('Serves graph')).toHaveValue(g.id)
   await expect(dialog.getByLabel('Serves node')).toHaveValue('')
   // The profile allows write: manage is disabled, write is preselected.
@@ -778,7 +778,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   let m = await newSession()
   expect(m).toMatchObject({
     name: writer.name,
-    agent_id: writer.id,
+    role_id: writer.id,
     graph_permission: 'read',
     serves: [g.id],
     worktree_id: second.worktreeId,
@@ -800,7 +800,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
     .click()
   dialog = startDialog(page)
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel('Agent', { exact: true }).selectOption(manager.id)
+  await dialog.getByLabel('Role', { exact: true }).selectOption(manager.id)
   // The node stays: a picked node wins over the agent's default serves.
   await expect(dialog.getByLabel('Serves graph')).toHaveValue(g.id)
   await expect(dialog.getByLabel('Serves node')).toHaveValue(worker)
@@ -819,7 +819,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   m = await newSession()
   expect(m).toMatchObject({
     name: manager.name,
-    agent_id: manager.id,
+    role_id: manager.id,
     graph_permission: 'manage',
     serves: [`${g.id}#${worker}`],
     backend: 'claude',
@@ -829,12 +829,12 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   await expect(chatInput(page)).toHaveValue('')
 
   // --- Entry 3: Settings → Agents "Start session…" takes the default serves.
-  await runCommand(page, 'Edit Agents…')
+  await runCommand(page, 'Edit Roles…')
   await profileButton(page, manager.name).click()
   await agentsPane(page).getByRole('button', { name: 'Start session…' }).click()
   dialog = startDialog(page)
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByLabel('Agent', { exact: true })).toHaveValue(
+  await expect(dialog.getByLabel('Role', { exact: true })).toHaveValue(
     manager.id
   )
   await expect(dialog.getByLabel('Serves graph')).toHaveValue(g.id)
@@ -843,19 +843,19 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   await expect(dialog).toBeHidden()
   m = await newSession()
   expect(m).toMatchObject({
-    agent_id: manager.id,
+    role_id: manager.id,
     graph_permission: 'manage',
     serves: [`${g.id}#${parent}`],
   })
 
   // --- Entry 4: command palette. Switching the agent resets the level.
-  await runCommand(page, 'Start Session from Agent…')
+  await runCommand(page, 'Start Session with Role…')
   dialog = startDialog(page)
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel('Agent', { exact: true }).selectOption(manager.id)
+  await dialog.getByLabel('Role', { exact: true }).selectOption(manager.id)
   await expect(dialog.getByLabel('Serves node')).toHaveValue(parent)
   await dialog.getByRole('radio', { name: 'write' }).click()
-  await dialog.getByLabel('Agent', { exact: true }).selectOption(writer.id)
+  await dialog.getByLabel('Role', { exact: true }).selectOption(writer.id)
   // The writer has no default serves: "Nothing", and its own level.
   await expect(dialog.getByLabel('Serves graph')).toHaveValue('')
   await expect(dialog.getByLabel('Serves node')).toHaveCount(0)
@@ -864,7 +864,7 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   await dialog.getByRole('button', { name: 'Start session' }).click()
   await expect(dialog).toBeHidden()
   m = await newSession()
-  expect(m.agent_id).toBe(writer.id)
+  expect(m.role_id).toBe(writer.id)
   expect(m.graph_permission).toBe('write')
   expect(m.serves ?? []).toEqual([])
   // No backend/model on the profile: the session default.
@@ -889,7 +889,7 @@ test('persona and graph context reach the agent; plain sessions get none', async
   }) // setup
   const servedName = `Prompted session ${tag}`
   const served = await agentSession(a, servedName, {
-    agentId: agent.id,
+    roleId: agent.id,
     permission: 'write',
     serves: [`${g.id}#${node}`],
   }) // setup
@@ -929,7 +929,7 @@ test('persona and graph context reach the agent; plain sessions get none', async
   // Edit the persona in Settings → Agents. The persona is read when a
   // message is sent: the existing session gets the new one from its next
   // message (documented in graph-layer.md and in the pane).
-  await runCommand(page, 'Edit Agents…')
+  await runCommand(page, 'Edit Roles…')
   await profileButton(page, agent.name).click()
   await expect(agentsPane(page)).toContainText(
     'Edits reach every session of this agent from its next message'
@@ -1131,7 +1131,7 @@ test('MCP permission matrix: none, read, write, manage; raising the level in the
     const other = await addNode(a, g.id, 'Other', { state: 'committed' }) // setup
     const name = `Matrix ${level} ${tag}`
     // No graph_permission on the session: the agent's level applies.
-    const sessionId = await agentSession(a, name, { agentId: agent?.id }) // setup
+    const sessionId = await agentSession(a, name, { roleId: agent?.id }) // setup
     setups.push({ level, g, target, other, name, sessionId })
   }
 
@@ -1261,7 +1261,7 @@ test('MCP permission matrix: none, read, write, manage; raising the level in the
 })
 
 // ===========================================================================
-// 5. MCP create_session with serves and agentId
+// 5. MCP create_session with serves and roleId
 // ===========================================================================
 
 test('MCP create_session: agent, permission and serves from a manage session; refusals', async ({
@@ -1277,9 +1277,9 @@ test('MCP create_session: agent, permission and serves from a manage session; re
   }) // setup
   const boss = await addAgent(a, { name: `Lead ${tag}`, permission: 'manage' }) // setup
   const bossName = `Lead session ${tag}`
-  const bossId = await agentSession(a, bossName, { agentId: boss.id }) // setup
+  const bossId = await agentSession(a, bossName, { roleId: boss.id }) // setup
   const writerName = `Worker session ${tag}`
-  const writerId = await agentSession(a, writerName, { agentId: writer.id }) // setup
+  const writerId = await agentSession(a, writerName, { roleId: writer.id }) // setup
   const child = `Spawned ${tag}`
   const ghost = `Ghost agent ${tag}`
   const badServes = `Bad serves ${tag}`
@@ -1293,7 +1293,7 @@ test('MCP create_session: agent, permission and serves from a manage session; re
       args: {
         worktreeId: alphaA.worktreeId,
         name: child,
-        agentId: writer.id,
+        roleId: writer.id,
         serves: [`${g.id}#${node}`],
       },
       expect: 'ok',
@@ -1303,9 +1303,9 @@ test('MCP create_session: agent, permission and serves from a manage session; re
       args: {
         worktreeId: alphaA.worktreeId,
         name: ghost,
-        agentId: `ghost-${tag}`,
+        roleId: `ghost-${tag}`,
       },
-      expect: `Unknown agentId: ghost-${tag}`,
+      expect: `Unknown roleId: ghost-${tag}`,
     },
     {
       tool: 'create_session',
@@ -1320,7 +1320,7 @@ test('MCP create_session: agent, permission and serves from a manage session; re
   await expect(page.getByText(`Started session ‘${child}’`)).toBeVisible()
   const [spawned] = sessionsNamed(a, child)
   expect(spawned).toMatchObject({
-    agent_id: writer.id,
+    role_id: writer.id,
     graph_permission: 'write',
     serves: [`${g.id}#${node}`],
     started_by_session_id: bossId,
@@ -1338,10 +1338,10 @@ test('MCP create_session: agent, permission and serves from a manage session; re
       args: {
         worktreeId: alphaA.worktreeId,
         name: refused,
-        agentId: writer.id,
+        roleId: writer.id,
       },
       expect:
-        "create_session with agentId needs graph permission 'manage', but this session has 'write'",
+        "create_session with roleId needs graph permission 'manage', but this session has 'write'",
     },
   ])
   expect(sessionsNamed(a, refused)).toEqual([])
@@ -1371,11 +1371,11 @@ test('requests: accept, send back with note, decision options, other answer, no 
     permission: 'write',
   }) // setup
   const askerName = `Asker session ${tag}`
-  const askerId = await agentSession(a, askerName, { agentId: writer.id }) // setup
+  const askerId = await agentSession(a, askerName, { roleId: writer.id }) // setup
   // A request whose session is gone: made over the socket as that session,
   // then the session is deleted (close_session removes its data).
   const ghostName = `Gone session ${tag}`
-  const ghostId = await agentSession(a, ghostName, { agentId: writer.id }) // setup
+  const ghostId = await agentSession(a, ghostName, { roleId: writer.id }) // setup
   await mcp(a, ghostId, 'send_request', {
     graphId: g.id,
     nodeId: d2,
@@ -1614,14 +1614,14 @@ test('review changes: unseen by node, Seen, Mark all seen, own changes, revert, 
     permission: 'write',
   }) // setup
   const agentName = `Changer session ${tag}`
-  const agentId = await agentSession(a, agentName, { agentId: writer.id }) // setup
+  const roleId = await agentSession(a, agentName, { roleId: writer.id }) // setup
 
   await openWithSidebar(page)
   // The user's own setup changes are seen already.
   expect((await changes(a, g.id)).every(c => c.seen)).toBe(true)
   await goToSession(page, agentName)
   const why = (t: string) => `E2E why: ${t}`
-  const [created] = await runCalls(page, a, agentId, [
+  const [created] = await runCalls(page, a, roleId, [
     {
       tool: 'create_node',
       args: { graphId: g.id, title: 'Agent made', why: why('create') },
@@ -1793,16 +1793,16 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
   }
   await agentSession(a, names.plain) // setup
   const workerId = await agentSession(a, names.worker, {
-    agentId: writer.id,
+    roleId: writer.id,
     permission: 'write',
     serves: [`${g.id}#${w}`],
   }) // setup
   const otherId = await agentSession(a, names.other, {
-    agentId: writer.id,
+    roleId: writer.id,
     serves: [`${g.id}#${w}`],
   }) // setup
   await agentSession(a, names.manager, {
-    agentId: boss.id,
+    roleId: boss.id,
     serves: [g.id],
   }) // setup
   await agentSession(a, names.two, { serves: [`${g.id}#${w}`, g2.id] }) // setup
@@ -1972,12 +1972,12 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
   }) // setup
   // Both start with the agent's name, as the start dialog names them.
   const glyphId = await agentSession(a, agent.name, {
-    agentId: agent.id,
+    roleId: agent.id,
     permission: 'write',
     serves: [`${g.id}#${n}`],
   }) // setup
   const renamedId = await agentSession(a, agent.name, {
-    agentId: agent.id,
+    roleId: agent.id,
     permission: 'write',
     serves: [`${g.id}#${n}`],
   }) // setup
@@ -2089,7 +2089,7 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
   await shot(page, 'badges')
 
   // Delete the agent: every badge, the chip and the level go; nothing breaks.
-  await runCommand(page, 'Edit Agents…')
+  await runCommand(page, 'Edit Roles…')
   await profileButton(page, agent.name).click()
   await agentsPane(page).getByRole('button', { name: 'Delete' }).click()
   await page
@@ -2134,7 +2134,7 @@ test('fork of an agent session keeps agent, serves and permission', async ({
   }) // setup
   const name = `Fork source ${tag}`
   const sourceId = await agentSession(a, name, {
-    agentId: agent.id,
+    roleId: agent.id,
     permission: 'write',
     serves: [`${g.id}#${n}`],
   }) // setup
@@ -2155,7 +2155,7 @@ test('fork of an agent session keeps agent, serves and permission', async ({
     })
     .toBe(true)
   expect(fork).toMatchObject({
-    agent_id: agent.id,
+    role_id: agent.id,
     graph_permission: 'write',
     serves: [`${g.id}#${n}`],
   })
@@ -2191,11 +2191,11 @@ test('MCP follow-up tools: create_graph in a project, refused for read; list_req
     permission: 'write',
   }) // setup
   const leadName = `Lead session ${tag}`
-  const leadId = await agentSession(a, leadName, { agentId: lead.id }) // setup
+  const leadId = await agentSession(a, leadName, { roleId: lead.id }) // setup
   const readerName = `Reader session ${tag}`
-  const readerId = await agentSession(a, readerName, { agentId: reader.id }) // setup
+  const readerId = await agentSession(a, readerName, { roleId: reader.id }) // setup
   const askerName = `Asker session ${tag}`
-  const askerId = await agentSession(a, askerName, { agentId: writer.id }) // setup
+  const askerId = await agentSession(a, askerName, { roleId: writer.id }) // setup
 
   await openWithSidebar(page)
 
@@ -2332,7 +2332,7 @@ test('MCP follow-up tools: create_graph in a project, refused for read; list_req
   expect(agentRename).toMatchObject({
     nodeRef: `${g.id}#${edited}`,
     actor: askerName,
-    agentId: writer.id,
+    roleId: writer.id,
     action: 'node.update',
     revertedByUser: true,
   })

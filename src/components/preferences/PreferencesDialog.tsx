@@ -82,7 +82,7 @@ import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
 import { TerminalPane } from './panes/TerminalPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
-import { AgentsPane } from './panes/AgentsPane'
+import { RolesPane } from './panes/RolesPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
 import { UsagePane } from './panes/UsagePane'
@@ -159,7 +159,7 @@ const getPaneTitle = (pane: PreferencePane): string => {
     case 'magic-prompts':
       return 'Magic Prompts'
     case 'agents':
-      return 'Agents'
+      return 'Roles'
     case 'mcp-servers':
       return 'MCP Servers'
     case 'providers':
@@ -788,7 +788,7 @@ export function PreferencesDialog() {
               )}
               {activePane === 'agents' && (
                 <div id="pref-pane-agents" className="min-w-0 max-w-full">
-                  <AgentsPane />
+                  <RolesPane />
                 </div>
               )}
               {activePane === 'web-browser' && (

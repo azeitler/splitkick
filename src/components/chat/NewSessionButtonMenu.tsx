@@ -18,7 +18,7 @@ export function NewSessionButtonMenuContent({
     <ContextMenuContent className="min-w-56">
       <ContextMenuItem onSelect={onNewAgentSession}>
         <Bot className="mr-2 h-4 w-4" />
-        New Session from Agent…
+        New Session with Role…
       </ContextMenuItem>
     </ContextMenuContent>
   )

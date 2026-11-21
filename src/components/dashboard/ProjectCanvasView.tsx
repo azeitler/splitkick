@@ -561,7 +561,7 @@ function WorktreeSectionHeader({
   onDiffClick?: (request: DiffRequest) => void
   /** Opens the label modal, used by the "Manage labels…" submenu item. */
   onSetLabels?: () => void
-  /** "New Session from Agent…" in the row's context menu (#109). */
+  /** "New Session with Role…" in the row's context menu (#109). */
   onNewAgentSession?: () => void
   /**
    * Labels on this worktree, merged with the project pinned state. Merged, not
@@ -994,7 +994,7 @@ function WorktreeSectionHeader({
         {onNewAgentSession && (
           <ContextMenuItem onSelect={onNewAgentSession}>
             <Bot className="mr-2 h-4 w-4" />
-            New Session from Agent…
+            New Session with Role…
           </ContextMenuItem>
         )}
         {onLabelsChange && (

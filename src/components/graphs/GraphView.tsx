@@ -257,7 +257,7 @@ function GraphHeader({ summary }: { summary: GraphSummary }) {
           onClick={() =>
             useUIStore
               .getState()
-              .setStartAgentSessionTarget({ serves: summary.id })
+              .setStartRoleSessionTarget({ serves: summary.id })
           }
         >
           <Play className="size-4" aria-hidden="true" />

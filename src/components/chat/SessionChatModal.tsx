@@ -78,7 +78,7 @@ import { SIDEBAR_ROW_SELECTED } from '@/components/projects/sidebar-row-styles'
 import { LocalPathRootContext } from '@/lib/chat-links'
 import { notify } from '@/lib/notifications'
 import { ChatWindow } from './ChatWindow'
-import { SessionAgentChip } from '@/components/graphs/SessionAgentChip'
+import { SessionRoleChip } from '@/components/graphs/SessionRoleChip'
 import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
 import { SessionTodoToggle } from './SessionTodoToggle'
 import { TodoGlyph } from './TodoGlyph'
@@ -109,7 +109,7 @@ import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { DraftGlyph } from './DraftGlyph'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { AgentBadge } from '@/components/graphs/AgentBadge'
+import { RoleBadge } from '@/components/graphs/RoleBadge'
 import { NewSessionButtonMenuContent } from './NewSessionButtonMenu'
 import {
   SessionContextMenuItems,
@@ -993,7 +993,7 @@ export function SessionChatModal({
   // below); a phone, which has no toolbar, in the modal's own header.
   const sessionChips = (
     <>
-      {!zenMode && <SessionAgentChip session={currentSession} />}
+      {!zenMode && <SessionRoleChip session={currentSession} />}
       {!zenMode && stackedBaseBranch && (
         <span className="inline-flex shrink min-w-0 items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
           <GitBranchPlus className="h-2.5 w-2.5" />
@@ -1531,8 +1531,8 @@ export function SessionChatModal({
                               </Tooltip>
                             )}
                             {renamingSessionId !== session.id && (
-                              <AgentBadge
-                                agentId={session.agent_id}
+                              <RoleBadge
+                                roleId={session.role_id}
                                 sessionName={session.name}
                               />
                             )}

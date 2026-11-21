@@ -120,9 +120,9 @@ const LinkToGraphDialog = lazy(() =>
     default: mod.LinkToGraphDialog,
   }))
 )
-const StartAgentSessionDialog = lazy(() =>
-  import('@/components/graphs/StartAgentSessionDialog').then(mod => ({
-    default: mod.StartAgentSessionDialog,
+const StartRoleSessionDialog = lazy(() =>
+  import('@/components/graphs/StartRoleSessionDialog').then(mod => ({
+    default: mod.StartRoleSessionDialog,
   }))
 )
 const NewGraphDialog = lazy(() =>
@@ -299,8 +299,8 @@ export function MainWindow() {
   )
   const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
   const linkToGraphOpen = useUIStore(state => state.linkToGraphTarget !== null)
-  const startAgentSessionOpen = useUIStore(
-    state => state.startAgentSessionTarget !== null
+  const startRoleSessionOpen = useUIStore(
+    state => state.startRoleSessionTarget !== null
   )
   const newGraphDialogOpen = useUIStore(state => state.newGraphDialogOpen)
   const resolveConflictsDialogOpen = useUIStore(
@@ -563,9 +563,8 @@ export function MainWindow() {
     useRetainedMount(transferSessionOpen)
   const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
   const shouldRenderLinkToGraphDialog = useRetainedMount(linkToGraphOpen)
-  const shouldRenderStartAgentSessionDialog = useRetainedMount(
-    startAgentSessionOpen
-  )
+  const shouldRenderStartRoleSessionDialog =
+    useRetainedMount(startRoleSessionOpen)
   const shouldRenderNewGraphDialog = useRetainedMount(newGraphDialogOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
   const shouldRenderReviewCommentsDialog = useRetainedMount(
@@ -890,9 +889,9 @@ export function MainWindow() {
           <LinkToGraphDialog />
         </Suspense>
       )}
-      {shouldRenderStartAgentSessionDialog && (
+      {shouldRenderStartRoleSessionDialog && (
         <Suspense fallback={null}>
-          <StartAgentSessionDialog />
+          <StartRoleSessionDialog />
         </Suspense>
       )}
       {shouldRenderNewGraphDialog && (

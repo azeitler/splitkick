@@ -19,34 +19,34 @@ import { useGraphs } from '@/services/graphs'
 import { useProjects, useWorktrees } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import type { AgentProfile, GraphPermission } from '@/types/graphs'
+import type { RoleProfile, GraphPermission } from '@/types/graphs'
 import { isBaseSession, isFolder } from '@/types/projects'
 import {
   capPermission,
   permissionsUpTo,
   PERMISSION_DESCRIPTIONS,
   GRAPH_PERMISSIONS,
-  useAgentProfiles,
-} from './agent-utils'
+  useRoleProfiles,
+} from './role-utils'
 import { parseGraphRef } from './graph-utils'
 import { ServesPicker } from './ServesPicker'
 
 /**
  * "Start session from agent" (mockup screen 5b), mounted once in
- * `MainWindow` and opened through `ui-store.startAgentSessionTarget`.
+ * `MainWindow` and opened through `ui-store.startRoleSessionTarget`.
  */
-export function StartAgentSessionDialog() {
-  const target = useUIStore(state => state.startAgentSessionTarget)
+export function StartRoleSessionDialog() {
+  const target = useUIStore(state => state.startRoleSessionTarget)
   return (
     <Dialog
       open={target !== null}
       onOpenChange={open => {
-        if (!open) useUIStore.getState().setStartAgentSessionTarget(null)
+        if (!open) useUIStore.getState().setStartRoleSessionTarget(null)
       }}
     >
       {target && (
-        <StartAgentSessionForm
-          initialAgentId={target.agentId}
+        <StartRoleSessionForm
+          initialRoleId={target.roleId}
           initialServes={target.serves}
         />
       )}
@@ -54,22 +54,22 @@ export function StartAgentSessionDialog() {
   )
 }
 
-export function StartAgentSessionForm({
-  initialAgentId,
+export function StartRoleSessionForm({
+  initialRoleId,
   initialServes,
 }: {
-  initialAgentId?: string
+  initialRoleId?: string
   initialServes?: string
 }) {
-  const agents = useAgentProfiles()
+  const agents = useRoleProfiles()
   const { data: projects } = useProjects()
   const { data: graphs } = useGraphs()
   const createSession = useCreateSession()
 
   // null = follow the agent (its default serves, its level).
-  const [agentId, setAgentId] = useState(initialAgentId ?? '')
-  const agent: AgentProfile | undefined =
-    agents.find(a => a.id === agentId) ?? agents[0]
+  const [roleId, setRoleId] = useState(initialRoleId ?? '')
+  const agent: RoleProfile | undefined =
+    agents.find(a => a.id === roleId) ?? agents[0]
   const [servesChoice, setServes] = useState<string | null>(
     initialServes ?? null
   )
@@ -111,7 +111,7 @@ export function StartAgentSessionForm({
 
   // A new agent brings its level and default serves.
   const selectAgent = (id: string) => {
-    setAgentId(id)
+    setRoleId(id)
     setPermission(null)
     if (!initialServes) setServes(null)
   }
@@ -127,14 +127,14 @@ export function StartAgentSessionForm({
       const session = await createSession.mutateAsync({
         worktreeId: worktree.id,
         worktreePath: worktree.path,
-        agentId: agent.id,
+        roleId: agent.id,
         graphPermission: permission,
         serves: serves ? [serves] : [],
       })
       if (message.trim()) {
         useChatStore.getState().setInputDraft(session.id, message.trim())
       }
-      useUIStore.getState().setStartAgentSessionTarget(null)
+      useUIStore.getState().setStartRoleSessionTarget(null)
       navigateToSession({
         projectId: worktree.project_id,
         worktreeId: worktree.id,
@@ -150,7 +150,7 @@ export function StartAgentSessionForm({
   return (
     <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
       <DialogHeader>
-        <DialogTitle>Start session from agent</DialogTitle>
+        <DialogTitle>Start session with a role</DialogTitle>
         <DialogDescription>
           A normal session: it shows in the sidebar like any other.
         </DialogDescription>
@@ -158,23 +158,23 @@ export function StartAgentSessionForm({
 
       {agents.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No agents yet.{' '}
+          No roles yet.{' '}
           <button
             type="button"
             className="underline"
             onClick={() => {
-              useUIStore.getState().setStartAgentSessionTarget(null)
-              useUIStore.getState().openAgentEditor(null)
+              useUIStore.getState().setStartRoleSessionTarget(null)
+              useUIStore.getState().openRoleEditor(null)
             }}
           >
-            Create one from a template in Settings → Agents
+            Create one from a template in Settings → Roles
           </button>
           .
         </p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="start-agent">Agent</Label>
+            <Label htmlFor="start-agent">Role</Label>
             <NativeSelect
               id="start-agent"
               value={agent?.id ?? ''}
@@ -269,8 +269,8 @@ export function StartAgentSessionForm({
             </RadioGroup>
             {agent && (
               <p className="text-xs text-muted-foreground">
-                The profile allows up to <b>{agent.permission}</b>. You can
-                lower it for one session, not raise it.
+                The role allows up to <b>{agent.permission}</b>. You can lower
+                it for one session, not raise it.
               </p>
             )}
           </div>
@@ -300,7 +300,7 @@ export function StartAgentSessionForm({
         <Button
           type="button"
           variant="ghost"
-          onClick={() => useUIStore.getState().setStartAgentSessionTarget(null)}
+          onClick={() => useUIStore.getState().setStartRoleSessionTarget(null)}
         >
           Cancel
         </Button>

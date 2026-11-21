@@ -71,7 +71,7 @@ export interface ServingSession {
   worktreeName: string
   /** run status label: running | idle | waiting | review | … */
   status: string
-  agentId: string | null
+  roleId: string | null
 }
 export interface NodeDerived {
   active: boolean
@@ -115,7 +115,7 @@ export type GraphActor =
       kind: 'session'
       sessionId: string
       sessionName: string
-      agentId: string | null
+      roleId: string | null
     }
 export interface GraphChange {
   id: string
@@ -156,7 +156,7 @@ export interface GraphRequest {
   blocker: string | null
   fromSessionId: string | null
   fromSessionName: string | null
-  agentId: string | null
+  roleId: string | null
   createdAt: number
   status: 'open' | 'accepted' | 'sent-back' | 'answered'
   answer: string | null
@@ -189,8 +189,8 @@ export type GraphNodePatch = Partial<Omit<GraphNode, 'id'>>
 
 export type GraphRequestAction = 'accept' | 'send-back' | 'answer'
 
-/** Saved agent profile (`AppPreferences.agent_profiles`, snake_case). */
-export interface AgentProfile {
+/** Saved agent profile (`AppPreferences.role_profiles`, snake_case). */
+export interface RoleProfile {
   id: string
   name: string
   color: string

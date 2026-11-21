@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
 import { Dialog } from '@/components/ui/dialog'
 import { useChatStore } from '@/store/chat-store'
-import { StartAgentSessionForm } from './StartAgentSessionDialog'
+import { StartRoleSessionForm } from './StartRoleSessionDialog'
 
 const mocks = vi.hoisted(() => ({
   createSession: vi.fn(),
@@ -24,7 +24,7 @@ const profile = (id: string, name: string, permission: string) => ({
 
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({
-    data: { agent_profiles: [profile('a1', 'Release manager', 'write')] },
+    data: { role_profiles: [profile('a1', 'Release manager', 'write')] },
   }),
 }))
 vi.mock('@/services/chat', () => ({
@@ -54,7 +54,7 @@ vi.mock('@/lib/navigate-to-session', () => ({
   navigateToSession: mocks.navigate,
 }))
 
-describe('StartAgentSessionForm', () => {
+describe('StartRoleSessionForm', () => {
   beforeEach(() => {
     mocks.createSession.mockReset().mockResolvedValue({ id: 'new' })
     mocks.navigate.mockReset()
@@ -63,7 +63,7 @@ describe('StartAgentSessionForm', () => {
   const renderForm = () =>
     render(
       <Dialog open>
-        <StartAgentSessionForm initialServes="g1" />
+        <StartRoleSessionForm initialServes="g1" />
       </Dialog>
     )
 
@@ -85,7 +85,7 @@ describe('StartAgentSessionForm', () => {
     expect(mocks.createSession).toHaveBeenCalledWith({
       worktreeId: 'w1',
       worktreePath: '/repo',
-      agentId: 'a1',
+      roleId: 'a1',
       graphPermission: 'read',
       serves: ['g1'],
     })

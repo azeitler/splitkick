@@ -15,7 +15,7 @@ describe('SessionGraphToggle (#84, #98)', () => {
   })
 
   it('is hidden for a session without a graph link', () => {
-    render(<SessionGraphToggle session={{ serves: [], agent_id: null }} />)
+    render(<SessionGraphToggle session={{ serves: [], role_id: null }} />)
     expect(screen.queryByTestId('session-graph-toggle')).toBeNull()
   })
 
@@ -44,7 +44,7 @@ describe('SessionGraphToggle (#84, #98)', () => {
   })
 
   it('shows for a session started from an agent', () => {
-    render(<SessionGraphToggle session={{ agent_id: 'a1' }} />)
+    render(<SessionGraphToggle session={{ role_id: 'a1' }} />)
     expect(screen.getByTestId('session-graph-toggle')).toHaveTextContent(
       'Graph'
     )

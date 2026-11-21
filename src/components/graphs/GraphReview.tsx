@@ -17,8 +17,8 @@ import type {
   GraphRequest,
   GraphRequestAction,
 } from '@/types/graphs'
-import { AgentBadge } from './AgentBadge'
-import { useAgentProfile } from './agent-utils'
+import { RoleBadge } from './RoleBadge'
+import { useRoleProfile } from './role-utils'
 import type { GraphTabProps } from './graph-tab'
 
 /** How many seen changes show below the line. */
@@ -157,8 +157,8 @@ function RequestCard({
       </div>
       <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
         {request.fromSessionName && <span>{request.fromSessionName}</span>}
-        <AgentBadge
-          agentId={request.agentId}
+        <RoleBadge
+          roleId={request.roleId}
           sessionName={request.fromSessionName}
         />
         <span>
@@ -456,16 +456,16 @@ function ChangeRow({
 
 /** Who made a change: You, or session name + agent badge + permission. */
 function Actor({ actor }: { actor: GraphActor }): ReactNode {
-  const agent = useAgentProfile(actor.kind === 'session' ? actor.agentId : null)
+  const agent = useRoleProfile(actor.kind === 'session' ? actor.roleId : null)
   if (actor.kind === 'user') return <span>You</span>
   return (
     <>
       <span>{actor.sessionName}</span>
-      <AgentBadge agentId={actor.agentId} sessionName={actor.sessionName} />
+      <RoleBadge roleId={actor.roleId} sessionName={actor.sessionName} />
       {agent && (
         <span
           className="rounded-full border px-1.5 text-[10px]"
-          title="Permission of the agent profile"
+          title="Permission of the role"
         >
           {agent.permission}
         </span>

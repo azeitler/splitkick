@@ -337,7 +337,7 @@ export interface Session {
   /** Graph refs this session serves: `<graph-id>#<node-id>` or `<graph-id>` */
   serves?: string[]
   /** Agent profile this session was started from */
-  agent_id?: string | null
+  role_id?: string | null
   /** Graph permission override: `read` | `write` | `manage` */
   graph_permission?: string | null
   /** File path to the current plan (extracted from Write tool calls) */

@@ -238,15 +238,15 @@ export const useChangeSessionServes = () =>
     string[]
   >('change_session_serves', 'Could not change the graph links', true)
 
-export const useSetSessionAgent = () =>
+export const useSetSessionRole = () =>
   useGraphCommand<
     {
       sessionId: string
-      agentId: string | null
+      roleId: string | null
       permission?: GraphPermission
     },
     null
-  >('set_session_agent', 'Could not change the session agent', true)
+  >('set_session_role', 'Could not change the session role', true)
 
 export const useSetSessionGraphPermission = () =>
   useGraphCommand<{ sessionId: string; permission: GraphPermission }, null>(

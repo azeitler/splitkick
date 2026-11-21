@@ -337,11 +337,11 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
   await openWithSidebar(page)
 
   // Settings → Agents: a new manage profile.
-  // Command palette → "Edit Agents…" opens Settings → Agents.
-  await runCommand(page, 'Edit Agents…')
+  // Command palette → "Edit Roles…" opens Settings → Agents.
+  await runCommand(page, 'Edit Roles…')
   const pane = page.getByTestId('agents-pane')
   await expect(pane).toBeVisible()
-  await pane.getByRole('button', { name: 'New agent' }).click()
+  await pane.getByRole('button', { name: 'New role' }).click()
   await pane.getByLabel('Name').fill(state.agentName)
   await pane.getByLabel('Persona prompt').fill('Keeps the roadmap honest.')
   await pane.getByRole('radio', { name: 'manage' }).click()
@@ -352,20 +352,18 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
   await shot(page, 'agents-pane')
 
   const prefs = await api<{
-    agent_profiles: { id: string; name: string; permission: string }[]
+    role_profiles: { id: string; name: string; permission: string }[]
   }>(a, 'load_preferences')
-  const agent = prefs.agent_profiles.find(p => p.name === state.agentName)
+  const agent = prefs.role_profiles.find(p => p.name === state.agentName)
   expect(agent?.permission).toBe('manage')
 
   // "Start session…" on the profile opens the Start session from agent dialog.
   await pane.getByRole('button', { name: 'Start session…' }).click()
   const start = page
     .getByRole('dialog')
-    .filter({ hasText: 'Start session from agent' })
+    .filter({ hasText: 'Start session with a role' })
   await expect(start).toBeVisible()
-  await expect(start.getByLabel('Agent', { exact: true })).toHaveValue(
-    agent!.id
-  )
+  await expect(start.getByLabel('Role', { exact: true })).toHaveValue(agent!.id)
   await start.getByLabel('Serves graph').selectOption({ label: 'E2E roadmap' })
   await expect(start.getByLabel('Serves node')).toHaveValue('')
   await expect(start.getByRole('radio', { name: 'manage' })).toBeChecked()
@@ -380,7 +378,7 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
   await expect
     .poll(() => agentSessionMetadata(a.data, state.agentName))
     .toMatchObject({
-      agent_id: agent!.id,
+      role_id: agent!.id,
       graph_permission: 'manage',
       serves: [state.roadmapId],
     })

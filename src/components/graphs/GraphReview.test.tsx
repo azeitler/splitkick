@@ -20,7 +20,7 @@ vi.mock('@/services/graphs', () => ({
   useRevertGraphChange: () => ({ mutate: mocks.revert, isPending: false }),
 }))
 vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({ data: { agent_profiles: [] } }),
+  usePreferences: () => ({ data: { role_profiles: [] } }),
 }))
 
 const request = (extra: Partial<GraphRequest>): GraphRequest => ({
@@ -35,7 +35,7 @@ const request = (extra: Partial<GraphRequest>): GraphRequest => ({
   blocker: null,
   fromSessionId: 's1',
   fromSessionName: 'Roadmap upkeep',
-  agentId: null,
+  roleId: null,
   createdAt: Date.now() - 40 * 60_000,
   status: 'open',
   answer: null,
@@ -52,7 +52,7 @@ const change = (extra: Partial<GraphChange>): GraphChange => ({
     kind: 'session',
     sessionId: 's1',
     sessionName: 'Roadmap upkeep',
-    agentId: null,
+    roleId: null,
   },
   action: 'node.update',
   summary: 'description edited',

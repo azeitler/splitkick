@@ -34,12 +34,12 @@ describe('NewSessionButtonMenuContent (#109)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'New session' }))
     expect(onClick).toHaveBeenCalledTimes(1)
     expect(
-      screen.queryByRole('menuitem', { name: /New Session from Agent/ })
+      screen.queryByRole('menuitem', { name: /New Session with Role/ })
     ).not.toBeInTheDocument()
     expect(onNewAgentSession).not.toHaveBeenCalled()
   })
 
-  it('right-click offers "New Session from Agent…"', async () => {
+  it('right-click offers "New Session with Role…"', async () => {
     const onClick = vi.fn()
     const onNewAgentSession = vi.fn()
     render(
@@ -47,7 +47,7 @@ describe('NewSessionButtonMenuContent (#109)', () => {
     )
     fireEvent.contextMenu(screen.getByRole('button', { name: 'New session' }))
     await userEvent.click(
-      await screen.findByRole('menuitem', { name: /New Session from Agent/ })
+      await screen.findByRole('menuitem', { name: /New Session with Role/ })
     )
     expect(onNewAgentSession).toHaveBeenCalledTimes(1)
     expect(onClick).not.toHaveBeenCalled()

@@ -28,7 +28,7 @@ const agents = [
 
 test.use({
   responseOverrides: {
-    load_preferences: { ...mockPreferences, agent_profiles: agents },
+    load_preferences: { ...mockPreferences, role_profiles: agents },
   },
 })
 
@@ -40,17 +40,17 @@ test.describe('New Session from an agent', () => {
     await mockPage.getByRole('button', { name: 'New session' }).first().click()
     const dialog = mockPage.getByRole('dialog')
     await expect(
-      dialog.getByRole('radio', { name: /No agent/ })
+      dialog.getByRole('radio', { name: /No role/ })
     ).toHaveAttribute('aria-checked', 'true')
     await expect(dialog.getByRole('radio', { name: /Reviewer/ })).toContainText(
       'write · claude · claude-sonnet-4-6'
     )
     await expect(
-      dialog.getByRole('button', { name: 'Edit Agents…' })
+      dialog.getByRole('button', { name: 'Edit Roles…' })
     ).toBeVisible()
 
     await dialog.getByRole('radio', { name: /Reviewer/ }).click()
-    await dialog.getByRole('button', { name: /As agent Reviewer/ }).click()
+    await dialog.getByRole('button', { name: /With role Reviewer/ }).click()
 
     const tab = mockPage.locator('[data-session-id]', { hasText: 'Reviewer' })
     await expect(tab).toBeVisible({ timeout: 3000 })
@@ -69,7 +69,7 @@ test.describe('New Session from an agent', () => {
       .first()
       .click({ button: 'right' })
     await mockPage
-      .getByRole('menuitem', { name: /New Session from Agent/ })
+      .getByRole('menuitem', { name: /New Session with Role/ })
       .click()
     await expect(
       mockPage.getByRole('dialog').getByRole('radio', { name: /Reviewer/ })
