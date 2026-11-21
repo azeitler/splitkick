@@ -15,7 +15,7 @@ import { moveSessionWithToast } from '@/lib/session-move-toast'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import type { Project, Worktree } from '@/types/projects'
+import { isVisibleProject, type Project, type Worktree } from '@/types/projects'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -46,7 +46,7 @@ export function MoveSessionDialog() {
     enabled: !!target,
     queryFn: async () =>
       (await invoke<Project[]>('list_projects')).filter(
-        project => !project.is_folder
+        project => !project.is_folder && isVisibleProject(project)
       ),
   })
 

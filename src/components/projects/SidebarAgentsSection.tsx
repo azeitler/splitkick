@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BotMessageSquare, X } from 'lucide-react'
 import { groupAgents } from '@/components/agents/agent-rows'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -30,7 +30,7 @@ const openNewAgent = () => useUIStore.getState().setAgentDialog({ mode: 'new' })
  * cache the other tabs share.
  */
 export function SidebarAgentsSection() {
-  const { data: agents = [] } = useAgents()
+  const { data: agents = [], refetch: refetchAgents } = useAgents()
   const { data: projects } = useProjects()
   const isMobile = useIsMobile()
   const { data } = useAllSessions(agents.length > 0)
@@ -65,6 +65,29 @@ export function SidebarAgentsSection() {
     }
     return map
   }, [agents, data?.entries, storeState])
+
+  // An agent that points at a session the loaded list does not have: the
+  // session was archived or deleted by a path that did not tell the agents
+  // (a deleted worktree). Listing the agents again heals the pointer in the
+  // backend, and the row then shows "No session" with Restart. Asked once
+  // per set of such pointers, so a session list that is only late cannot
+  // make this loop.
+  const stalePointers = useMemo(
+    () =>
+      data
+        ? agents
+            .filter(a => a.sessionId && !shortcutsBySession.has(a.sessionId))
+            .map(a => `${a.id}:${a.sessionId}`)
+            .join(',')
+        : '',
+    [agents, data, shortcutsBySession]
+  )
+  const askedFor = useRef('')
+  useEffect(() => {
+    if (!stalePointers || askedFor.current === stalePointers) return
+    askedFor.current = stalePointers
+    void refetchAgents()
+  }, [stalePointers, refetchAgents])
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {

@@ -457,16 +457,16 @@ fn first_fire_time(
 }
 
 /// Where a session lives, for scheduling into it.
-struct SessionRef {
-    worktree_id: String,
-    name: String,
-    order: u32,
-    archived_at: Option<u64>,
+pub(crate) struct SessionRef {
+    pub(crate) worktree_id: String,
+    pub(crate) name: String,
+    pub(crate) order: u32,
+    pub(crate) archived_at: Option<u64>,
 }
 
 /// Look up a session: from its metadata, or, for a session that never sent a
 /// message (its metadata file does not exist yet), from the worktree indexes.
-fn find_session(app: &AppHandle, session_id: &str) -> Result<SessionRef, String> {
+pub(crate) fn find_session(app: &AppHandle, session_id: &str) -> Result<SessionRef, String> {
     if let Some(m) = storage::load_metadata(app, session_id)? {
         return Ok(SessionRef {
             worktree_id: m.worktree_id,

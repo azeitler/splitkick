@@ -52,6 +52,8 @@ describe('MoveSessionDialog', () => {
           return [
             { id: 'p-shop', name: 'shop' },
             { id: 'p-folder', name: 'Group', is_folder: true },
+            // The home of a global agent is no place to move a session to.
+            { id: 'p-home', name: 'assistant', hidden: true },
             { id: 'p-blog', name: 'blog' },
           ]
         }
@@ -77,6 +79,7 @@ describe('MoveSessionDialog', () => {
     await screen.findByRole('option', { name: 'shop' })
     expect(projectSelect()).toHaveValue('')
     expect(screen.queryByRole('option', { name: 'Group' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'assistant' })).toBeNull()
     expect(moveButton()).toBeDisabled()
 
     fireEvent.change(projectSelect(), { target: { value: 'p-shop' } })
@@ -123,7 +126,9 @@ describe('MoveSessionDialog', () => {
 
     fireEvent.click(moveButton())
 
-    await waitFor(() => expect(moveSession).toHaveBeenCalledWith('s1', 'w-blog'))
+    await waitFor(() =>
+      expect(moveSession).toHaveBeenCalledWith('s1', 'w-blog')
+    )
     expect(useUIStore.getState().moveSessionTarget).toBeNull()
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith('Moved session to blog', {

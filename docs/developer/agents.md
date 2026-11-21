@@ -72,9 +72,20 @@ and the session and its history stay reachable. Nothing on disk is deleted.
 - `agents::session_gone(app, session_id)` is called by `archive_session` and
   `close_session`. **A new path that archives or deletes a session should
   call it.**
-- `list_agents` and `agents::current_session` heal what other paths miss: a
-  session counts as live only when its metadata exists, it is not archived,
-  and its worktree exists and is not archived.
+- `list_agents` and `agents::current_session` heal what other paths miss.
+  `session_state` sorts a pointer into three cases, and only the first two
+  are certain:
+  - **Live**: the session exists (also one that never sent a message and has
+    no metadata file yet), is not archived, and its worktree exists and is
+    not archived.
+  - **Gone**: archived or deleted. The pointer is dropped and the id goes to
+    `past_session_ids`. Healing emits `cache:invalidate`.
+  - **Unknown**: the metadata cannot be read, or the worktree was archived
+    automatically because its folder is missing (a drive that is not
+    mounted). The agent shows no session, but keeps its pointer.
+- The Agents tab asks for the agents again when one points at a session the
+  loaded session list does not have, so a path that told nobody still ends
+  in a "No session" row.
 - Auto-archive skips a worktree that holds an agent's current session
   (`Facts.has_agent` in `projects/auto_archive.rs`).
 - A project agent's session cannot move to another project
@@ -82,7 +93,10 @@ and the session and its history stay reachable. Nothing on disk is deleted.
   `worktree_id` follows (`agents::session_moved`).
 - Removing a project removes its agents (`agents::remove_for_project`).
 
-An agent with no session shows as "No session" and offers Restart.
+An agent with no session shows as "No session" and offers Restart. A
+project agent keeps its place in its project's group when its workspace is
+gone, and Restart then continues in the project's base workspace (the same
+for a global agent with a home of its own).
 
 ## Addressing (MCP)
 

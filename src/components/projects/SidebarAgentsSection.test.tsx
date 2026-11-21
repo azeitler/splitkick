@@ -15,12 +15,13 @@ const mocks = vi.hoisted(() => ({
   navigateToSession: vi.fn(),
   remove: vi.fn(),
   restart: vi.fn(),
+  refetch: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 
 vi.mock('@/services/agents', () => ({
-  useAgents: () => ({ data: mocks.agents }),
+  useAgents: () => ({ data: mocks.agents, refetch: mocks.refetch }),
   useAgentForSession: (sessionId: string) =>
     mocks.agents.find(a => a.sessionId === sessionId),
   useRemoveAgent: () => ({ mutate: mocks.remove }),
@@ -88,6 +89,7 @@ describe('SidebarAgentsSection', () => {
     mocks.navigateToSession.mockClear()
     mocks.remove.mockClear()
     mocks.restart.mockClear()
+    mocks.refetch.mockClear()
     mocks.agents = []
     mocks.entries = [
       {
@@ -162,6 +164,20 @@ describe('SidebarAgentsSection', () => {
       screen.getByRole('button', { name: 'Remove agent Release manager' })
     )
     expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+  })
+
+  // The session was archived by a path that did not tell the agents (a
+  // deleted worktree): the row must not stay a name without any action.
+  it('asks for fresh agents when an agent points at a session that is gone', () => {
+    mocks.agents = [agent({ sessionId: 'gone', sessionName: 'old' })]
+    render(<SidebarAgentsSection />)
+    expect(mocks.refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not ask again while every agent session is in the list', () => {
+    mocks.agents = [agent({})]
+    render(<SidebarAgentsSection />)
+    expect(mocks.refetch).not.toHaveBeenCalled()
   })
 
   it('restarts an agent that has no session', async () => {
