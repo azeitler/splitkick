@@ -28,12 +28,13 @@
  *   backticks mark the ends, so a `#` or a `?` inside the name is no longer
  *   ambiguous and `` `q#1?draft.html` `` works. A space still is: nothing
  *   tells `` `open out/report.html` `` (a command) from `` `04 report.html` ``
- *   (a name), so neither is linked. Write the second as a markdown link.
+ *   (a name), so such code goes to the candidate rule below instead.
  * - **Inline code that looks like any other path** (`` `~/Projects/jean` ``,
- *   `` `src/lib/` ``) becomes a *candidate* link (`PATH_CANDIDATE_PROPERTY`).
- *   The renderer draws it as plain code until the backend confirms the path
- *   exists, so `` `and/or` `` never turns into a link. See
- *   `pathLikeInlineCode` for what counts.
+ *   `` `src/lib/` ``, `` `lib.rs` ``, `` `PV Anlage/Liste.md` ``) becomes a
+ *   *candidate* link (`PATH_CANDIDATE_PROPERTY`). The renderer draws it as
+ *   plain code until the backend confirms the path exists, so `` `and/or` ``
+ *   or a command never turns into a link. See `pathLikeInlineCode` for what
+ *   counts.
  */
 
 import type { MdastNode } from '@/lib/remark-fix-interrupted-lists'
@@ -137,25 +138,43 @@ export const PATH_CANDIDATE_PROPERTY = 'dataPathCandidate'
 // code do: `src/**/*.ts`, `a=b/c`, `{a,b}/c`, `$HOME/x`.
 const NOT_A_PATH_RE = /[*?<>|"'`{},;=$!\\]/
 
+// A file extension at the end: `.md`, `.tsx`, `.toml`. Starts with a letter,
+// so `1.2` and `v0.9` are not file names.
+const ENDS_IN_EXTENSION_RE = /\.\p{L}[\p{L}\p{N}]{0,9}$/u
+// One file name, no folder: `lib.rs`, `Cargo.toml`. Starts with a letter,
+// digit or `_`, so `.env` and `...` are not taken.
+const BARE_FILE_NAME_RE =
+  /^[\p{L}\p{N}_][\p{L}\p{N}_.@+-]*\.\p{L}[\p{L}\p{N}]{0,9}$/u
+
 /**
  * Whether inline code is clearly a path (folder or file), and so worth
  * asking the backend about.
  *
  * - Rooted: `/…`, `~/…`, `./…`, `../…` or a Windows drive (`C:\…`).
  * - Relative: holds a `/` and a letter (`src/lib/`), so `1/2` is not one.
+ * - A bare file name with an extension (`lib.rs`).
+ * - Spaces are allowed, because folder and file names hold them
+ *   (`PV Anlage/Materialliste.md`). A command (`open out/report.html`) looks
+ *   the same, but it names no path on disk, so it never becomes a link. To
+ *   keep such lookups rare: single spaces only, no ` -` (a command flag), and
+ *   a relative path with a space must end in an extension or a `/`.
  *
- * Whitespace, URL schemes and glob or shell characters rule it out. A
- * candidate is only a guess: the link appears once the path exists.
+ * URL schemes and glob or shell characters rule it out. A candidate is only
+ * a guess: the link appears once the path exists.
  */
 export function pathLikeInlineCode(text: string): boolean {
   const value = text.trim()
-  if (!value || value.length > 1024 || /\s/.test(value)) return false
+  if (!value || value.length > 1024) return false
+  const spaced = / /.test(value)
+  if (/[^\S ]| {2}| -/.test(value)) return false
   if (/^[A-Za-z]:[\\/]./.test(value)) return !/[*?<>|"`{},;=$!]/.test(value)
-  if (/^[a-z][a-z\d+.-]*:/i.test(value)) return false
+  if (/^[a-z][a-z\d+.-]*:/i.test(value) || value.includes('://')) return false
   if (NOT_A_PATH_RE.test(value)) return false
   if (value.startsWith('//')) return false
   if (/^(?:\/|~\/|\.{1,2}\/)./.test(value)) return true
-  return value.includes('/') && /\p{L}/u.test(value)
+  if (!spaced && BARE_FILE_NAME_RE.test(value)) return true
+  if (!value.includes('/') || !/\p{L}/u.test(value)) return false
+  return !spaced || value.endsWith('/') || ENDS_IN_EXTENSION_RE.test(value)
 }
 
 function linkTo(url: string, child: MdastNode, candidate = false): MdastNode {

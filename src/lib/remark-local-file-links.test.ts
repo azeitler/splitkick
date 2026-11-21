@@ -188,16 +188,25 @@ describe('remarkLocalFileLinks', () => {
     expect(linkUrls(nodes)).toEqual(['q#1?draft.html', 'report.html#top'])
   })
 
-  it('leaves inline code holding a space alone, command or name', () => {
+  it('makes inline code holding a space only a candidate, command or name', () => {
     const nodes = run(
       paragraph(
         { type: 'inlineCode', value: 'open out/report.html' },
         { type: 'text', value: ' and ' },
-        { type: 'inlineCode', value: '04 report.html' }
+        { type: 'inlineCode', value: 'PV Anlage Haus 2/Materialliste.md' }
       )
     )
 
-    expect(linkUrls(nodes)).toEqual([])
+    // Neither is a direct link: each shows only once the path exists.
+    expect(linkUrls(nodes)).toEqual([
+      'open out/report.html',
+      'PV Anlage Haus 2/Materialliste.md',
+    ])
+    for (const node of [nodes[0], nodes[2]]) {
+      expect(
+        (node?.data as { hProperties?: Record<string, unknown> })?.hProperties
+      ).toEqual({ [PATH_CANDIDATE_PROPERTY]: '' })
+    }
   })
 
   it('wraps inline code that is exactly one local file path', () => {
@@ -215,9 +224,10 @@ describe('remarkLocalFileLinks', () => {
       title: null,
       children: [{ type: 'inlineCode', value: 'out/report.html' }],
     })
-    expect(nodes[2]).toEqual({
-      type: 'inlineCode',
-      value: 'open out/report.html',
+    // A command is at most a candidate, never a direct link.
+    expect(nodes[2]?.type).toBe('link')
+    expect(nodes[2]?.data).toEqual({
+      hProperties: { [PATH_CANDIDATE_PROPERTY]: '' },
     })
   })
 
@@ -270,15 +280,30 @@ describe('pathLikeInlineCode', () => {
     'src/lib/',
     'src/lib/chat-links.ts',
     'app/[id]/page.tsx',
+    'README.md',
+    'lib.rs',
+    'Cargo.toml',
+    '/Users/me/My Documents',
+    '~/Library/Mobile Documents/notes',
+    'PV Anlage Haus 2/Materialliste.md',
+    '07_Ausführung/Elektro/Elektrokonzept Haus 2.html',
+    'PV Anlage Haus 2/',
   ])('takes %s as a path', value => {
     expect(pathLikeInlineCode(value)).toBe(true)
   })
 
   it.each([
     '1/2',
-    'README.md',
+    '1.2',
+    'v0.9',
+    '.env',
     'npm run dev',
-    '/Users/me/My Documents',
+    'run tests now',
+    'see docs/api',
+    'git commit -m foo/bar.md',
+    'curl http://localhost:5174/',
+    'a  b/c.md',
+    'a\tb/c.md',
     'https://example.com/a',
     'ssh://host/path',
     'src/**/*.ts',

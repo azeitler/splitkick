@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Paths with spaces in inline code are links.** A path in backticks such as
+  `PV Anlage/Materialliste.md` or `~/Library/Mobile Documents/notes` now
+  becomes a link when it exists. A bare file name (`lib.rs`, `Cargo.toml`)
+  does too. A command in backticks stays plain code, because it names no path
+  on disk. Closes #145
 - **A repeating schedule no longer stacks copies of its prompt.** While a
   session waits (for example for an answer to a question), it does not run its
   queue. Before, each fire of a repeat added one more copy. Now a repeat adds no
