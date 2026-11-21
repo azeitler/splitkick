@@ -292,6 +292,21 @@ async fn start_agent(
             }),
     )
     .await?;
+    // A home made for this agent holds nothing but the agent: remove the
+    // empty default session that every new workspace starts with.
+    if home_project_id.is_some() {
+        let others: Vec<String> =
+            crate::chat::storage::load_sessions(app, &worktree.path, &worktree.id)?
+                .sessions
+                .into_iter()
+                .map(|s| s.id)
+                .filter(|id| id != &session.id)
+                .collect();
+        for id in others {
+            crate::chat::close_session(app.clone(), worktree.id.clone(), worktree.path.clone(), id)
+                .await?;
+        }
+    }
     let agent = Agent {
         id: uuid::Uuid::new_v4().to_string(),
         name: name.to_string(),
@@ -708,6 +723,12 @@ mod tests {
             .find(|p| p.path == folder_text)
             .unwrap();
         assert!(home.hidden && !home.is_git);
+        // The home holds the agent's session only, no empty default beside it.
+        let sessions =
+            crate::chat::storage::load_sessions(&app, &folder_text, &a.worktree_id).unwrap();
+        let names: Vec<&str> = sessions.sessions.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Assistant"]);
+        assert_eq!(sessions.active_session_id, a.session_id);
 
         // Name taken: nothing is created.
         let again = t.path().join("second-home");
