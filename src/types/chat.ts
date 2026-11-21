@@ -419,6 +419,8 @@ export interface Schedule {
   /** The session the schedule was made in */
   session_id: string
   worktree_id: string
+  /** `target: 'agent'` only: the agent (`Agent.id`) the schedule runs for */
+  agent_id?: string
   prompt: string
   reason: string
   fire_at_unix: number
@@ -439,9 +441,11 @@ export interface Schedule {
 
 /**
  * `session`: into the session the schedule was made in. `new_session`: a new
- * session in the same worktree for every run.
+ * session in the same worktree for every run. `agent`: into the current
+ * session of the agent `agent_id`, so it follows the agent through a restart
+ * (made with the MCP `create_schedule` tool).
  */
-export type ScheduleTarget = 'session' | 'new_session'
+export type ScheduleTarget = 'session' | 'new_session' | 'agent'
 
 /** 5-field cron pattern read in an IANA time zone. */
 export interface ScheduleRecurrence {

@@ -519,7 +519,7 @@ fn tool_registry_session() -> Value {
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
         {"name":"set_session_label","description":"Set or clear the label of a Splitkick session. A session has one label; the sidebar row, the session tab, Home and the label filters show it. Omit sessionId to label the calling session. Without color, a label name that is already in use keeps its colour and a new name gets the default yellow. Pass clear true (or label null) to remove the label. Returns sessionId and label (null when cleared). For worktree labels use update_worktree_labels.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to label. Defaults to the calling session."},"label":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string","description":"Hex color like #3b82f6. Optional."}},"required":["name"],"additionalProperties":false},"clear":{"type":"boolean","description":"true removes the session's label."}},"additionalProperties":false}},
         {"name":"set_session_todo","description":"Mark a Splitkick session as To-Do for the user, or clear the mark. The To-Do list in the sidebar and on Home shows every marked session, newest mark first, until the user clears it. Use it when the user must come back to a session, e.g. to review your work (\"I marked this for you to review\"). Omit sessionId to target the calling session. Marking a marked session keeps its first time. Returns sessionId and todoAt (unix seconds, null when cleared).","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"todo":{"type":"boolean","description":"true marks the session as To-Do, false clears the mark."}},"required":["todo"],"additionalProperties":false}},
-        {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A new schedule never replaces an existing one. A repeat adds no new prompt while its previous one is still queued. Returns the schedule, plus a `hint` when a `*/N` cron step does not divide the hour or day.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
+        {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A new schedule never replaces an existing one. A repeat adds no new prompt while its previous one is still queued. Returns the schedule, plus a `hint` when a `*/N` cron step does not divide the hour or day.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"agent":{"type":"string","description":"Run in the current session of this named agent (name or id from list_agents), instead of sessionId or worktreeId. The schedule follows the agent when it is restarted in a fresh session."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
         {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
         {"name":"cancel_schedule","description":"Delete one Splitkick schedule by id (from list_schedules or create_schedule). Returns whether it existed.","inputSchema":{"type":"object","properties":{"scheduleId":{"type":"string"}},"required":["scheduleId"],"additionalProperties":false}},
         {"name":"add_artifact","description":"Register a file or URL you produced that the user should look at (report, screenshot, generated doc, HTML page, preview URL) in the Artifacts tab of a Splitkick session. Not for every edited source file: only outputs worth opening. Register it again with the same target after you change the file: Splitkick keeps a copy of the file per version, so the user can open and compare versions; pass change to say what changed. Unchanged content adds no version. The Artifacts tab does not replace your reply: also show every artifact in the chat (embed an image as ![title](path), put short text or its key part in the reply, link files and URLs). Omit sessionId to target the calling session. Returns sessionId and the artifact with its versions.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1,"description":"Short name shown in the list."},"target":{"type":"string","minLength":1,"description":"Absolute path, path relative to the worktree, or http(s)/file URL."},"note":{"type":"string","description":"What the artifact is, one line. Omit it for a new version: the current note stays (a different note on a new version is stored as its change)."},"change":{"type":"string","description":"What changed since the last version, one short line (e.g. \"Added the Q3 table\"). Pass it every time you register a changed file. Also adds a version for a URL."},"sessionId":{"type":"string","description":"Session whose list gets the artifact. Defaults to the calling session."}},"required":["title","target"],"additionalProperties":false}},
@@ -1838,6 +1838,19 @@ async fn run_tool(
             if fire_at_unix.is_none() && recurrence.is_none() {
                 return Err(ToolError::invalid_params("Give at or cron"));
             }
+            // `agent`: the schedule follows that agent, whatever its session.
+            let agent_id = match optional_str(&args, "agent") {
+                Some(key) => {
+                    let project_id = resolve_session_worktree(app, source)
+                        .ok()
+                        .and_then(|(worktree_id, _)| {
+                            resolve_worktree_project(app, &worktree_id).ok()
+                        })
+                        .map(|(id, _, _)| id);
+                    Some(resolve_agent(app, &key, project_id.as_deref())?.id)
+                }
+                None => None,
+            };
             let schedule = crate::chat::schedules::create_for_agent(
                 app,
                 crate::chat::schedules::AgentScheduleRequest {
@@ -1849,6 +1862,7 @@ async fn run_tool(
                         .map(|_| source.to_string()),
                     session_id: optional_str(&args, "sessionId"),
                     worktree_id: optional_str(&args, "worktreeId"),
+                    agent_id,
                     prompt,
                     name: optional_str(&args, "name"),
                     fire_at_unix,
@@ -1856,7 +1870,7 @@ async fn run_tool(
                 },
             )
             .map_err(ToolError::invalid_params)?;
-            let mut result = json!({ "schedule": describe_schedule(&schedule) });
+            let mut result = json!({ "schedule": describe_schedule(app, &schedule) });
             if let Some(hint) = schedule
                 .recurrence
                 .as_ref()
@@ -1873,7 +1887,7 @@ async fn run_tool(
                 .iter()
                 .filter(|s| session_id.as_ref().is_none_or(|id| &s.session_id == id))
                 .filter(|s| worktree_id.as_ref().is_none_or(|id| &s.worktree_id == id))
-                .map(describe_schedule)
+                .map(|schedule| describe_schedule(app, schedule))
                 .collect();
             Ok(json!({ "schedules": schedules }))
         }
@@ -2374,25 +2388,7 @@ async fn run_tool(
                     .and_then(|(worktree_id, _)| resolve_worktree_project(app, &worktree_id).ok())
                     .map(|(id, _, _)| id)
             });
-            let agents = crate::agents::store::load(app).map_err(ToolError::internal)?;
-            let agent = match crate::agents::store::resolve(&agents, &key, project_id.as_deref()) {
-                crate::agents::store::Resolved::One(agent) => agent.clone(),
-                crate::agents::store::Resolved::None => {
-                    return Err(ToolError::invalid_params(format!(
-                        "No agent named \"{key}\". Call list_agents to see the agents."
-                    )))
-                }
-                crate::agents::store::Resolved::Many(candidates) => {
-                    return Err(ToolError::invalid_params(format!(
-                        "More than one agent is named \"{key}\". Pass projectId, or one of these ids: {}",
-                        candidates
-                            .iter()
-                            .map(|a| a.id.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )))
-                }
-            };
+            let agent = resolve_agent(app, &key, project_id.as_deref())?;
             let session_id = crate::agents::current_session(app, &agent.id)
                 .map_err(ToolError::internal)?
                 .ok_or_else(|| {
@@ -2441,6 +2437,31 @@ async fn run_tool(
             run_graph_tool(app, name, &args, source).await
         }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
+    }
+}
+
+/// The agent `key` names: an id, or a name looked up in `project_id` first and
+/// then among the global agents.
+fn resolve_agent(
+    app: &AppHandle,
+    key: &str,
+    project_id: Option<&str>,
+) -> Result<crate::agents::Agent, ToolError> {
+    use crate::agents::store::Resolved;
+    let agents = crate::agents::store::load(app).map_err(ToolError::internal)?;
+    match crate::agents::store::resolve(&agents, key, project_id) {
+        Resolved::One(agent) => Ok(agent.clone()),
+        Resolved::None => Err(ToolError::invalid_params(format!(
+            "No agent named \"{key}\". Call list_agents to see the agents."
+        ))),
+        Resolved::Many(candidates) => Err(ToolError::invalid_params(format!(
+            "More than one agent is named \"{key}\". Pass one of these ids: {}",
+            candidates
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
     }
 }
 
@@ -2781,7 +2802,22 @@ fn search_sessions_result(response: &crate::chat::search::SessionSearchResponse)
 }
 
 /// A schedule as MCP tools return it (camelCase, like the other tools).
-fn describe_schedule(schedule: &crate::chat::schedules::Schedule) -> Value {
+fn describe_schedule(app: &AppHandle, schedule: &crate::chat::schedules::Schedule) -> Value {
+    let mut described = describe_schedule_base(schedule);
+    // An agent schedule runs in the agent's session of the moment;
+    // `sessionId` is only where the agent was when the schedule was made.
+    if let Some(agent_id) = &schedule.agent_id {
+        described["agentId"] = json!(agent_id);
+        described["agentName"] = crate::agents::store::load(app)
+            .ok()
+            .and_then(|agents| agents.into_iter().find(|a| &a.id == agent_id))
+            .map(|a| json!(a.name))
+            .unwrap_or(Value::Null);
+    }
+    described
+}
+
+fn describe_schedule_base(schedule: &crate::chat::schedules::Schedule) -> Value {
     json!({
         "id": schedule.id,
         "origin": schedule.origin,
@@ -7975,6 +8011,90 @@ mod tests {
             !parts.iter().any(|p| p.contains("## Splitkick graph")),
             "{parts:?}"
         );
+    }
+
+    fn stored_schedule(id: &str) -> crate::chat::schedules::Schedule {
+        crate::chat::schedules::list()
+            .into_iter()
+            .find(|s| s.id == id)
+            .expect("the schedule")
+    }
+
+    #[test]
+    fn a_schedule_for_an_agent_follows_a_restart() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(None);
+        let agent_id = make_agent(&app, "tool-s1", "Assistant", true);
+        let created = agent_call(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "daily summary", "cron": "0 7 * * *", "tz": "UTC", "agent": "assistant" }),
+            "anon",
+        )
+        .unwrap();
+        assert_eq!(created["schedule"]["target"], "agent");
+        assert_eq!(created["schedule"]["agentId"], agent_id);
+        assert_eq!(created["schedule"]["agentName"], "Assistant");
+        assert_eq!(created["schedule"]["sessionId"], "tool-s1");
+        let id = created["schedule"]["id"].as_str().unwrap().to_string();
+        // It belongs to the agent: archiving that session does not cancel it.
+        assert!(!crate::chat::schedules::cancel_session(&app, "tool-s1").unwrap());
+
+        let restarted =
+            block_on(crate::agents::restart_agent(app.clone(), agent_id.clone())).unwrap();
+        let new_session = restarted.session_id.expect("a new session");
+        assert_ne!(new_session, "tool-s1");
+        let resolved =
+            crate::chat::schedules::resolve_agent_target(&app, &stored_schedule(&id)).unwrap();
+        assert_eq!(resolved.session_id, new_session);
+        assert_eq!(resolved.worktree_id, "tool-wt");
+        crate::chat::schedules::delete(&app, &id).unwrap();
+    }
+
+    #[test]
+    fn a_schedule_for_a_missing_agent_fails_with_a_clear_error() {
+        let (_temp, app, _graph_id, _node_id) = graph_fixture(None);
+        let unknown = agent_call(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "p", "cron": "0 7 * * *", "tz": "UTC", "agent": "Nobody" }),
+            "anon",
+        )
+        .unwrap_err();
+        assert!(
+            unknown.message.contains("No agent named"),
+            "{}",
+            unknown.message
+        );
+
+        let agent_id = make_agent(&app, "tool-s1", "Assistant", true);
+        let both = agent_call(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "p", "cron": "0 7 * * *", "tz": "UTC", "agent": "Assistant", "sessionId": "tool-s1" }),
+            "anon",
+        )
+        .unwrap_err();
+        assert!(both.message.contains("agent"), "{}", both.message);
+
+        let created = agent_call(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "p", "cron": "0 7 * * *", "tz": "UTC", "agent": "Assistant" }),
+            "anon",
+        )
+        .unwrap();
+        let id = created["schedule"]["id"].as_str().unwrap().to_string();
+        // The session is gone: the schedule says so when it comes due.
+        crate::agents::session_gone(&app, "tool-s1");
+        let gone =
+            crate::chat::schedules::resolve_agent_target(&app, &stored_schedule(&id)).unwrap_err();
+        assert!(gone.contains("has no session"), "{gone}");
+        // The agent is gone.
+        block_on(crate::agents::remove_agent(app.clone(), agent_id)).unwrap();
+        let removed =
+            crate::chat::schedules::resolve_agent_target(&app, &stored_schedule(&id)).unwrap_err();
+        assert!(removed.contains("agent no longer exists"), "{removed}");
+        crate::chat::schedules::delete(&app, &id).unwrap();
     }
 
     #[test]

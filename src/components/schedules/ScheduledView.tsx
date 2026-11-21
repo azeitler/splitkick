@@ -43,6 +43,7 @@ import {
   updateSchedule,
   useSchedules,
 } from '@/services/schedules'
+import { useAgents } from '@/services/agents'
 import { useAllSessions } from '@/services/chat'
 import type { AllSessionsResponse, Schedule } from '@/types/chat'
 
@@ -119,6 +120,13 @@ export function ScheduledView() {
   )
 }
 
+/** The "Runs in" text of a schedule that targets a named agent. */
+function agentRunsIn(agentName: string | undefined): string {
+  return agentName
+    ? `Agent ${agentName}, in its current session`
+    : 'An agent that was removed'
+}
+
 export function ScheduledList({
   showHeading = false,
 }: {
@@ -127,6 +135,7 @@ export function ScheduledList({
   const queryClient = useQueryClient()
   const { data: schedules, isLoading } = useSchedules()
   const { data: sessions } = useAllSessions()
+  const { data: agents } = useAgents()
   const [busy, setBusy] = useState<string | null>(null)
   const [editing, setEditing] = useState<Schedule | null>(null)
   // "in 2h" / "5m ago" tick without a refetch (#123).
@@ -243,10 +252,20 @@ export function ScheduledList({
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                   <dt className="text-muted-foreground">Runs in</dt>
                   <dd className="min-w-0 truncate">
-                    {where.projectName} › {where.worktreeName} ›{' '}
-                    {schedule.target === 'new_session'
-                      ? 'a new session each run'
-                      : (where.sessionName ?? 'Unknown session')}
+                    {schedule.target === 'agent' ? (
+                      // It follows the agent; the session it was made in is
+                      // not where the next run goes.
+                      agentRunsIn(
+                        agents?.find(a => a.id === schedule.agent_id)?.name
+                      )
+                    ) : (
+                      <>
+                        {where.projectName} › {where.worktreeName} ›{' '}
+                        {schedule.target === 'new_session'
+                          ? 'a new session each run'
+                          : (where.sessionName ?? 'Unknown session')}
+                      </>
+                    )}
                   </dd>
                   <dt className="text-muted-foreground">Rule</dt>
                   <dd>

@@ -133,6 +133,9 @@ pub enum ScheduleTarget {
     Session,
     /// Into a new session in `worktree_id`, one per run (clean context)
     NewSession,
+    /// Into the current session of the agent `agent_id`, resolved when the
+    /// schedule fires, so it follows the agent through a restart
+    Agent,
 }
 
 fn default_true() -> bool {
@@ -165,6 +168,11 @@ pub struct Schedule {
     /// shows in the chat, not where it runs)
     pub session_id: String,
     pub worktree_id: String,
+    /// `ScheduleTarget::Agent` only: the agent (`crate::agents`) it runs for.
+    /// `session_id` and `worktree_id` then hold where the agent was when the
+    /// schedule was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     pub prompt: String,
     #[serde(default)]
     pub reason: String,
@@ -220,6 +228,7 @@ impl Schedule {
             target: ScheduleTarget::Session,
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
+            agent_id: None,
             prompt,
             reason: String::new(),
             fire_at_unix,
@@ -702,6 +711,8 @@ pub struct AgentScheduleRequest {
     pub session_id: Option<String>,
     /// Run into a new session in this worktree each time instead
     pub worktree_id: Option<String>,
+    /// Run into the current session of this agent, whichever it is then
+    pub agent_id: Option<String>,
     pub prompt: String,
     pub name: Option<String>,
     pub fire_at_unix: Option<u64>,
@@ -758,6 +769,19 @@ pub fn create_for_agent(
             .unwrap_or_else(|| "plan".into())
     });
 
+    if request.agent_id.is_some() && (request.session_id.is_some() || request.worktree_id.is_some())
+    {
+        return Err("Give agent, sessionId or worktreeId, not more than one".to_string());
+    }
+    // An agent schedule starts as a schedule into the agent's session of now.
+    let agent_session = match &request.agent_id {
+        Some(agent_id) => Some(
+            crate::agents::current_session(app, agent_id)?
+                .ok_or_else(|| NO_AGENT_SESSION.to_string())?,
+        ),
+        None => None,
+    };
+
     let (target, session_id, worktree_id, target_mode) = match &request.worktree_id {
         Some(worktree_id) => {
             resolve_worktree_path(app, worktree_id)
@@ -775,9 +799,9 @@ pub fn create_for_agent(
             )
         }
         None => {
-            let session_id = request
-                .session_id
+            let session_id = agent_session
                 .clone()
+                .or_else(|| request.session_id.clone())
                 .or_else(|| request.caller_session_id.clone())
                 .ok_or_else(|| "Give sessionId or worktreeId".to_string())?;
             let target = find_session(app, &session_id)?;
@@ -790,12 +814,12 @@ pub fn create_for_agent(
             let mode = load(&session_id)
                 .ok()
                 .and_then(|m| m.selected_execution_mode);
-            (
-                ScheduleTarget::Session,
-                session_id,
-                target.worktree_id,
-                mode,
-            )
+            let kind = if agent_session.is_some() {
+                ScheduleTarget::Agent
+            } else {
+                ScheduleTarget::Session
+            };
+            (kind, session_id, target.worktree_id, mode)
         }
     };
 
@@ -809,6 +833,7 @@ pub fn create_for_agent(
     );
     schedule.name = request.name.unwrap_or_default().trim().to_string();
     schedule.target = target;
+    schedule.agent_id = request.agent_id;
     schedule.recurrence = request.recurrence;
     schedule.template = Some(serde_json::json!({
         "executionMode": capped_mode(caller_mode.as_deref(), target_mode.as_deref()),
@@ -925,7 +950,10 @@ fn desktop_notifications_enabled(app: &AppHandle) -> bool {
 pub fn cancel_session(app: &AppHandle, session_id: &str) -> Result<bool, String> {
     let removed = update(app, |list| {
         let (removed, kept): (Vec<_>, Vec<_>) =
-            list.drain(..).partition(|s| s.session_id == session_id);
+            // An agent schedule belongs to the agent, not to the session the
+            // agent had when it was made: it outlives that session.
+            list.drain(..)
+                .partition(|s| s.session_id == session_id && s.target != ScheduleTarget::Agent);
         *list = kept;
         (!removed.is_empty(), removed)
     })?;
@@ -1069,13 +1097,50 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
 /// `NewSession` target gets a new session in the worktree first. A repeat
 /// whose earlier prompt is still queued adds no copy (#144). Returns the
 /// session the prompt went (or would go) into.
+const NO_AGENT_SESSION: &str =
+    "The agent has no session: it was archived or deleted. Restart the agent in the Agents tab.";
+
+/// An agent schedule as it must run now: with the agent's current session
+/// and that session's worktree. Errors when the agent or its session is gone.
+pub(crate) fn resolve_agent_target(
+    app: &AppHandle,
+    schedule: &Schedule,
+) -> Result<Schedule, String> {
+    let agent_id = schedule
+        .agent_id
+        .as_deref()
+        .ok_or_else(|| "The schedule names no agent".to_string())?;
+    if !crate::agents::store::load(app)?
+        .iter()
+        .any(|a| a.id == agent_id)
+    {
+        return Err("The agent no longer exists".to_string());
+    }
+    let session_id = crate::agents::current_session(app, agent_id)?
+        .ok_or_else(|| NO_AGENT_SESSION.to_string())?;
+    let session = find_session(app, &session_id)?;
+    Ok(Schedule {
+        session_id,
+        worktree_id: session.worktree_id,
+        ..schedule.clone()
+    })
+}
+
 async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<Fired, String> {
+    // An agent schedule follows the agent: where it runs is decided now.
+    let resolved;
+    let schedule = if schedule.target == ScheduleTarget::Agent {
+        resolved = resolve_agent_target(app, schedule)?;
+        &resolved
+    } else {
+        schedule
+    };
     let worktree_path = resolve_worktree_path(app, &schedule.worktree_id)
         .filter(|path| !path.is_empty())
         .ok_or_else(|| "The worktree no longer exists".to_string())?;
 
     let session_id = match schedule.target {
-        ScheduleTarget::Session => schedule.session_id.clone(),
+        ScheduleTarget::Session | ScheduleTarget::Agent => schedule.session_id.clone(),
         ScheduleTarget::NewSession => {
             let backend = schedule
                 .template

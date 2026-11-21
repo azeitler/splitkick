@@ -25,6 +25,9 @@ vi.mock('@/services/schedules', () => ({
 vi.mock('@/services/chat', () => ({
   useAllSessions: () => ({ data: mocks.sessions }),
 }))
+vi.mock('@/services/agents', () => ({
+  useAgents: () => ({ data: [{ id: 'a1', name: 'Assistant' }] }),
+}))
 vi.mock('@/lib/navigate-to-session', () => ({
   navigateToSession: mocks.navigateToSession,
 }))
@@ -106,6 +109,25 @@ describe('ScheduledList', () => {
       agentRow.getByText('Splitkick › main › Release check')
     ).toBeInTheDocument()
     expect(agentRow.getByText('Once')).toBeInTheDocument()
+  })
+
+  // An agent schedule follows the agent; the session it was made in is not
+  // where the next run goes.
+  it('names the agent a schedule runs for', () => {
+    mocks.schedules = [
+      schedule({ id: 'x', target: 'agent', agent_id: 'a1', prompt: 'summary' }),
+      schedule({ id: 'y', target: 'agent', agent_id: 'gone', prompt: 'old' }),
+    ]
+    render(<ScheduledList />)
+    const [first, second] = screen.getAllByTestId('scheduled-row')
+    expect(
+      within(first as HTMLElement).getByText(
+        'Agent Assistant, in its current session'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(second as HTMLElement).getByText('An agent that was removed')
+    ).toBeInTheDocument()
   })
 
   it('pauses, resumes, runs now and deletes', async () => {

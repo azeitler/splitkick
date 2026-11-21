@@ -333,21 +333,25 @@ export function ScheduleDialog({
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="schedule-target">Run in</Label>
-              <NativeSelect
-                id="schedule-target"
-                value={target}
-                onChange={e => setTarget(e.target.value as ScheduleTarget)}
-              >
-                <NativeSelectOption value="session">
-                  This session
-                </NativeSelectOption>
-                <NativeSelectOption value="new_session">
-                  A new session in this worktree each run
-                </NativeSelectOption>
-              </NativeSelect>
-            </div>
+            {/* An agent schedule keeps its agent: an edit changes the prompt
+                and the time, never where it runs. */}
+            {target !== 'agent' && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="schedule-target">Run in</Label>
+                <NativeSelect
+                  id="schedule-target"
+                  value={target}
+                  onChange={e => setTarget(e.target.value as ScheduleTarget)}
+                >
+                  <NativeSelectOption value="session">
+                    This session
+                  </NativeSelectOption>
+                  <NativeSelectOption value="new_session">
+                    A new session in this worktree each run
+                  </NativeSelectOption>
+                </NativeSelect>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="schedule-name">Name (optional)</Label>
