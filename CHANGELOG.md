@@ -9,6 +9,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **No more "ResizeObserver loop" error toasts.** The browser reports a
+  postponed layout update as an error, and the app showed it as "Unexpected
+  error". It is not an error, so it no longer shows or goes to the log.
 - **Paths with spaces in inline code are links.** A path in backticks such as
   `PV Anlage/Materialliste.md` or `~/Library/Mobile Documents/notes` now
   becomes a link when it exists. A bare file name (`lib.rs`, `Cargo.toml`)

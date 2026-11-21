@@ -45,6 +45,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import {
   logGlobalError,
   shouldSurfaceGlobalError,
+  isBenignBrowserError,
 } from '@/lib/global-error-utils'
 import { relaunchAfterUIStateSave } from '@/lib/ui-state-teardown'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
@@ -874,6 +875,10 @@ function App() {
           : typeof reason === 'string'
             ? reason
             : 'Unknown error'
+      if (isBenignBrowserError(message)) {
+        event.preventDefault()
+        return
+      }
       logGlobalError(
         'Unhandled promise rejection',
         message,
@@ -891,6 +896,7 @@ function App() {
 
     const handleError = (event: ErrorEvent) => {
       const message = event.error?.message ?? event.message ?? 'Unknown error'
+      if (isBenignBrowserError(message)) return
       logGlobalError(
         'Uncaught window error',
         message,

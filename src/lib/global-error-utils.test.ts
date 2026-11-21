@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { logGlobalError, shouldSurfaceGlobalError } from './global-error-utils'
+import {
+  isBenignBrowserError,
+  logGlobalError,
+  shouldSurfaceGlobalError,
+} from './global-error-utils'
 
 const mocks = vi.hoisted(() => ({ logNativeError: vi.fn() }))
 vi.mock('./native-log', () => ({ logNativeError: mocks.logNativeError }))
@@ -13,6 +17,26 @@ describe('shouldSurfaceGlobalError', () => {
     expect(
       shouldSurfaceGlobalError('Cannot read properties of undefined')
     ).toBe(true)
+  })
+})
+
+describe('isBenignBrowserError', () => {
+  it('ignores the ResizeObserver loop notices of WebKit and Chrome', () => {
+    expect(
+      isBenignBrowserError(
+        'ResizeObserver loop completed with undelivered notifications.'
+      )
+    ).toBe(true)
+    expect(isBenignBrowserError('ResizeObserver loop limit exceeded')).toBe(
+      true
+    )
+  })
+
+  it('keeps real errors', () => {
+    expect(isBenignBrowserError('Cannot read properties of undefined')).toBe(
+      false
+    )
+    expect(isBenignBrowserError('ResizeObserver is not defined')).toBe(false)
   })
 })
 
