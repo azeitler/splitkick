@@ -13,7 +13,12 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { api, createRepo, createSession, git, mcp, readEnv } from '../helpers'
 import { REPO_ROOT, type Instance } from '../launcher'
-import { openApp, showSidebarTab } from './ui'
+import {
+  editDescription,
+  openApp,
+  openGraphFoldouts,
+  showSidebarTab,
+} from './ui'
 
 // Graph files, locations and the store (graph layer, #79), end to end on
 // instance A through the real web UI. Contract: docs/developer/graph-layer.md.
@@ -680,8 +685,10 @@ test('unknown fields, relation kinds and attachment kinds survive a UI edit', as
   // First UI edit (normalising save): a description on "To edit".
   await nodeRow(page, 'To edit').click()
   const detail = page.getByTestId('graph-node-detail')
-  await detail.getByLabel('Description').fill('First edit')
-  await detail.getByLabel('Description').blur()
+  await openGraphFoldouts(detail)
+  let description = await editDescription(detail)
+  await description.fill('First edit')
+  await description.blur()
   await expectFile(path, t => t.includes('description: First edit'))
 
   const first = readFileSync(path, 'utf8')
@@ -700,8 +707,9 @@ test('unknown fields, relation kinds and attachment kinds survive a UI edit', as
   await expect(detail).toContainText('Untouched')
 
   // Second UI edit: only that node's lines change.
-  await detail.getByLabel('Description').fill('Second edit')
-  await detail.getByLabel('Description').blur()
+  description = await editDescription(detail)
+  await description.fill('Second edit')
+  await description.blur()
   await expectFile(path, t => t.includes('description: Second edit'))
   const second = readFileSync(path, 'utf8')
   expect(nodeBlock(second, 'keep01')).toBe(nodeBlock(first, 'keep01'))

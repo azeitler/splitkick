@@ -4,7 +4,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { api, createSession, mcp, readEnv, waitForIdle } from '../helpers'
 import { REPO_ROOT, type Instance } from '../launcher'
-import { chatInput, goToSession, openApp, showSidebarTab } from './ui'
+import {
+  chatInput,
+  editDescription,
+  expectStateChip,
+  goToSession,
+  openApp,
+  openGraphFoldouts,
+  showSidebarTab,
+  stateButton,
+  stateGlyph,
+} from './ui'
 
 // Nodes, relations, attachments, derived values and the views of the graph
 // layer (#79), end to end on instance A through the real web UI. Contract:
@@ -306,17 +316,17 @@ const rowById = (page: Page, id: string) =>
 
 const detailPanel = (page: Page) => page.getByTestId('graph-node-detail')
 
-/** Open a node's detail from its outline row. */
+/** Open a node's detail from its outline row, with both foldouts open. */
 async function openNode(page: Page, title: string): Promise<Locator> {
   const detail = detailPanel(page)
   if (
-    (await detail.isVisible()) &&
-    (await detail.getByLabel('Node title').inputValue()) === title
+    !(await detail.isVisible()) ||
+    (await detail.getByLabel('Node title').inputValue()) !== title
   ) {
-    return detail
+    await nodeRow(page, title).click()
+    await expect(detail.getByLabel('Node title')).toHaveValue(title)
   }
-  await nodeRow(page, title).click()
-  await expect(detail.getByLabel('Node title')).toHaveValue(title)
+  await openGraphFoldouts(detail)
   return detail
 }
 
@@ -404,9 +414,10 @@ test('outline: add root and nested nodes, rename, describe, delete, revert the d
   await expect(nodeRow(page, 'Root').getByTestId('node-progress')).toHaveText(
     /0\/1 done/
   )
-  await expect(
-    nodeRow(page, 'Child').getByTestId('node-state-chip')
-  ).toHaveText('proposed')
+  await expectStateChip(
+    nodeRow(page, 'Child').getByTestId('node-state-chip'),
+    'proposed'
+  )
 
   await expectNodes(g.path, nodes => nodes.length === 5)
   const ids = Object.fromEntries(readNodes(g.path).map(n => [n.title, n.id]))
@@ -428,7 +439,7 @@ test('outline: add root and nested nodes, rename, describe, delete, revert the d
   await expectNode(g.path, 'Child renamed', n => n.id === ids.Child)
 
   // Description saves on blur, not while typing.
-  const description = detail.getByLabel('Description')
+  const description = await editDescription(detail)
   await description.fill('First line\nSecond line')
   await page.waitForTimeout(500)
   expect(yamlNode(g.path, 'Child renamed')!.description).toBe('')
@@ -509,20 +520,21 @@ test('state: proposed → committed → done → dropped → proposed in chip, g
   const row = nodeRow(page, 'Stateful')
   const titleText = row.getByText('Stateful', { exact: true })
 
-  await expect(row.getByTestId('node-state-chip')).toHaveText('proposed')
-  await expect(row.locator('svg[aria-label="proposed"]')).toBeVisible()
+  await expectStateChip(row.getByTestId('node-state-chip'), 'proposed')
+  await expect(stateGlyph(row, 'proposed')).toBeVisible()
   await expect(titleText).not.toHaveClass(/text-muted-foreground/)
 
   for (const state of ['committed', 'done', 'dropped', 'proposed'] as const) {
-    await detail.getByRole('radio', { name: state }).click()
-    await expect(row.getByTestId('node-state-chip')).toHaveText(state)
-    await expect(row.locator(`svg[aria-label="${state}"]`)).toBeVisible()
-    await expect(
-      detailPanel(page).locator('header').getByTestId('node-state-chip')
-    ).toHaveText(state)
-    await expect(detail.getByRole('radio', { name: state })).toHaveAttribute(
+    await stateButton(detail, state).click()
+    await expectStateChip(row.getByTestId('node-state-chip'), state)
+    await expect(stateGlyph(row, state)).toBeVisible()
+    await expect(stateButton(detail, state)).toHaveAttribute(
       'aria-checked',
       'true'
+    )
+    // The expert layer names the stored state.
+    await expect(detail.getByTestId('graph-node-expert')).toContainText(
+      `state ${state}`
     )
     // done and dropped are dimmed; dropped is struck through.
     if (state === 'done' || state === 'dropped') {
@@ -789,10 +801,9 @@ test('relations across graphs: external rows, incoming in the other graph, refs 
 
   // Derived: a depends-on that is not found does not block; a blocked-by
   // that is not found blocks with its raw text.
-  await expect(detail).toContainText(
-    `Derived blocked: blocked-by ${unknownGraphRef}`
-  )
-  await expect(detail).not.toContainText(`depends-on ${missingNodeRef}`)
+  const waiting = detail.getByTestId('graph-waiting-for')
+  await expect(waiting).toContainText(unknownGraphRef)
+  await expect(waiting).not.toContainText(missingNodeRef)
 
   // Outline: dashed rows under the node.
   const externalRows = outline(page).getByTestId('graph-external-row')
@@ -800,7 +811,7 @@ test('relations across graphs: external rows, incoming in the other graph, refs 
   const remoteRow = externalRows.filter({ hasText: 'Remote node' })
   await expect(remoteRow).toContainText(`↗ ${otherTitle}`)
   await expect(remoteRow).toContainText('Local node relates to it')
-  await expect(remoteRow.locator('svg[aria-label="committed"]')).toBeVisible()
+  await expect(stateGlyph(remoteRow, 'committed')).toBeVisible()
   await expect(externalRows.filter({ hasText: missingNodeRef })).toContainText(
     'not found'
   )
@@ -1067,15 +1078,16 @@ test('derived: blocked rules, progress over parts (also from another graph)', as
     await expect(blockedBadge(page, id)).toHaveCount(0)
   }
 
-  // The blocker text names what blocks.
+  // "Waiting for" names what blocks.
   const expectBlockers = async (nodeTitle: string, text: string | null) => {
     const detail = await openNode(page, nodeTitle)
-    if (text) await expect(detail).toContainText(`Derived blocked: ${text}`)
-    else await expect(detail).not.toContainText('Derived blocked')
+    const waiting = detail.getByTestId('graph-waiting-for')
+    if (text) await expect(waiting).toContainText(text)
+    else await expect(waiting).toHaveCount(0)
   }
-  await expectBlockers('Dep on open', 'depends-on Target open')
-  await expectBlockers('Free text blocked', 'blocked-by decision: storage?')
-  await expectBlockers('Blocked by missing', 'blocked-by qqqqq1')
+  await expectBlockers('Dep on open', 'Target open')
+  await expectBlockers('Free text blocked', 'a decision: storage?')
+  await expectBlockers('Blocked by missing', 'a decision: qqqqq1')
   await expectBlockers('Done with open blocker', null)
   await expectBlockers('Dropped with blocker', null)
   await expectBlockers('Dep on missing', null)
@@ -1110,15 +1122,15 @@ test('derived: blocked rules, progress over parts (also from another graph)', as
 
   // The target becomes done in the UI: its dependent is no longer blocked.
   let detail = await openNode(page, 'Target open')
-  await detail.getByRole('radio', { name: 'done' }).click()
+  await stateButton(detail, 'done').click()
   await expect(blockedBadge(page, 'r1depo')).toHaveCount(0)
   await expectNode(g.path, 'Target open', n => n.state === 'done')
   // ... and dropped does not block either.
-  await detail.getByRole('radio', { name: 'dropped' }).click()
+  await stateButton(detail, 'dropped').click()
   await expectNode(g.path, 'Target open', n => n.state === 'dropped')
   await expect(blockedBadge(page, 'r1depo')).toHaveCount(0)
   // Back to open: blocked again; the dropped node with a blocker stays clear.
-  await detail.getByRole('radio', { name: 'committed' }).click()
+  await stateButton(detail, 'committed').click()
   await expect(blockedBadge(page, 'r1depo')).toBeVisible()
   await expect(blockedBadge(page, 'r5drop')).toHaveCount(0)
   await expect(blockedBadge(page, 'r4done')).toHaveCount(0)
@@ -1129,16 +1141,16 @@ test('derived: blocked rules, progress over parts (also from another graph)', as
     .getByRole('button', { name: 'Remove blocked-by decision: storage?' })
     .click()
   await expect(blockedBadge(page, 'r6text')).toHaveCount(0)
-  await expect(detail).not.toContainText('Derived blocked')
+  await expect(detail.getByTestId('graph-waiting-for')).toHaveCount(0)
   await expectNode(g.path, 'Free text blocked', n => n.relations.length === 0)
 
   // A part changes state in the UI: the group's progress follows.
   detail = await openNode(page, 'Part open')
-  await detail.getByRole('radio', { name: 'done' }).click()
+  await stateButton(detail, 'done').click()
   await expect(rowById(page, 'grp001').getByTestId('node-progress')).toHaveText(
     /3\/4 done/
   )
-  await detail.getByRole('radio', { name: 'dropped' }).click()
+  await stateButton(detail, 'dropped').click()
   await expect(rowById(page, 'grp001').getByTestId('node-progress')).toHaveText(
     /2\/3 done/
   )
@@ -1342,7 +1354,7 @@ test('dependencies: steps, lanes, decisions, edge colours, other graphs, click o
   await bar('stepbb').click()
   const detail = detailPanel(page)
   await expect(detail.getByLabel('Node title')).toHaveValue('Step B')
-  await detail.getByRole('radio', { name: 'done' }).click()
+  await stateButton(detail, 'done').click()
   await expect(edges('depends-on', GREY)).toHaveCount(2)
   await expect(edges('depends-on', RED)).toHaveCount(1)
   await expectNode(g.path, 'Step B', n => n.state === 'done')
@@ -1501,8 +1513,9 @@ test('history: the node lists its changes with who, why and when; opening it mar
   expect(changes.filter(c => !c.seen).map(c => c.nodeId)).toEqual([other.id])
 
   // A UI edit of the node shows as "You" in its history and stays seen.
-  await detail.getByLabel('Description').fill('Edited by me')
-  await detail.getByLabel('Description').blur()
+  const description = await editDescription(detail)
+  await description.fill('Edited by me')
+  await description.blur()
   await expect(history).toHaveCount(4)
   await expect(history.nth(0)).toContainText('You')
   await expectNode(
@@ -1624,7 +1637,7 @@ test('keyboard: Enter adds a node; Escape cancels the add row and inline edits',
   await titleField.blur()
 
   // Escape in the description restores it.
-  const description = detail.getByLabel('Description')
+  const description = await editDescription(detail)
   await description.fill('Draft text')
   await description.press('Escape')
   await expect(description).toHaveValue('')

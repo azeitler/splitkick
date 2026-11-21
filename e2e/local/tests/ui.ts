@@ -1,5 +1,5 @@
 /** Page helpers for the local two-instance e2e run (#65). */
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { RUN_DIR } from '../helpers'
@@ -102,4 +102,76 @@ export async function runCommand(page: Page, label: string): Promise<void> {
     .getByRole('option', { name: new RegExp(`^${label}`) })
     .first()
     .click()
+}
+
+// ---------------------------------------------------------------------------
+// Graph panels (node detail, session graph panel)
+// ---------------------------------------------------------------------------
+
+/** How the graph UI names the stored node states (`STATE_LABELS` in
+ *  src/components/graphs/graph-badges.tsx). The file word is the key. */
+export const NODE_STATE_LABELS = {
+  proposed: 'Idea',
+  committed: 'Planned',
+  done: 'Done',
+  dropped: 'Dropped',
+} as const
+export type NodeState = keyof typeof NODE_STATE_LABELS
+
+/** A state chip shows the label; its tooltip has the stored state. */
+export async function expectStateChip(
+  chip: Locator,
+  state: NodeState
+): Promise<void> {
+  await expect(chip).toHaveAttribute('title', `state: ${state}`)
+}
+
+/** The state picker button of an open node detail. */
+export function stateButton(detail: Locator, state: NodeState): Locator {
+  return detail.getByRole('radio', {
+    name: NODE_STATE_LABELS[state],
+    exact: true,
+  })
+}
+
+/** The state glyph (an outline row's leading mark) for this state. */
+export function stateGlyph(scope: Locator, state: NodeState): Locator {
+  return scope.locator(`svg[aria-label="${NODE_STATE_LABELS[state]}"]`)
+}
+
+type GraphFoldout = 'relations' | 'details'
+
+/**
+ * Open the foldouts of a graph panel the way a user does: "Relationships"
+ * (relations, incoming, siblings) and "Show details" (id, properties,
+ * attachments, history, delete; permission and serves in the session
+ * panel). Each foldout is one saved choice for every panel, so it can be
+ * open already from an earlier test: click only a closed one. A manager
+ * session panel has no Relationships foldout; pass `['details']`.
+ */
+export async function openGraphFoldouts(
+  panel: Locator,
+  foldouts: GraphFoldout[] = ['relations', 'details']
+): Promise<void> {
+  for (const foldout of foldouts) {
+    const toggle = panel.getByTestId(`graph-${foldout}-toggle`)
+    await expect(toggle).toBeVisible()
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+      await toggle.click()
+    }
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  }
+}
+
+/** Start to edit the description of the open node ("Add description" or
+ *  "Edit description") and return the field. It saves on blur. */
+export async function editDescription(detail: Locator): Promise<Locator> {
+  const field = detail.getByLabel('Description', { exact: true })
+  if (!(await field.isVisible())) {
+    await detail
+      .getByRole('button', { name: /^(Add|Edit) description$/ })
+      .click()
+  }
+  await expect(field).toBeVisible()
+  return field
 }

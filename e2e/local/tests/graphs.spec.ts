@@ -11,8 +11,10 @@ import { join } from 'node:path'
 import { api, createSession, git, readEnv, waitForIdle } from '../helpers'
 import { REPO_ROOT } from '../launcher'
 import {
+  expectStateChip,
   goToSession,
   openApp,
+  openGraphFoldouts,
   runCommand,
   send,
   showSidebarTab,
@@ -240,7 +242,7 @@ test('Outline, node detail and dependencies edit the YAML file', async ({
   const detail = page.getByTestId('graph-node-detail')
   await expect(detail).toBeVisible()
   // Relations are in the Relationships foldout.
-  await detail.getByTestId('graph-relations-toggle').click()
+  await openGraphFoldouts(detail, ['relations'])
   await detail.getByLabel('Relation kind').selectOption('depends-on')
   await detail.getByLabel('Relation target').selectOption({ label: 'Design' })
   await detail.getByRole('button', { name: 'Add relation' }).click()
@@ -260,9 +262,10 @@ test('Outline, node detail and dependencies edit the YAML file', async ({
   await nodeRow(page, 'Design').click()
   await expect(detail.getByLabel('Node title')).toHaveValue('Design')
   await detail.getByRole('radio', { name: 'Planned' }).click()
-  await expect(
-    nodeRow(page, 'Design').getByTestId('node-state-chip')
-  ).toHaveText(/Planned/)
+  await expectStateChip(
+    nodeRow(page, 'Design').getByTestId('node-state-chip'),
+    'committed'
+  )
   await shot(page, 'node-detail')
 
   // The file on disk has all of it.
@@ -415,9 +418,10 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
   await expect(
     nodeRow(page, 'Review UX').getByTestId('node-unseen-dot')
   ).toBeVisible()
-  await expect(
-    nodeRow(page, 'Design').getByTestId('node-state-chip')
-  ).toHaveText(/done/)
+  await expectStateChip(
+    nodeRow(page, 'Design').getByTestId('node-state-chip'),
+    'done'
+  )
   await expect(
     nodeRow(page, 'Build').getByTestId('node-blocked-badge')
   ).toBeHidden()
@@ -463,12 +467,14 @@ test('a manage agent changes the graph through MCP; review, revert, accept', asy
     review.getByTestId('graph-request').filter({ hasText: 'Build is finished' })
   ).toBeHidden()
   await page.getByTestId('graph-tab-outline').click()
-  await expect(
-    nodeRow(page, 'Build').getByTestId('node-state-chip')
-  ).toHaveText(/done/)
-  await expect(
-    nodeRow(page, 'Design').getByTestId('node-state-chip')
-  ).toHaveText(/committed/)
+  await expectStateChip(
+    nodeRow(page, 'Build').getByTestId('node-state-chip'),
+    'done'
+  )
+  await expectStateChip(
+    nodeRow(page, 'Design').getByTestId('node-state-chip'),
+    'committed'
+  )
 })
 
 /** metadata.json of the session with this name, or null. */
@@ -530,13 +536,16 @@ test('the agent session shows its graph panel', async ({ page }) => {
   const panel = page.getByTestId('session-graph-panel')
   if (!(await panel.isVisible())) await toggle.click()
   await expect(panel).toBeVisible()
-  await expect(panel).toContainText('serves the whole graph in')
-  // Exact: the "Stop serving E2E roadmap (whole graph)" chip button also
-  // matches once the graph list has loaded.
+  // A whole-graph session gets the manager card, its first line the graph.
+  const card = panel.getByTestId('session-graph-manager-card')
   await expect(
-    panel.getByRole('button', { name: 'E2E roadmap', exact: true })
+    card.getByRole('button', { name: 'E2E roadmap', exact: true })
   ).toBeVisible()
-  await expect(panel).toContainText('Review UX')
+  // Outline, permission and serves are in the details.
+  await openGraphFoldouts(panel, ['details'])
+  await expect(panel.getByTestId('session-graph-expert')).toContainText(
+    'Review UX'
+  )
   await expect(panel.getByLabel('Graph permission')).toHaveValue('manage')
   await expect(panel).toContainText('E2E roadmap (whole graph)')
   await shot(page, 'session-graph-panel')

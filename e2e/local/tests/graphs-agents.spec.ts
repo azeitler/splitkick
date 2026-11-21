@@ -21,8 +21,10 @@ import {
 import { REPO_ROOT, type Instance } from '../launcher'
 import {
   chatInput,
+  expectStateChip,
   goToSession,
   openApp,
+  openGraphFoldouts,
   openSessionMenu,
   runCommand,
   send,
@@ -511,10 +513,12 @@ async function openGraph(page: Page, g: Graph) {
 const nodeRow = (page: Page, id: string) =>
   page.getByTestId(`graph-node-row-${id}`)
 
+/** Open a node's detail from its outline row, with both foldouts open. */
 async function openNode(page: Page, id: string, title: string) {
   await nodeRow(page, id).click()
   const detail = page.getByTestId('graph-node-detail')
   await expect(detail.getByLabel('Node title')).toHaveValue(title)
+  await openGraphFoldouts(detail)
   return detail
 }
 
@@ -753,11 +757,11 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
   await dialog.getByLabel('Role', { exact: true }).selectOption(writer.id)
   await expect(dialog.getByLabel('Serves graph')).toHaveValue(g.id)
   await expect(dialog.getByLabel('Serves node')).toHaveValue('')
-  // The profile allows write: manage is disabled, write is preselected.
+  // The role allows write: manage is disabled, write is preselected.
   await expect(dialog.getByRole('radio', { name: 'manage' })).toBeDisabled()
   await expect(dialog.getByRole('radio', { name: 'write' })).toBeChecked()
   await expect(dialog.getByRole('radio', { name: 'read' })).toBeEnabled()
-  await expect(dialog).toContainText('The profile allows up to write')
+  await expect(dialog).toContainText('The role allows up to write')
   await expect(dialog).toContainText('Writes nodes.')
   // Lower it for this session.
   await dialog.getByRole('radio', { name: 'read' }).click()
@@ -792,11 +796,11 @@ test('start dialog: every entry point, permission cap, serves, place, first mess
     `${writer.name}· read`
   )
 
-  // --- Entry 2: node detail "Start session for this node…" preselects it.
+  // --- Entry 2: node detail "Start session…" preselects the node.
   await openGraph(page, g)
   const detail = await openNode(page, worker, 'Worker node')
   await detail
-    .getByRole('button', { name: 'Start session for this node…' })
+    .getByRole('button', { name: 'Start session…', exact: true })
     .click()
   dialog = startDialog(page)
   await expect(dialog).toBeVisible()
@@ -932,7 +936,7 @@ test('persona and graph context reach the agent; plain sessions get none', async
   await runCommand(page, 'Edit Roles…')
   await profileButton(page, agent.name).click()
   await expect(agentsPane(page)).toContainText(
-    'Edits reach every session of this agent from its next message'
+    'Edits reach every session with this role from its next message'
   )
   await agentsPane(page)
     .getByLabel('Persona prompt')
@@ -1225,6 +1229,7 @@ test('MCP permission matrix: none, read, write, manage; raising the level in the
   const read = setups.find(s => s.level === 'read')!
   await goToSession(page, read.name)
   const panel = await showGraphPanel(page)
+  await openGraphFoldouts(panel, ['details'])
   await expect(panel.getByLabel('Graph permission')).toHaveValue('read')
   await panel.getByLabel('Graph permission').selectOption('write')
   await expect
@@ -1832,11 +1837,18 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
   await goToSession(page, names.worker)
   const panel = await showGraphPanel(page)
   await expect(panelToggle(page)).toHaveAttribute('aria-pressed', 'true')
-  await expect(panel).toContainText('This session serves a node in')
+  // The card: graph, node, state and what the node waits for.
   const card = panel.getByTestId('session-graph-node-card')
+  await expect(
+    card.getByRole('button', { name: g.title, exact: true })
+  ).toBeVisible()
   await expect(card).toContainText('Build')
-  await expect(card).toContainText('proposed')
-  await expect(card).toContainText('blocked')
+  await expectStateChip(card.getByTestId('node-state-chip'), 'proposed')
+  await expect(card.getByTestId('graph-waiting-for')).toContainText('Design')
+  await expect(card.getByTestId('graph-next')).toContainText('Announce')
+  // Before and after, siblings (Relationships); other sessions, permission
+  // and serves (details).
+  await openGraphFoldouts(panel)
   await expect(
     panel.locator('li').filter({ hasText: 'depends on' })
   ).toContainText('Design')
@@ -1882,7 +1894,8 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
   await refPicker.selectOption(`${g.id}#${s}`)
   await expect(card).toContainText('Ship')
   await servesSection
-    .getByRole('button', { name: `Stop serving ${g.title} › ${s}` })
+    // The chip names the node by its title.
+    .getByRole('button', { name: `Stop serving ${g.title} › Ship` })
     .click()
   await expect.poll(() => meta(a, workerId).serves).toEqual([`${g.id}#${w}`])
   await expect(refPicker).toHaveCount(0)
@@ -1892,7 +1905,11 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
   // panel stays open across the session switch (one toggle for all).
   await goToSession(page, names.manager)
   await expect(graphPanel(page)).toBeVisible()
-  await expect(graphPanel(page)).toContainText('serves the whole graph in')
+  await expect(
+    graphPanel(page)
+      .getByTestId('session-graph-manager-card')
+      .getByRole('button', { name: g.title, exact: true })
+  ).toBeVisible()
   await expect(graphPanel(page).getByTestId('panel-requests')).toContainText(
     'Ship is ready'
   )
@@ -1922,23 +1939,30 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
     'Build'
   )
   await two.getByLabel('Graph or node').selectOption(g2.id)
-  await expect(two).toContainText(`serves the whole graph in`)
   await expect(
-    two.getByRole('button', { name: g2.title, exact: true })
+    two
+      .getByTestId('session-graph-manager-card')
+      .getByRole('button', { name: g2.title, exact: true })
   ).toBeVisible()
   await expect(two).toContainText('Only node')
   // No agent: read.
   await expect(two.getByLabel('Graph permission')).toHaveValue('read')
 
-  // A plain session hides it; the worker shows it again.
+  // The side panel stays on its Graph tab for a plain session: it offers
+  // the link. The worker shows its node again.
   await goToSession(page, names.plain)
-  await expect(graphPanel(page)).toHaveCount(0)
+  await expect(graphPanel(page)).toContainText(
+    'This session is not linked to a graph.'
+  )
+  await expect(
+    graphPanel(page).getByRole('button', { name: 'Link to Graph…' })
+  ).toBeVisible()
   await goToSession(page, names.worker)
-  await expect(graphPanel(page)).toBeVisible()
+  await expect(
+    graphPanel(page).getByTestId('session-graph-node-card')
+  ).toBeVisible()
   // Closed stays closed on the next session.
-  await graphPanel(page)
-    .getByRole('button', { name: 'Close graph panel' })
-    .click()
+  await page.getByRole('button', { name: 'Close side panel' }).click()
   await expect(graphPanel(page)).toHaveCount(0)
   await goToSession(page, names.manager)
   await expect(graphPanel(page)).toHaveCount(0)
@@ -2062,9 +2086,7 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
   // Node detail: serving sessions with glyph and badge.
   await openGraph(page, g)
   detail = await openNode(page, n, 'Badged node 2')
-  const serving = detail
-    .locator('section')
-    .filter({ hasText: 'Serving sessions' })
+  const serving = detail.getByTestId('graph-node-sessions')
   const servingRow = (name: string) =>
     serving.getByRole('button').filter({ hasText: name })
   await expect(servingRow(renamed).getByTestId('agent-badge')).toHaveText(
@@ -2105,6 +2127,8 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
   await expect(
     page.getByTestId('graph-review').getByTestId('agent-glyph')
   ).toHaveCount(0)
+  // The rows are in the Projects tab; the graph view showed the Graphs tab.
+  await showSidebarTab(page, 'projects')
   await expect(renamedRow).toBeVisible()
   await expect(renamedRow.getByTestId('agent-badge')).toHaveCount(0)
   await expect(glyphRow.getByTestId('agent-glyph')).toHaveCount(0)
@@ -2113,6 +2137,7 @@ test('agent badges: glyph vs renamed badge in sidebar, header chip, node detail,
   // The session still has its agent id and serves: the panel stays, at the
   // level the session was started with.
   const panel = await showGraphPanel(page)
+  await openGraphFoldouts(panel, ['details'])
   await expect(panel.getByLabel('Graph permission')).toHaveValue('write')
   await expect(panel.getByTestId('agent-badge')).toHaveCount(0)
 })
