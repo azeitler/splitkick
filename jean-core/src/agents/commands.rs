@@ -415,6 +415,88 @@ pub async fn remove_agent(app: AppHandle, agent_id: String) -> Result<(), String
     Ok(())
 }
 
+/// Start the agent again in a fresh session, in the same workspace and role.
+/// The first message of the new session hands over the history of the old
+/// one (`SessionMetadata.pending_handoff_from`). The old session stays as a
+/// normal session. Also the way back from "No session".
+pub async fn restart_agent(app: AppHandle, agent_id: String) -> Result<AgentView, String> {
+    let data = load_projects_data(&app)?;
+    let agent = store::load(&app)?
+        .into_iter()
+        .find(|a| a.id == agent_id)
+        .ok_or_else(|| format!("Unknown agent: {agent_id}"))?;
+    let worktree = data
+        .find_worktree(&agent.worktree_id)
+        .filter(|w| w.archived_at.is_none())
+        .ok_or_else(|| {
+            "The agent's workspace no longer exists. Remove the agent and create it again."
+                .to_string()
+        })?;
+    // The newest earlier session that still has data gives the handoff.
+    let source = agent
+        .session_id
+        .iter()
+        .chain(agent.past_session_ids.iter())
+        .find_map(|id| crate::chat::storage::load_metadata(&app, id).ok().flatten());
+    // A role that was deleted since does not stop the restart.
+    let role_id = agent
+        .role_id
+        .clone()
+        .filter(|id| crate::graphs::permissions::find_role(&app, id).is_some());
+
+    let session = crate::chat::create_session(
+        app.clone(),
+        worktree.id.clone(),
+        worktree.path.clone(),
+        Some(agent.name.clone()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        role_id.map(|role_id| crate::graphs::permissions::SessionRoleStart {
+            role_id,
+            permission: source.as_ref().and_then(|m| m.graph_permission.clone()),
+            serves: source.as_ref().map(|m| m.serves.clone()),
+        }),
+    )
+    .await?;
+
+    let moved = (|| {
+        if let Some(source) = &source {
+            crate::chat::storage::with_existing_metadata_mut(&app, &session.id, |m| {
+                m.pending_handoff_from = Some(source.id.clone());
+            })?;
+        }
+        store::update(&app, |agents| {
+            let agent = agents
+                .iter_mut()
+                .find(|a| a.id == agent_id)
+                .ok_or_else(|| "The agent was removed".to_string())?;
+            release_session(agent);
+            agent.session_id = Some(session.id.clone());
+            Ok(())
+        })
+    })();
+    if let Err(e) = moved {
+        // No orphan: the new session goes away, the pointer is unchanged.
+        if let Err(close_error) = crate::chat::close_session(
+            app.clone(),
+            worktree.id.clone(),
+            worktree.path.clone(),
+            session.id.clone(),
+        )
+        .await
+        {
+            log::warn!("restart_agent: could not remove the new session: {close_error}");
+        }
+        return Err(e);
+    }
+    emit(&app);
+    view_of(&app, &agent_id)
+}
+
 /// True when the session is the current session of an agent.
 pub fn is_agent_session(app: &AppHandle, session_id: &str) -> bool {
     store::load(app).is_ok_and(|agents| store::for_session(&agents, session_id).is_some())
@@ -812,6 +894,76 @@ mod tests {
         assert!(worktree_has_agent(&app, "wt"));
         session_gone(&app, "s1");
         assert!(!worktree_has_agent(&app, "wt"));
+    }
+
+    #[test]
+    fn restart_moves_the_pointer_and_marks_the_handoff() {
+        let (_t, app) = fixture();
+        let a = block_on(make_session_agent(
+            app.clone(),
+            "s1".into(),
+            "A".into(),
+            false,
+        ))
+        .unwrap();
+        let b = block_on(restart_agent(app.clone(), a.id.clone())).unwrap();
+        let new_id = b.session_id.clone().unwrap();
+        assert_ne!(new_id, "s1");
+        assert_eq!(b.session_name.as_deref(), Some("A"));
+        assert_eq!(b.past_session_ids, vec!["s1".to_string()]);
+        let meta = crate::chat::storage::load_metadata(&app, &new_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.pending_handoff_from.as_deref(), Some("s1"));
+        assert_eq!(meta.worktree_id, "wt");
+        // The old session is a normal session again and is not archived.
+        assert!(!is_agent_session(&app, "s1"));
+        assert!(is_agent_session(&app, &new_id));
+        let old = crate::chat::storage::load_metadata(&app, "s1")
+            .unwrap()
+            .unwrap();
+        assert!(old.archived_at.is_none());
+    }
+
+    #[test]
+    fn restart_works_without_a_session_and_hands_over_the_last_one() {
+        let (_t, app) = fixture();
+        let a = block_on(make_session_agent(
+            app.clone(),
+            "s1".into(),
+            "A".into(),
+            false,
+        ))
+        .unwrap();
+        session_gone(&app, "s1");
+        let b = block_on(restart_agent(app.clone(), a.id)).unwrap();
+        let new_id = b.session_id.unwrap();
+        assert_eq!(b.past_session_ids, vec!["s1".to_string()]);
+        let meta = crate::chat::storage::load_metadata(&app, &new_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.pending_handoff_from.as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn a_restart_that_cannot_start_keeps_the_pointer() {
+        let (_t, app) = fixture();
+        let a = block_on(make_session_agent(
+            app.clone(),
+            "s1".into(),
+            "A".into(),
+            false,
+        ))
+        .unwrap();
+        // The agent's workspace is gone: no new session can be made.
+        let mut data = load_projects_data(&app).unwrap();
+        data.worktrees.clear();
+        save_projects_data(&app, &data).unwrap();
+        let failed = block_on(restart_agent(app.clone(), a.id.clone()));
+        assert!(failed.unwrap_err().contains("workspace"));
+        let agents = store::load(&app).unwrap();
+        assert_eq!(agents[0].session_id.as_deref(), Some("s1"));
+        assert!(agents[0].past_session_ids.is_empty());
     }
 
     /// dispatch_command's future needs more than a debug test thread's stack.

@@ -670,6 +670,17 @@ pub(crate) fn resolve_handoff_kind(
     }
 }
 
+/// A restarted agent's first send hands over its previous session, the way a
+/// fork hands over its copy. Any other handoff already carries what this
+/// session needs and wins.
+pub(crate) fn with_restart_handoff(kind: HandoffKind, restart_handoff: bool) -> HandoffKind {
+    if kind == HandoffKind::None && restart_handoff {
+        HandoffKind::Fork
+    } else {
+        kind
+    }
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -3489,6 +3500,12 @@ pub async fn send_chat_message(
     } else {
         handoff_kind
     };
+    // One-shot marker set by `agents::restart_agent`: this session continues
+    // the work of the agent's previous session, whose history it hands over.
+    let pending_handoff_from = previous_metadata
+        .as_ref()
+        .and_then(|m| m.pending_handoff_from.clone());
+    let handoff_kind = with_restart_handoff(handoff_kind, pending_handoff_from.is_some());
     // On provider switch, always start a fresh native session for the *target*
     // backend. The previous provider's history is injected via handoff; resuming
     // an old OpenCode/Codex/etc. session would omit that Jean-local context.
@@ -3548,11 +3565,18 @@ pub async fn send_chat_message(
         // Forked session, first turn, on a backend that cannot branch its own
         // transcript, or a backend that lost its transcript. The Jean history
         // is the only context the model gets.
-        let history = super::handoff::build_handoff_history_text(
-            &app,
-            &session_id,
-            previous_metadata.as_ref(),
-        );
+        let history = match &pending_handoff_from {
+            // A restarted agent has no history of its own yet.
+            Some(source_id) if handoff_kind == HandoffKind::Fork => {
+                let source = load_metadata(&app, source_id).ok().flatten();
+                super::handoff::build_handoff_history_text(&app, source_id, source.as_ref())
+            }
+            _ => super::handoff::build_handoff_history_text(
+                &app,
+                &session_id,
+                previous_metadata.as_ref(),
+            ),
+        };
         if history.trim().is_empty() {
             log::warn!(
                 "[SendChat] fork handoff requested but history empty session={session_id} backend={effective_backend:?}"
@@ -7400,6 +7424,24 @@ mod handoff_kind_tests {
                 HandoffKind::ClaudeProfile
             );
         }
+    }
+
+    // A restarted agent's first send hands over its previous session.
+    #[test]
+    fn a_restart_handoff_fills_in_only_when_nothing_else_hands_over() {
+        assert_eq!(
+            with_restart_handoff(HandoffKind::None, true),
+            HandoffKind::Fork
+        );
+        assert_eq!(
+            with_restart_handoff(HandoffKind::None, false),
+            HandoffKind::None
+        );
+        // A provider switch replays this session's own history; it wins.
+        assert_eq!(
+            with_restart_handoff(HandoffKind::ProviderSwitch, true),
+            HandoffKind::ProviderSwitch
+        );
     }
 
     #[test]

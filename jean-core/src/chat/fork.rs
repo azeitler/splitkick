@@ -277,6 +277,8 @@ pub(crate) fn prepare_forked_metadata(
     metadata.pending_fork = Some(strategy);
     // A fork carries its own handoff; a move the source never finished is not its.
     metadata.pending_move = None;
+    // Nor is the handoff a restarted agent still had to send.
+    metadata.pending_handoff_from = None;
     metadata
 }
 
@@ -867,6 +869,9 @@ mod tests {
         source.serves = vec!["g1#a1b2c3".to_string()];
         source.role_id = Some("agent-1".to_string());
         source.graph_permission = Some("write".to_string());
+        // A restarted agent that was forked before its first turn: the fork
+        // is its own conversation and does not take over that handoff.
+        source.pending_handoff_from = Some("agent-old-session".to_string());
         let forked_session =
             prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Handoff);
 
@@ -890,6 +895,7 @@ mod tests {
             "a fork is not started by the source's parent"
         );
         assert_eq!(metadata.pending_fork, Some(PendingFork::Handoff));
+        assert_eq!(metadata.pending_handoff_from, None);
         assert_eq!(metadata.serves, vec!["g1#a1b2c3".to_string()]);
         assert_eq!(metadata.role_id.as_deref(), Some("agent-1"));
         assert_eq!(metadata.graph_permission.as_deref(), Some("write"));

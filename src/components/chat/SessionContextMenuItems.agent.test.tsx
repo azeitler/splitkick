@@ -15,12 +15,14 @@ const mocks = vi.hoisted(() => ({
   agent: undefined as Agent | undefined,
   remove: vi.fn(),
   update: vi.fn(),
+  restart: vi.fn(),
 }))
 
 vi.mock('@/services/agents', () => ({
   useAgentForSession: () => mocks.agent,
   useRemoveAgent: () => ({ mutate: mocks.remove }),
   useUpdateAgent: () => ({ mutate: mocks.update }),
+  useRestartAgent: () => ({ mutate: mocks.restart }),
 }))
 
 vi.mock('@/components/graphs/role-utils', async importOriginal => ({
@@ -91,6 +93,7 @@ describe('SessionContextMenuItems — agents', () => {
     mocks.agent = undefined
     mocks.remove.mockClear()
     mocks.update.mockClear()
+    mocks.restart.mockClear()
     useProjectsStore.setState({ projectCanvasSettings: {} })
     useChatStore.setState({ sessionLabels: {} })
     useUIStore.setState({ uiStateInitialized: false, agentDialog: null })
@@ -117,6 +120,13 @@ describe('SessionContextMenuItems — agents', () => {
       agentId: 'a1',
       name: 'Release manager',
     })
+  })
+
+  it('restarts the agent in a fresh session', async () => {
+    mocks.agent = agent
+    const user = await openMenu()
+    await user.click(await screen.findByText('Restart Agent'))
+    expect(mocks.restart).toHaveBeenCalledWith({ agentId: 'a1' })
   })
 
   it('removes the agent and keeps the session', async () => {

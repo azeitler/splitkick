@@ -108,6 +108,8 @@ impl RunLogWriter {
                 // Same for a move: a cancelled first turn in the new worktree
                 // must still get the move handoff on retry.
                 metadata.pending_move = None;
+                // And for a restarted agent's handoff of its previous session.
+                metadata.pending_handoff_from = None;
 
                 Ok(())
             },
@@ -1744,6 +1746,7 @@ mod tests {
 
         with_metadata_mut(&app, session_id, worktree_id, name, 0, |metadata| {
             metadata.pending_fork = Some(PendingFork::Native);
+            metadata.pending_handoff_from = Some("agent-old-session".to_string());
             metadata.pending_move = Some(crate::chat::types::PendingMove {
                 from_path: "/old/worktree".to_string(),
             });
@@ -1784,6 +1787,14 @@ mod tests {
                 .is_some(),
             "the move marker must still be there while the turn runs"
         );
+        assert!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_handoff_from
+                .is_some(),
+            "a restarted agent's handoff must still be there while the turn runs"
+        );
 
         writer
             .complete("assistant-1", Some("claude-sid-new"), None, None)
@@ -1804,6 +1815,14 @@ mod tests {
                 .pending_move,
             None,
             "a finished turn consumes the move marker"
+        );
+        assert_eq!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_handoff_from,
+            None,
+            "a finished turn consumes a restarted agent's handoff"
         );
     }
 

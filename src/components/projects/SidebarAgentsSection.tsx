@@ -9,7 +9,7 @@ import {
 } from '@/components/chat/SessionShortcutRows'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
-import { useAgents, useRemoveAgent } from '@/services/agents'
+import { useAgents, useRemoveAgent, useRestartAgent } from '@/services/agents'
 import { useAllSessions } from '@/services/chat'
 import { useProjects } from '@/services/projects'
 import { useUIStore } from '@/store/ui-store'
@@ -141,6 +141,7 @@ export function SidebarAgentsSection() {
  */
 function AgentWithoutRow({ agent }: { agent: Agent }) {
   const removeAgent = useRemoveAgent()
+  const restartAgent = useRestartAgent()
   const hasSession = agent.sessionId !== null
   return (
     <div
@@ -159,6 +160,14 @@ function AgentWithoutRow({ agent }: { agent: Agent }) {
           <span className="shrink-0 text-[10px] text-muted-foreground/70">
             No session
           </span>
+          <button
+            type="button"
+            title="Start the agent again in a fresh session"
+            onClick={() => restartAgent.mutate({ agentId: agent.id })}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent-foreground/10"
+          >
+            Restart
+          </button>
           <button
             type="button"
             aria-label={`Remove agent ${agent.name}`}

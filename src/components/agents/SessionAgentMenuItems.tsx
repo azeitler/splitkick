@@ -1,4 +1,4 @@
-import { BotMessageSquare, BotOff, Pencil } from 'lucide-react'
+import { BotMessageSquare, BotOff, Pencil, RotateCcw } from 'lucide-react'
 import {
   ContextMenuItem,
   ContextMenuRadioGroup,
@@ -11,6 +11,7 @@ import { useRoleProfiles } from '@/components/graphs/role-utils'
 import {
   useAgentForSession,
   useRemoveAgent,
+  useRestartAgent,
   useUpdateAgent,
 } from '@/services/agents'
 import { useUIStore } from '@/store/ui-store'
@@ -19,8 +20,9 @@ const NO_ROLE = '__none__'
 
 /**
  * The agent items of a session's context menu. A normal session can become
- * an agent; the session of an agent can rename the agent, change its role
- * or stop being one. Removing the agent keeps the session.
+ * an agent; the session of an agent can rename the agent, change its role,
+ * restart it in a fresh session, or stop being one. Removing the agent keeps
+ * the session.
  */
 export function SessionAgentMenuItems({
   sessionId,
@@ -33,6 +35,7 @@ export function SessionAgentMenuItems({
   const roles = useRoleProfiles()
   const updateAgent = useUpdateAgent()
   const removeAgent = useRemoveAgent()
+  const restartAgent = useRestartAgent()
 
   if (!agent) {
     return (
@@ -91,6 +94,13 @@ export function SessionAgentMenuItems({
           </ContextMenuSubContent>
         </ContextMenuSub>
       )}
+      {/* A fresh session takes over; this one stays as a normal session. */}
+      <ContextMenuItem
+        onSelect={() => restartAgent.mutate({ agentId: agent.id })}
+      >
+        <RotateCcw className="mr-2 h-4 w-4" />
+        Restart Agent
+      </ContextMenuItem>
       <ContextMenuItem
         onSelect={() => removeAgent.mutate({ agentId: agent.id })}
       >

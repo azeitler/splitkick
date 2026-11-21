@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { hasBackend } from '@/lib/environment'
+import { navigateToSession } from '@/lib/navigate-to-session'
 import { invoke } from '@/lib/transport'
 import type { Agent } from '@/types/agents'
 
@@ -81,3 +82,38 @@ export const useRemoveAgent = () =>
     'remove_agent',
     'Could not remove the agent'
   )
+
+/**
+ * Start the agent again in a fresh session. Its first message hands over the
+ * history of the old session, which stays as a normal session.
+ */
+export function useRestartAgent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { agentId: string }) =>
+      invoke<Agent>('restart_agent', args),
+    onMutate: () => ({ toastId: toast.loading('Restarting agent…') }),
+    onSuccess: (agent, _args, context) => {
+      queryClient.invalidateQueries({ queryKey: agentsQueryKeys.all })
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+      const { projectId, worktreeId, sessionId } = agent
+      toast.success(`${agent.name} restarted in a fresh session`, {
+        id: context?.toastId,
+        action:
+          projectId && sessionId
+            ? {
+                label: 'Open',
+                onClick: () =>
+                  navigateToSession({ projectId, worktreeId, sessionId }),
+              }
+            : undefined,
+      })
+    },
+    onError: (error, _args, context) => {
+      toast.error('Could not restart the agent', {
+        id: context?.toastId,
+        description: String(error),
+      })
+    },
+  })
+}

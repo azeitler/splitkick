@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   entries: [] as AllSessionsEntry[],
   navigateToSession: vi.fn(),
   remove: vi.fn(),
+  restart: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
@@ -24,6 +25,7 @@ vi.mock('@/services/agents', () => ({
     mocks.agents.find(a => a.sessionId === sessionId),
   useRemoveAgent: () => ({ mutate: mocks.remove }),
   useUpdateAgent: () => ({ mutate: vi.fn() }),
+  useRestartAgent: () => ({ mutate: mocks.restart }),
 }))
 
 vi.mock('@/services/projects', async importOriginal => ({
@@ -85,6 +87,7 @@ describe('SidebarAgentsSection', () => {
   beforeEach(() => {
     mocks.navigateToSession.mockClear()
     mocks.remove.mockClear()
+    mocks.restart.mockClear()
     mocks.agents = []
     mocks.entries = [
       {
@@ -159,5 +162,12 @@ describe('SidebarAgentsSection', () => {
       screen.getByRole('button', { name: 'Remove agent Release manager' })
     )
     expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+  })
+
+  it('restarts an agent that has no session', async () => {
+    mocks.agents = [agent({ sessionId: null, sessionName: null })]
+    render(<SidebarAgentsSection />)
+    await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
+    expect(mocks.restart).toHaveBeenCalledWith({ agentId: 'a1' })
   })
 })

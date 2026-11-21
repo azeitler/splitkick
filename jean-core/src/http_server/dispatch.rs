@@ -1442,6 +1442,10 @@ pub async fn dispatch_command(
             };
             to_value(crate::agents::update_agent(app.clone(), agent_id, name, role_id).await?)
         }
+        "restart_agent" => {
+            let agent_id: String = field(&args, "agentId", "agent_id")?;
+            to_value(crate::agents::restart_agent(app.clone(), agent_id).await?)
+        }
         "remove_agent" => {
             let agent_id: String = field(&args, "agentId", "agent_id")?;
             crate::agents::remove_agent(app.clone(), agent_id).await?;

@@ -2050,6 +2050,11 @@ pub struct SessionMetadata {
     /// One-shot marker consumed by the first turn after a move.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_move: Option<PendingMove>,
+    /// One-shot marker set by `agents::restart_agent`: the session whose
+    /// history the first send hands over. Consumed like `pending_fork`, by
+    /// the first turn that finishes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_handoff_from: Option<String>,
     /// Storage format version for migrations
     #[serde(default = "default_manifest_version")]
     pub version: u32,
@@ -2188,6 +2193,7 @@ impl SessionMetadata {
             graph_permission: None,
             pending_fork: None,
             pending_move: None,
+            pending_handoff_from: None,
             version: 1,
         }
     }
