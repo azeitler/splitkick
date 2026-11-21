@@ -949,6 +949,7 @@ pub async fn remove_project(app: AppHandle, project_id: String) -> Result<(), St
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
 
     save_projects_data(&app, &data)?;
+    crate::agents::remove_for_project(&app, &project_id);
 
     // Clean up sessions files for archived worktrees (in background, non-blocking)
     for worktree_id in archived_worktree_ids {

@@ -1404,6 +1404,49 @@ pub async fn dispatch_command(
                 .await?,
             )
         }
+        // =====================================================================
+        // Agents: named, unique role holders (docs/developer/agents.md).
+        // The commands emit their own cache invalidation.
+        // =====================================================================
+        "list_agents" => to_value(crate::agents::list_agents(app.clone()).await?),
+        "create_agent" => {
+            let name: String = from_field(&args, "name")?;
+            let project_id: Option<String> = field_opt(&args, "projectId", "project_id")?;
+            let role_id: Option<String> = field_opt(&args, "roleId", "role_id")?;
+            let folder: Option<String> = from_field_opt(&args, "folder")?;
+            to_value(
+                crate::agents::create_agent(app.clone(), name, project_id, role_id, folder).await?,
+            )
+        }
+        "make_session_agent" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let name: String = from_field(&args, "name")?;
+            let global: bool = from_field_opt(&args, "global")?.unwrap_or(false);
+            to_value(
+                crate::agents::make_session_agent(app.clone(), session_id, name, global).await?,
+            )
+        }
+        "update_agent" => {
+            let agent_id: String = field(&args, "agentId", "agent_id")?;
+            let name: Option<String> = from_field_opt(&args, "name")?;
+            // Absent = keep the role; null = clear it; a string = set it.
+            let role_id: Option<Option<String>> = match args.get("roleId") {
+                None => None,
+                Some(Value::Null) => Some(None),
+                Some(value) => Some(Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| "roleId must be a string or null".to_string())?
+                        .to_string(),
+                )),
+            };
+            to_value(crate::agents::update_agent(app.clone(), agent_id, name, role_id).await?)
+        }
+        "remove_agent" => {
+            let agent_id: String = field(&args, "agentId", "agent_id")?;
+            crate::agents::remove_agent(app.clone(), agent_id).await?;
+            Ok(Value::Null)
+        }
         "set_session_role" | "set_session_agent" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             // `agentId` is the name from before profiles became roles.

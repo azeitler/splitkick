@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// Where an agent's name is unique, and how other sessions find it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

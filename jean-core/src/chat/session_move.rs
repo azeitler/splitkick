@@ -142,6 +142,7 @@ pub fn move_session_to_worktree(
     let source_worktree_id = metadata.worktree_id.clone();
     worktree_info(app, &source_worktree_id)?;
     let target = worktree_info(app, target_worktree_id)?;
+    crate::agents::check_session_move(app, session_id, &target.project_id)?;
     let status = check_move(
         &source_worktree_id,
         target_worktree_id,
@@ -188,6 +189,7 @@ fn perform_move(
         |metadata| prepare_moved_metadata(metadata, &source.path),
     )?;
 
+    crate::agents::session_moved(app, session_id, target_worktree_id);
     super::emit_sessions_cache_invalidation(app);
     if let Err(e) = app.emit_all(
         "session:moved",

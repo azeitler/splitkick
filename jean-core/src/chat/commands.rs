@@ -2140,6 +2140,7 @@ pub async fn close_session(
         Ok(sessions.active_session_id.clone())
     })?;
 
+    crate::agents::session_gone(&app, &session_id);
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
 }
@@ -2272,6 +2273,7 @@ pub async fn archive_session(
         Ok(sessions.active_session_id.clone())
     })?;
 
+    crate::agents::session_gone(&app, &session_id);
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
 }

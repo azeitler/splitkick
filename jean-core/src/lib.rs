@@ -39,6 +39,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod activity;
 pub mod agent_browser;
+pub mod agents;
 mod antigravity_cli;
 mod auto_fix;
 mod background_tasks;
@@ -50,7 +51,6 @@ mod codex_cli;
 mod commandcode_cli;
 mod cursor_cli;
 mod gh_cli;
-pub mod agents;
 pub mod graphs;
 mod grok_cli;
 pub mod http_server;

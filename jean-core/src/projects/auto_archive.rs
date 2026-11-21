@@ -41,6 +41,8 @@ struct Facts<'a> {
     head: Option<&'a str>,
     pr_head_oid: Option<&'a str>,
     dirty: bool,
+    /// An agent's current session is in the worktree.
+    has_agent: bool,
 }
 
 fn decide(facts: &Facts) -> Decision {
@@ -49,6 +51,8 @@ fn decide(facts: &Facts) -> Decision {
         || wt.session_type == SessionType::Base
         || wt.pr_url.as_deref() != Some(facts.pr_url)
         || wt.auto_archived_pr_url.as_deref() == Some(facts.pr_url)
+        // An agent is long-lived: a merged PR does not end it.
+        || facts.has_agent
     {
         return Decision::Skip;
     }
@@ -134,6 +138,7 @@ pub async fn auto_archive_merged_worktree(
         head: head.as_deref(),
         pr_head_oid: head_oid.as_deref(),
         dirty,
+        has_agent: crate::agents::worktree_has_agent(&app, &worktree_id),
     });
     let worktree_path = worktree.path.clone();
 
@@ -202,6 +207,7 @@ mod tests {
             head: Some(OID),
             pr_head_oid: Some(OID),
             dirty: false,
+            has_agent: false,
         }
     }
 
@@ -224,6 +230,17 @@ mod tests {
     fn archives_a_clean_idle_worktree_at_the_merged_head() {
         let wt = worktree();
         assert_eq!(decide(&facts(&wt)), Decision::Archive);
+    }
+
+    // An agent is long-lived: a merged PR does not end it.
+    #[test]
+    fn skips_a_worktree_that_holds_an_agent() {
+        let wt = worktree();
+        let f = Facts {
+            has_agent: true,
+            ..facts(&wt)
+        };
+        assert_eq!(decide(&f), Decision::Skip);
     }
 
     #[test]
