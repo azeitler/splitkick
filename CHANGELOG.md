@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.23] - 2026-11-21
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Agents: one named session in a role.** An agent exists once, in the whole
@@ -3265,7 +3269,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.22...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.23...HEAD
+[1.5.23]: https://github.com/azeitler/jean/compare/splitkick-v1.5.22...splitkick-v1.5.23
 [1.5.22]: https://github.com/azeitler/jean/compare/splitkick-v1.5.21...splitkick-v1.5.22
 [1.5.21]: https://github.com/azeitler/jean/compare/splitkick-v1.5.20...splitkick-v1.5.21
 [1.5.20]: https://github.com/azeitler/jean/compare/splitkick-v1.5.19...splitkick-v1.5.20
