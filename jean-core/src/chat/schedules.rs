@@ -55,6 +55,55 @@ pub enum RunOutcome {
     Skipped,
     /// Could not be queued (session or worktree gone)
     Failed,
+    /// Not queued: the previous prompt of this repeat still waits in the
+    /// session's queue (#144)
+    StillQueued,
+}
+
+/// Why a repeat did not queue a new copy (#144).
+pub const STILL_QUEUED_REASON: &str = "The previous run is still queued";
+
+/// How a fire went when it did not fail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Fired {
+    /// The prompt went into this session's queue
+    Queued(String),
+    /// A repeat's earlier prompt still waits in this session's queue
+    StillQueued(String),
+}
+
+/// A hint for a `*/N` step that does not divide its field's cycle (60
+/// minutes, 24 hours). `*/45` fires at minutes 0 and 45, not every 45
+/// minutes (#144). `None` for every other pattern.
+pub fn cron_step_hint(cron: &str) -> Option<String> {
+    let fields: Vec<&str> = cron.split_whitespace().collect();
+    [(0, "minute", 60, "hour"), (1, "hour", 24, "day")]
+        .into_iter()
+        .find_map(|(index, unit, cycle, per)| {
+            let step: u32 = fields.get(index)?.strip_prefix("*/")?.parse().ok()?;
+            if step <= 1 || step >= cycle || cycle % step == 0 {
+                return None;
+            }
+            let values: Vec<u32> = (0..cycle).step_by(step as usize).collect();
+            let last = *values.last()?;
+            let list = values
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let divisors = (2..cycle)
+                .filter(|d| cycle % d == 0)
+                .map(|d| format!("*/{d}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(format!(
+                "`*/{step}` in the {unit} field fires at {unit}s {list} of every {per} \
+                 ({step} {unit}s apart, then {gap} to the next {per}), not every {step} {unit}s. \
+                 Cron cannot step by {step} {unit}s across the {per}: use a step that divides \
+                 {cycle} ({divisors}), or list the {unit}s you want.",
+                gap = cycle - last,
+            ))
+        })
 }
 
 /// The first time after `after_unix` that matches the rule.
@@ -618,7 +667,7 @@ pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, Strin
         apply_fire_result(list, &schedule, &result);
         if let Some(stored) = list.iter_mut().find(|s| s.id == schedule.id) {
             stored.last_run_unix = Some(now);
-            if result.is_ok() {
+            if let Ok(Fired::Queued(_)) = result {
                 stored.last_outcome = Some(RunOutcome::Queued);
                 stored.last_error = None;
             }
@@ -626,7 +675,10 @@ pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, Strin
         (true, ())
     })?;
     emit_changed(app);
-    result
+    match result? {
+        Fired::Queued(session_id) => Ok(session_id),
+        Fired::StillQueued(_) => Err(format!("{STILL_QUEUED_REASON} in its session")),
+    }
 }
 
 /// The schedule to run now. A one-off leaves the list here, under the lock,
@@ -1014,9 +1066,10 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
 }
 
 /// Queue one schedule's prompt into its target and start the drain. A
-/// `NewSession` target gets a new session in the worktree first. Returns
-/// the session the prompt went into.
-async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<String, String> {
+/// `NewSession` target gets a new session in the worktree first. A repeat
+/// whose earlier prompt is still queued adds no copy (#144). Returns the
+/// session the prompt went (or would go) into.
+async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<Fired, String> {
     let worktree_path = resolve_worktree_path(app, &schedule.worktree_id)
         .filter(|path| !path.is_empty())
         .ok_or_else(|| "The worktree no longer exists".to_string())?;
@@ -1048,9 +1101,23 @@ async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<String, String> {
         }
     };
 
-    let queue = enqueue(app, schedule, &session_id).inspect_err(|e| {
+    let queued = enqueue(app, schedule, &session_id).inspect_err(|e| {
         log::warn!("schedules::fire: failed to enqueue schedule for session={session_id}: {e}");
     })?;
+    let Some(queue) = queued else {
+        log::info!(
+            "schedules::fire: schedule {} still queued in session={session_id}, skipped",
+            schedule.id
+        );
+        // Nudge the drain: the waiting copy runs as soon as the session can.
+        super::commands::trigger_backend_queue_drain(
+            app.clone(),
+            schedule.worktree_id.clone(),
+            worktree_path,
+            session_id.clone(),
+        );
+        return Ok(Fired::StillQueued(session_id));
+    };
 
     let _ = app.emit_all(
         "queue:updated",
@@ -1074,7 +1141,7 @@ async fn fire(app: &AppHandle, schedule: &Schedule) -> Result<String, String> {
             schedule_id: schedule.id.clone(),
         },
     );
-    Ok(session_id)
+    Ok(Fired::Queued(session_id))
 }
 
 /// Name of the session a `NewSession` run creates.
@@ -1089,14 +1156,14 @@ fn new_session_name(schedule: &Schedule) -> String {
 /// Record how a fire went. A failed fire (session or worktree gone) pauses
 /// the schedule and keeps it in the list, also a one-off, so the user sees
 /// why it did not run and can fix or delete it.
-fn record_fire(app: &AppHandle, schedule: &Schedule, result: Result<String, String>) {
+fn record_fire(app: &AppHandle, schedule: &Schedule, result: Result<Fired, String>) {
     let _ = update(app, |list| {
         apply_fire_result(list, schedule, &result);
         (true, ())
     });
 }
 
-fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result<String, String>) {
+fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result<Fired, String>) {
     let index = match list.iter().position(|s| s.id == fired.id) {
         Some(index) => index,
         // A one-off that ran is done; one that failed comes back paused. A
@@ -1110,8 +1177,12 @@ fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result
     };
     let schedule = &mut list[index];
     match result {
-        Ok(session_id) => {
+        Ok(Fired::Queued(session_id)) => {
             schedule.last_session_id = Some(session_id.clone());
+        }
+        Ok(Fired::StillQueued(_)) => {
+            schedule.last_outcome = Some(RunOutcome::StillQueued);
+            schedule.last_error = None;
         }
         Err(e) => {
             log::warn!("schedules: schedule {} failed: {e}", schedule.id);
@@ -1122,10 +1193,15 @@ fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result
     }
 }
 
-/// Append the schedule's prompt to the session's message queue.
+/// Append the schedule's prompt to the session's message queue and return
+/// the queue, or `None` when a repeat's earlier prompt is still in it.
 /// A session that never sent a message gets its metadata here, as
 /// `send_chat_message` would create it.
-fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec<Value>, String> {
+fn enqueue(
+    app: &AppHandle,
+    schedule: &Schedule,
+    session_id: &str,
+) -> Result<Option<Vec<Value>>, String> {
     let session = find_session(app, session_id)
         .ok()
         .filter(|s| !deleted_from_index(app, &s.worktree_id, session_id))
@@ -1143,11 +1219,24 @@ fn enqueue(app: &AppHandle, schedule: &Schedule, session_id: &str) -> Result<Vec
         &session.name,
         session.order,
         |m| {
+            if still_queued(&m.queued_messages, schedule) {
+                return Ok(None);
+            }
             let message = queued_message(m, schedule, now_unix());
             m.queued_messages.push(message);
-            Ok(m.queued_messages.clone())
+            Ok(Some(m.queued_messages.clone()))
         },
     )
+}
+
+/// A repeating schedule's earlier prompt still waits in `queue`, so a new
+/// copy would stack up while the session cannot run (#144). One-offs
+/// always queue.
+fn still_queued(queue: &[Value], schedule: &Schedule) -> bool {
+    schedule.recurrence.is_some()
+        && queue
+            .iter()
+            .any(|m| m.get("scheduleId").and_then(Value::as_str) == Some(schedule.id.as_str()))
 }
 
 /// The worktree's session index lists every session, archived ones too.
@@ -1532,12 +1621,51 @@ mod tests {
         session(&app, "fire-1");
         let schedule = create_simple(&app, "fire-1", "check the build", Some(0), None).unwrap();
 
-        let queue = enqueue(&app, &schedule, "fire-1").unwrap();
+        let queue = enqueue(&app, &schedule, "fire-1").unwrap().unwrap();
 
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0]["message"], "check the build");
         let metadata = storage::load_metadata(&app, "fire-1").unwrap().unwrap();
         assert_eq!(metadata.queued_messages, queue);
+    }
+
+    // #144: a session that waits (e.g. for an answer) does not drain its
+    // queue; a repeat must not stack one copy per fire meanwhile.
+    #[test]
+    fn a_repeat_queues_one_copy_until_the_drain_takes_it() {
+        let (_temp, app) = app();
+        session(&app, "stack-1");
+        let repeat = create_simple(
+            &app,
+            "stack-1",
+            "scheduled check",
+            None,
+            Some(daily_9_berlin()),
+        )
+        .unwrap();
+
+        assert_eq!(enqueue(&app, &repeat, "stack-1").unwrap().unwrap().len(), 1);
+        assert_eq!(enqueue(&app, &repeat, "stack-1").unwrap(), None);
+        assert_eq!(enqueue(&app, &repeat, "stack-1").unwrap(), None);
+        let metadata = storage::load_metadata(&app, "stack-1").unwrap().unwrap();
+        assert_eq!(metadata.queued_messages.len(), 1);
+
+        // The drain took the copy: the next fire queues again.
+        storage::with_metadata_mut(&app, "stack-1", "w1", "Session", 0, |m| {
+            m.queued_messages.clear();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(enqueue(&app, &repeat, "stack-1").unwrap().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_one_off_queues_next_to_a_waiting_copy() {
+        let (_temp, app) = app();
+        session(&app, "stack-2");
+        let once = create_simple(&app, "stack-2", "a", Some(4_000_000_000), None).unwrap();
+        enqueue(&app, &once, "stack-2").unwrap().unwrap();
+        assert_eq!(enqueue(&app, &once, "stack-2").unwrap().unwrap().len(), 2);
     }
 
     #[test]
@@ -1860,9 +1988,70 @@ mod tests {
     fn a_repeating_run_records_its_session() {
         let mut list = vec![repeating("rep", 10_000)];
         let fired = list[0].clone();
-        apply_fire_result(&mut list, &fired, &Ok("new-session".into()));
+        apply_fire_result(&mut list, &fired, &Ok(Fired::Queued("new-session".into())));
         assert_eq!(list[0].last_session_id.as_deref(), Some("new-session"));
         assert!(list[0].enabled);
+    }
+
+    // #144: a repeat whose prompt still waits in the queue adds no copy;
+    // once the drain took it, the next fire queues again.
+    #[test]
+    fn a_repeat_does_not_stack_while_its_copy_is_queued() {
+        let metadata = SessionMetadata::new("s".into(), "w".into(), "Session".into(), 0);
+        let schedule = repeating("rep", 0);
+        let mut queue = vec![serde_json::json!({ "id": "other", "message": "hi" })];
+        assert!(!still_queued(&queue, &schedule));
+
+        queue.push(queued_message(&metadata, &schedule, 1));
+        assert!(still_queued(&queue, &schedule));
+
+        queue.retain(|m| m["scheduleId"] != "rep");
+        assert!(!still_queued(&queue, &schedule));
+    }
+
+    #[test]
+    fn a_one_off_always_queues() {
+        let metadata = SessionMetadata::new("s".into(), "w".into(), "Session".into(), 0);
+        let mut one_off = repeating("once", 0);
+        one_off.recurrence = None;
+        let queue = vec![queued_message(&metadata, &one_off, 1)];
+        assert!(!still_queued(&queue, &one_off));
+    }
+
+    #[test]
+    fn a_still_queued_repeat_is_recorded_as_skipped_and_keeps_running() {
+        let mut list = vec![repeating("rep", 10_000)];
+        list[0].last_session_id = Some("s".into());
+        let fired = list[0].clone();
+        apply_fire_result(&mut list, &fired, &Ok(Fired::StillQueued("s".into())));
+        assert_eq!(list[0].last_outcome, Some(RunOutcome::StillQueued));
+        assert_eq!(list[0].last_error, None);
+        assert!(list[0].enabled);
+        assert_eq!(list[0].fire_at_unix, 10_000);
+        assert_eq!(
+            serde_json::to_value(RunOutcome::StillQueued).unwrap(),
+            "still_queued"
+        );
+    }
+
+    #[test]
+    fn a_step_that_does_not_divide_the_hour_gets_a_hint() {
+        let hint = cron_step_hint("*/45 * * * *").unwrap();
+        assert!(hint.contains("minutes 0, 45 of every hour"), "{hint}");
+        assert!(hint.contains("45 minutes apart, then 15"), "{hint}");
+        let hours = cron_step_hint("0 */5 * * *").unwrap();
+        assert!(
+            hours.contains("hours 0, 5, 10, 15, 20 of every day"),
+            "{hours}"
+        );
+        assert!(hours.contains("then 4 to the next day"), "{hours}");
+    }
+
+    #[test]
+    fn a_step_that_divides_gets_no_hint() {
+        for cron in ["*/15 * * * *", "0 */6 * * *", "0 9 * * 1-5", "5,50 * * * *"] {
+            assert_eq!(cron_step_hint(cron), None, "{cron}");
+        }
     }
 
     // Older schedules.json files have none of the new fields.
@@ -2078,7 +2267,7 @@ mod tests {
             create_simple(&app, &session_id, "first prompt", Some(4_000_000_000), None).unwrap();
         assert_eq!(schedule.worktree_id, "fresh-wt");
 
-        let queue = enqueue(&app, &schedule, &session_id).unwrap();
+        let queue = enqueue(&app, &schedule, &session_id).unwrap().unwrap();
         assert_eq!(queue[0]["message"], "first prompt");
         let metadata = storage::load_metadata(&app, &session_id).unwrap().unwrap();
         assert_eq!(metadata.worktree_id, "fresh-wt");

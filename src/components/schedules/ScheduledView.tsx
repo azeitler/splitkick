@@ -33,7 +33,7 @@ import {
   formatRelativeTime,
   formatTimeUntil,
 } from '@/lib/relative-time'
-import { describeRecurrence } from '@/lib/schedule-format'
+import { describeRecurrence, outcomeText } from '@/lib/schedule-format'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import {
   deleteSchedule,
@@ -91,7 +91,7 @@ export function lastRunText(
   if (!schedule.last_run_unix) return null
   const when = `${formatRelativeTime(schedule.last_run_unix, now)} (${formatMessageTimestamp(schedule.last_run_unix, now)})`
   const outcome = schedule.last_outcome ?? 'queued'
-  return `${when} · ${outcome}`
+  return `${when} · ${outcomeText(outcome)}`
 }
 
 function isYolo(schedule: Schedule): boolean {

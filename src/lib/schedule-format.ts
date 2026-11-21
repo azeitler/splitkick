@@ -1,4 +1,4 @@
-import type { ScheduleRecurrence } from '@/types/chat'
+import type { ScheduleOutcome, ScheduleRecurrence } from '@/types/chat'
 
 const DAYS = [
   'Sunday',
@@ -43,4 +43,35 @@ export function describeRecurrence(
     }
   }
   return recurrence.tz === localTz ? text : `${text} (${recurrence.tz})`
+}
+
+/** Plain text for a schedule's last outcome. */
+export function outcomeText(outcome: ScheduleOutcome): string {
+  return outcome === 'still_queued'
+    ? 'skipped (the previous run is still queued)'
+    : outcome
+}
+
+/**
+ * A hint for a `*\/N` step that does not divide its field's cycle (60
+ * minutes, 24 hours): `*\/45` fires at minutes 0 and 45, not every 45
+ * minutes (#144). Mirrors `cron_step_hint` in jean-core. Null otherwise.
+ */
+export function cronStepHint(cron: string): string | null {
+  const fields = cron.trim().split(/\s+/)
+  const units = [
+    { index: 0, unit: 'minute', cycle: 60, per: 'hour' },
+    { index: 1, unit: 'hour', cycle: 24, per: 'day' },
+  ]
+  for (const { index, unit, cycle, per } of units) {
+    const match = /^\*\/(\d+)$/.exec(fields[index] ?? '')
+    if (!match) continue
+    const step = Number(match[1])
+    if (step <= 1 || step >= cycle || cycle % step === 0) continue
+    const values: number[] = []
+    for (let v = 0; v < cycle; v += step) values.push(v)
+    const gap = cycle - (values[values.length - 1] ?? 0)
+    return `*/${step} runs at ${unit}s ${values.join(', ')} of every ${per} (${step} ${unit}s apart, then ${gap} to the next ${per}), not every ${step} ${unit}s.`
+  }
+  return null
 }

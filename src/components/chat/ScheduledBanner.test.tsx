@@ -100,6 +100,20 @@ describe('scheduleHeadline', () => {
     expect(text).toMatch(/· last 2d ago \([A-Z][a-z]+ \d+[a-z]{2} 26, \d\d:\d\d\) · skipped$/)
   })
 
+  it('says why a repeat skipped while its previous run is still queued', () => {
+    const text = scheduleHeadline(
+      {
+        ...base,
+        fire_at_unix: now / 1000 + 3600,
+        recurrence: { cron: '0 9 * * *', tz: 'UTC' },
+        last_run_unix: now / 1000 - 60,
+        last_outcome: 'still_queued',
+      },
+      now
+    )
+    expect(text).toMatch(/· skipped \(the previous run is still queued\)$/)
+  })
+
   it('shows a paused schedule as paused, not with a next time', () => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const repeat = scheduleHeadline(

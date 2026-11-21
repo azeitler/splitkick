@@ -61,6 +61,20 @@ describe('ScheduleDialog', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  // #144: a raw `*/45` is allowed but the dialog says what it really does.
+  it('hints at a custom minute step that does not divide the hour', () => {
+    renderDialog({
+      kind: 'repeat',
+      initial: {
+        prompt: 'check',
+        recurrence: { cron: '*/45 * * * *', tz: 'UTC' },
+      },
+    })
+    expect(
+      screen.getByText(/runs at minutes 0, 45 of every hour/)
+    ).toBeInTheDocument()
+  })
+
   it('reads stored rules back into presets', () => {
     const tz = 'UTC'
     expect(presetFromRecurrence({ cron: '30 8 * * 1-5', tz })).toMatchObject({

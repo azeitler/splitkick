@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeRecurrence } from './schedule-format'
+import { cronStepHint, describeRecurrence } from './schedule-format'
 
 const tz = 'Europe/Berlin'
 const rule = (cron: string) => ({ cron, tz })
@@ -30,5 +30,24 @@ describe('describeRecurrence', () => {
     expect(describeRecurrence(rule('0 9 * * *'), 'UTC')).toBe(
       'daily at 09:00 (Europe/Berlin)'
     )
+  })
+})
+
+describe('cronStepHint', () => {
+  it('explains a minute step that does not divide the hour', () => {
+    expect(cronStepHint('*/45 * * * *')).toBe(
+      '*/45 runs at minutes 0, 45 of every hour (45 minutes apart, then 15 to the next hour), not every 45 minutes.'
+    )
+  })
+
+  it('explains an hour step that does not divide the day', () => {
+    expect(cronStepHint('0 */5 * * *')).toContain(
+      'hours 0, 5, 10, 15, 20 of every day'
+    )
+  })
+
+  it('stays quiet for steps that divide and for other patterns', () => {
+    for (const cron of ['*/15 * * * *', '0 */6 * * *', '0 9 * * 1-5', ''])
+      expect(cronStepHint(cron)).toBeNull()
   })
 })

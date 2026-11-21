@@ -428,7 +428,7 @@ export interface Schedule {
   recurrence?: ScheduleRecurrence
   /** When a repeating schedule last came due (seconds) */
   last_run_unix?: number
-  last_outcome?: 'queued' | 'skipped' | 'failed'
+  last_outcome?: ScheduleOutcome
   /** Why the last run failed */
   last_error?: string
   /** The session the last run went into */
@@ -1730,6 +1730,10 @@ export type ArtifactOp =
  * A message waiting in the queue to be sent
  * Captures all settings at the time of queueing so they're preserved
  */
+/** What happened when a repeating schedule last came due. `still_queued`:
+ * skipped, its previous prompt still waits in the session's queue (#144). */
+export type ScheduleOutcome = 'queued' | 'skipped' | 'failed' | 'still_queued'
+
 export interface QueuedMessage {
   /** Unique ID for this queued message (for reordering/removal) */
   id: string
@@ -1761,6 +1765,8 @@ export interface QueuedMessage {
   backend?: Backend
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
+  /** The schedule that queued this message, if any (set by the backend) */
+  scheduleId?: string
 }
 
 // ============================================================================

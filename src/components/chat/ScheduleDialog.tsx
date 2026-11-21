@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { formatMessageTimestamp, formatTimeUntil } from '@/lib/relative-time'
-import { describeRecurrence } from '@/lib/schedule-format'
+import { cronStepHint, describeRecurrence } from '@/lib/schedule-format'
 import {
   defaultTarget,
   fromDateTimeLocal,
@@ -323,6 +323,11 @@ export function ScheduleDialog({
                   <p className="text-xs text-muted-foreground">
                     Runs {describeRecurrence(recurrence, localTz)}
                     {preset === 'hourly' ? ' (the hour is not used)' : ''}
+                  </p>
+                )}
+                {preset === 'custom' && cronStepHint(customCron) && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    {cronStepHint(customCron)}
                   </p>
                 )}
               </div>

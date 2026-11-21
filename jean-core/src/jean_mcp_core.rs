@@ -514,7 +514,7 @@ fn tool_registry_session() -> Value {
         {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
         {"name":"set_session_label","description":"Set or clear the label of a Splitkick session. A session has one label; the sidebar row, the session tab, Home and the label filters show it. Omit sessionId to label the calling session. Without color, a label name that is already in use keeps its colour and a new name gets the default yellow. Pass clear true (or label null) to remove the label. Returns sessionId and label (null when cleared). For worktree labels use update_worktree_labels.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to label. Defaults to the calling session."},"label":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string","description":"Hex color like #3b82f6. Optional."}},"required":["name"],"additionalProperties":false},"clear":{"type":"boolean","description":"true removes the session's label."}},"additionalProperties":false}},
         {"name":"set_session_todo","description":"Mark a Splitkick session as To-Do for the user, or clear the mark. The To-Do list in the sidebar and on Home shows every marked session, newest mark first, until the user clears it. Use it when the user must come back to a session, e.g. to review your work (\"I marked this for you to review\"). Omit sessionId to target the calling session. Marking a marked session keeps its first time. Returns sessionId and todoAt (unix seconds, null when cleared).","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"todo":{"type":"boolean","description":"true marks the session as To-Do, false clears the mark."}},"required":["todo"],"additionalProperties":false}},
-        {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A new schedule never replaces an existing one. Returns the schedule.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
+        {"name":"create_schedule","description":"Schedule a prompt to run later or repeatedly in a Splitkick session, also when no window is open. Give `at` (ISO 8601 with offset, e.g. 2026-11-09T09:00:00+01:00) for one run, or `cron` (5 fields: minute hour day month weekday) for a repeating run. By default it runs in the calling session; pass sessionId for another session, or worktreeId to start a new session in that worktree for every run. The run uses the target session's settings and never a higher execution mode than the calling session (plan < build < yolo). A new schedule never replaces an existing one. A repeat adds no new prompt while its previous one is still queued. Returns the schedule, plus a `hint` when a `*/N` cron step does not divide the hour or day.","inputSchema":{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"description":"The message the run sends."},"at":{"type":"string","description":"One-off time, ISO 8601 with offset. In the future."},"cron":{"type":"string","description":"Repeat rule, 5-field cron, e.g. \"0 9 * * 1-5\" for weekdays at 09:00."},"tz":{"type":"string","description":"IANA time zone for cron, e.g. Europe/Berlin. Default: the host's time zone."},"sessionId":{"type":"string","description":"Run in this session. Defaults to the calling session."},"worktreeId":{"type":"string","description":"Run in a new session in this worktree each time (instead of sessionId)."},"name":{"type":"string","description":"Optional short name shown in the Scheduled view."}},"required":["prompt"],"additionalProperties":false}},
         {"name":"list_schedules","description":"List Splitkick schedules (agent and user ones), soonest first: id, origin, name, target (session or new_session), sessionId, worktreeId, prompt, next run (fireAtUnix), repeat rule, enabled, last run and outcome. Filter with sessionId or worktreeId.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"worktreeId":{"type":"string"}},"additionalProperties":false}},
         {"name":"cancel_schedule","description":"Delete one Splitkick schedule by id (from list_schedules or create_schedule). Returns whether it existed.","inputSchema":{"type":"object","properties":{"scheduleId":{"type":"string"}},"required":["scheduleId"],"additionalProperties":false}},
         {"name":"add_artifact","description":"Register a file or URL you produced that the user should look at (report, screenshot, generated doc, HTML page, preview URL) in the Artifacts tab of a Splitkick session. Not for every edited source file: only outputs worth opening. Register it again with the same target after you change the file: Splitkick keeps a copy of the file per version, so the user can open and compare versions; pass change to say what changed. Unchanged content adds no version. The Artifacts tab does not replace your reply: also show every artifact in the chat (embed an image as ![title](path), put short text or its key part in the reply, link files and URLs). Omit sessionId to target the calling session. Returns sessionId and the artifact with its versions.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1,"description":"Short name shown in the list."},"target":{"type":"string","minLength":1,"description":"Absolute path, path relative to the worktree, or http(s)/file URL."},"note":{"type":"string","description":"What the artifact is, one line. Omit it for a new version: the current note stays (a different note on a new version is stored as its change)."},"change":{"type":"string","description":"What changed since the last version, one short line (e.g. \"Added the Q3 table\"). Pass it every time you register a changed file. Also adds a version for a URL."},"sessionId":{"type":"string","description":"Session whose list gets the artifact. Defaults to the calling session."}},"required":["title","target"],"additionalProperties":false}},
@@ -1843,7 +1843,15 @@ async fn run_tool(
                 },
             )
             .map_err(ToolError::invalid_params)?;
-            Ok(json!({ "schedule": describe_schedule(&schedule) }))
+            let mut result = json!({ "schedule": describe_schedule(&schedule) });
+            if let Some(hint) = schedule
+                .recurrence
+                .as_ref()
+                .and_then(|r| crate::chat::schedules::cron_step_hint(&r.cron))
+            {
+                result["hint"] = Value::from(hint);
+            }
+            Ok(result)
         }
         "list_schedules" => {
             let session_id = optional_str(&args, "sessionId");
@@ -7068,6 +7076,7 @@ mod tests {
         .unwrap();
         // MCP schedules never replace each other: the one-off is still there.
         assert_eq!(repeat["schedule"]["target"], "new_session");
+        assert!(repeat.get("hint").is_none());
         assert_eq!(repeat["schedule"]["recurrence"]["tz"], "Europe/Berlin");
         let cancelled = call_as(
             &app,
@@ -7087,6 +7096,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cancelled["cancelled"], json!(true));
+    }
+
+    // #144: `*/45` is created, but the result says it fires at :00 and :45.
+    #[test]
+    fn create_schedule_hints_at_an_uneven_minute_step() {
+        let (_temp, app) = tool_fixture();
+        let created = call_as(
+            &app,
+            "create_schedule",
+            json!({ "prompt": "check", "cron": "*/45 * * * *", "tz": "UTC", "worktreeId": "tool-wt" }),
+            // Not `tool-s1`: other tests count that session's schedules.
+            "anon",
+        )
+        .unwrap();
+        assert!(created["schedule"]["id"].is_string());
+        let hint = created["hint"].as_str().expect("hint");
+        assert!(hint.contains("minutes 0, 45 of every hour"), "{hint}");
+        let id = created["schedule"]["id"].as_str().unwrap();
+        crate::chat::schedules::delete(&app, id).unwrap();
     }
 
     #[test]

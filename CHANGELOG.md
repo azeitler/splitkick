@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A repeating schedule no longer stacks copies of its prompt.** While a
+  session waits (for example for an answer to a question), it does not run its
+  queue. Before, each fire of a repeat added one more copy. Now a repeat adds no
+  new copy while its earlier prompt is still queued: the fire shows as "skipped
+  (the previous run is still queued)", and the next fire is planned as usual.
+  "Run now" says the same. One-off schedules do not change. MCP
+  `create_schedule` and the custom cron field also warn when a `*/N` step does
+  not divide the hour or day: `*/45` runs at minutes 0 and 45, not every 45
+  minutes. Closes #144
+
 ## [1.5.22] - 2026-11-19
 
 Built on Jean 0.1.73.

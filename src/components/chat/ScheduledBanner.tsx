@@ -9,7 +9,7 @@ import {
   formatRelativeTime,
   formatTimeUntil,
 } from '@/lib/relative-time'
-import { describeRecurrence } from '@/lib/schedule-format'
+import { describeRecurrence, outcomeText } from '@/lib/schedule-format'
 import type { Schedule } from '@/types/chat'
 import {
   deleteSchedule,
@@ -38,7 +38,7 @@ export function scheduleHeadline(schedule: Schedule, now = Date.now()): string {
   if (schedule.last_run_unix) {
     text += ` · last ${formatRelativeTime(schedule.last_run_unix, now)} (${formatMessageTimestamp(schedule.last_run_unix, now)})`
     if (schedule.last_outcome && schedule.last_outcome !== 'queued')
-      text += ` · ${schedule.last_outcome}`
+      text += ` · ${outcomeText(schedule.last_outcome)}`
   }
   return text
 }
