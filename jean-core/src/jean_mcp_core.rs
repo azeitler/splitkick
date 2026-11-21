@@ -617,6 +617,11 @@ async fn run_tool(
             let mut projects = dispatch_command(app, "list_projects", json!({}))
                 .await
                 .map_err(ToolError::internal)?;
+            // A hidden project is the home of a global agent, not a project
+            // the user manages; `list_agents` shows it.
+            if let Value::Array(items) = &mut projects {
+                items.retain(|p| p.get("hidden").and_then(Value::as_bool) != Some(true));
+            }
             add_project_kinds(&mut projects);
             Ok(projects)
         }
@@ -7712,6 +7717,31 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message.contains("Unknown roleId"));
+    }
+
+    // The home of a global agent is a hidden plain project: not a project
+    // the user manages, so list_projects leaves it out.
+    #[test]
+    fn list_projects_leaves_out_hidden_projects() {
+        let (_temp, app) = tool_fixture();
+        let mut data = crate::projects::storage::load_projects_data(&app).unwrap();
+        let mut hidden = data.projects[0].clone();
+        hidden.id = "hidden-p".into();
+        hidden.name = "assistant".into();
+        hidden.path = format!("{}-agent", hidden.path);
+        hidden.is_git = false;
+        hidden.hidden = true;
+        data.projects.push(hidden);
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+
+        // dispatch_command needs the big stack in debug builds.
+        let listed = folder_call(&app, "list_projects", json!({})).unwrap();
+        let text = listed.to_string();
+        assert!(text.contains("tool-p1"), "{text}");
+        assert!(!text.contains("hidden-p"), "{text}");
+        // Stored, so the agent's own session still resolves its project.
+        let data = crate::projects::storage::load_projects_data(&app).unwrap();
+        assert!(data.find_project("hidden-p").is_some_and(|p| p.hidden));
     }
 
     // Callers written before profiles became roles still pass `agentId`.

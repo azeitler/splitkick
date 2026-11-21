@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCodingProject } from './projects'
+import { isCodingProject, isVisibleProject } from './projects'
 
 describe('isCodingProject', () => {
   it('follows git when the preset is automatic', () => {
@@ -15,5 +15,13 @@ describe('isCodingProject', () => {
 
   it('treats a missing project as coding', () => {
     expect(isCodingProject(undefined)).toBe(true)
+  })
+})
+
+describe('isVisibleProject', () => {
+  it('hides only the home of a global agent', () => {
+    expect(isVisibleProject({ hidden: true })).toBe(false)
+    expect(isVisibleProject({ hidden: false })).toBe(true)
+    expect(isVisibleProject({})).toBe(true)
   })
 })

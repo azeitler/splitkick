@@ -24,7 +24,7 @@ import {
   useOpenGraphFile,
 } from '@/services/graphs'
 import { useProjects } from '@/services/projects'
-import { isFolder } from '@/types/projects'
+import { isFolder, isVisibleProject } from '@/types/projects'
 import { joinPath, slugify, tildePath } from './graph-utils'
 
 export const GRAPH_TYPE_SUGGESTIONS = ['roadmap', 'release', 'research', 'docs']
@@ -98,7 +98,10 @@ export function NewGraphDialog({ open, onOpenChange }: NewGraphDialogProps) {
 function NewGraphForm({ onDone }: { onDone: () => void }) {
   const { data: allProjects } = useProjects()
   const projects = useMemo(
-    () => (allProjects ?? []).filter(p => !isFolder(p) && p.path),
+    () =>
+      (allProjects ?? []).filter(
+        p => !isFolder(p) && isVisibleProject(p) && p.path
+      ),
     [allProjects]
   )
 

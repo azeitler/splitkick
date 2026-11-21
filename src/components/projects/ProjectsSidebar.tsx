@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useProjects, useCreateFolder } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -18,6 +25,7 @@ import { useSidebarReveal } from './useSidebarReveal'
 import { useSidebarStickyStack } from './useSidebarStickyStack'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { isVisibleProject } from '@/types/projects'
 import type { SidebarTab } from '@/types/ui-state'
 
 /** What the tabs other than Projects show. */
@@ -35,7 +43,11 @@ export function ProjectsSidebar() {
     isError: projectsFailed,
     refetch: refetchProjects,
   } = useProjects()
-  const projects = projectsData ?? []
+  // The homes of global agents show in the Agents tab only.
+  const projects = useMemo(
+    () => (projectsData ?? []).filter(isVisibleProject),
+    [projectsData]
+  )
   const createFolder = useCreateFolder()
   const sidebarTab = useUIStore(state => state.sidebarTab)
   const isMobile = useIsMobile()

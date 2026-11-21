@@ -113,6 +113,12 @@ export interface Project {
    * projects, Non-coding for plain projects. Use `isCodingProject`.
    */
   preset?: ProjectPreset | null
+  /**
+   * True for the home of a global agent: a plain project that shows only in
+   * the Agents tab. Lists of projects must filter with `isVisibleProject`;
+   * lookups by id keep it.
+   */
+  hidden?: boolean
 }
 
 export type ProjectPreset = 'coding' | 'non_coding'
@@ -137,6 +143,15 @@ export interface BrowseDirectoryResult {
   current_path: string
   parent_path?: string
   entries: DirEntry[]
+}
+
+/**
+ * False for the home of a global agent (`hidden`). Use it wherever projects
+ * are listed for the user to pick or browse; never for a lookup by id, so the
+ * agent's own session still finds its project.
+ */
+export function isVisibleProject(project: Pick<Project, 'hidden'>): boolean {
+  return project.hidden !== true
 }
 
 /**

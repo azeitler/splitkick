@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useProjects, useUpdateProjectSettings } from '@/services/projects'
-import { isFolder, type Project } from '@/types/projects'
+import { isFolder, isVisibleProject, type Project } from '@/types/projects'
 import { cn } from '@/lib/utils'
 
 interface LinkedProjectsModalProps {
@@ -47,7 +47,7 @@ export function LinkedProjectsModal({
   const availableProjects = useMemo(() => {
     const q = search.toLowerCase().trim()
     return (projects ?? []).filter(p => {
-      if (isFolder(p)) return false
+      if (isFolder(p) || !isVisibleProject(p)) return false
       if (p.id === projectId) return false
       if (linkedIds.has(p.id)) return false
       if (q && !p.name.toLowerCase().includes(q)) return false

@@ -5,6 +5,7 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { isVisibleProject } from '@/types/projects'
 import {
   useAllSessions,
   useSessionMessageSearch,
@@ -247,7 +248,7 @@ export function CommandPalette({
   // list should be where you would go, not where you already are.
   const projectCommands = useMemo((): ProjectCommand[] => {
     return projects
-      .filter(p => !p.is_folder)
+      .filter(p => !p.is_folder && isVisibleProject(p))
       .sort((a, b) => {
         if (a.id === selectedProjectId) return 1
         if (b.id === selectedProjectId) return -1

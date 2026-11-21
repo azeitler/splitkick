@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { Plus, Loader2 } from 'lucide-react'
 import { HomeView } from '@/components/home/HomeView'
-import { isFolder } from '@/types/projects'
+import { isFolder, isVisibleProject } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import {
@@ -133,7 +133,8 @@ export function MainWindowContent({
     isError: projectsFailed,
     refetch: refetchProjects,
   } = useProjects()
-  const projects = projectsData ?? []
+  // The homes of global agents are not projects the user manages.
+  const projects = (projectsData ?? []).filter(isVisibleProject)
   // No project list yet: still loading, or the load failed. Neither means
   // "this host has no projects", so never show first-run UI for it.
   const projectsUnknown = projectsData === undefined

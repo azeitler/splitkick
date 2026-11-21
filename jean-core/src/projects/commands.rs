@@ -766,6 +766,7 @@ pub async fn add_project(
         is_git: !plain,
         git_detected: false,
         preset: None,
+        hidden: false,
     };
 
     data.add_project(project.clone());
@@ -831,6 +832,7 @@ pub async fn init_project(
         is_git: true,
         git_detected: false,
         preset: None,
+        hidden: false,
     };
 
     data.add_project(project.clone());
@@ -892,6 +894,7 @@ pub async fn clone_project(
         is_git: true,
         git_detected: false,
         preset: None,
+        hidden: false,
     };
 
     data.add_project(project.clone());
@@ -13055,6 +13058,7 @@ pub async fn create_folder(
         is_git: true,
         git_detected: false,
         preset: None,
+        hidden: false,
     };
 
     data.add_project(folder.clone());
@@ -15801,6 +15805,7 @@ mod tests {
             is_git: true,
             git_detected: false,
             preset: None,
+            hidden: false,
         };
 
         attach_default_avatar(&mut project);

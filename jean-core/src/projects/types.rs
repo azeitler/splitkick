@@ -194,6 +194,11 @@ pub struct Project {
     /// Non-coding for plain projects. See [`Project::is_coding`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<ProjectPreset>,
+    /// True for the home of a global agent: a plain project that shows only
+    /// in the Agents tab. Left out of the project tree, the project pickers
+    /// and MCP `list_projects`. See `docs/developer/agents.md`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
 
 /// What a project is for. Non-coding projects (notes, docs, plain folders)

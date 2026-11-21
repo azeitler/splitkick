@@ -34,7 +34,9 @@ vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 
 // The children have their own tests; here only their place matters.
 vi.mock('./ProjectTree', () => ({
-  ProjectTree: () => <div data-testid="project-tree" />,
+  ProjectTree: ({ projects }: { projects: Project[] }) => (
+    <div data-testid="project-tree">{projects.map(p => p.name).join(',')}</div>
+  ),
 }))
 vi.mock('./SidebarStarredSection', () => ({
   SidebarStarredSection: () => <div data-testid="sidebar-starred-section" />,
@@ -126,6 +128,19 @@ describe('ProjectsSidebar layout', () => {
       expect(screen.getByTestId('sidebar-home-row')).toBeVisible()
     }
   )
+
+  it('leaves the home of a global agent out of the tree', () => {
+    mocks.projects = [
+      { id: 'p1', name: 'splitkick' } as Project,
+      { id: 'p2', name: 'assistant', hidden: true, is_git: false } as Project,
+    ]
+    renderSidebar()
+    expect(screen.getByTestId('project-tree')).toHaveTextContent('splitkick')
+    expect(screen.getByTestId('project-tree')).not.toHaveTextContent(
+      'assistant'
+    )
+    mocks.projects = []
+  })
 
   it('renders the tree even with no projects, so its New buttons stay reachable', () => {
     renderSidebar()

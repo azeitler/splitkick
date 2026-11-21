@@ -20,7 +20,7 @@ import { useProjects, useWorktrees } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { RoleProfile, GraphPermission } from '@/types/graphs'
-import { isBaseSession, isFolder } from '@/types/projects'
+import { isBaseSession, isFolder, isVisibleProject } from '@/types/projects'
 import {
   capPermission,
   permissionsUpTo,
@@ -85,7 +85,7 @@ export function StartRoleSessionForm({
 
   // The graph's own project first, else the first project.
   const realProjects = useMemo(
-    () => (projects ?? []).filter(p => !isFolder(p)),
+    () => (projects ?? []).filter(p => !isFolder(p) && isVisibleProject(p)),
     [projects]
   )
   const servedGraphId = serves ? parseGraphRef(serves).graphId : null
