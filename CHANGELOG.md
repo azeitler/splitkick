@@ -14,6 +14,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   A served HTTPS URL joins the Access URLs; Funnel shows a warning that the
   server is public. When Splitkick is not served, the pane shows the
   `tailscale serve --bg <port>` command to copy. Closes #151
+- **QR code of the connection link.** Settings → Web Access has a QR code
+  button next to "Copy connection link". It opens a dialog with a QR code of
+  the same `splitkick://connect?…` link, so the Splitkick iOS app can scan it
+  to add the server. The code is made on this computer and shows only after
+  the click, because it contains the access token. For plain HTTP to a host
+  name, the dialog shows a hint to use the `tailscale serve` HTTPS URL
+  (iOS blocks plain HTTP to host names). The served Tailscale URL has the
+  button too. Closes #150.
 
 ### Changed
 
