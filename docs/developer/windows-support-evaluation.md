@@ -255,7 +255,12 @@ Upstream ships **unsigned** Windows installers (no Windows signing secrets in
 Licence: Parallels Desktop 20.4.2, renewed by Andreas, active until
 **2026-11-27** (renew again if Windows work runs past that).
 VM "Windows 11": **ARM64**, Windows 11 build 10.0.26100, 4 vCPU, 8 GB RAM,
-WebView2 Runtime 156, about 213 GB free before setup.
+WebView2 Runtime 156, about 213 GB free before setup. As of 2026-11-22:
+Parallels Desktop 27.1, build 10.0.26200, 16 GB RAM, WebView2 157.
+
+**Before a release, run `scripts/windows-vm-test.sh`** — the Windows preflight
+checks, the installer build and a start of the installed app, with a
+PASS/FAIL summary. See [windows-vm-testing.md](windows-vm-testing.md).
 
 **What it gives us**
 
