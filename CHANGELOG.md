@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Neutral example in the MCP instructions.** The Splitkick MCP server's
+  instructions and the `remote_tool` description now say "on my other Mac"
+  and "Mac 2" as the example for another machine.
+
 ## [1.5.23] - 2026-11-21
 
 Built on Jean 0.1.73.
@@ -916,7 +922,7 @@ Built on Jean 0.1.73.
 - **Agents can use your other Splitkick instances** (#94). Two new MCP tools:
   `list_instances` shows the connected instances (reachable, version) and
   `remote_tool` runs one MCP tool on one of them, for example "send a message
-  to project X on mac-2". Each instance answers a token-protected
+  to project X on my other Mac". Each instance answers a token-protected
   `POST /api/mcp/call`. One hop only; graph writes are refused across
   instances. Remote connections now live in the backend, their tokens in the
   macOS Keychain; the old browser-storage list moves there once at the first

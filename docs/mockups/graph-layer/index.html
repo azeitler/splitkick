@@ -638,8 +638,8 @@ function locChips(q) {
       (f ? `<span class="chip bad">${I('warn', 'i12')}write failed · main moved</span>` : `<span class="chip ok">${I('check', 'i12')}read at 4e1c9a2 · 3 min ago</span>`);
     case 'own': return `<span class="chip">${I('folder', 'i12')}azeitler/roadmaps repo</span><span class="chip mono">splitkick.yml</span><span class="chip">${I('branch', 'i12')}main</span>` +
       (f ? `<span class="chip warn">${I('sync', 'i12')}2 behind · 1 ahead</span>` : `<span class="chip ok">${I('check', 'i12')}pulled 2 min ago</span>`);
-    case 'data': return `<span class="chip">${I('drive', 'i12')}Splitkick data · mac-1</span><span class="chip">not in git</span>` +
-      (f ? `<span class="chip warn">${I('cloud', 'i12')}mac-2 offline · 3 h</span>` : `<span class="chip ok">${I('cloud', 'i12')}synced with mac-2 · 1 min ago</span>`);
+    case 'data': return `<span class="chip">${I('drive', 'i12')}Splitkick data · Mac 1</span><span class="chip">not in git</span>` +
+      (f ? `<span class="chip warn">${I('cloud', 'i12')}Mac 2 offline · 3 h</span>` : `<span class="chip ok">${I('cloud', 'i12')}synced with Mac 2 · 1 min ago</span>`);
   }
 }
 function graphHead(q) {
@@ -866,7 +866,7 @@ function review() {
   if (!un.length) h += `<div class="note">All seen.</div>`;
   h += `<div class="seen-line">seen</div>`;
   for (const c of SEEN_CHANGES) h += `<div class="ce" style="opacity:.6;border:1px solid var(--border);border-radius:8px"><span class="what">${esc(byId(c.node).title)}: ${c.what}</span><span class="ca"></span><span class="why">${esc(c.why)}</span><span class="by">${I('user', 'i12')}You · ${c.ago}</span></div>`;
-  h += `<div class="note" style="margin-top:10px">Changes from other machines (mac-2) show in git history, not here: the log is per machine.</div>`;
+  h += `<div class="note" style="margin-top:10px">Changes from other machines (Mac 2) show in git history, not here: the log is per machine.</div>`;
   return h + '</div></div></div>';
 }
 
@@ -901,13 +901,13 @@ function problemBanner(q) {
   switch (q.opt) {
     case 'base': return f
       ? `<div class="banner warn">${I('warn', 'i16')}<div class="bt"><b>You see the roadmap from branch <code>issue-74-mermaid</code>, not main.</b>
-          <p>The base checkout of splitkick is on another branch. 2 nodes differ from main (Mermaid diagrams: committed here, done on main). Edits are written to <code>issue-74-mermaid</code> and reach main only with that branch. mac-2 (on main) sees a different roadmap.</p>
+          <p>The base checkout of splitkick is on another branch. 2 nodes differ from main (Mermaid diagrams: committed here, done on main). Edits are written to <code>issue-74-mermaid</code> and reach main only with that branch. Mac 2 (on main) sees a different roadmap.</p>
           <div class="ba"><button class="btn">Show main’s version (read only)</button><button class="btn">Edit anyway</button><button class="btn ghost">Switch base checkout to main…</button></div></div></div>`
       : `<div class="banner">${I('check', 'i16')}<div class="bt"><b>Base checkout is on main.</b><p>The UI and MCP tools read and write <code>.splitkick/graphs/roadmap.yml</code> in the main folder. Worktree copies are ignored. “Commit graph” stages only this file.</p></div></div>`;
     case 'branch': return f
-      ? `<div class="banner bad">${I('warn', 'i16')}<div class="bt"><b>Push rejected: mac-2 pushed 2 commits to <code>splitkick/graphs</code>.</b>
+      ? `<div class="banner bad">${I('warn', 'i16')}<div class="bt"><b>Push rejected: Mac 2 pushed 2 commits to <code>splitkick/graphs</code>.</b>
           <p>Splitkick pulled and merged node by node. One field conflicts; everything else merged.</p>
-          <div class="conf"><div class="ch">Graph support v1 · state</div><div class="cr"><div class="note">field</div><div><b>mac-1 (you)</b></div><div><b>mac-2 · Roadmap upkeep</b></div></div>
+          <div class="conf"><div class="ch">Graph support v1 · state</div><div class="cr"><div class="note">field</div><div><b>Mac 1 (you)</b></div><div><b>Mac 2 · Roadmap upkeep</b></div></div>
             <div class="cr"><div class="note">state</div><div class="pick"><span class="sc committed">committed</span><button class="btn" style="height:22px">Keep mine</button></div><div class="pick"><span class="sc dropped">dropped</span><button class="btn" style="height:22px">Take theirs</button></div></div>
             <div class="cr"><div class="note">why</div><div class="note">—</div><div class="note">“Merged into Session network view.”</div></div></div>
           <div class="ba"><button class="btn pri">${I('up', 'i12')}Resolve and push (asks you)</button><button class="btn ghost">Open hidden worktree</button></div></div></div>`
@@ -924,18 +924,18 @@ function problemBanner(q) {
           <div class="ba"><span class="chip mono">4e1c9a2 graph: commit “Session network view”</span><button class="btn">${I('up', 'i12')}Push main…</button></div></div></div>`;
     case 'own': return f
       ? `<div class="banner warn">${I('sync', 'i16')}<div class="bt"><b>Your copy of <code>azeitler/roadmaps</code> is 2 commits behind origin, and you have 1 change not pushed.</b>
-          <p>mac-2 changed this graph. The graph file is in a repo of its own, so no project branch is involved: it is an ordinary pull and merge, node by node. No conflict this time.</p>
+          <p>Mac 2 changed this graph. The graph file is in a repo of its own, so no project branch is involved: it is an ordinary pull and merge, node by node. No conflict this time.</p>
           <div class="ba"><button class="btn pri">${I('sync', 'i12')}Pull and merge</button><button class="btn">${I('up', 'i12')}Then push (asks you)</button><button class="btn ghost">Show incoming changes</button></div></div></div>`
       : `<div class="banner">${I('folder', 'i16')}<div class="bt"><b>The graph file lives where you put it when you created it: here in <code>azeitler/roadmaps</code>, a repo only for graphs.</b>
           <p>Graphs are just files. A repo that holds only graphs stays on <code>main</code>, so the base-branch problem does not come up. A file in a folder outside any repo (for example <code>~/Graphs</code> or iCloud Drive) has no git at all. Only a file <b>inside a project’s repo</b> still has the branch problem; then one of options 1–3 applies to it.</p>
           <div class="ba"><span class="chip">${I('commit', 'i12')}1 change committed</span><button class="btn">${I('up', 'i12')}Push…</button><button class="btn ghost">Move file…</button></div></div></div>`;
     case 'data': return f
-      ? `<div class="banner warn">${I('cloud', 'i16')}<div class="bt"><b>mac-2 is offline since 3 h. Both machines edited this graph.</b>
-          <p>Edits are kept on each machine and merged node by node on reconnect. 1 node changed on both sides (Graph support v1: quarter). You will choose then. Until then, mac-2 works on its own copy.</p>
+      ? `<div class="banner warn">${I('cloud', 'i16')}<div class="bt"><b>Mac 2 is offline since 3 h. Both machines edited this graph.</b>
+          <p>Edits are kept on each machine and merged node by node on reconnect. 1 node changed on both sides (Graph support v1: quarter). You will choose then. Until then, Mac 2 works on its own copy.</p>
           <div class="ba"><button class="btn">Show my unsynced changes (4)</button><button class="btn ghost">Export snapshot to repo (YAML)</button></div></div></div>`
-      : `<div class="banner">${I('drive', 'i16')}<div class="bt"><b>Stored in Splitkick’s data on mac-1, like the instance graph.</b>
-          <p>Not in git: no branch problem, no push. Shared with mac-2 and remotes through Splitkick sync. Lost: “versioned with the repo”; agents in other tools cannot read it as a file (only through MCP).</p>
-          <div class="ba"><span class="chip ok">${I('cloud', 'i12')}mac-2 · synced 1 min ago</span><button class="btn ghost">Export snapshot to repo (YAML)</button></div></div></div>`;
+      : `<div class="banner">${I('drive', 'i16')}<div class="bt"><b>Stored in Splitkick’s data on Mac 1, like the instance graph.</b>
+          <p>Not in git: no branch problem, no push. Shared with Mac 2 and remotes through Splitkick sync. Lost: “versioned with the repo”; agents in other tools cannot read it as a file (only through MCP).</p>
+          <div class="ba"><span class="chip ok">${I('cloud', 'i12')}Mac 2 · synced 1 min ago</span><button class="btn ghost">Export snapshot to repo (YAML)</button></div></div></div>`;
   }
 }
 function problemTable(q) {

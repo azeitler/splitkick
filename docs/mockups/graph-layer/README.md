@@ -38,12 +38,12 @@ Screenshots are in `screenshots/` (WebKit, 2×, light and dark). To capture them
   `issue-74-mermaid`. The roadmap is the one from that branch, 2 nodes differ from main, and edits land on
   that branch.
 - **Option 1: dedicated branch** `splitkick/graphs` in a hidden worktree. Normal: synced, 1 commit not
-  pushed, and a checkbox to let Splitkick push without asking. Failure: push rejected because mac-2 pushed
+  pushed, and a checkbox to let Splitkick push without asking. Failure: push rejected because Mac 2 pushed
   too. Merge per node, with a field-level conflict (keep mine / take theirs).
 - **Option 2: read the default branch** (`origin/main:` as a git object, write with plumbing). Normal: read
   at a commit, local main 1 ahead. Failure: `main` moved because of your own commit in the base checkout,
   so the ref update failed. Retry / show diff / discard.
-- **Option 3: Splitkick data only.** Normal: synced with mac-2 through Splitkick. Failure: mac-2 is offline
+- **Option 3: Splitkick data only.** Normal: synced with Mac 2 through Splitkick. Failure: Mac 2 is offline
   and both edited. Merge on reconnect; *Export snapshot to repo*.
 - **Option 5: own repo or folder.** This follows the direction "graphs are just files; the location is
   chosen at creation". Normal: the file is in `azeitler/roadmaps`, a repo only for graphs, which stays on
@@ -87,7 +87,7 @@ Nodes, state and derived values
 Review and audit
 
 11. Is "last looked" per graph, per machine, or per user? The change log is per machine, so changes made
-    on mac-2 do not show on mac-1 in this review. Is that acceptable?
+    on Mac 2 do not show on Mac 1 in this review. Is that acceptable?
 12. Revert of one change when later changes depend on it (for example, a created node that was then
     linked): undo only that change, or refuse?
 13. Is a *why* required for the user too? The mockup makes it optional for the executive and required for

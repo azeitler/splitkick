@@ -35,7 +35,7 @@ vi.mock('@/services/session-backup', async importOriginal => ({
     files: 3,
     free_bytes: 1024 ** 3,
   })),
-  getDefaultDeviceName: vi.fn(async () => 'mac-1'),
+  getDefaultDeviceName: vi.fn(async () => 'Mac 1'),
   useSessionBackupProgress: () => backup.progress,
   useSessionBackupStatus: () => ({ data: undefined }),
 }))

@@ -99,7 +99,7 @@ session ID: <id>`. Transcripts live in `<dir>/projects/<cwd>/<id>.jsonl`.
     target's own copy in place (a second slug would make `--resume` report
     "not found"), writes through a temp file, and never moves or deletes a
     source. Folders whose `projects/` resolves to the target's (a symlink, as
-    on mac-1) are skipped. With no transcript anywhere, the existing
+    on some setups) are skipped. With no transcript anywhere, the existing
     lost-context handoff replays Jean's history.
   - Transcript lookups (`claude_transcript_exists`/`_count`, the blocking-tool
     flush wait) search only the active account's folder for a non-root

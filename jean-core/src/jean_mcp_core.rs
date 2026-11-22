@@ -174,7 +174,7 @@ const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "- Sessions come with a link (splitkick://session/<id>). To point the user to a session, ",
     "write a markdown link with its name: [Session name](link).\n",
     "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes.\n",
-    "- For another machine (\"on mac-2\"), call list_instances, then remote_tool with that instance."
+    "- For another machine (\"on my other Mac\"), call list_instances, then remote_tool with that instance."
 );
 
 pub fn initialize_result(role: McpRole) -> Value {
@@ -445,7 +445,7 @@ fn tool_registry_folders() -> Value {
 fn tool_registry_remote() -> Value {
     json!([
         {"name":"list_instances","description":"List the other Splitkick instances the user connected (Remote Connections): id, name, url, reachable, version, and error when unreachable. Use the name or id with remote_tool.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-        {"name":"remote_tool","description":"Run one Splitkick MCP tool on another connected Splitkick instance and return its result unchanged, tagged with the instance. Example: instance \"mac-2\", tool \"list_projects\", then \"send_chat_message\" with a sessionId from that instance. Ids and links in the result belong to that instance: pass them back through remote_tool, never to local tools. One hop only: the remote cannot forward further. Graph writes (create_node, update_node, set_node_state, send_request, set_serves, create_graph) are refused remotely; read and session tools work. Tools that act on the calling session (get_current_context, set_session_status without sessionId) have no session on the remote side.","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"Instance name or id from list_instances."},"tool":{"type":"string","description":"MCP tool name on the remote instance, e.g. list_projects, list_all_sessions, read_session_messages, send_chat_message."},"arguments":{"type":"object","description":"Arguments for that tool, as its own schema describes.","additionalProperties":true}},"required":["instance","tool"],"additionalProperties":false}},
+        {"name":"remote_tool","description":"Run one Splitkick MCP tool on another connected Splitkick instance and return its result unchanged, tagged with the instance. Example: instance \"Mac 2\", tool \"list_projects\", then \"send_chat_message\" with a sessionId from that instance. Ids and links in the result belong to that instance: pass them back through remote_tool, never to local tools. One hop only: the remote cannot forward further. Graph writes (create_node, update_node, set_node_state, send_request, set_serves, create_graph) are refused remotely; read and session tools work. Tools that act on the calling session (get_current_context, set_session_status without sessionId) have no session on the remote side.","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"Instance name or id from list_instances."},"tool":{"type":"string","description":"MCP tool name on the remote instance, e.g. list_projects, list_all_sessions, read_session_messages, send_chat_message."},"arguments":{"type":"object","description":"Arguments for that tool, as its own schema describes.","additionalProperties":true}},"required":["instance","tool"],"additionalProperties":false}},
     ])
 }
 
@@ -5587,16 +5587,16 @@ mod tests {
     fn get_usage_claude_is_the_active_account() {
         let prefs = crate::AppPreferences {
             claude_accounts: vec![crate::claude_cli::ClaudeAccount {
-                id: "acc-account-b".to_string(),
+                id: "acc-b".to_string(),
                 label: "Account B".to_string(),
                 config_dir: "/x/account-b".to_string(),
             }],
-            claude_active_account: Some("acc-account-b".to_string()),
+            claude_active_account: Some("acc-b".to_string()),
             ..crate::AppPreferences::default()
         };
         assert_eq!(
             active_claude_usage_args(&prefs),
-            json!({ "accountId": "acc-account-b" })
+            json!({ "accountId": "acc-b" })
         );
         assert_eq!(
             active_claude_usage_args(&crate::AppPreferences::default()),
@@ -6605,7 +6605,7 @@ mod tests {
                 match_count: 1,
                 updated_at: 100,
                 name_match: false,
-                device_name: Some("mac-2".to_string()),
+                device_name: Some("Mac 2".to_string()),
                 instance_id: Some("other".to_string()),
             }],
             truncated: false,
@@ -6613,12 +6613,12 @@ mod tests {
 
         let result = search_sessions_result(&response);
 
-        assert_eq!(result["results"][0]["device"], "mac-2");
+        assert_eq!(result["results"][0]["device"], "Mac 2");
         assert!(result["results"][0].get("link").is_none());
         assert!(result["results"][0]["note"]
             .as_str()
             .unwrap()
-            .contains("mac-2"));
+            .contains("Mac 2"));
     }
 
     /// A data directory with one session whose three user prompts live in

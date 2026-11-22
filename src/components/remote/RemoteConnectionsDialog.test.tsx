@@ -171,7 +171,7 @@ describe('RemoteConnectionsDialog', () => {
     isNativeApp.mockReturnValue(true)
     invoke.mockImplementation(async (command: string) =>
       command === 'take_pending_connection_link'
-        ? 'splitkick://connect?url=http%3A%2F%2Fmb16%3A3456&token=tok&name=mac-2'
+        ? 'splitkick://connect?url=http%3A%2F%2Fmac-2%3A3456&token=tok&name=mac-2'
         : []
     )
     render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)

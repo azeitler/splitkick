@@ -912,7 +912,7 @@ mod tests {
         let info = InstanceInfo {
             format_version: FORMAT_VERSION,
             instance_id: "b".to_string(),
-            device_name: "mac-2".to_string(),
+            device_name: "Mac 2".to_string(),
             app_version: "1.2.1".to_string(),
             last_sync_at: 1,
         };

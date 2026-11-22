@@ -1,6 +1,6 @@
 # Background running
 
-Investigation of 2026-11-09 on mac-1 (macOS 27.2, `main` at b8a64a36). Two questions:
+Investigation of 2026-11-09 on a test Mac (macOS 27.2, `main` at b8a64a36). Two questions:
 what stays alive after a crash, and how schedules can run when Splitkick is not
 open ([#119](https://github.com/azeitler/splitkick/issues/119)). Option A is built, see "Built" at the end.
 
@@ -53,7 +53,7 @@ Other reports match this:
 | Process | Verdict | Evidence |
 | --- | --- | --- |
 | Detached `claude --print …` | Wanted. It finishes the turn and ends. | Design of `chat/detached.rs` |
-| `--jean-mcp-stdio`, `--dialog` | Wanted while the run lives. Not a leak. | Test: exit on stdin EOF. On 2026-11-09, no MCP child with ppid 1 on mac-1. |
+| `--jean-mcp-stdio`, `--dialog` | Wanted while the run lives. Not a leak. | Test: exit on stdin EOF. On 2026-11-09, no MCP child with ppid 1. |
 | `--jean-pi-rpc-host`, `--jean-grok-acp-host`, `--jean-kimi-acp-host` | Wanted. They end with the turn and kill their child. | Code read only (`pi.rs`, `grok.rs`, `kimi.rs`). Not run. |
 | One-shot helpers (session naming) | Short-lived. They also survive a crash until they end. | Test (ppid became 1) |
 

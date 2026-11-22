@@ -64,7 +64,7 @@ Only the first backup copies everything. Every pass after it is incremental:
    - A run log (`<run_id>.jsonl`) is written once per run. It is skipped while
      its run is still `running`, so a long run is copied once, when it ends,
      and not again every 10 minutes. After that it never changes.
-   - On mac-1 this was about 136 MB per day.
+   - On one test Mac this was about 136 MB per day.
 3. **Update the search digests** only for sessions with a copied file, plus
    any backed-up session that has no digest yet.
 4. **Write `projects.json` and `instance.json`** (small, every complete pass).
@@ -133,7 +133,7 @@ Preferences (`AppPreferences`, snake_case): `session_backup_dir`
 
 ## Benchmark
 
-Measured on mac-1, 2026-10-29, release build, on a copy of real data:
+Measured on one Mac, 2026-10-29, release build, on a copy of real data:
 
 | Step | Result |
 |---|---|

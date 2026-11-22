@@ -128,29 +128,34 @@ describe('WindowToolbar', () => {
   it('names the remote instance even while a view owns the title', () => {
     remote.connection = {
       id: 'r1',
-      name: 'mac-2',
+      name: 'Mac 2',
       url: 'http://mac-2.tailnet:3456',
       token: 't',
     }
     render(
       <ToolbarSlotsProvider>
-        <WindowToolbar fallbackTitle="mac-2 › jean" />
+        <WindowToolbar fallbackTitle="Mac 2 › jean" />
         <ToolbarContent title="jean project" />
       </ToolbarSlotsProvider>
     )
-    expect(screen.queryByText('mac-2 › jean')).toBeNull()
+    expect(screen.queryByText('Mac 2 › jean')).toBeNull()
     expect(screen.getByTestId('remote-instance-badge')).toHaveTextContent(
-      'mac-2'
+      'Mac 2'
     )
-    expect(screen.getByLabelText('Remote instance mac-2')).toBeInTheDocument()
+    expect(screen.getByLabelText('Remote instance Mac 2')).toBeInTheDocument()
   })
 
   it('keeps the remote badge in zen', () => {
-    remote.connection = { id: 'r1', name: 'mac-2', url: 'not a url', token: 't' }
+    remote.connection = {
+      id: 'r1',
+      name: 'Mac 2',
+      url: 'not a url',
+      token: 't',
+    }
     useUIStore.setState({ zenMode: true, leftSidebarVisible: false })
     renderToolbar()
     expect(screen.getByTestId('remote-instance-badge')).toHaveTextContent(
-      'mac-2'
+      'Mac 2'
     )
   })
 })

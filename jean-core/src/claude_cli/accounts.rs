@@ -369,26 +369,26 @@ mod tests {
 
     #[test]
     fn old_session_on_a_full_root_account_runs_on_the_active_account() {
-        // mac-2, 2026-11-10: root = Account A at 100 %, active = Account B. A session from
+        // Root = Account A at 100 %, active = Account B. A session from
         // before #90 (no recorded account, Claude history) must run on Account B.
         let prefs = AppPreferences {
             claude_root_label: Some("Account A".to_string()),
             claude_accounts: vec![ClaudeAccount {
-                id: "acc-account-b".to_string(),
+                id: "acc-b".to_string(),
                 label: "Account B".to_string(),
-                config_dir: "/Users/alice/.claude-profiles/account-b".to_string(),
+                config_dir: "/Users/alice/.claude-profiles/work".to_string(),
             }],
-            claude_active_account: Some("acc-account-b".to_string()),
+            claude_active_account: Some("acc-b".to_string()),
             ..AppPreferences::default()
         };
         let account = active_account(&prefs);
-        assert_eq!(account.id, "acc-account-b");
+        assert_eq!(account.id, "acc-b");
         assert_eq!(account.label, "Account B");
         assert_eq!(
             account.env(),
             Some((
                 "CLAUDE_CONFIG_DIR",
-                "/Users/alice/.claude-profiles/account-b".to_string()
+                "/Users/alice/.claude-profiles/work".to_string()
             ))
         );
     }

@@ -193,7 +193,7 @@ touch files the fork has renamed, so expect manual ports.
     (`:257-290`); the release is created in the same job (`gh release create`).
   - Release notes say "Apple Silicon only" (`:369`).
   - `scripts/sync-sites.sh` runs at the end of the macOS job (`:405`).
-- Website download card: `Digitalheld/splitkick-website`
+- Website download card: the website repo
   `scripts/sync-release.mjs` hard-codes `Splitkick-aarch64.dmg`, throws without
   a DMG, and rewrites only `version`, `size`, `sha256` in `src/site.ts`
   (`DOWNLOAD = { version, arch: 'Apple Silicon', macos: 'macOS 14 or newer', … }`).
@@ -468,7 +468,7 @@ release (no `-rc` first), website card drafted in its own repo.
   toast) ended the app, the NSIS installer replaced it and Splitkick started
   again as 1.4.91. The NSIS build writes `Splitkick_<v>_x64-setup.exe.sig`
   beside the installer, as the CI collect step expects.
-- Drafted, not pushed: `Digitalheld/splitkick-website` branch
+- Drafted, not pushed: the website repo, branch
   `windows-download` (per-platform download card, `/download/windows/latest/`
   redirect, `sync-release.mjs` reads the Windows asset, `check-deploy`).
 - Open: the first real release with Windows (the publish job has only run
@@ -478,7 +478,7 @@ release (no `-rc` first), website card drafted in its own repo.
 
 - Signing via `signCommand` in CI.
 - Website: one download card per platform (`sync-release.mjs`, `src/site.ts`
-  in `Digitalheld/splitkick-website`); docs for Windows install.
+  in the website repo); docs for Windows install.
 
 **Phase 4 — optional.** ARM64 build (the VM already tests it natively),
 taskbar badge, Windows git-client launcher, survivable PI runs over a named

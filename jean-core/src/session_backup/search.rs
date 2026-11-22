@@ -23,9 +23,9 @@ use crate::chat::search::{
 use crate::projects::storage::load_projects_data;
 
 /// The local project for a remote one: by git remote, else none.
-type LocalProjects = HashMap<String, (String, String)>;
+type LocalByRemote = HashMap<String, (String, String)>;
 
-fn local_projects_by_remote(app: &AppHandle) -> LocalProjects {
+fn local_projects_by_remote(app: &AppHandle) -> LocalByRemote {
     let Ok(data) = load_projects_data(app) else {
         return HashMap::new();
     };
@@ -39,7 +39,7 @@ fn local_projects_by_remote(app: &AppHandle) -> LocalProjects {
 /// Where a remote worktree sits: project id, project name, worktree name.
 fn worktree_places(
     projects: &[BackupProject],
-    local: &LocalProjects,
+    local: &LocalByRemote,
 ) -> HashMap<String, (String, String, String)> {
     let mut places = HashMap::new();
     for project in projects {
@@ -97,7 +97,7 @@ fn session_updated_at(metadata: &Value) -> u64 {
 pub(crate) fn search_instance(
     instance_dir: &Path,
     info: &InstanceInfo,
-    local: &LocalProjects,
+    local: &LocalByRemote,
     query_lower: &str,
     options: &SessionSearchOptions,
 ) -> Vec<SessionSearchHit> {
@@ -236,7 +236,7 @@ mod tests {
         InstanceInfo {
             format_version: FORMAT_VERSION,
             instance_id: "other".to_string(),
-            device_name: "mac-2".to_string(),
+            device_name: "Mac 2".to_string(),
             app_version: "1.2.1".to_string(),
             last_sync_at: 1,
         }
@@ -296,7 +296,7 @@ mod tests {
         tmp
     }
 
-    fn local() -> LocalProjects {
+    fn local() -> LocalByRemote {
         HashMap::from([(
             "github.com/azeitler/splitkick".to_string(),
             ("local-project".to_string(), "Splitkick".to_string()),
@@ -316,7 +316,7 @@ mod tests {
         assert_eq!(hits[0].project_id, "local-project");
         assert_eq!(hits[0].project_name, "Splitkick");
         assert_eq!(hits[0].worktree_name, "feature-x");
-        assert_eq!(hits[0].device_name.as_deref(), Some("mac-2"));
+        assert_eq!(hits[0].device_name.as_deref(), Some("Mac 2"));
         assert_eq!(hits[0].message_id.as_deref(), Some("s1-m1"));
         assert!(hits[0].snippet.contains("sync folder"));
         assert_eq!(hits[1].updated_at, 30);

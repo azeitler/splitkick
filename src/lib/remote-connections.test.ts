@@ -63,7 +63,7 @@ describe('remote connections', () => {
   it('round-trips a splitkick://connect link', () => {
     const link = connectionLink('http://mac-2:3456', 'se cret', 'mac-2')
     expect(link).toBe(
-      'splitkick://connect?url=http%3A%2F%2Fmb16%3A3456&token=se+cret&name=mac-2'
+      'splitkick://connect?url=http%3A%2F%2Fmac-2%3A3456&token=se+cret&name=mac-2'
     )
     expect(parseConnectionLink(link)).toEqual({
       name: 'mac-2',

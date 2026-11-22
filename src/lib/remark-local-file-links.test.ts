@@ -24,7 +24,7 @@ function linkUrls(nodes: MdastNode[]): string[] {
 describe('remarkLocalFileLinks', () => {
   it('links a path with spaces when the line is nothing else', () => {
     const real =
-      '/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Projects/House/07_Ausführung/renders/07_bestueckt.png'
+      '/Users/me/Library/Mobile Documents/com~apple~CloudDocs/My Folder/Sub Folder/image 01.png'
     const nodes = run(paragraph({ type: 'text', value: real }))
 
     expect(linkUrls(nodes)).toEqual([real])

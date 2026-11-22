@@ -71,7 +71,7 @@ const remoteSearchResult = {
       message_id: 'message-9',
       match_count: 1,
       updated_at: 1_700_000_000_000,
-      device_name: 'mac-2',
+      device_name: 'Mac 2',
       instance_id: 'instance-b',
     },
   ],
@@ -558,12 +558,12 @@ describe('CommandPalette search mode', () => {
     if (!row) throw new Error('remote hit row never rendered')
     expect(hitRow()).toBeNull()
     expect(screen.getAllByText('Other devices').length).toBeGreaterThan(0)
-    expect(row.textContent).toContain('mac-2 · Coolify · feat/backup')
+    expect(row.textContent).toContain('Mac 2 · Coolify · feat/backup')
     fireEvent.click(row)
 
     expect(navigateToSession).not.toHaveBeenCalled()
     expect(toastInfo).toHaveBeenCalledWith(
-      '“Backup design” is on mac-2',
+      '“Backup design” is on Mac 2',
       expect.anything()
     )
   })

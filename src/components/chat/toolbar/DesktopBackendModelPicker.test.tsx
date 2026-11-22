@@ -132,12 +132,18 @@ describe('DesktopBackendModelPicker', () => {
     prefsMock.data = {
       claude_root_label: 'Account A',
       claude_accounts: [
-        { id: 'acc-account-b', label: 'Account B', config_dir: '/u/.claude-account-b' },
+        {
+          id: 'acc-b',
+          label: 'Account B',
+          config_dir: '/u/.claude-profiles/work',
+        },
       ],
-      claude_active_account: 'acc-account-b',
+      claude_active_account: 'acc-b',
     }
     renderClaude()
-    expect(screen.getByTestId('claude-account-tag')).toHaveTextContent('Account B')
+    expect(screen.getByTestId('claude-account-tag')).toHaveTextContent(
+      'Account B'
+    )
   })
 
   it('shows no account with only the root install', () => {

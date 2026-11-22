@@ -311,7 +311,7 @@ mod tests {
                 Some("Google Drive"),
             ),
             ("/Users/a/Google Drive/x", Some("Google Drive")),
-            ("/Users/a/LocalProjects/app", None),
+            ("/Users/a/Code/app", None),
             ("/Users/a/Projects/dropbox-clone", None),
             ("/Users/a/Projects/onedrive-sync-tool", None),
             ("C:\\Users\\a\\OneDrive - Firma\\x", Some("OneDrive")),

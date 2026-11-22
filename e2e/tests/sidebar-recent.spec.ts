@@ -20,7 +20,7 @@ const nowSeconds = Math.floor(Date.now() / 1000)
 const HOUR = 60 * 60
 
 const jean = createProject({ name: 'jean' })
-const devops = createProject({ name: 'account-b-devops' })
+const devops = createProject({ name: 'acme-devops' })
 const sidebarWork = createSession({
   name: 'Sidebar recents tab',
   last_message_at: nowSeconds - 60,
@@ -93,7 +93,7 @@ test.describe('Sidebar Recent tab', () => {
     await expect(rows.nth(0)).toContainText('Sidebar recents tab')
     await expect(rows.nth(0)).toContainText('jean / main')
     await expect(rows.nth(2)).toContainText('Tunnel docs')
-    await expect(rows.nth(2)).toContainText('account-b-devops / fix-mail-archive')
+    await expect(rows.nth(2)).toContainText('acme-devops / fix-mail-archive')
     await expect(recent.getByRole('region', { name: 'Today' })).toBeVisible()
     await expect(recent.getByRole('region', { name: 'Earlier' })).toBeVisible()
 

@@ -25,7 +25,7 @@ PR, comment or release note:**
   members, family), also first names and GitHub handles.
 - Machine names, host names, tailnet names, local IP addresses and Claude
   account or profile labels of the maintainer's own setup.
-- Personal paths (`/Users/<name>/…`, `~/Projects/<repo>`), private repo
+- Personal paths (`/Users/<name>/…`, `~/<projects-folder>/<repo>`), private repo
   names, private org names and vault or note paths.
 - Real session names, chat content, log lines, screenshots or transcripts
   from the maintainer's own work.

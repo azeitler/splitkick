@@ -5,7 +5,7 @@
 
 ## Context
 
-The fork "JeanZ" becomes **Splitkick**, the public, free power-user edition of Jean, published by Planetfall Software. The website (`~/Projects/splitkick-website`) and docs (`~/Projects/splitkick-docs`) already exist; this plan covers only the app (spec part C, `notes-vault/splitkick/docs/2026-10-14-splitkick-design.md`). Success criteria from the spec: a signed, notarized DMG that installs next to Jean (own bundle id, own data folder) and updates from Splitkick's own feed; every feature claim on the site matches the app.
+The fork "JeanZ" becomes **Splitkick**, the public, free power-user edition of Jean, published by Planetfall Software. The website and the docs site (each in a repo of its own) already exist; this plan covers only the app (spec part C of the internal design spec). Success criteria from the spec: a signed, notarized DMG that installs next to Jean (own bundle id, own data folder) and updates from Splitkick's own feed; every feature claim on the site matches the app.
 
 Two facts change the brief:
 
@@ -276,7 +276,7 @@ Website, docs portal, domains, Linux/Windows builds.
 
 - GitHub, renaming a repository (redirects; Actions not redirected; name reuse breaks redirects): https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository
 - GitHub, detaching a fork (public, < 1 GB, no child forks; permanent; issues not kept): https://docs.github.com/en/pull-requests/how-tos/work-with-forks/detaching-a-fork
-- Retention facts: `notes-vault/splitkick/research/retention-2026-10.md`
+- Retention facts: internal research note (2026-10)
 
 ## Implementation notes (deviations from the plan)
 

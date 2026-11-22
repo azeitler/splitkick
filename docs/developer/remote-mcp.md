@@ -2,7 +2,7 @@
 
 Issue #94. An agent in a session on one machine can act on another Splitkick
 instance the user connected, for example "send a message to project X on
-mac-2". Code: `jean-core/src/remote_instances.rs`.
+my other Mac". Code: `jean-core/src/remote_instances.rs`.
 
 ## The parts
 

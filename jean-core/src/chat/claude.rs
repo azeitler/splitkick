@@ -3343,7 +3343,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn transcript_sync_skips_shared_project_folders() {
-        // mac-1: ~/.claude-profiles/work/projects -> ~/.claude/projects.
+        // A profile whose projects folder links to the default one:
+        // ~/.claude-profiles/work/projects -> ~/.claude/projects.
         let root = tempfile::tempdir().unwrap();
         let profile = tempfile::tempdir().unwrap();
         let source = write_transcript(root.path(), "sid-4", "shared\n");

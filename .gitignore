@@ -48,3 +48,6 @@ jean-core/target/
 
 # Local-only mockup with real project names as demo data
 docs/mockups/sidebar-sticky/
+
+# Internal agent notes (kept local)
+.ai/

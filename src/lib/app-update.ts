@@ -257,7 +257,7 @@ export async function checkForUpdatesManually(): Promise<void> {
     return
   }
   // Visible at once, and every result is logged: a click that shows nothing
-  // could not be told apart from a check that found nothing (Mac 3, 1.5.9).
+  // could not be told apart from a check that found nothing (the tester, 1.5.9).
   logNativeInfo('Update check (manual): started')
   const checking = toast.loading('Checking for updates…')
   try {
