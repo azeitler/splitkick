@@ -193,14 +193,14 @@ describe('remarkLocalFileLinks', () => {
       paragraph(
         { type: 'inlineCode', value: 'open out/report.html' },
         { type: 'text', value: ' and ' },
-        { type: 'inlineCode', value: 'PV Anlage Haus 2/Materialliste.md' }
+        { type: 'inlineCode', value: 'PV Plan Haus 2/Materialliste.md' }
       )
     )
 
     // Neither is a direct link: each shows only once the path exists.
     expect(linkUrls(nodes)).toEqual([
       'open out/report.html',
-      'PV Anlage Haus 2/Materialliste.md',
+      'PV Plan Haus 2/Materialliste.md',
     ])
     for (const node of [nodes[0], nodes[2]]) {
       expect(
@@ -285,9 +285,9 @@ describe('pathLikeInlineCode', () => {
     'Cargo.toml',
     '/Users/me/My Documents',
     '~/Library/Mobile Documents/notes',
-    'PV Anlage Haus 2/Materialliste.md',
+    'PV Plan Haus 2/Materialliste.md',
     '07_Ausführung/Elektro/Elektrokonzept Haus 2.html',
-    'PV Anlage Haus 2/',
+    'PV Plan Haus 2/',
   ])('takes %s as a path', value => {
     expect(pathLikeInlineCode(value)).toBe(true)
   })
