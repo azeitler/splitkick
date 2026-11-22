@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import { Markdown } from './markdown'
@@ -6,6 +6,12 @@ import {
   codeBlockRenderers,
   findCodeBlockRenderer,
 } from './code-block-renderers'
+
+// Markdown loads the renderer chunk lazily. On a busy machine the first
+// import can take longer than a findBy* wait, so load it before the tests.
+beforeAll(async () => {
+  await import('./rich-blocks/HtmlPreviewBlock')
+})
 
 const htmlBlock = '```html\n<p id="x">Hello</p>\n```'
 

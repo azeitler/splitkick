@@ -194,8 +194,8 @@ describe('useZoom', () => {
 
     renderHook(() => useZoom())
 
-    await vi.runAllTimersAsync()
-    expect(mockOnScaleChanged).toHaveBeenCalledOnce()
+    // The listener waits on a dynamic import, not on a timer: wait for it.
+    await vi.waitFor(() => expect(mockOnScaleChanged).toHaveBeenCalledOnce())
     mockSetZoom.mockClear()
 
     mockSetZoom.mockImplementation(async zoom => {
@@ -206,9 +206,7 @@ describe('useZoom', () => {
     })
 
     scaleChangedHandler?.({ payload: { scaleFactor: 2 } })
-    await vi.runAllTimersAsync()
-
-    expect(mockSetZoom.mock.calls).toEqual([[1], [0.9]])
+    await vi.waitFor(() => expect(mockSetZoom.mock.calls).toEqual([[1], [0.9]]))
 
     // Settle window ends; absorbed scale must not re-fire.
     await vi.advanceTimersByTimeAsync(DISPLAY_SCALE_ZOOM_SETTLE_MS)
@@ -217,8 +215,9 @@ describe('useZoom', () => {
 
     // A real later monitor change still refreshes once.
     scaleChangedHandler?.({ payload: { scaleFactor: 1 } })
-    await vi.runAllTimersAsync()
-    expect(mockSetZoom.mock.calls).toEqual([[1], [0.9], [1], [0.9]])
+    await vi.waitFor(() =>
+      expect(mockSetZoom.mock.calls).toEqual([[1], [0.9], [1], [0.9]])
+    )
   })
 
   it('uses the separate mobile zoom when syncing is disabled', async () => {

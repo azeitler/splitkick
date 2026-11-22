@@ -16,6 +16,7 @@ import {
   mcp,
   readEnv,
   seedProject,
+  runCount,
   waitForIdle,
 } from '../helpers'
 import { REPO_ROOT, type Instance } from '../launcher'
@@ -295,10 +296,13 @@ async function sendAndWait(
   text: string
 ): Promise<void> {
   const before = runFiles(a, sessionId)
+  const runsBefore = runCount(a, sessionId)
   await chatInput(page).fill(text)
   await page.keyboard.press('Enter')
   await expect.poll(() => runFiles(a, sessionId)).toBe(before + 1)
-  await waitForIdle(a, sessionId)
+  // Wait for this turn's run, not for "nothing running": the new run can
+  // still be missing from the metadata here (issue #148).
+  await waitForIdle(a, sessionId, runsBefore + 1)
   await expect(page.getByText(/^STUB REPLY/).last()).toBeVisible()
 }
 
@@ -1828,10 +1832,12 @@ test('session graph panel: hidden without agent and serves, worker, manager, two
 
   await openWithSidebar(page)
 
-  // No agent, no serves: no toggle, no panel.
+  // No agent, no serves: no toggle, and nothing of the graph. The panel is
+  // the Graph tab of the context panel (#98) and stays open from an earlier
+  // session; for this one it only offers "Link to Graph" (#88).
   await goToSession(page, names.plain)
   await expect(panelToggle(page)).toHaveCount(0)
-  await expect(graphPanel(page)).toHaveCount(0)
+  await expect(graphPanel(page).filter({ hasText: g.title })).toHaveCount(0)
 
   // Worker: its node, before and after, siblings, other sessions.
   await goToSession(page, names.worker)

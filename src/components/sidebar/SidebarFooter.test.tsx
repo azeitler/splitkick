@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import { useUIStore } from '@/store/ui-store'
@@ -39,6 +39,12 @@ vi.mock('@/components/remote/RemoteConnectionsDialog', () => ({
 vi.mock('@tauri-apps/api/app', () => ({
   getVersion: () => Promise.resolve('0.1.73'),
 }))
+
+// The footer reads its version through a dynamic import. On a busy machine
+// the first import can take longer than a findBy* wait, so load it first.
+beforeAll(async () => {
+  await import('@tauri-apps/api/app')
+})
 
 describe('SidebarFooter', () => {
   beforeEach(() => {

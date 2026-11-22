@@ -256,6 +256,19 @@ export const test = base.extend<TauriMockFixtures>({
       { responseMap: responses, overrideKeys }
     )
 
+    // Web Access prefers this browser's own view (localStorage) over the
+    // host's ui_state (#72). The first load below saves one (project open, no
+    // worktree). A spec that seeds `load_ui_state` and navigates again then
+    // got that saved view instead, whenever the first load got far enough to
+    // save it (load-dependent, issue #148). Every load starts without it.
+    await page.addInitScript(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('jean:web-device-view:')) {
+          localStorage.removeItem(key)
+        }
+      }
+    })
+
     await page.goto('/')
     await use(page)
   },

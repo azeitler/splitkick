@@ -26,6 +26,9 @@ describe('ChatStore', () => {
     vi.clearAllMocks()
     mockInvoke.mockResolvedValue(undefined)
 
+    // Start every test from a clean store: a field that a test sets and the
+    // list below misses would leak into the next test.
+    useChatStore.setState(useChatStore.getInitialState(), true)
     useChatStore.setState({
       activeWorktreeId: null,
       activeWorktreePath: null,

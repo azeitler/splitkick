@@ -164,14 +164,32 @@ export async function createSession(
   return session.id
 }
 
+/** How many runs the session's metadata lists (0 before the first). */
+export function runCount(instance: Instance, sessionId: string): number {
+  const path = join(instance.data, 'sessions/data', sessionId, 'metadata.json')
+  try {
+    const { runs } = JSON.parse(readFileSync(path, 'utf8')) as {
+      runs?: unknown[]
+    }
+    return runs?.length ?? 0
+  } catch {
+    return 0
+  }
+}
+
 /**
  * Wait until no run of the session is still running. The UI shows the
  * answer a moment before the run is marked finished, and a transfer leaves
  * out a running turn.
+ *
+ * `minRuns`: also wait until the metadata lists that many runs. Right after
+ * a send the new run can be missing from the metadata, and "nothing is
+ * running" is then already true (issue #148).
  */
 export async function waitForIdle(
   instance: Instance,
-  sessionId: string
+  sessionId: string,
+  minRuns = 0
 ): Promise<void> {
   const path = join(instance.data, 'sessions/data', sessionId, 'metadata.json')
   for (let i = 0; i < 120; i++) {
@@ -179,7 +197,8 @@ export async function waitForIdle(
       const { runs } = JSON.parse(readFileSync(path, 'utf8')) as {
         runs: { status: string }[]
       }
-      if (runs.every(run => run.status !== 'running')) return
+      if (runs.length >= minRuns && runs.every(run => run.status !== 'running'))
+        return
     } catch {
       // not written yet
     }

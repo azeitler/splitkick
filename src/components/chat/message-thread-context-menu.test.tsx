@@ -12,7 +12,9 @@ import {
 } from './message-thread-context-menu'
 
 const mocks = vi.hoisted(() => ({
-  copyToClipboard: vi.fn(),
+  // Resolved by default: describe blocks that do not reset it still get a
+  // promise, whatever order the tests run in.
+  copyToClipboard: vi.fn(async (_text: string) => undefined),
   copyImageToClipboard: vi.fn(async () => undefined),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),

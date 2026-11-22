@@ -190,6 +190,30 @@ describe('GraphNodeDetail simple layer', () => {
   })
 })
 
+describe('GraphNodeDetail title', () => {
+  it('follows a rename from outside, e.g. by an agent (#148)', () => {
+    const props = {
+      graphId: 'g1',
+      nodeId: 'gs1',
+      changes: [],
+      onClose: vi.fn(),
+      ...handlers,
+    }
+    const { rerender } = render(<GraphNodeDetail {...props} detail={graph} />)
+    expect(screen.getByLabelText('Node title')).toHaveValue('Graph support v1')
+
+    const renamed = detail({
+      ...graph,
+      nodes: graph.nodes.map(n =>
+        n.id === 'gs1' ? { ...n, title: 'Graph support v2' } : n
+      ),
+    })
+    rerender(<GraphNodeDetail {...props} detail={renamed} />)
+
+    expect(screen.getByLabelText('Node title')).toHaveValue('Graph support v2')
+  })
+})
+
 describe('GraphNodeDetail Relationships foldout', () => {
   it('is closed by default and separate from the details', async () => {
     renderDetail()

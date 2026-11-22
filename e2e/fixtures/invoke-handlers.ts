@@ -98,6 +98,10 @@ export const defaultResponses: Record<string, unknown> = {
   // Terminal
   kill_all_terminals: 0,
   has_active_terminal: false,
+  // The backend always answers with a list. Without this the mock answers
+  // null, and the terminal status tooltip crashed the app whenever a run
+  // terminal counted as running (issue #148).
+  get_terminal_listening_ports: [],
 
   // Sessions lifecycle
   check_resumable_sessions: [],

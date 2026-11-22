@@ -815,5 +815,9 @@ describe('transport bootstrap', () => {
     getWs(0).close()
 
     expect(onDisconnect).toHaveBeenCalledOnce()
+    // Let the browser transport finish its reconnect here. Left pending, its
+    // retry timer fires in the next test and opens a socket there.
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
+    await waitFor(() => expect(transport.isTransportConnected()).toBe(true))
   })
 })

@@ -251,6 +251,8 @@ describe('openChatLink keeps the written reference for display', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setEnvironment({ native: true, local: true })
+    // Do not depend on a mock value that another describe block set.
+    vi.mocked(openUrlInEmbeddedBrowser).mockResolvedValue(true)
     useUIStore.getState().setViewingFilePath(null)
   })
 

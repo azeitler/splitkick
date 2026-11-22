@@ -171,7 +171,13 @@ export function GraphNodeDetail({
     >
       <header className="flex flex-col gap-1 px-4 pt-3">
         <div className="flex items-start gap-2">
-          <TitleField value={node.title} onSave={title => patch({ title })} />
+          {/* Keyed by the title: the field keeps a draft, and a rename from
+              outside (an agent, a refetch after stale data) must replace it. */}
+          <TitleField
+            key={node.title}
+            value={node.title}
+            onSave={title => patch({ title })}
+          />
           <span className="flex-1" />
           <button
             type="button"

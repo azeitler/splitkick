@@ -23,6 +23,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The update offer waits for the first start.** A background update check
+  during the setup dialog or the feature tour showed its "is available" toast
+  on top of them, and the toast covered the dialog's buttons. The offer now
+  shows once the first start is over. (#148)
+- **A node's title follows a rename.** When an agent renamed a graph node while
+  its detail was open, the title field kept the old name. (#148)
 - **Viewers clear the notch and the home indicator.** On a phone (web access
   and the iOS app) the file viewer, the image viewer, the full-screen diagram
   and chart, and the artifact compare dialog put their buttons and content

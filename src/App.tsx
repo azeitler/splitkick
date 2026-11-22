@@ -207,6 +207,14 @@ function App() {
   // Holds the update object so the title bar indicator can trigger install later
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingUpdateRef = useRef<any>(null)
+  // A found update waits here until the first start (setup dialog, feature
+  // tour) is over: its toast must not cover the flow's buttons (#148).
+  const [updateToOffer, setUpdateToOffer] = useState<string | null>(null)
+  useEffect(() => {
+    if (!updateToOffer || !firstStartIdle) return
+    offerAppUpdate(updateToOffer)
+    setUpdateToOffer(null)
+  }, [updateToOffer, firstStartIdle])
   // Downloaded update, installed right before the relaunch
   const downloadedUpdateRef = useRef<{ install: () => Promise<void> } | null>(
     null
@@ -1462,8 +1470,8 @@ function App() {
           pendingUpdateRef.current = update
           // A toast, not a modal over the work. The toolbar's "Update
           // available" stays after the toast is dismissed (#135); Check for
-          // Updates opens the prompt.
-          offerAppUpdate(update.version)
+          // Updates opens the prompt. Offered once the first start is idle.
+          setUpdateToOffer(update.version)
         }
       } catch (checkError) {
         // Silent fail for update checks - don't bother user with network

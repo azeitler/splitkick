@@ -73,6 +73,21 @@ bun run test:e2e -- tests/chat-messaging.spec.ts  # Run specific file
 
 The dev server starts automatically on port 1421. If you already have it running (`bun run dev:e2e`), Playwright reuses it (`reuseExistingServer: true` when not in CI).
 
+**Stable under load (#148):**
+
+- `e2e/global-setup.ts` loads the app once, until the network is idle, before
+  the workers start. A cold server otherwise transforms and pre-bundles
+  everything while several workers wait, and pages stay on the spinner.
+- The e2e server has its own dependency cache (`node_modules/.vite-e2e`). The
+  normal dev server on port 1420 has another config hash; a shared cache made
+  each server re-bundle the other's deps.
+- The `mockPage` fixture removes the Web Access device view
+  (`jean:web-device-view:*`) on every load. Its first `goto('/')` saves one,
+  and it would replace the `load_ui_state` a spec seeds.
+- Unknown commands answer `null`. Give a command that returns a list a `[]`
+  default in `invoke-handlers.ts`, or a component that maps over it can crash
+  the app.
+
 ### Writing a New Test
 
 ```typescript
@@ -367,6 +382,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    testTimeout: 15_000,
   },
   resolve: {
     alias: {
@@ -375,6 +391,26 @@ export default defineConfig({
   },
 })
 ```
+
+**Unit tests under load (#148):** many UI tests click through whole dialogs.
+That is CPU work (jsdom, `*ByRole` queries), so `testTimeout` is 15 s; the
+`findBy*` / `waitFor` limit stays at 1 s. Rules that keep the suite stable
+with `--sequence.shuffle` and under load:
+
+- Reset a Zustand store to `store.getInitialState()` (with `replace: true`) in
+  `beforeEach`, not a hand-picked list of fields.
+- Set mock defaults at file level (or in every `describe`), not in one
+  `describe` block that another block silently depends on.
+- Restore spies (`vi.restoreAllMocks()`) when a test replaces
+  `requestAnimationFrame`, `performance.now` and the like.
+- Let a test finish its own async work (a reconnect, a debounced save), or its
+  timer fires in the next test.
+- A component that loads a chunk with `import()` (lazy renderers, Tauri APIs):
+  `await import(...)` it in `beforeAll`, so the first `findBy*` does not wait
+  for the module load.
+- With fake timers, wait for an `import()` with `vi.waitFor`, not
+  `vi.runAllTimersAsync()`: an import is not a timer.
+- Prefer plain DOM queries over `*ByRole` for big lists (32 rows cost >1 s).
 
 ## Rust Testing
 

@@ -19,7 +19,8 @@ describe('Command Code CLI update modal', () => {
 
 describe('UIStore', () => {
   beforeEach(() => {
-    // Reset store state before each test
+    // Reset store state before each test, so nothing leaks between tests
+    useUIStore.setState(useUIStore.getInitialState(), true)
     useUIStore.setState({
       leftSidebarVisible: false,
       rightSidebarVisible: false,

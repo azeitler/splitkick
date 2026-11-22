@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import { BrowserTabContent } from './BrowserTabContent'
 import { useBrowserStore } from '@/store/browser-store'
@@ -55,7 +55,12 @@ describe('BrowserTabContent', () => {
     useBrowserStore.setState({ tabs: {}, activeTabIds: {} })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Unmount here, not after this hook: the unmount parks a live tab through
+    // a chain of awaits (parkAndHideIfActive). Let it end before the mocks
+    // are cleared, or its setBounds call lands in the next test (#148).
+    cleanup()
+    await new Promise(resolve => setTimeout(resolve, 0))
     vi.unstubAllGlobals()
     vi.clearAllMocks()
   })

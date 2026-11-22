@@ -1,6 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  beforeAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import { act, render, screen, waitFor } from '@/test/test-utils'
 import { Markdown } from '@/components/ui/markdown'
+
+// Markdown loads the renderer chunk lazily. On a busy machine the first
+// import can take longer than a findBy* wait, so load it before the tests.
+beforeAll(async () => {
+  await import('./MermaidBlock')
+  await import('mermaid')
+})
 
 const mermaidMock = vi.hoisted(() => ({
   initialize: vi.fn(),

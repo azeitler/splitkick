@@ -373,9 +373,16 @@ describe('HomeView', () => {
     mocks.sessions = manySessions(30)
     renderHome()
 
+    // Plain DOM queries: *ByRole over 32 rows takes over a second, and
+    // under load more than the test timeout.
     const list = screen.getByTestId('home-recent-sessions')
-    expect(within(list).getAllByRole('listitem')).toHaveLength(32)
-    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull()
+    expect(list.querySelectorAll('li')).toHaveLength(32)
+    const showMore = [...document.querySelectorAll('button')].filter(button =>
+      /^Show /.test(
+        button.getAttribute('aria-label') ?? button.textContent?.trim() ?? ''
+      )
+    )
+    expect(showMore).toEqual([])
   })
 
   it('shows the session filter only once the list is long enough', () => {

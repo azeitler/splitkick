@@ -35,9 +35,16 @@ vi.mock('sonner', () => ({
   },
 }))
 
+function nextFrame() {
+  return new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+}
+
 describe('useChatWindowEvents worktree approval shortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Spies (requestAnimationFrame, performance.now) must not leak into the
+    // next test.
+    vi.restoreAllMocks()
     vi.useRealTimers()
     document.body.innerHTML = ''
     useChatStore.setState({ pendingTextFiles: {} })
@@ -163,7 +170,7 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     expect(document.activeElement).toBe(params.inputRef.current)
   })
 
-  it('does not steal focus from a button when the window is re-activated', () => {
+  it('does not steal focus from a button when the window is re-activated', async () => {
     const params = renderUseChatWindowEvents()
     const button = document.createElement('button')
     document.body.appendChild(button)
@@ -171,13 +178,15 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     const cleanupFocusRestore = installWindowKeyboardFocusRestore()
 
     window.dispatchEvent(new Event('focus'))
+    // The restore runs one frame later.
+    await nextFrame()
 
     expect(document.activeElement).toBe(button)
     expect(document.activeElement).not.toBe(params.inputRef.current)
     cleanupFocusRestore()
   })
 
-  it('re-asserts focus inside an open dialog without focusing chat input', () => {
+  it('re-asserts focus inside an open dialog without focusing chat input', async () => {
     const params = renderUseChatWindowEvents()
     const chatInput = params.inputRef.current
     if (!chatInput) throw new Error('expected chat input ref')
@@ -196,7 +205,10 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
 
     window.dispatchEvent(new Event('focus'))
 
-    expect(dialogFocusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    // The restore runs one frame later.
+    await vi.waitFor(() =>
+      expect(dialogFocusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    )
     expect(document.activeElement).toBe(dialogInput)
     expect(chatFocusSpy).not.toHaveBeenCalled()
     cleanupFocusRestore()

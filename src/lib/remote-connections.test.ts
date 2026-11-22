@@ -23,9 +23,14 @@ const tauriInvoke = vi.hoisted(() => vi.fn())
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauriInvoke }))
 
 describe('remote connections', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear()
     sessionStorage.clear()
+    // The list lives in module state: drop what an earlier test added.
+    for (const connection of getRemoteConnections()) {
+      await removeRemoteConnection(connection.id)
+    }
+    selectConnection('local')
   })
 
   it('extracts a token from a complete Web Access URL', () => {

@@ -6,6 +6,10 @@ export default defineConfig(async env => {
   const baseConfig = await (baseConfigFn as any)(env)
 
   return mergeConfig(baseConfig, {
+    // Own dependency cache: the normal dev server (port 1420) has another
+    // config hash, so a shared cache made each server re-bundle the other's
+    // deps (issue #148).
+    cacheDir: 'node_modules/.vite-e2e',
     resolve: {
       alias: {
         '@tauri-apps/plugin-dialog': path.resolve(

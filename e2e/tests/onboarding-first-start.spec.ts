@@ -137,6 +137,10 @@ async function firstStartDesktopApp(
 
 const firstStart = (page: Page) => page.evaluate(() => window.__FIRST_START__)
 
+/** The background check's offer: a toast, queued until the first start ends. */
+const updateOffer = (page: Page) =>
+  page.locator('[data-sonner-toast]', { hasText: '9.9.9 is available' })
+
 /** Let the login terminal exit with 0, as `claude login` / `gh auth login`. */
 async function finishLogin(page: Page, key: 'claudeAuth' | 'ghAuth') {
   await expect
@@ -242,6 +246,7 @@ test.describe('First start', () => {
     await expect(
       page.getByRole('dialog', { name: 'Update Available' })
     ).toHaveCount(0)
+    await expect(updateOffer(page)).toHaveCount(0)
     await shot(page, 'onboarding-3-claude-version')
     await install.click()
 
@@ -291,21 +296,21 @@ test.describe('First start', () => {
       await expectTourButtonsVisible(page)
     }
     await shot(page, 'tour-6-last')
+    await expect(updateOffer(page)).toHaveCount(0)
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /^Done/ })
       .click()
 
-    // Only now the queued update prompt shows
+    // Only now the queued update offer shows: a toast, not a modal (#135)
+    await expect(updateOffer(page)).toBeVisible({ timeout: 10_000 })
     await expect(
       page.getByRole('dialog', { name: 'Update Available' })
-    ).toBeVisible({ timeout: 10_000 })
+    ).toHaveCount(0)
 
     const { maxDialogs, titles } = await firstStart(page)
     expect(maxDialogs, `dialogs seen: ${titles.join(' → ')}`).toBe(1)
-    expect(titles.indexOf('Update Available')).toBeGreaterThan(
-      titles.indexOf('Setup Complete')
-    )
+    expect(titles).toContain('Setup Complete')
   })
 
   for (const viewport of [

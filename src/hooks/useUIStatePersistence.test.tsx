@@ -85,6 +85,12 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     mockUseProjects.mockReturnValue({ data: [], isSuccess: true })
     mockUseSaveUIState.mockReturnValue({ mutate: mockSaveUIState })
 
+    // Start from clean stores: a test that expands a row must not leave it
+    // expanded for the next test (a toggle would then collapse it).
+    useTerminalStore.setState(useTerminalStore.getInitialState(), true)
+    useUIStore.setState(useUIStore.getInitialState(), true)
+    useProjectsStore.setState(useProjectsStore.getInitialState(), true)
+    useChatStore.setState(useChatStore.getInitialState(), true)
     useTerminalStore.setState({
       terminals: {},
       activeTerminalIds: {},

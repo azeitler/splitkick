@@ -17,6 +17,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Many UI tests click through whole dialogs. That is CPU work (jsdom,
+    // *ByRole queries), 1-4 s on an idle full run and 4-5x more under load
+    // (release gate with Rust builds, emulators). 5 s timed them out at
+    // random (issue #148). findBy*/waitFor keep their own 1 s limit, so a
+    // wrong state still fails fast; only a hang waits the full 15 s.
+    testTimeout: 15_000,
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     exclude: [
       'node_modules',

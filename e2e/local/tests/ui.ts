@@ -45,14 +45,36 @@ export async function showSidebarTab(
 
 /** Open a session by name through the "Go to…" search. */
 export async function goToSession(page: Page, name: string): Promise<void> {
-  await page.getByText('Go to…').first().click()
-  await page.keyboard.type(name)
-  const noResults = page.getByText('No results found.')
   const option = page.getByRole('option', { name: new RegExp(name) }).first()
-  await expect(option.or(noResults)).toBeVisible()
-  // "Go to…" leaves out the session that is already open.
-  await page.keyboard.press((await noResults.isVisible()) ? 'Escape' : 'Enter')
-  await expect(sessionTab(page, name)).toBeVisible()
+  const palette = page.getByRole('dialog', { name: 'Command Palette' })
+  // The open session's tab. "Go to…" leaves that session out.
+  const activeTab = page
+    .locator('[data-session-id][aria-current="true"]')
+    .filter({ has: page.getByText(name, { exact: true }) })
+  await expect(async () => {
+    // Open only a fully closed palette: opening it again during its close
+    // animation could leave its overlay over its own options.
+    if (await palette.isVisible()) await page.keyboard.press('Escape')
+    await expect(palette).toBeHidden()
+    if (await activeTab.isVisible()) return
+    await page.getByText('Go to…').first().click()
+    await page.keyboard.type(name)
+    // Not found yet: the session is the open one and its tab shows a moment
+    // later (after a reload), or it was created a moment ago and is not
+    // searchable yet on a busy machine (issue #148). Search again.
+    await expect(option.or(activeTab)).toBeVisible({ timeout: 5_000 })
+    if (await option.isVisible()) {
+      // Enter runs the highlighted entry; the list can still be updating.
+      await expect(option).toHaveAttribute('aria-selected', 'true', {
+        timeout: 5_000,
+      })
+      await page.keyboard.press('Enter')
+    } else {
+      await page.keyboard.press('Escape')
+    }
+  }).toPass({ timeout: 60_000 })
+  await expect(palette).toBeHidden()
+  await expect(activeTab).toBeVisible()
 }
 
 export function sessionTab(page: Page, name: string) {
@@ -94,6 +116,10 @@ export async function openSessionMenu(page: Page, name: string): Promise<void> {
 
 /** Run a command palette entry by its label. */
 export async function runCommand(page: Page, label: string): Promise<void> {
+  // Open only a fully closed palette (see goToSession).
+  await expect(
+    page.getByRole('dialog', { name: 'Command Palette' })
+  ).toBeHidden()
   await page.keyboard.press('Meta+k')
   const input = page.getByRole('dialog').getByRole('combobox')
   await expect(input).toBeFocused()
