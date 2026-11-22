@@ -10,6 +10,39 @@ This repository is a template with sensible defaults for building Tauri React ap
 
 ## Core Rules
 
+### Public Repository: No Internal Data (CRITICAL)
+
+This repository, its issues, pull requests, discussions, commit messages and
+release notes are **public**. Git history is permanent: a name that is pushed
+once stays in the history, also when a later commit removes it.
+
+**Never write any of these into a file, commit message, branch name, issue,
+PR, comment or release note:**
+
+- Customer, client, partner or project names of the maintainer's own work,
+  and their addresses, buildings or plots.
+- Names of real people other than the public maintainer (testers, team
+  members, family), also first names and GitHub handles.
+- Machine names, host names, tailnet names, local IP addresses and Claude
+  account or profile labels of the maintainer's own setup.
+- Personal paths (`/Users/<name>/…`, `~/Projects/<repo>`), private repo
+  names, private org names and vault or note paths.
+- Real session names, chat content, log lines, screenshots or transcripts
+  from the maintainer's own work.
+- Tokens, keys, invite links, e-mail addresses and phone numbers.
+
+**Use neutral examples instead:** `Acme`, `Customer Coordinator`,
+`/Users/me/…`, `Mac 1` / `Mac 2`, `box.tail1234.ts.net`, `Account A`,
+`the tester`. When a bug report or a log holds real data, rewrite it to
+neutral data before it goes into a test, a doc, a changelog entry or an issue.
+
+**Before every commit and every GitHub post:** read the diff (`git diff
+--cached`) or the text for the items above. Local, untracked rules in
+`CLAUDE.local.md` list the concrete names to search for; run that search.
+When a private name is already pushed, do not rewrite the history on your
+own: replace it in a new commit and tell the maintainer which commits still
+hold it.
+
 ### Codex App Server schema
 
 If you need to check some codex app-server related things, use "codex app-server generate-json-schema --out ./codex-schema" to generate schema and check local dir ./codex-schema for schemas.
@@ -544,13 +577,13 @@ Full details in `docs/developer/session-forking.md`. The parts that bite:
 - **A fork must regain the backend's context.** Clearing the resume ids is not enough —
   the user sees history the model does not. `SessionMetadata.pending_fork` records which
   strategy the first send uses, and `run_log::complete` clears it so it fires
-  once — on the first turn that *finishes*, so a cancelled first turn still
+  once — on the first turn that _finishes_, so a cancelled first turn still
   forks on retry.
   - Claude, full fork → `PendingFork::Native`: **keep** `claude_session_id` and pass
     `--resume <id> --fork-session`. Claude branches its own transcript.
   - Everything else, and **every truncated fork** → `PendingFork::Handoff`: clear the
     resume id and prepend a hidden `<jean_fork_handoff>` history block.
-  - A truncated fork can never go native: `--fork-session` branches from the *end* of the
+  - A truncated fork can never go native: `--fork-session` branches from the _end_ of the
     transcript, handing the model the turns the fork deliberately dropped.
 - **Precedence:** `resolve_handoff_kind` in `chat/commands.rs`. A provider or profile
   switch already replays the full history, so it outranks the fork injection.
