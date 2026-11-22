@@ -386,7 +386,7 @@ export function FileContentModal({
     <Dialog open={!!filePath} onOpenChange={handleOpenChange}>
       <DialogContent
         preventClose
-        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95"
+        className="safe-area-viewer !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95"
       >
         <DialogTitle className="flex flex-col gap-1 px-4 pt-4 pr-14 sm:px-0 sm:pt-0 sm:pr-8">
           <div className="flex items-center gap-2">
@@ -537,7 +537,7 @@ export function FileContentModal({
 
         {/* Pierre File editor (default — same on desktop and mobile) */}
         {!isLoading && !error && isEditing && content !== null ? (
-          <div className="h-[calc(100dvh-7rem)] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0 min-w-0">
+          <div className="h-[calc(100dvh-7rem-var(--safe-area-top)-var(--safe-area-bottom))] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0 min-w-0">
             <Suspense
               fallback={
                 <div className="flex items-center justify-center py-8 text-muted-foreground">
@@ -573,7 +573,7 @@ export function FileContentModal({
             </Suspense>
           </div>
         ) : !isLoading && !error && showArtifactPreview ? (
-          <div className="h-[calc(100dvh-7rem)] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0 min-w-0">
+          <div className="h-[calc(100dvh-7rem-var(--safe-area-top)-var(--safe-area-bottom))] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0 min-w-0">
             {artifactKind === 'svg' && svgSrc ? (
               <div className="h-full w-full rounded-md bg-white touch-none">
                 <ZoomableImage
@@ -593,7 +593,7 @@ export function FileContentModal({
             )}
           </div>
         ) : !isLoading && !error ? (
-          <ScrollArea className="h-[calc(100dvh-7rem)] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0">
+          <ScrollArea className="h-[calc(100dvh-7rem-var(--safe-area-top)-var(--safe-area-bottom))] sm:h-[calc(85vh-6rem)] mt-2 px-4 pb-4 sm:px-0 sm:pb-0">
             {isImage ? (
               <div className="flex flex-col items-center justify-center gap-3 p-4 min-h-[12rem]">
                 {!imageLoaded && !imageError && imageSrc && (
@@ -614,7 +614,7 @@ export function FileContentModal({
                   // through the backend, so this also works in a remote window.
                   <div
                     className={cn(
-                      'w-full h-[calc(100dvh-10rem)] sm:h-[calc(85vh-8rem)] touch-none',
+                      'w-full h-[calc(100dvh-10rem-var(--safe-area-top)-var(--safe-area-bottom))] sm:h-[calc(85vh-8rem)] touch-none',
                       !imageLoaded && 'hidden'
                     )}
                   >

@@ -75,6 +75,14 @@ describe('ImagePreviewDialog', () => {
     expect(img.closest('.react-transform-wrapper')).not.toBeNull()
   })
 
+  // The class keeps the controls out of the notch and home indicator on a
+  // phone (App.css); the e2e spec mobile-viewer-safe-area checks the layout.
+  it('uses the safe-area viewer layout', () => {
+    renderDialog('asset://shot.png')
+
+    expect(screen.getByRole('dialog')).toHaveClass('safe-area-viewer')
+  })
+
   it('native local session: Reveal and Copy image, no Open in browser', async () => {
     const user = userEvent.setup()
     renderDialog('asset://localhost/shot.png', '/tmp/shot.png')

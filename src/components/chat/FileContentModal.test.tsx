@@ -55,6 +55,14 @@ describe('FileContentModal view mode', () => {
     expect(screen.queryByTestId('code-editor')).toBeNull()
   })
 
+  // App.css keeps the controls out of the notch and home indicator on a
+  // phone; the e2e spec mobile-viewer-safe-area checks the layout.
+  it('uses the safe-area viewer layout', async () => {
+    render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)
+
+    expect(await screen.findByRole('dialog')).toHaveClass('safe-area-viewer')
+  })
+
   it('switches to the editor on Edit', async () => {
     const user = userEvent.setup()
     render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)

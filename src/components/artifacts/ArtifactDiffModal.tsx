@@ -204,7 +204,7 @@ export function ArtifactDiffModal({
 
   return (
     <Dialog open={!!artifact} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-4 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg">
+      <DialogContent className="safe-area-viewer [--viewer-pt:1rem] [--viewer-px:1rem] [--viewer-pb:1rem] !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-4 sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg">
         <DialogTitle className="flex items-center gap-2 pr-8">
           <GitCompare className="h-4 w-4 shrink-0" />
           <span className="truncate">{artifact?.title}</span>

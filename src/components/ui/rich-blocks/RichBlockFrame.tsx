@@ -250,7 +250,7 @@ export function RichBlockFrame({
       {svg && fullScreen && (
         <Dialog open={fullScreen} onOpenChange={setFullScreen}>
           <DialogContent
-            className="flex flex-col !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 pt-[calc(var(--safe-area-top)+3rem)] pb-[calc(var(--safe-area-bottom)+0.5rem)] [&>[data-slot=dialog-close]]:top-[calc(var(--safe-area-top)+1rem)] sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 sm:pt-12 sm:[&>[data-slot=dialog-close]]:top-4 bg-background"
+            className="safe-area-viewer [--viewer-pt:3rem] [--viewer-pb:0.5rem] flex flex-col !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!h-[85vh] sm:!rounded-lg sm:p-4 sm:pt-12 bg-background"
             showCloseButton
           >
             <VisuallyHidden>

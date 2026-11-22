@@ -21,6 +21,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   instructions and the `remote_tool` description now say "on my other Mac"
   and "Mac 2" as the example for another machine.
 
+### Fixed
+
+- **Viewers clear the notch and the home indicator.** On a phone (web access
+  and the iOS app) the file viewer, the image viewer, the full-screen diagram
+  and chart, and the artifact compare dialog put their buttons and content
+  inside the safe area: below the status bar and the Dynamic Island, above the
+  home indicator, and clear of the side insets in landscape.
+
 ## [1.5.23] - 2026-11-21
 
 Built on Jean 0.1.73.

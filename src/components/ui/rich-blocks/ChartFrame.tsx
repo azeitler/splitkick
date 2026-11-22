@@ -154,7 +154,7 @@ export function ChartFrame({
       )}
 
       <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-        <DialogContent className="flex flex-col !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-4 pt-[calc(var(--safe-area-top)+3rem)] sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg">
+        <DialogContent className="safe-area-viewer [--viewer-pt:3rem] [--viewer-px:1rem] [--viewer-pb:1rem] flex flex-col !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-4 sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg">
           <VisuallyHidden>
             <DialogTitle>{label} full screen</DialogTitle>
             <DialogDescription>Full screen view of the chart</DialogDescription>

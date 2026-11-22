@@ -796,3 +796,43 @@ body:not(.native-app) kbd {
   background: var(--sidebar-border);
   pointer-events: none;
 }
+
+/* Full-screen viewers (file viewer, image viewer, diagrams, charts): keep
+   controls and content out of the notch / Dynamic Island, the status bar, the
+   home indicator and the landscape side insets. Put `safe-area-viewer` on the
+   DialogContent. The --safe-area-* insets are 0 on desktop, so desktop does not
+   change. In the utilities layer with a second selector part, so it wins over
+   the dialog's single-class padding and width utilities.
+   - Below sm (full screen): padding = inset + the viewer's own spacing from
+     --viewer-pt / --viewer-px / --viewer-pb (default 0). The close button is
+     absolute, so padding does not move it; it gets the inset offsets itself.
+   - From sm (centered box, also a phone in landscape): the box stays clear of
+     the wider side inset, at least the usual 2rem per side. */
+@layer utilities {
+  @media (width < 40rem) {
+    [data-slot='dialog-content'].safe-area-viewer {
+      padding: calc(var(--safe-area-top) + var(--viewer-pt, 0px))
+        calc(var(--safe-area-right) + var(--viewer-px, 0px))
+        calc(var(--safe-area-bottom) + var(--viewer-pb, 0px))
+        calc(var(--safe-area-left) + var(--viewer-px, 0px));
+    }
+    [data-slot='dialog-content'].safe-area-viewer > [data-slot='dialog-close'] {
+      top: calc(var(--safe-area-top) + 1rem);
+      right: calc(var(--safe-area-right) + 1.25rem);
+    }
+  }
+  @media (width >= 40rem) {
+    [data-slot='dialog-content'].safe-area-viewer {
+      --viewer-box-width: calc(
+        100vw - 2 *
+          max(
+            2rem,
+            var(--safe-area-left) + 0.5rem,
+            var(--safe-area-right) + 0.5rem
+          )
+      );
+      width: var(--viewer-box-width) !important;
+      max-width: var(--viewer-box-width) !important;
+    }
+  }
+}
