@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.5.24] - 2026-11-22
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Tailscale in Settings → Web Access.** The pane shows this machine's
@@ -3305,7 +3309,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.23...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.5.24...HEAD
+[1.5.24]: https://github.com/azeitler/jean/compare/splitkick-v1.5.23...splitkick-v1.5.24
 [1.5.23]: https://github.com/azeitler/jean/compare/splitkick-v1.5.22...splitkick-v1.5.23
 [1.5.22]: https://github.com/azeitler/jean/compare/splitkick-v1.5.21...splitkick-v1.5.22
 [1.5.21]: https://github.com/azeitler/jean/compare/splitkick-v1.5.20...splitkick-v1.5.21
