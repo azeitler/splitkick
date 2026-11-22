@@ -35,6 +35,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { connectionLink } from '@/lib/remote-connections'
 import { SettingsSection } from '../SettingsSection'
 import { WebAccessDeviceSection } from './WebAccessDeviceSection'
+import { ConnectionQrButton } from './ConnectionQrButton'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
@@ -126,7 +127,9 @@ const AccessUrlRow: React.FC<{
   onOpen: (url: string) => void
   onCopy: (url: string) => void
   onCopyConnectionLink?: (url: string) => void
-}> = ({ url, onOpen, onCopy, onCopyConnectionLink }) => (
+  /** Connection link for the QR code button; no button when absent (#150). */
+  qrLink?: string
+}> = ({ url, onOpen, onCopy, onCopyConnectionLink, qrLink }) => (
   <div className="flex items-center gap-2">
     <Input
       type="text"
@@ -167,6 +170,7 @@ const AccessUrlRow: React.FC<{
         </TooltipContent>
       </Tooltip>
     )}
+    {qrLink && <ConnectionQrButton url={url} link={qrLink} />}
   </div>
 )
 
@@ -456,11 +460,12 @@ const WebAccessServerPane: React.FC = () => {
     [serverStatus?.token, tokenRequired]
   )
 
+  const linkToken = tokenRequired ? (serverStatus?.token ?? '') : ''
+
   const handleCopyConnectionLink = useCallback(
     async (url: string) => {
-      const token = tokenRequired ? (serverStatus?.token ?? '') : ''
       try {
-        await copyToClipboard(connectionLink(url, token))
+        await copyToClipboard(connectionLink(url, linkToken))
         toast.success('Connection link copied', {
           description: `Open it on another computer to add this server in ${PRODUCT_NAME}.`,
         })
@@ -468,7 +473,7 @@ const WebAccessServerPane: React.FC = () => {
         toast.error(getErrorMessage(error))
       }
     },
-    [serverStatus?.token, tokenRequired]
+    [linkToken]
   )
 
   const validateBindHost = useCallback(async (host: string) => {
@@ -790,6 +795,7 @@ const WebAccessServerPane: React.FC = () => {
                     onOpen={handleOpenUrl}
                     onCopy={handleCopyUrl}
                     onCopyConnectionLink={handleCopyConnectionLink}
+                    qrLink={connectionLink(tailscaleUrl, linkToken)}
                   />
                 )}
                 {showLocalhostUrl && (
@@ -805,6 +811,7 @@ const WebAccessServerPane: React.FC = () => {
                     onOpen={handleOpenUrl}
                     onCopy={handleCopyUrl}
                     onCopyConnectionLink={handleCopyConnectionLink}
+                    qrLink={connectionLink(boundUrl, linkToken)}
                   />
                 )}
               </div>

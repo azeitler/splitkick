@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@/test/test-utils'
+import userEvent from '@testing-library/user-event'
+import QRCode from 'qrcode'
+import { connectionLink } from '@/lib/remote-connections'
 import { WebAccessPane } from './WebAccessPane'
 import { defaultPreferences } from '@/types/preferences'
 
@@ -18,6 +21,12 @@ const mobile = vi.hoisted(() => ({ value: false }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile.value }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('qrcode', async importOriginal => {
+  const actual = await importOriginal<{ default: typeof QRCode }>()
+  return {
+    default: { ...actual.default, toString: vi.fn(actual.default.toString) },
+  }
+})
 vi.mock('@/lib/clipboard', () => ({ copyToClipboard: vi.fn() }))
 vi.mock('@/lib/platform', () => ({
   isMacOS: false,
@@ -68,6 +77,45 @@ describe('WebAccessPane in browser/headless mode', () => {
     expect(screen.getByText('Reset app cache')).toBeInTheDocument()
     expect(screen.queryByText('Enable HTTP server')).not.toBeInTheDocument()
     mobile.value = false
+  })
+
+  it('opens a QR code of the connection link from the button (#150)', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'load_preferences')
+        return Promise.resolve(defaultPreferences)
+      if (command === 'get_http_server_status') {
+        return Promise.resolve({
+          running: true,
+          port: 3456,
+          url: 'http://studio.example.ts.net:3456',
+          token: 'secret-token',
+          bind_host: '100.64.0.1',
+          localhost_only: false,
+        })
+      }
+      if (command === 'list_http_bind_host_options') return Promise.resolve([])
+      return Promise.resolve(null)
+    })
+    render(<WebAccessPane />)
+
+    const button = await screen.findByRole('button', {
+      name: 'Show connection QR code',
+    })
+    expect(screen.queryByTestId('connection-qr-code')).not.toBeInTheDocument()
+
+    await userEvent.click(button)
+
+    expect(await screen.findByTestId('connection-qr-code')).toBeInTheDocument()
+    expect(vi.mocked(QRCode.toString)).toHaveBeenCalledWith(
+      connectionLink('http://studio.example.ts.net:3456', 'secret-token'),
+      expect.objectContaining({ type: 'svg' })
+    )
+    expect(
+      screen.getByText(/Anyone who scans this code can use this/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/iOS blocks plain HTTP to host names/)
+    ).toBeInTheDocument()
   })
 })
 
