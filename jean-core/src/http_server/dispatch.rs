@@ -2172,6 +2172,10 @@ pub async fn dispatch_command(
             let result = crate::http_server::server::list_bind_host_options();
             to_value(result)
         }
+        "get_tailscale_info" => {
+            let result = crate::http_server::tailscale::get_tailscale_info(app.clone()).await;
+            to_value(result)
+        }
         "validate_http_bind_host" => {
             let host: String = from_field(&args, "host")?;
             let result = crate::http_server::server::validate_bind_host(&host)?;

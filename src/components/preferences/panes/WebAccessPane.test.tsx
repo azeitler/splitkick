@@ -70,3 +70,141 @@ describe('WebAccessPane in browser/headless mode', () => {
     mobile.value = false
   })
 })
+
+describe('WebAccessPane Tailscale block (#151)', () => {
+  const baseInfo = {
+    installed: true,
+    running: true,
+    tailnetName: 'tail1234.ts.net',
+    magicDnsEnabled: true,
+    dnsName: 'box.tail1234.ts.net',
+    ips: ['100.64.0.1'],
+    serves: [] as unknown[],
+    port: 3456,
+  }
+
+  function mockTailscale(info: unknown) {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'load_preferences')
+        return Promise.resolve(defaultPreferences)
+      if (command === 'get_http_server_status') {
+        return Promise.resolve({
+          running: true,
+          port: 3456,
+          url: 'http://127.0.0.1:3456',
+          token: 'secret-token',
+          bind_host: '127.0.0.1',
+          localhost_only: true,
+        })
+      }
+      if (command === 'list_http_bind_host_options') return Promise.resolve([])
+      if (command === 'get_tailscale_info') return Promise.resolve(info)
+      return Promise.resolve(null)
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mobile.value = false
+  })
+
+  it('hides the block when Tailscale is not installed', async () => {
+    mockTailscale({ ...baseInfo, installed: false, running: false })
+    render(<WebAccessPane />)
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('get_tailscale_info')
+    )
+    expect(screen.queryByText('Tailscale')).not.toBeInTheDocument()
+  })
+
+  it('says when Tailscale is installed but not connected', async () => {
+    mockTailscale({ ...baseInfo, running: false, dnsName: null })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByText('Tailscale is installed but not connected.')
+    ).toBeInTheDocument()
+  })
+
+  it('shows the MagicDNS name and a serve hint when not served', async () => {
+    mockTailscale(baseInfo)
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByDisplayValue('box.tail1234.ts.net')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Tailnet tail1234.ts.net')).toBeInTheDocument()
+    expect(screen.getByText('tailscale serve --bg 3456')).toBeInTheDocument()
+    expect(screen.getByLabelText('Copy serve command')).toBeInTheDocument()
+    expect(
+      screen.queryByDisplayValue('https://box.tail1234.ts.net')
+    ).not.toBeInTheDocument()
+  })
+
+  it('notes when MagicDNS is off', async () => {
+    mockTailscale({ ...baseInfo, magicDnsEnabled: false })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByText(/MagicDNS is off in this tailnet/)
+    ).toHaveTextContent('100.64.0.1')
+  })
+
+  it('lists the served https URL and the serve status', async () => {
+    mockTailscale({
+      ...baseInfo,
+      serves: [
+        {
+          url: 'https://box.tail1234.ts.net',
+          proxyTarget: 'http://localhost:3456',
+          servesSplitkick: true,
+          funnel: false,
+        },
+      ],
+    })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByDisplayValue('https://box.tail1234.ts.net')
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Served via tailscale serve/)).toBeInTheDocument()
+    expect(screen.queryByText(/tailscale serve --bg/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Public on the internet/)).not.toBeInTheDocument()
+  })
+
+  it('ignores a serve entry for another port', async () => {
+    mockTailscale({
+      ...baseInfo,
+      serves: [
+        {
+          url: 'https://box.tail1234.ts.net:8443',
+          proxyTarget: 'http://127.0.0.1:5173',
+          servesSplitkick: false,
+          funnel: true,
+        },
+      ],
+    })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByText('tailscale serve --bg 3456')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByDisplayValue('https://box.tail1234.ts.net:8443')
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Public on the internet/)).not.toBeInTheDocument()
+  })
+
+  it('warns when Funnel makes the server public', async () => {
+    mockTailscale({
+      ...baseInfo,
+      serves: [
+        {
+          url: 'https://box.tail1234.ts.net',
+          proxyTarget: 'http://localhost:3456',
+          servesSplitkick: true,
+          funnel: true,
+        },
+      ],
+    })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByText(/Public on the internet/)
+    ).toBeInTheDocument()
+  })
+})

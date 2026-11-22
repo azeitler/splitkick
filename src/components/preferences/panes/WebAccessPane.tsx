@@ -1,5 +1,6 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Copy,
   Link2,
@@ -99,6 +100,199 @@ interface ServerStatus {
   token: string | null
   bind_host?: string | null
   localhost_only: boolean | null
+}
+
+/** `get_tailscale_info` (jean-core `http_server/tailscale.rs`, #151). */
+export interface TailscaleServe {
+  url: string
+  proxyTarget: string
+  servesSplitkick: boolean
+  funnel: boolean
+}
+
+export interface TailscaleInfo {
+  installed: boolean
+  running: boolean
+  tailnetName: string | null
+  magicDnsEnabled: boolean
+  dnsName: string | null
+  ips: string[]
+  serves: TailscaleServe[]
+  port: number
+}
+
+const AccessUrlRow: React.FC<{
+  url: string
+  onOpen: (url: string) => void
+  onCopy: (url: string) => void
+  onCopyConnectionLink?: (url: string) => void
+}> = ({ url, onOpen, onCopy, onCopyConnectionLink }) => (
+  <div className="flex items-center gap-2">
+    <Input
+      type="text"
+      className="w-64 font-mono text-base md:text-xs"
+      value={url}
+      readOnly
+    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={() => onOpen(url)}>
+          <ExternalLink className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Open in browser</TooltipContent>
+    </Tooltip>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={() => onCopy(url)}>
+          <Copy className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Copy URL</TooltipContent>
+    </Tooltip>
+    {onCopyConnectionLink && (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Copy connection link"
+            onClick={() => onCopyConnectionLink(url)}
+          >
+            <Link2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Copy connection link for another {PRODUCT_NAME}
+        </TooltipContent>
+      </Tooltip>
+    )}
+  </div>
+)
+
+async function copyText(text: string, message: string) {
+  try {
+    await copyToClipboard(text)
+    toast.success(message)
+  } catch (error) {
+    toast.error(getErrorMessage(error))
+  }
+}
+
+const TailscaleSection: React.FC<{ info: TailscaleInfo }> = ({ info }) => {
+  const serve = info.serves.find(s => s.servesSplitkick)
+  const serveCommand = `tailscale serve --bg ${info.port}`
+
+  return (
+    <SettingsSection
+      title="Tailscale"
+      anchorId="pref-web-access-section-tailscale"
+    >
+      <div className="space-y-4">
+        {!info.running ? (
+          <p className="text-sm text-muted-foreground">
+            Tailscale is installed but not connected.
+          </p>
+        ) : (
+          <>
+            <InlineField
+              label="MagicDNS name"
+              description={
+                info.tailnetName ? `Tailnet ${info.tailnetName}` : undefined
+              }
+            >
+              <div className="flex flex-col gap-1">
+                {info.dnsName && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      className="w-64 font-mono text-base md:text-xs"
+                      value={info.dnsName}
+                      readOnly
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Copy MagicDNS name"
+                          onClick={() =>
+                            copyText(info.dnsName ?? '', 'Name copied')
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy name</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+                {!info.magicDnsEnabled && (
+                  <div className="text-xs text-muted-foreground">
+                    MagicDNS is off in this tailnet. Use the Tailscale IP
+                    {info.ips[0] ? ` (${info.ips[0]})` : ''} instead.
+                  </div>
+                )}
+              </div>
+            </InlineField>
+
+            <InlineField
+              label="tailscale serve"
+              description="HTTPS on your tailnet, with a valid certificate"
+            >
+              {serve ? (
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                  <span className="text-xs text-muted-foreground">
+                    Served via tailscale serve at{' '}
+                    <code className="text-foreground">{serve.url}</code>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">
+                    Not served. To get an HTTPS URL, run this in a terminal:
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
+                      {serveCommand}
+                    </code>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Copy serve command"
+                          onClick={() =>
+                            copyText(serveCommand, 'Command copied')
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy command</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              )}
+            </InlineField>
+
+            {serve?.funnel && (
+              <div className="flex items-start gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div className="text-sm text-amber-600 dark:text-amber-400">
+                  <strong>Public on the internet:</strong> Tailscale Funnel is
+                  on for {serve.url}. Anyone can reach {PRODUCT_NAME} there, not
+                  only your tailnet. Keep the access token on, or turn Funnel
+                  off with <code>tailscale funnel reset</code>.
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </SettingsSection>
+  )
 }
 
 interface BindHostOption {
@@ -219,6 +413,32 @@ const WebAccessServerPane: React.FC = () => {
   }, [patchPreferences, refreshStatus])
 
   const tokenRequired = preferences?.http_server_token_required ?? true
+
+  // Key on server state so starting/stopping the server or changing the port
+  // re-matches the serve entries against the right port.
+  const { data: tailscale } = useQuery({
+    queryKey: [
+      'tailscale-info',
+      serverStatus?.running ?? false,
+      serverStatus?.port ?? null,
+      preferences?.http_server_port ?? null,
+    ],
+    queryFn: () => invoke<TailscaleInfo>('get_tailscale_info'),
+    enabled: serverStatus !== null,
+    staleTime: 30_000,
+  })
+  const tailscaleUrl = tailscale?.serves.find(s => s.servesSplitkick)?.url
+
+  const handleOpenUrl = useCallback(
+    (url: string) => {
+      openExternal(
+        tokenRequired && serverStatus?.token
+          ? `${url}?token=${serverStatus.token}`
+          : url
+      )
+    },
+    [serverStatus?.token, tokenRequired]
+  )
 
   const handleCopyUrl = useCallback(
     async (url: string) => {
@@ -564,113 +784,36 @@ const WebAccessServerPane: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {showLocalhostUrl && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      className="w-64 font-mono text-base md:text-xs"
-                      value={`http://localhost:${serverStatus.port}`}
-                      readOnly
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const base = `http://localhost:${serverStatus.port}`
-                            openExternal(
-                              tokenRequired && serverStatus.token
-                                ? `${base}?token=${serverStatus.token}`
-                                : base
-                            )
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Open in browser</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            handleCopyUrl(
-                              `http://localhost:${serverStatus.port}`
-                            )
-                          }
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Copy URL</TooltipContent>
-                    </Tooltip>
-                  </div>
+                {tailscaleUrl && (
+                  <AccessUrlRow
+                    url={tailscaleUrl}
+                    onOpen={handleOpenUrl}
+                    onCopy={handleCopyUrl}
+                    onCopyConnectionLink={handleCopyConnectionLink}
+                  />
                 )}
-
+                {showLocalhostUrl && (
+                  <AccessUrlRow
+                    url={`http://localhost:${serverStatus.port}`}
+                    onOpen={handleOpenUrl}
+                    onCopy={handleCopyUrl}
+                  />
+                )}
                 {showBoundUrl && boundUrl && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      className="w-64 font-mono text-base md:text-xs"
-                      value={boundUrl}
-                      readOnly
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const base = boundUrl
-                            openExternal(
-                              tokenRequired && serverStatus.token
-                                ? `${base}?token=${serverStatus.token}`
-                                : base
-                            )
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Open in browser</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleCopyUrl(boundUrl)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Copy URL</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Copy connection link"
-                          onClick={() => handleCopyConnectionLink(boundUrl)}
-                        >
-                          <Link2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Copy connection link for another {PRODUCT_NAME}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <AccessUrlRow
+                    url={boundUrl}
+                    onOpen={handleOpenUrl}
+                    onCopy={handleCopyUrl}
+                    onCopyConnectionLink={handleCopyConnectionLink}
+                  />
                 )}
               </div>
             </InlineField>
           )}
         </div>
       </SettingsSection>
+
+      {tailscale?.installed && <TailscaleSection info={tailscale} />}
 
       <WebAccessDeviceSection />
     </div>

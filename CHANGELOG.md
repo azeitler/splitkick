@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Tailscale in Settings → Web Access.** The pane shows this machine's
+  MagicDNS name and whether Splitkick is served through `tailscale serve`.
+  A served HTTPS URL joins the Access URLs; Funnel shows a warning that the
+  server is public. When Splitkick is not served, the pane shows the
+  `tailscale serve --bg <port>` command to copy. Closes #151
+
 ### Changed
 
 - **Neutral example in the MCP instructions.** The Splitkick MCP server's
