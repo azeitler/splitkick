@@ -20,7 +20,7 @@ interface UpdaterState {
  * desktop app, so the update check runs. Calls the app sends through its
  * transport still go to the e2e mock; the ones the update flow sends are
  * recorded next to the updater's own calls. */
-async function asReleasedDesktopApp(page: Page) {
+async function asReleasedDesktopApp(page: Page, version = VERSION) {
   await page.addInitScript(version => {
     const state = { version, calls: [] as string[] }
     ;(window as unknown as { __E2E_UPDATER__: UpdaterState }).__E2E_UPDATER__ =
@@ -59,7 +59,7 @@ async function asReleasedDesktopApp(page: Page) {
         return null
       }
     }
-  }, VERSION)
+  }, version)
   await page.reload()
   await skipOnboarding(page)
 }
@@ -195,5 +195,36 @@ test.describe('App update flow (#135)', () => {
         call.startsWith('send_native_notification')
       )
     ).toHaveLength(0)
+  })
+
+  test('a manual check without an update answers in an in-app dialog', async ({
+    mockPage,
+  }) => {
+    // No newer version: the manual check must answer in the app's own
+    // dialog, not in a native one.
+    await asReleasedDesktopApp(mockPage, '')
+    const more = mockPage.getByTestId('sidebar-more')
+    const sidebarShown = await more
+      .waitFor({ timeout: 3000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!sidebarShown) {
+      await mockPage.getByRole('button', { name: 'Show sidebar' }).click()
+    }
+    await more.click()
+    await mockPage.getByRole('menuitem', { name: /Check for Updates/ }).click()
+
+    const dialog = mockPage.getByRole('dialog', { name: 'Check for Updates' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(
+      'You are running the latest version (1.0.0).'
+    )
+    expect(await calls(mockPage)).toContain('check')
+    if (process.env.E2E_SHOT) {
+      await mockPage.screenshot({ path: process.env.E2E_SHOT })
+    }
+
+    await dialog.getByRole('button', { name: 'OK' }).click()
+    await expect(dialog).toHaveCount(0)
   })
 })

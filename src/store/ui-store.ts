@@ -155,6 +155,10 @@ export interface ChatSearchState {
   matchCount: number
 }
 
+export interface UpdateCheckResult {
+  text: string
+  kind: 'info' | 'error'
+}
 interface UIState {
   leftSidebarVisible: boolean
   leftSidebarSize: number // Width in pixels, persisted across sessions
@@ -326,6 +330,8 @@ interface UIState {
   pendingUpdateVersion: string | null
   /** When non-null, shows the update available modal */
   updateModalVersion: string | null
+  /** Answer of a manual "Check for Updates" (up to date, error, …) */
+  updateCheckResult: UpdateCheckResult | null
   /**
    * App update package installed but not applied yet — title bar shows Restart.
    * Prevents re-download loops while the old binary is still running (#507).
@@ -470,6 +476,7 @@ interface UIState {
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
+  setUpdateCheckResult: (result: UpdateCheckResult | null) => void
   setUpdateReadyVersion: (version: string | null) => void
   setIsUpdateInstalling: (installing: boolean) => void
   setPendingServerUpdate: (update: PendingServerUpdate | null) => void
@@ -596,6 +603,7 @@ export const useUIStore = create<UIState>()(
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
+      updateCheckResult: null,
       updateReadyVersion: null,
       isUpdateInstalling: false,
       pendingServerUpdate: null,
@@ -1684,6 +1692,16 @@ export const useUIStore = create<UIState>()(
               : { updateModalVersion: version },
           undefined,
           'setUpdateModalVersion'
+        ),
+
+      setUpdateCheckResult: (result: UpdateCheckResult | null) =>
+        set(
+          state =>
+            state.updateCheckResult === result
+              ? state
+              : { updateCheckResult: result },
+          undefined,
+          'setUpdateCheckResult'
         ),
 
       setUpdateReadyVersion: (version: string | null) =>

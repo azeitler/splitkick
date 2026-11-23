@@ -10,8 +10,7 @@ interface E2EUpdater {
 }
 
 function updater(): E2EUpdater | undefined {
-  return (window as unknown as { __E2E_UPDATER__?: E2EUpdater })
-    .__E2E_UPDATER__
+  return (window as unknown as { __E2E_UPDATER__?: E2EUpdater }).__E2E_UPDATER__
 }
 
 interface DownloadEvent {
@@ -24,6 +23,9 @@ export async function check() {
   if (!state) return null
   state.calls ??= []
   state.calls.push('check')
+  // An empty version means "no newer version" (a manual check that finds
+  // nothing).
+  if (!state.version) return null
   return {
     version: state.version,
     async download(onEvent: (event: DownloadEvent) => void) {

@@ -286,13 +286,14 @@ describe('checkForUpdatesManually (#100)', () => {
 
   it('says updates are off in a development build', async () => {
     updater.identifier = 'app.splitkick.desktop.dev'
-    const { checkForUpdatesManually } = await load()
+    const { checkForUpdatesManually, useUIStore } = await load()
     await checkForUpdatesManually()
     expect(updater.check).not.toHaveBeenCalled()
-    expect(updater.message).toHaveBeenCalledWith(
-      'Updates are off in development builds.',
-      { title: 'Check for Updates', kind: 'info' }
-    )
+    expect(useUIStore.getState().updateCheckResult).toEqual({
+      text: 'Updates are off in development builds.',
+      kind: 'info',
+    })
+    expect(updater.message).not.toHaveBeenCalled()
   })
 
   it('opens the restart prompt again when an update is ready', async () => {
@@ -306,15 +307,16 @@ describe('checkForUpdatesManually (#100)', () => {
   })
 
   it('does not check again while a download runs', async () => {
-    const { checkForUpdatesManually } = await load({
+    const { checkForUpdatesManually, useUIStore } = await load({
       isUpdateInstalling: true,
     })
     await checkForUpdatesManually()
     expect(updater.check).not.toHaveBeenCalled()
-    expect(updater.message).toHaveBeenCalledWith(
-      'An update is downloading. Splitkick asks you to restart when it is ready.',
-      { title: 'Check for Updates', kind: 'info' }
-    )
+    expect(useUIStore.getState().updateCheckResult).toEqual({
+      text: 'An update is downloading. Splitkick asks you to restart when it is ready.',
+      kind: 'info',
+    })
+    expect(updater.message).not.toHaveBeenCalled()
   })
 
   it('opens the update modal when an update is found', async () => {
@@ -335,24 +337,26 @@ describe('checkForUpdatesManually (#100)', () => {
 
   it('says the app is current when no update is found', async () => {
     updater.check.mockResolvedValue(null)
-    const { checkForUpdatesManually } = await load()
+    const { checkForUpdatesManually, useUIStore } = await load()
     await checkForUpdatesManually()
-    expect(updater.message).toHaveBeenCalledWith(
-      'You are running the latest version (1.5.12).',
-      { title: 'Check for Updates', kind: 'info' }
-    )
+    expect(useUIStore.getState().updateCheckResult).toEqual({
+      text: 'You are running the latest version (1.5.12).',
+      kind: 'info',
+    })
+    expect(updater.message).not.toHaveBeenCalled()
     expect(updater.notify).not.toHaveBeenCalled()
   })
 
   it('reports a failed check', async () => {
     updater.check.mockRejectedValue(new Error('offline'))
     vi.mocked(invoke).mockResolvedValue('could not reach github.com: timeout')
-    const { checkForUpdatesManually } = await load()
+    const { checkForUpdatesManually, useUIStore } = await load()
     await checkForUpdatesManually()
-    expect(updater.message).toHaveBeenCalledWith(
-      'The update check failed: Error: offline (could not reach github.com: timeout)',
-      { title: 'Check for Updates', kind: 'error' }
-    )
+    expect(useUIStore.getState().updateCheckResult).toEqual({
+      text: 'The update check failed: Error: offline (could not reach github.com: timeout)',
+      kind: 'error',
+    })
+    expect(updater.message).not.toHaveBeenCalled()
   })
 })
 

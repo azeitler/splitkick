@@ -63,6 +63,7 @@ export function dismissTransientUi(): void {
     viewingFilePath: null,
     // App update prompt is non-critical during connection recovery.
     updateModalVersion: null,
+    updateCheckResult: null,
   })
 
   // Clear remote picker callback held outside store state.

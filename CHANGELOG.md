@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Check for Updates" answers in the app.** When a manual check finds no
+  update, is busy or fails, the answer now shows in an in-app dialog in the
+  app's own style, not in a native macOS dialog.
+
 ## [1.5.24] - 2026-11-22
 
 Built on Jean 0.1.73.

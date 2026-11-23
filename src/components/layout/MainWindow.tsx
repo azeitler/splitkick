@@ -91,6 +91,11 @@ const CliUpdateModal = lazy(() =>
     default: mod.CliUpdateModal,
   }))
 )
+const UpdateCheckResultDialog = lazy(() =>
+  import('@/components/layout/UpdateCheckResultDialog').then(mod => ({
+    default: mod.UpdateCheckResultDialog,
+  }))
+)
 const UpdateAvailableModal = lazy(() =>
   import('@/components/layout/UpdateAvailableModal').then(mod => ({
     default: mod.UpdateAvailableModal,
@@ -326,6 +331,9 @@ export function MainWindow() {
   const cliUpdateModalOpen = useUIStore(state => state.cliUpdateModalOpen)
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
+  const updateCheckResultOpen = useUIStore(
+    state => state.updateCheckResult !== null
+  )
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
@@ -565,6 +573,9 @@ export function MainWindow() {
   const shouldRenderCliUpdateModal = useRetainedMount(cliUpdateModalOpen)
   const shouldRenderUpdateAvailableModal = useRetainedMount(
     updateModalVersion !== null
+  )
+  const shouldRenderUpdateCheckResultDialog = useRetainedMount(
+    updateCheckResultOpen
   )
   const shouldRenderCliLoginModal = useRetainedMount(cliLoginModalOpen)
   const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
@@ -848,6 +859,11 @@ export function MainWindow() {
       {shouldRenderUpdateAvailableModal && (
         <Suspense fallback={null}>
           <UpdateAvailableModal />
+        </Suspense>
+      )}
+      {shouldRenderUpdateCheckResultDialog && (
+        <Suspense fallback={null}>
+          <UpdateCheckResultDialog />
         </Suspense>
       )}
       {shouldRenderCliLoginModal && (

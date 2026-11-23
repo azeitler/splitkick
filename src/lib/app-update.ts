@@ -213,29 +213,19 @@ export async function describeUpdateCheckFailure(
 export const MANUAL_CHECK_TIMEOUT_MS = 30_000
 
 /**
- * A result of the manual check, as a native dialog. The user asked, so the
- * answer must be seen: toasts from this check did not appear on two machines
- * (#135), native dialogs (like About) do, and macOS apps answer a manual
- * "Check for Updates" with a dialog.
+ * A result of the manual check, in an in-app dialog. The user asked, so the
+ * answer must be seen and stay until it is closed: a toast can be missed
+ * (#135). The dialog uses the app's own style, like "Update Available".
  */
-async function showCheckResult(
-  text: string,
-  kind: 'info' | 'error' = 'info'
-): Promise<void> {
-  try {
-    const { message } = await import('@tauri-apps/plugin-dialog')
-    await message(text, { title: 'Check for Updates', kind })
-  } catch (error) {
-    logNativeError(`Update check (manual): dialog failed: ${String(error)}`)
-    notify(text, undefined, { type: kind === 'error' ? 'error' : 'info' })
-  }
+function showCheckResult(text: string, kind: 'info' | 'error' = 'info') {
+  useUIStore.getState().setUpdateCheckResult({ text, kind })
 }
 
 export async function checkForUpdatesManually(): Promise<void> {
   if (!isNativeApp()) return
   if (!(await updateChecksEnabledForThisApp())) {
     logNativeInfo('Update check (manual): off for this build')
-    await showCheckResult('Updates are off in development builds.')
+    showCheckResult('Updates are off in development builds.')
     return
   }
   const ui = useUIStore.getState()
@@ -251,7 +241,7 @@ export async function checkForUpdatesManually(): Promise<void> {
   }
   if (ui.isUpdateInstalling) {
     logNativeInfo('Update check (manual): download already running')
-    await showCheckResult(
+    showCheckResult(
       'An update is downloading. Splitkick asks you to restart when it is ready.'
     )
     return
@@ -276,7 +266,7 @@ export async function checkForUpdatesManually(): Promise<void> {
       logNativeInfo('Update check (manual): no newer version')
       const { getVersion } = await import('@tauri-apps/api/app')
       const version = await getVersion().catch(() => '')
-      await showCheckResult(
+      showCheckResult(
         version
           ? `You are running the latest version (${version}).`
           : 'You are running the latest version.'
@@ -285,6 +275,6 @@ export async function checkForUpdatesManually(): Promise<void> {
   } catch (error) {
     toast.dismiss(checking)
     const message = await describeUpdateCheckFailure(error)
-    await showCheckResult(`The update check failed: ${message}`, 'error')
+    showCheckResult(`The update check failed: ${message}`, 'error')
   }
 }
