@@ -59,6 +59,14 @@ own placeholder. `--mcp-config` accepts file paths
 | Grok                            | ACP host gets `--mcp-servers-file <0600 file>`, sends `mcpServers` over stdin JSON-RPC, deletes the file                                               |
 | Kimi, Antigravity, Command Code | No MCP secrets in argv                                                                                                                                 |
 
+## Add to 1Password
+
+`onepassword.rs` (Settings → Web Access → "Add to 1Password") runs `op item
+list`, then `op item create … -` or `op item edit <id>`. The item JSON with
+the access token is written to `op`'s stdin; argv holds only fixed flags and
+the item id. Test: `argv_never_holds_the_token` and
+`creates_item_with_token_on_stdin_only` (a fake `op` records argv and stdin).
+
 ## Remote server install over SSH (#105)
 
 `remote_install.rs` runs the installer on another host, so `ps` there is the

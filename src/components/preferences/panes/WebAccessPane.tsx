@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  KeyRound,
   RefreshCw,
   ShieldAlert,
 } from 'lucide-react'
@@ -37,6 +38,7 @@ import { SettingsSection } from '../SettingsSection'
 import { WebAccessDeviceSection } from './WebAccessDeviceSection'
 import { ConnectionQrButton } from './ConnectionQrButton'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isLocalBackend } from '@/lib/environment'
 
 const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::'])
@@ -316,6 +318,120 @@ const TailscaleSection: React.FC<{ info: TailscaleInfo }> = ({ info }) => {
   )
 }
 
+/** `get_onepassword_status` (jean-core `onepassword.rs`). */
+interface OnePasswordStatus {
+  installed: boolean
+}
+
+/** One access URL for the 1Password item; the token is added in Rust. */
+export interface OnePasswordItemUrl {
+  label: string
+  href: string
+}
+
+/**
+ * The URLs other devices can use: the bound URL (not loopback) and the
+ * Tailscale HTTPS URL when `tailscale serve` serves this instance.
+ */
+export function onePasswordItemUrls(
+  boundUrl: string | null,
+  tailscaleUrl: string | null
+): OnePasswordItemUrl[] {
+  const urls: OnePasswordItemUrl[] = []
+  if (boundUrl) urls.push({ label: 'Web Access', href: boundUrl })
+  if (tailscaleUrl) urls.push({ label: 'Tailscale', href: tailscaleUrl })
+  return urls
+}
+
+const OnePasswordButton: React.FC<{ urls: OnePasswordItemUrl[] }> = ({
+  urls,
+}) => {
+  const [saving, setSaving] = useState(false)
+  const handleClick = useCallback(async () => {
+    setSaving(true)
+    const toastId = toast.loading('Saving to 1Password…', {
+      description: 'Approve the 1Password prompt if it shows.',
+    })
+    try {
+      const result = await invoke<{ title: string; updated: boolean }>(
+        'save_web_access_to_onepassword',
+        { urls }
+      )
+      toast.success(
+        result.updated
+          ? `Updated “${result.title}” in 1Password`
+          : `Added “${result.title}” to 1Password`,
+        { id: toastId, description: undefined }
+      )
+    } catch (error) {
+      toast.error('Could not save to 1Password', {
+        id: toastId,
+        description: getErrorMessage(error),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }, [urls])
+
+  return (
+    <InlineField
+      label="1Password"
+      description="Save the access URLs and the token as a 1Password login item"
+    >
+      <div className="flex flex-col gap-1">
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => void handleClick()}
+          disabled={saving || urls.length === 0}
+        >
+          <KeyRound className="h-4 w-4" />
+          Add to 1Password
+        </Button>
+        {urls.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            Bind to an address other devices can reach, or serve it with
+            Tailscale, to get a URL to save.
+          </span>
+        )}
+      </div>
+    </InlineField>
+  )
+}
+
+const InstanceNameField: React.FC<{
+  value: string | null
+  defaultName: string | undefined
+  onSave: (name: string | null) => void
+}> = ({ value, defaultName, onSave }) => {
+  const [draft, setDraft] = useState<string | null>(null)
+  const save = () => {
+    if (draft == null) return
+    const next = draft.trim() || null
+    if (next !== (value ?? null)) onSave(next)
+    setDraft(null)
+  }
+  return (
+    <InlineField
+      label="Instance Name"
+      description={`The name other ${PRODUCT_NAME} apps and devices see. Empty uses the computer name.`}
+    >
+      <Input
+        type="text"
+        aria-label="Instance Name"
+        className="w-64"
+        value={draft ?? value ?? ''}
+        placeholder={defaultName}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={save}
+        onKeyDown={event => {
+          if (event.key === 'Enter') save()
+        }}
+      />
+    </InlineField>
+  )
+}
+
 interface BindHostOption {
   host: string
   label: string
@@ -435,6 +551,29 @@ const WebAccessServerPane: React.FC = () => {
 
   const tokenRequired = preferences?.http_server_token_required ?? true
 
+  // One name for this instance everywhere: Web Access links, the name other
+  // apps take when they add this server, and the session backup.
+  const { data: defaultInstanceName } = useQuery({
+    queryKey: ['default-device-name'],
+    queryFn: () => invoke<string>('get_default_device_name'),
+    staleTime: Infinity,
+  })
+  const instanceName =
+    preferences?.session_backup_device_name?.trim() ||
+    defaultInstanceName ||
+    undefined
+
+  // Native local app only: `op` runs on the backend host, and the user must
+  // sit there to approve its prompt. Never offered in Web Access or for a
+  // remote connection.
+  const canUseOnePassword = isLocalBackend()
+  const { data: onePassword } = useQuery({
+    queryKey: ['onepassword-status'],
+    queryFn: () => invoke<OnePasswordStatus>('get_onepassword_status'),
+    enabled: canUseOnePassword,
+    staleTime: 60_000,
+  })
+
   // Key on server state so starting/stopping the server or changing the port
   // re-matches the serve entries against the right port.
   const { data: tailscale } = useQuery({
@@ -482,7 +621,7 @@ const WebAccessServerPane: React.FC = () => {
   const handleCopyConnectionLink = useCallback(
     async (url: string) => {
       try {
-        await copyToClipboard(connectionLink(url, linkToken))
+        await copyToClipboard(connectionLink(url, linkToken, instanceName))
         toast.success('Connection link copied', {
           description: `Open it on another computer to add this server in ${PRODUCT_NAME}.`,
         })
@@ -490,7 +629,7 @@ const WebAccessServerPane: React.FC = () => {
         toast.error(getErrorMessage(error))
       }
     },
-    [linkToken]
+    [linkToken, instanceName]
   )
 
   const validateBindHost = useCallback(async (host: string) => {
@@ -629,6 +768,14 @@ const WebAccessServerPane: React.FC = () => {
 
       <SettingsSection title="Server" anchorId="pref-web-access-section-server">
         <div className="space-y-4">
+          <InstanceNameField
+            value={preferences?.session_backup_device_name ?? null}
+            defaultName={defaultInstanceName}
+            onSave={name =>
+              patchPreferences.mutate({ session_backup_device_name: name })
+            }
+          />
+
           <InlineField
             label="Enable HTTP server"
             description="Start an HTTP + WebSocket server for browser access"
@@ -819,7 +966,7 @@ const WebAccessServerPane: React.FC = () => {
                     onOpen={handleOpenUrl}
                     onCopy={handleCopyUrl}
                     onCopyConnectionLink={handleCopyConnectionLink}
-                    qrLink={connectionLink(boundUrl, linkToken)}
+                    qrLink={connectionLink(boundUrl, linkToken, instanceName)}
                   />
                 )}
                 {tailscaleServe && (
@@ -828,7 +975,11 @@ const WebAccessServerPane: React.FC = () => {
                     onOpen={handleOpenUrl}
                     onCopy={handleCopyUrl}
                     onCopyConnectionLink={handleCopyConnectionLink}
-                    qrLink={connectionLink(tailscaleServe.url, linkToken)}
+                    qrLink={connectionLink(
+                      tailscaleServe.url,
+                      linkToken,
+                      instanceName
+                    )}
                     label="Tailscale"
                     hint={
                       tailscaleServe.funnel
@@ -840,6 +991,17 @@ const WebAccessServerPane: React.FC = () => {
               </div>
             </InlineField>
           )}
+
+          {canUseOnePassword &&
+            onePassword?.installed &&
+            serverStatus?.running && (
+              <OnePasswordButton
+                urls={onePasswordItemUrls(
+                  showBoundUrl ? boundUrl : null,
+                  tailscaleServe?.url ?? null
+                )}
+              />
+            )}
         </div>
       </SettingsSection>
 

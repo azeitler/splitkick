@@ -148,6 +148,28 @@ describe('RemoteSetupStep', () => {
     expect(reloadApp).not.toHaveBeenCalled()
   })
 
+  it('names the connection after the server Instance Name when the name is empty', async () => {
+    fetchRemoteServerInfo.mockResolvedValue({
+      ok: true,
+      appVersion: '0.1.69',
+      webBuildId: '0.1.69-test',
+      instanceName: 'Mac 2',
+    } as never)
+    render(<RemoteSetupStep reloadApp={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /Existing URL/i }))
+    fireEvent.change(screen.getByLabelText('Web Access URL'), {
+      target: { value: 'https://jean.example.com/?token=secret' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Connect' }))
+
+    await waitFor(() => {
+      expect(addRemoteConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Mac 2' })
+      )
+    })
+  })
+
   it('connects with an existing Web Access URL', async () => {
     const reloadApp = vi.fn()
     render(<RemoteSetupStep reloadApp={reloadApp} />)

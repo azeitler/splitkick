@@ -389,6 +389,13 @@ fn server_version() -> Option<&'static str> {
     crate::server_update::is_headless_host().then(crate::app_version)
 }
 
+/// Settings → Web Access "Instance Name", else the computer name. Clients use
+/// it as the default name when they add this server.
+async fn instance_name(app: &AppHandle) -> Option<String> {
+    let prefs = crate::load_preferences(app.clone()).await.ok()?;
+    Some(crate::session_backup::device_name(&prefs))
+}
+
 /// Token validation endpoint. Returns 200 with { ok: true } on success,
 /// or 401 with { ok: false, error: "..." } on failure.
 async fn auth_handler(
@@ -406,6 +413,7 @@ async fn auth_handler(
             "webBuildId": build_info.web_build_id,
             "appVersion": build_info.app_version,
             "serverVersion": server_version(),
+            "instanceName": instance_name(&state.app).await,
         }))
         .into_response();
     }
@@ -416,6 +424,7 @@ async fn auth_handler(
             "webBuildId": build_info.web_build_id,
             "appVersion": build_info.app_version,
             "serverVersion": server_version(),
+            "instanceName": instance_name(&state.app).await,
         }))
         .into_response()
     } else {

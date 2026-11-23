@@ -101,12 +101,28 @@ describe('remote version helpers', () => {
       appVersion: '0.1.70',
       serverVersion: null,
       webBuildId: '0.1.70-abc',
+      instanceName: null,
     })
 
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://jean.example.com/api/auth?token=secret',
       expect.objectContaining({ signal: expect.anything() })
     )
+  })
+
+  it('reads the Instance Name the server reports', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, instanceName: '  Mac 1 ' }),
+    })
+
+    const info = await fetchRemoteServerInfo(
+      'https://jean.example.com',
+      'secret',
+      fetchImpl
+    )
+
+    expect(info.instanceName).toBe('Mac 1')
   })
 
   it('reads the headless server release next to the app version', async () => {

@@ -1525,6 +1525,11 @@ pub async fn dispatch_command(
             Ok(Value::Null)
         }
         "get_default_device_name" => to_value(crate::session_backup::default_device_name()),
+        "get_onepassword_status" => to_value(crate::onepassword::onepassword_status()),
+        "save_web_access_to_onepassword" => {
+            let urls: Vec<crate::onepassword::ItemUrl> = from_field(&args, "urls")?;
+            to_value(crate::onepassword::save_web_access_to_onepassword(app.clone(), urls).await?)
+        }
         "start_background_investigation" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

@@ -105,12 +105,14 @@ export function RemoteSetupStep({
       }
       const normalized = parseRemoteConnectionInput(input.url, input.token)
 
+      let instanceName: string | null = null
       try {
         const info = await fetchRemoteServerInfo(
           normalized.url,
           normalized.token
         )
         warnRemoteVersionMismatch(info.appVersion)
+        instanceName = info.instanceName
       } catch (probeError) {
         // Block only on failures that no retry can fix (bad token, or an SSO
         // login proxy the desktop app can never sign in to).
@@ -120,7 +122,11 @@ export function RemoteSetupStep({
         }
       }
 
-      const connection = await addRemoteConnection(input)
+      // An empty name takes the server's Instance Name.
+      const connection = await addRemoteConnection({
+        ...input,
+        name: input.name.trim() || instanceName || '',
+      })
       await activateConnection(connection.id, reloadApp)
     } catch (submitError) {
       setError(

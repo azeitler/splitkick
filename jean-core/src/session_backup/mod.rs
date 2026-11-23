@@ -193,7 +193,9 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "Unknown device".to_string())
 }
 
-fn device_name(prefs: &crate::AppPreferences) -> String {
+/// The instance name other devices and clients see: Settings → Web Access
+/// "Instance Name" (`session_backup_device_name`), else the computer name.
+pub fn device_name(prefs: &crate::AppPreferences) -> String {
     prefs
         .session_backup_device_name
         .as_deref()

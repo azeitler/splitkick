@@ -404,12 +404,14 @@ export function RemoteConnectionsDialog({
       const normalized = parseRemoteConnectionInput(input.url, input.token)
 
       if (editingId === 'new') {
+        let instanceName: string | null = null
         try {
           const info = await fetchRemoteServerInfo(
             normalized.url,
             normalized.token
           )
           warnRemoteVersionMismatch(info.appVersion)
+          instanceName = info.instanceName
         } catch (probeError) {
           // Still allow save/connect; transport/recovery handles auth/network.
           // Block only on failures that no retry can fix (bad token, or an SSO
@@ -419,7 +421,11 @@ export function RemoteConnectionsDialog({
             return
           }
         }
-        const connection = await addRemoteConnection(input)
+        // An empty name takes the server's Instance Name.
+        const connection = await addRemoteConnection({
+          ...input,
+          name: input.name.trim() || instanceName || '',
+        })
         await activateConnection(connection.id, reloadApp)
         setOpen(false)
         return

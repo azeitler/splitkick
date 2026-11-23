@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import QRCode from 'qrcode'
 import { connectionLink } from '@/lib/remote-connections'
-import { WebAccessPane } from './WebAccessPane'
+import { WebAccessPane, onePasswordItemUrls } from './WebAccessPane'
 import { defaultPreferences } from '@/types/preferences'
 
 const invokeMock = vi.fn()
@@ -12,15 +12,20 @@ vi.mock('@/lib/transport', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }))
 
+const localBackend = vi.hoisted(() => ({ value: false }))
 vi.mock('@/lib/environment', () => ({
   isNativeApp: () => false,
   hasBackend: () => true,
+  hasBackendTransport: () => true,
+  isLocalBackend: () => localBackend.value,
 }))
 
 const mobile = vi.hoisted(() => ({ value: false }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile.value }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast') },
+}))
 vi.mock('qrcode', async importOriginal => {
   const actual = await importOriginal<{ default: typeof QRCode }>()
   return {
@@ -32,6 +37,7 @@ vi.mock('@/lib/platform', () => ({
   isMacOS: false,
   isWindows: false,
   isLinux: true,
+  isClientMacOS: () => false,
   getServerPlatform: vi.fn(() => 'linux'),
   isServerWindows: vi.fn(() => false),
   openExternal: vi.fn(),
@@ -271,5 +277,121 @@ describe('WebAccessPane Tailscale block (#151)', () => {
         'HTTPS through Tailscale Funnel, open to the whole internet'
       )
     ).toBeInTheDocument()
+  })
+})
+
+describe('WebAccessPane Instance Name and 1Password', () => {
+  const status = {
+    running: true,
+    port: 3456,
+    url: 'http://192.168.1.20:3456',
+    token: 'secret-token',
+    bind_host: '192.168.1.20',
+    localhost_only: false,
+  }
+
+  function mockBackend(options: {
+    name?: string | null
+    opInstalled?: boolean
+  }) {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'load_preferences')
+        return Promise.resolve({
+          ...defaultPreferences,
+          session_backup_device_name: options.name ?? null,
+        })
+      if (command === 'get_http_server_status') return Promise.resolve(status)
+      if (command === 'list_http_bind_host_options') return Promise.resolve([])
+      if (command === 'get_default_device_name')
+        return Promise.resolve('Computer Name')
+      if (command === 'get_onepassword_status')
+        return Promise.resolve({ installed: options.opInstalled ?? false })
+      if (command === 'save_web_access_to_onepassword')
+        return Promise.resolve({ title: 'Splitkick – Mac 1', updated: false })
+      return Promise.resolve(null)
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mobile.value = false
+    localBackend.value = false
+  })
+
+  it('shows the computer name as placeholder when no name is set', async () => {
+    mockBackend({})
+    render(<WebAccessPane />)
+    const input = await screen.findByRole('textbox', { name: 'Instance Name' })
+    await waitFor(() =>
+      expect(input).toHaveAttribute('placeholder', 'Computer Name')
+    )
+    expect(input).toHaveValue('')
+  })
+
+  it('puts the Instance Name into the connection link', async () => {
+    mockBackend({ name: 'Mac 1' })
+    render(<WebAccessPane />)
+    const input = await screen.findByRole('textbox', { name: 'Instance Name' })
+    await waitFor(() => expect(input).toHaveValue('Mac 1'))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Show connection QR code' })
+    )
+    await waitFor(() =>
+      expect(vi.mocked(QRCode.toString)).toHaveBeenCalledWith(
+        connectionLink('http://192.168.1.20:3456', 'secret-token', 'Mac 1'),
+        expect.objectContaining({ type: 'svg' })
+      )
+    )
+  })
+
+  it('saves URLs to 1Password from the local desktop app, without the token', async () => {
+    localBackend.value = true
+    mockBackend({ name: 'Mac 1', opInstalled: true })
+    render(<WebAccessPane />)
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Add to 1Password/ })
+    )
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'save_web_access_to_onepassword',
+        { urls: [{ label: 'Web Access', href: 'http://192.168.1.20:3456' }] }
+      )
+    )
+    const call = invokeMock.mock.calls.find(
+      ([command]) => command === 'save_web_access_to_onepassword'
+    )
+    expect(JSON.stringify(call)).not.toContain('secret-token')
+  })
+
+  it('hides the 1Password button when op is not installed', async () => {
+    localBackend.value = true
+    mockBackend({ opInstalled: false })
+    render(<WebAccessPane />)
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('get_onepassword_status')
+    )
+    expect(
+      screen.queryByRole('button', { name: /Add to 1Password/ })
+    ).not.toBeInTheDocument()
+  })
+
+  it('never offers 1Password in Web Access or for a remote connection', async () => {
+    mockBackend({ opInstalled: true })
+    render(<WebAccessPane />)
+    await screen.findByText('Enable HTTP server')
+    expect(invokeMock).not.toHaveBeenCalledWith('get_onepassword_status')
+    expect(
+      screen.queryByRole('button', { name: /Add to 1Password/ })
+    ).not.toBeInTheDocument()
+  })
+
+  it('lists the bound URL and the Tailscale URL', () => {
+    expect(
+      onePasswordItemUrls('http://192.168.1.20:3456', 'https://box.ts.net')
+    ).toEqual([
+      { label: 'Web Access', href: 'http://192.168.1.20:3456' },
+      { label: 'Tailscale', href: 'https://box.ts.net' },
+    ])
+    expect(onePasswordItemUrls(null, null)).toEqual([])
   })
 })

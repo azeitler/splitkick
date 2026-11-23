@@ -114,7 +114,7 @@ export const SessionBackupSection: FC = () => {
 
           <InlineField
             label="Device name"
-            description="Other devices show this name next to sessions from here."
+            description="Other devices show this name next to sessions from here. It is the Instance Name in Settings → Web Access."
           >
             <Input
               className="w-56"

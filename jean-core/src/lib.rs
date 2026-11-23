@@ -62,6 +62,7 @@ pub mod jean_mcp_stdio;
 mod kimi_cli;
 pub mod links;
 pub mod memory_report;
+mod onepassword;
 mod opencode_cli;
 mod opencode_server;
 mod opinionated;

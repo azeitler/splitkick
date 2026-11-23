@@ -27,6 +27,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   started, then the sessions earlier restarts left behind (an archived one
   opens by restoring it). The session backup now also copies
   `agents.json` and `schedules.json`.
+- **Instance Name in Settings → Web Access.** The name other Splitkick apps
+  and devices see. Connection links and QR codes carry it, and another
+  Splitkick takes it as the default name when it adds this server
+  (`/api/auth` reports it). It is the same setting as the session backup
+  device name; empty uses the computer name.
+- **Add to 1Password.** When the 1Password CLI (`op`) is installed, Settings →
+  Web Access saves the access URLs and the access token as a 1Password login
+  item ("Splitkick – <Instance Name>"). A second click updates that item. The
+  token goes to `op` on stdin, never on the command line. Desktop app only.
 
 ### Changed
 

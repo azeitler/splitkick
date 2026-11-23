@@ -27,6 +27,8 @@ export interface RemoteServerInfo {
   /** Headless server release (own track); null on desktop hosts. */
   serverVersion: string | null
   webBuildId: string | null
+  /** The host's Settings → Web Access "Instance Name" (else its computer name). */
+  instanceName: string | null
 }
 
 export type VersionCompatibility =
@@ -221,6 +223,7 @@ export async function fetchRemoteServerInfo(
       appVersion?: string | null
       serverVersion?: string | null
       webBuildId?: string | null
+      instanceName?: string | null
     }
     try {
       body = await res.json()
@@ -233,6 +236,7 @@ export async function fetchRemoteServerInfo(
       appVersion: body.appVersion ?? null,
       serverVersion: body.serverVersion ?? null,
       webBuildId: body.webBuildId ?? null,
+      instanceName: body.instanceName?.trim() || null,
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
