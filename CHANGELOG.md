@@ -15,6 +15,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   once with "Not in Tauri context". Actions now wait for the connection and
   run when it is back; with no backend at all, the error says "No backend
   connection".
+- **A skipped question says "Skipped".** When you sent a new message instead
+  of answering a question, the question card showed "Answered (details
+  unavailable)". It now shows "Skipped", and its details say so.
 - **"Check for Updates" answers in the app.** When a manual check finds no
   update, is busy or fails, the answer now shows in an in-app dialog in the
   app's own style, not in a native macOS dialog.

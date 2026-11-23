@@ -283,8 +283,12 @@ export function AskUserQuestion({
 
   // Generate summary text for collapsed view
   const getAnswerSummary = useCallback(() => {
+    // A stored empty list is a skip: the Skip button, or a new message sent
+    // instead of an answer (supersedePendingQuestions). The follow-up message
+    // of that case must not turn it into "Answered".
+    if (effectiveAnswers?.length === 0) return 'Skipped'
     // No answer data available (e.g., Zustand state lost after reload)
-    if (!effectiveAnswers || effectiveAnswers.length === 0) {
+    if (!effectiveAnswers) {
       // Explicit skip always shows "Skipped"
       if (isSkipped) return 'Skipped'
       // If a follow-up user message exists, the user DID respond — show "Answered"
@@ -611,7 +615,9 @@ export function AskUserQuestion({
                       <div className="pt-1 text-sm text-muted-foreground italic">
                         {toolError
                           ? `The question failed: ${toolError}`
-                          : 'Answer details unavailable.'}
+                          : effectiveAnswers?.length === 0 || isSkipped
+                            ? 'Skipped.'
+                            : 'Answer details unavailable.'}
                       </div>
                     )}
                   </>

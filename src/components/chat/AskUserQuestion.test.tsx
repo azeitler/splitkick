@@ -126,6 +126,28 @@ describe('AskUserQuestion', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('shows a skipped question as Skipped, also when a message follows', () => {
+    // A new message sent instead of an answer stores an empty answer list
+    // (supersedePendingQuestions); the follow-up message must not turn it
+    // into "Answered".
+    render(
+      <AskUserQuestion
+        toolCallId="tool-superseded"
+        questions={questions}
+        onSubmit={noopSubmit}
+        readOnly
+        hasFollowUpMessage
+        submittedAnswers={[]}
+      />
+    )
+
+    expect(
+      screen.queryByText('Answered (details unavailable)')
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Skipped'))
+    expect(screen.getAllByText('Skipped.')).toHaveLength(questions.length)
+  })
+
   it('shows persisted answer labels in the collapsed summary and expanded content', () => {
     render(
       <AskUserQuestion
