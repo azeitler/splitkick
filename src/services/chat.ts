@@ -831,15 +831,18 @@ export function mergeFetchedSession(
   isSending: boolean
 ): Session {
   if (!cached || cached.messages.length <= fresh.messages.length) return fresh
-  if (cached.messages.some(m => m.role === 'assistant' && m.cancelled)) {
-    return fresh
-  }
+  // Checked before the cancelled-turn rule: a refetch can read the disk
+  // before the backend writes the new run, and an older cancelled turn in
+  // the window would then drop the new user message.
   if (isSending) {
     return {
       ...fresh,
       messages: cached.messages,
       loaded_run_start_index: cached.loaded_run_start_index,
     }
+  }
+  if (cached.messages.some(m => m.role === 'assistant' && m.cancelled)) {
+    return fresh
   }
   const cachedStart = cached.loaded_run_start_index
   const freshStart = fresh.loaded_run_start_index ?? 0

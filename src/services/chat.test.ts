@@ -627,6 +627,50 @@ describe('mergeFetchedSession', () => {
     )
   })
 
+  // A queued message started a run, and a refetch read the disk before the
+  // backend wrote that run. An older cancelled turn in the loaded window must
+  // not drop the new user message while the run streams.
+  it('keeps the optimistic user message while sending after an older cancelled turn', () => {
+    const cancelled = { ...msg('a-cancelled', 'assistant'), cancelled: true }
+    const cached = session(
+      [
+        msg('u-1', 'user'),
+        cancelled,
+        msg('u-2', 'user'),
+        msg('a-2', 'assistant'),
+        msg('u-queued', 'user'),
+      ],
+      0
+    )
+    const fresh = session(
+      [
+        msg('u-1', 'user'),
+        cancelled,
+        msg('u-2', 'user'),
+        msg('a-2', 'assistant'),
+      ],
+      0
+    )
+
+    const merged = mergeFetchedSession(cached, fresh, true)
+
+    expect(merged.messages.at(-1)?.id).toBe('u-queued')
+  })
+
+  it('takes the fresh session over a cached cancelled turn when idle', () => {
+    const cached = session(
+      [
+        msg('u-1', 'user'),
+        { ...msg('a-partial', 'assistant'), cancelled: true },
+        msg('u-2', 'user'),
+      ],
+      0
+    )
+    const fresh = session([msg('u-1', 'user'), msg('a-1', 'assistant')], 0)
+
+    expect(mergeFetchedSession(cached, fresh, false)).toBe(fresh)
+  })
+
   it('returns the fresh session when nothing older is cached', () => {
     const fresh = session([msg('u-1', 'user'), msg('a-1', 'assistant')], 0)
 

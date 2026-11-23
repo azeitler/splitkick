@@ -76,6 +76,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A queued message stays in the chat while its run works.** In a session
+  with a cancelled turn among the loaded runs, a refresh that read the
+  session before the backend wrote the new run removed the queued message
+  from the chat until the run ended. A slow reload after the previous turn
+  could do the same. The message stays now.
 - **Claude questions and plan approvals stay in the same turn.** Splitkick
   stopped a Claude run the moment it asked a question or presented a plan, so
   the model got "the session ended before this call's result was recorded",

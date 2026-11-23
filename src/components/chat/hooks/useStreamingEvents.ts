@@ -164,6 +164,10 @@ async function hydrateCompletedSessionFromBackend(
       worktreeId,
       worktreePath,
     })
+    // A full load can take seconds on a long session. If a queued message
+    // started the next turn meanwhile, this snapshot predates it and would
+    // drop its user message; the refetch below merges instead.
+    if (useChatStore.getState().sendingSessionIds[sessionId]) return null
     queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
     return session
   } catch (error) {

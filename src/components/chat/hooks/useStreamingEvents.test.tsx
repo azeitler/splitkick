@@ -1389,6 +1389,88 @@ describe('useStreamingEvents cancellation sanitization', () => {
     )
   })
 
+  // A slow full load after chat:done must not overwrite the user message of
+  // the queued turn that started while the load ran.
+  it('does not drop the next queued turn when completion hydration lands late', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+    const message = (id: string, role: 'user' | 'assistant') => ({
+      id,
+      session_id: 'session-1',
+      role,
+      content: id,
+      timestamp: 1,
+      tool_calls: [],
+    })
+    const before = {
+      id: 'session-1',
+      name: 'Test',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [message('u-1', 'user'), message('a-1', 'assistant')],
+    }
+
+    let resolveLoad: (session: unknown) => void = () => undefined
+    mockInvoke.mockImplementation((command: string) => {
+      if (command === 'list_pending_wakeups') return Promise.resolve([])
+      if (command === 'get_session') {
+        return new Promise(resolve => {
+          resolveLoad = resolve
+        })
+      }
+      return Promise.resolve(undefined)
+    })
+
+    queryClient.setQueryData(['chat', 'session', 'session-1'], before)
+    useChatStore.setState({
+      streamingContents: {},
+      streamingContentBlocks: {},
+      streamingThinkingContent: {},
+      activeToolCalls: {},
+      sendingSessionIds: { 'session-1': true },
+      sendStartedAt: { 'session-1': 1000 },
+      sessionWorktreeMap: { 'session-1': 'worktree-1' },
+      worktreePaths: { 'worktree-1': '/tmp/worktree' },
+      messageQueues: {},
+    })
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+    await waitFor(() => expect(registeredListeners.has('chat:done')).toBe(true))
+
+    // No streamed payload: chat:done hydrates the turn from the backend.
+    registeredListeners.get('chat:done')?.({
+      payload: { session_id: 'session-1', worktree_id: 'worktree-1' },
+    })
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('get_session', {
+        sessionId: 'session-1',
+        worktreeId: 'worktree-1',
+        worktreePath: '/tmp/worktree',
+      })
+    )
+
+    // The queue sends the next message before the load returns.
+    useChatStore.getState().addSendingSession('session-1')
+    queryClient.setQueryData<Session>(
+      ['chat', 'session', 'session-1'],
+      old =>
+        old && {
+          ...old,
+          messages: [...old.messages, message('u-queued', 'user')],
+        }
+    )
+
+    resolveLoad(before)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(
+      queryClient
+        .getQueryData<Session>(['chat', 'session', 'session-1'])
+        ?.messages.at(-1)?.id
+    ).toBe('u-queued')
+  })
+
   it('ignores late chunks from a cancelled run after the same session starts a new run', async () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0)
