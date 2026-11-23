@@ -43,7 +43,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **⌘K puts an exactly named connection on top.** Type a server
   connection's full name in the command palette and it shows first, under "Go
   to Connection", so Enter switches to it. Partial names keep it in the
-  Connections group.
+  Connections group. The arrow keys now wrap: Up on the first row goes to the
+  last one, Down on the last row back to the top.
 - **The file browser button moves to the left of the toolbar.** It sits after
   the git status of the worktree or session (or the project badges), behind a
   thin separator, instead of between the view's buttons on the right.

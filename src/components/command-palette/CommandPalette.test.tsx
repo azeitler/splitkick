@@ -296,6 +296,22 @@ describe('CommandPalette connections', () => {
     expect(screen.queryByText('Go to Connection')).not.toBeInTheDocument()
   })
 
+  it('wraps from the first row to the last with the up arrow', async () => {
+    render(<CommandPalette />)
+    const input = screen.getByPlaceholderText('Type a command or search...')
+    const items = () => Array.from(document.querySelectorAll('[cmdk-item]'))
+    await waitFor(() =>
+      expect(items()[0]).toHaveAttribute('aria-selected', 'true')
+    )
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    const all = items()
+    expect(all[all.length - 1]).toHaveAttribute('aria-selected', 'true')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(items()[0]).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('switches connections through the existing reload flow', async () => {
     render(<CommandPalette reloadApp={reloadApp} />)
 

@@ -480,6 +480,8 @@ export function CommandPalette({
         // The search tabs go to the backend; every other tab filters loaded data.
         shouldFilter={!isSearchMode(mode)}
         filter={paletteFilter}
+        // Up on the first row wraps to the last one (and Down back to the top)
+        loop
       >
         <CommandInput
           placeholder={PLACEHOLDERS[mode]}
