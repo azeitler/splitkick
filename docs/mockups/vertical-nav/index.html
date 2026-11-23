@@ -1,0 +1,242 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #ffffff; --sidebar: #f7f7f8; --rail: #f0f0f2; --border: #e4e4e7;
+    --fg: #18181b; --muted: #71717a; --badge: #2563eb;
+    --rail-w: 168px; --title-w: 404px; --controls-w: 76px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; color: var(--fg); background: #d4d4d8; }
+  svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .window { display: flex; flex-direction: column; height: 560px; margin: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); box-shadow: 0 8px 30px rgba(0,0,0,.12); }
+  .window.collapsed { --rail-w: 46px; }
+  .grow { flex: 1; }
+  .top, .mid, .bottom { display: flex; min-height: 0; }
+  .top { height: 40px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+  .mid { flex: 1; }
+  .bottom { height: 40px; flex-shrink: 0; }
+
+  /* Title-bar side area over the sidebar (other tabs only) */
+  .titlebar { width: var(--title-w); flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 14px; background: var(--sidebar); border-right: 1px solid var(--border); }
+  .traffic { display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  /* Home and hidden sidebar: no side area, the top bar is one plain bar.
+     The window controls keep their place. */
+  .window.home .titlebar, .window.no-sidebar .titlebar { width: var(--controls-w); background: var(--bg); border-right: 0; }
+
+  .mainhead { flex: 1; display: flex; align-items: center; gap: 2px; padding: 0 12px 0 8px; min-width: 0; }
+  .mainhead .title { margin-left: 8px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vsep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+  /* Home: no sidebar button */
+  .window.home #sidebarBtn, .window.home .vsep { display: none; }
+  .icon-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); cursor: pointer; border: 0; background: none; flex-shrink: 0; }
+  .icon-btn:hover { background: rgba(0,0,0,.06); color: var(--fg); }
+  .icon-btn[disabled] { opacity: .35; cursor: default; background: none; }
+  .htip { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); background: var(--fg); color: #fff; font-size: 11px; padding: 3px 7px; border-radius: 5px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; z-index: 11; }
+  .icon-btn:hover .htip { opacity: 1; }
+
+  /* Vertical nav */
+  .rail { width: var(--rail-w); flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; background: var(--rail); border-right: 1px solid var(--border); overflow: hidden; transition: width .18s ease; }
+  .item { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 9px; border-radius: 7px; color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
+  .item:hover { background: rgba(0,0,0,.05); color: var(--fg); }
+  .item.active { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 500; }
+  .label { transition: opacity .12s; }
+  .collapsed .label, .collapsed .count { opacity: 0; }
+  .count { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .count.attn { color: var(--badge); font-weight: 600; }
+  .cbadge { position: absolute; top: 3px; left: 19px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; font-size: 9px; font-weight: 600; line-height: 15px; text-align: center; background: #71717a; color: #fff; border: 1.5px solid var(--rail); display: none; }
+  .cbadge.attn { background: var(--badge); }
+  .collapsed .cbadge { display: block; }
+  .item.active .cbadge { border-color: var(--bg); }
+  .sep { height: 1px; background: var(--border); margin: 6px 4px; }
+  .tip { position: absolute; left: 44px; top: 50%; transform: translateY(-50%); background: var(--fg); color: #fff; font-size: 11px; padding: 3px 7px; border-radius: 5px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; z-index: 11; }
+  .collapsed .item:hover .tip { opacity: 1; }
+
+  .panel { width: calc(var(--title-w) - var(--rail-w)); flex-shrink: 0; display: flex; flex-direction: column; min-width: 0; background: var(--sidebar); border-right: 1px solid var(--border); transition: width .18s ease; }
+  .window.home .panel { display: none; }
+  .panel-head { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-weight: 600; }
+  .panel-body { padding: 0 8px 8px; overflow: auto; flex: 1; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; }
+  .row:hover { background: rgba(0,0,0,.04); }
+  .row.sub { padding-left: 24px; color: var(--muted); }
+  .row .meta { margin-left: auto; color: var(--muted); font-size: 11px; }
+  .group { margin: 10px 8px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .bullet { width: 6px; height: 6px; border-radius: 50%; background: #a1a1aa; flex-shrink: 0; }
+  .bullet.run { background: #22c55e; } .bullet.wait { background: #f59e0b; }
+
+  .main { flex: 1; padding: 16px; overflow: auto; min-width: 0; }
+  .muted { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .card b { display: block; margin-bottom: 4px; }
+  .note { margin-top: 16px; padding: 10px 12px; background: #fafafa; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; }
+
+  .window.no-sidebar .rail, .window.no-sidebar .panel, .window.no-sidebar .sidebar-footer { display: none; }
+
+  .footer-bar { display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--sidebar); border-top: 1px solid rgba(228,228,231,.6); }
+  .sidebar-footer { position: relative; width: var(--title-w); flex-shrink: 0; border-right: 1px solid var(--border); }
+  .window.home .sidebar-footer { width: max-content; }
+  .window.home .sidebar-footer .grow { flex: 0 0 12px; }
+  .badge { position: absolute; top: 3px; right: 3px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--badge); color: #fff; font-size: 9px; line-height: 14px; text-align: center; }
+  .upd-dot { position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--badge); }
+  .menu { position: absolute; bottom: 44px; right: 6px; width: 220px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 4px; display: none; z-index: 10; }
+  .menu.open { display: block; }
+  .mi { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+  .mi:hover { background: #f4f4f5; }
+  .mi .meta { margin-left: auto; color: var(--muted); font-size: 11px; }
+  .msep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .home-footer { flex: 1; display: none; }
+  .window.home .home-footer { display: flex; }
+  .stat-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: 6px; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .stat-btn:hover { background: rgba(0,0,0,.06); color: var(--fg); }
+  .stat-btn b { color: var(--fg); font-weight: 500; }
+  .main-fill { flex: 1; }
+  .window.home .main-fill { display: none; }
+</style>
+</head>
+<body>
+<div class="window home" id="win">
+  <div class="top">
+    <div class="titlebar">
+      <div class="traffic"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    </div>
+    <div class="mainhead">
+      <button class="icon-btn" id="sidebarBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg><span class="htip" id="sidebarTip">Hide sidebar ⌘B</span></button>
+      <span class="vsep"></span>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg><span class="htip">Go back</span></button>
+      <button class="icon-btn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg><span class="htip">Go forward</span></button>
+      <span class="title" id="mainTitle">Home</span>
+    </div>
+  </div>
+
+  <div class="mid">
+    <nav class="rail" aria-label="Sidebar navigation">
+      <div class="item active" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg><span class="label">Home</span><span class="tip">Home</span></div>
+      <div class="sep"></div>
+      <div class="item" data-tab="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h6l2 2h10v12H3z"/></svg><span class="label">Projects</span><span class="tip">Projects</span></div>
+      <div class="item" data-tab="recent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="label">Recent</span><span class="tip">Recent</span></div>
+      <div class="item" data-tab="starred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><span class="label">Starred</span><span class="count">3</span><span class="cbadge">3</span><span class="tip">Starred · 3</span></div>
+      <div class="item" data-tab="agents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="16" height="11" rx="2"/><path d="M12 7V4M9 12h.01M15 12h.01"/></svg><span class="label">Agents</span><span class="count">1</span><span class="cbadge">1</span><span class="tip">Agents · 1 running</span></div>
+      <div class="item" data-tab="todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span class="label">To-Do</span><span class="count attn">2</span><span class="cbadge attn">2</span><span class="tip">To-Do · 2 waiting for you</span></div>
+      <div class="item" data-tab="graphs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M6.5 10v4a3 3 0 0 0 3 3H14"/></svg><span class="label">Graphs</span><span class="count">5</span><span class="cbadge">5</span><span class="tip">Graphs · 5 requests</span></div>
+      <div class="grow"></div>
+      <div class="item" id="toggle"><svg id="toggleIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6" opacity=".45"/></svg><span class="label" id="toggleLabel">Collapse</span><span class="tip" id="toggleTip">Expand</span></div>
+    </nav>
+
+    <aside class="panel">
+      <div class="panel-head"><span id="panelTitle">Projects</span><button class="icon-btn" title="New">+</button></div>
+      <div class="panel-body" id="panelBody"></div>
+    </aside>
+
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="bottom">
+    <div class="footer-bar sidebar-footer">
+      <button class="icon-btn" title="Settings ⌘,"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+      <button class="icon-btn" title="Server connections"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg></button>
+      <button class="icon-btn" title="Usage" style="margin-left:6px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></button>
+      <div class="grow"></div>
+      <button class="icon-btn" title="Updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12l4 4 4-4"/></svg><span class="upd-dot"></span></button>
+      <button class="icon-btn" title="Unread"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 21h4"/></svg><span class="badge">4</span></button>
+      <button class="icon-btn" id="moreBtn" title="More"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+      <div class="menu" id="moreMenu">
+        <div class="mi">Star on GitHub</div>
+        <div class="mi">Website</div>
+        <div class="msep"></div>
+        <div class="mi">Release notes<span class="meta">v1.5.24</span></div>
+        <div class="mi">Check for Updates…</div>
+      </div>
+    </div>
+    <div class="footer-bar home-footer">
+      <div class="grow"></div>
+      <span class="stat-btn"><span class="bullet run"></span><b>2</b> running</span>
+      <span class="stat-btn"><span class="bullet wait"></span><b>2</b> waiting</span>
+      <span class="stat-btn"><b>14</b> sessions today</span>
+      <span class="stat-btn"><b>5</b> projects</span>
+    </div>
+    <div class="main-fill"></div>
+  </div>
+</div>
+
+<script>
+  const panel = {
+    projects: `<div class="group">Folders</div>
+      <div class="row">Client work<span class="meta">3</span></div>
+      <div class="group">Projects</div>
+      <div class="row">Acme Web</div>
+      <div class="row sub"><span class="bullet run"></span>fuzzy-tiger<span class="meta">now</span></div>
+      <div class="row sub"><span class="bullet"></span>calm-dolphin<span class="meta">3 h ago</span></div>
+      <div class="row">Docs site</div>
+      <div class="row">Mobile app</div>
+      <div class="group">More</div>
+      <div class="row">Scheduled</div>
+      <div class="row">Archived</div>`,
+    recent: `<div class="row"><span class="bullet run"></span>Fix login redirect<span class="meta">now</span></div>
+      <div class="row"><span class="bullet"></span>Update pricing page<span class="meta">1 h ago</span></div>`,
+    starred: `<div class="row">★ Weekly report<span class="meta">Docs site</span></div>
+      <div class="row">★ Deploy checklist<span class="meta">Acme Web</span></div>
+      <div class="row">★ API design notes<span class="meta">Mobile app</span></div>`,
+    agents: `<div class="row"><span class="bullet run"></span>Release manager<span class="meta">running</span></div>
+      <div class="row"><span class="bullet"></span>Docs writer<span class="meta">idle</span></div>`,
+    todo: `<div class="row"><span class="bullet wait"></span>Answer: which build target?<span class="meta">5 m ago</span></div>
+      <div class="row"><span class="bullet wait"></span>Approve plan: cache layer<span class="meta">20 m ago</span></div>`,
+    graphs: `<div class="group">Requests</div>
+      <div class="row">Website relaunch<span class="meta">3 requests</span></div>
+      <div class="row">Q1 roadmap<span class="meta">2 requests</span></div>`
+  };
+  const titles = { projects:'Projects', recent:'Recent', starred:'Starred', agents:'Agents', todo:'To-Do', graphs:'Graphs' };
+  const homeMain = `<div class="muted">Needs you</div>
+    <div class="cards">
+      <div class="card"><b>Which build target?</b><span class="muted">Acme Web · 5 m ago</span></div>
+      <div class="card"><b>Approve plan: cache layer</b><span class="muted">Docs site · 20 m ago</span></div>
+    </div>
+    <div class="muted" style="margin-top:16px">Recent sessions</div>
+    <div class="cards">
+      <div class="card"><b>Fix login redirect</b><span class="muted">running</span></div>
+      <div class="card"><b>Update pricing page</b><span class="muted">1 h ago</span></div>
+      <div class="card"><b>Weekly report</b><span class="muted">yesterday</span></div>
+    </div>
+    <div class="note">Home: one plain top bar (window controls, back/forward, title). No title-bar side area and no sidebar button.</div>`;
+  const projectMain = `<div class="muted">Project overview or chat stays as it is today.</div>
+    <div class="note">Other tabs: the title-bar side area over the sidebar and the sidebar button come back.</div>`;
+
+  const win = document.getElementById('win');
+  function show(tab) {
+    document.querySelectorAll('.item[data-tab]').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+    const home = tab === 'home';
+    win.classList.toggle('home', home);
+    if (home) win.classList.remove('no-sidebar');
+    document.getElementById('mainTitle').textContent = home ? 'Home' : 'Acme Web';
+    document.getElementById('main').innerHTML = home ? homeMain : projectMain;
+    if (!home) {
+      document.getElementById('panelTitle').textContent = titles[tab];
+      document.getElementById('panelBody').innerHTML = panel[tab];
+    }
+  }
+  document.querySelectorAll('.item[data-tab]').forEach(el => el.addEventListener('click', () => show(el.dataset.tab)));
+
+  document.getElementById('toggle').addEventListener('click', () => {
+    const collapsed = win.classList.toggle('collapsed');
+    document.getElementById('toggleLabel').textContent = collapsed ? 'Expand' : 'Collapse';
+    document.getElementById('toggleTip').textContent = collapsed ? 'Expand' : 'Collapse';
+    document.getElementById('toggleIcon').innerHTML = collapsed
+      ? '<path d="M9 6l6 6-6 6"/><path d="M4 6l6 6-6 6" opacity=".45"/>'
+      : '<path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6" opacity=".45"/>';
+  });
+
+  document.getElementById('sidebarBtn').addEventListener('click', () => {
+    const hidden = win.classList.toggle('no-sidebar');
+    document.getElementById('sidebarTip').textContent = hidden ? 'Show sidebar ⌘B' : 'Hide sidebar ⌘B';
+  });
+
+  const more = document.getElementById('moreMenu');
+  document.getElementById('moreBtn').addEventListener('click', e => { e.stopPropagation(); more.classList.toggle('open'); });
+  document.addEventListener('click', () => more.classList.remove('open'));
+  show('home');
+</script>
+</body>
+</html>
