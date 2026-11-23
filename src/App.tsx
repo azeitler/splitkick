@@ -144,14 +144,24 @@ function handleWsAuthTokenSubmit(token: string) {
 }
 
 /** Full-screen auth error overlay for web access mode. */
-function WsAuthErrorOverlay() {
+function WsAuthErrorOverlay({
+  shellHasConnectionsDialog = false,
+}: {
+  shellHasConnectionsDialog?: boolean
+}) {
   const authError = useWsAuthError()
   const remote = getActiveRemoteConnection()
 
   if (!authError) return null
 
   if (remote) {
-    return <RemoteConnectionRecovery connection={remote} error={authError} />
+    return (
+      <RemoteConnectionRecovery
+        connection={remote}
+        error={authError}
+        shellHasConnectionsDialog={shellHasConnectionsDialog}
+      />
+    )
   }
 
   return (
@@ -1797,7 +1807,10 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
-        {webBackend && <WsAuthErrorOverlay />}
+        {/* MainWindow mounts the Server connections dialog on the desktop. */}
+        {webBackend && (
+          <WsAuthErrorOverlay shellHasConnectionsDialog={isNativeApp()} />
+        )}
         {/* App-level dialog so quit confirmation wins over loading overlay
             even if MainWindow's copy is covered / not yet mounted. */}
         {isNativeApp() && <QuitConfirmationDialog />}

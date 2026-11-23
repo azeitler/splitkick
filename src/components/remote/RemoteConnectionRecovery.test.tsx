@@ -16,6 +16,12 @@ vi.mock('@/lib/connection-windows', () => ({
   focusMainWindow: () => focusMainWindow(),
 }))
 
+const reloadApp = vi.fn()
+
+vi.mock('@/lib/web-reload-log', () => ({
+  reloadApp: (reason: string) => reloadApp(reason),
+}))
+
 vi.mock('@/lib/window-close', () => ({
   destroyAppWindow: () => destroyAppWindow(),
 }))
@@ -61,6 +67,7 @@ describe('RemoteConnectionRecovery', () => {
     isConnectionWindow.mockReturnValue(false)
     focusMainWindow.mockClear()
     destroyAppWindow.mockClear()
+    reloadApp.mockClear()
   })
 
   it('dismisses open overlays on mount so recovery stays interactive', () => {
@@ -166,5 +173,56 @@ describe('RemoteConnectionRecovery', () => {
     expect(dialog).toHaveAttribute('data-trigger', 'false')
     fireEvent.click(screen.getByRole('button', { name: 'Edit connection' }))
     expect(dialog).toHaveTextContent('editing remote-1')
+  })
+
+  it('pauses the auto-retry while a dialog is open', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(
+        <RemoteConnectionRecovery
+          connection={{
+            id: 'remote-1',
+            name: 'Lab',
+            url: 'https://lab.example',
+            token: 'tok',
+          }}
+          error="lost"
+        />
+      )
+
+      // The user opened Edit connection: a reload would tear the form down.
+      const openDialog = document.createElement('div')
+      openDialog.setAttribute('data-slot', 'dialog-content')
+      document.body.appendChild(openDialog)
+      vi.advanceTimersByTime(30_000)
+      expect(reloadApp).not.toHaveBeenCalled()
+
+      openDialog.remove()
+      vi.advanceTimersByTime(10_000)
+      expect(reloadApp).toHaveBeenCalledOnce()
+      expect(reloadApp).toHaveBeenCalledWith('connection-recovery')
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('mounts no second connections dialog when the app shell has one', () => {
+    // MainWindow mounts one on the desktop. Two copies both answer the open
+    // event and stack two Server connections panes.
+    render(
+      <RemoteConnectionRecovery
+        connection={{
+          id: 'remote-1',
+          name: 'Lab',
+          url: 'https://lab.example',
+          token: 'tok',
+        }}
+        error="lost"
+        shellHasConnectionsDialog
+      />
+    )
+
+    expect(screen.queryByTestId('connections-dialog')).toBeNull()
   })
 })

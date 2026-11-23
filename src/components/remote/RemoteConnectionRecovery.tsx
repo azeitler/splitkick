@@ -21,12 +21,24 @@ function reloadPage() {
   reloadApp('connection-recovery')
 }
 
+/** The auto-retry waits while the user works in a dialog (Edit connection):
+ * a reload would throw the form away under their hands. */
+function retryUnlessDialogOpen() {
+  if (document.querySelector('[data-slot="dialog-content"]')) return
+  reloadPage()
+}
+
 export function RemoteConnectionRecovery({
   connection,
   error,
+  shellHasConnectionsDialog = false,
 }: {
   connection: RemoteConnection
   error: string
+  /** True when the app shell behind this screen already mounts the Server
+   * connections dialog (MainWindow on the desktop). A second copy would
+   * answer the same open event and stack a second pane. */
+  shellHasConnectionsDialog?: boolean
 }) {
   // Drop open context menus / settings / dialogs so they cannot sit above
   // this surface or leave body pointer-events locked (issue #623).
@@ -41,7 +53,7 @@ export function RemoteConnectionRecovery({
 
   useEffect(() => {
     if (permanent) return
-    const retryTimer = window.setInterval(reloadPage, 10_000)
+    const retryTimer = window.setInterval(retryUnlessDialogOpen, 10_000)
     return () => window.clearInterval(retryTimer)
   }, [permanent])
 
@@ -91,9 +103,11 @@ export function RemoteConnectionRecovery({
           </Button>
         </div>
       </div>
-      {/* This screen replaces the app and its sidebar, where the dialog
-          normally lives; without this copy "Edit connection" did nothing. */}
-      <RemoteConnectionsDialog showTrigger={false} />
+      {/* Before the shell is up (and in Web Access) no dialog exists for
+          "Edit connection" to open, so this screen brings its own. */}
+      {!shellHasConnectionsDialog && (
+        <RemoteConnectionsDialog showTrigger={false} />
+      )}
     </div>
   )
 }

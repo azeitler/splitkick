@@ -20,6 +20,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Edit connection on the "Couldn't connect" screen opens one settings
+  pane.** A window for an unreachable remote mounted the Server connections
+  dialog twice, so each open stacked a second pane on top. The auto-retry now
+  also waits while a dialog is open, so it no longer reloads the window under
+  an open form.
 - **No more "Not in Tauri context" on remote instances.** While the
   connection to a remote instance or web access reconnected (for example after
   sleep, a network change or a suspended browser tab), every action failed at
