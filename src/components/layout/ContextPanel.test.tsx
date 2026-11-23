@@ -12,6 +12,9 @@ import type { Session, WorktreeSessions } from '@/types/chat'
 import { ContextPanel } from './ContextPanel'
 
 const mobile = vi.hoisted(() => ({ value: false }))
+const network = vi.hoisted(() => ({
+  value: null as null | { nodes: unknown[] },
+}))
 const session = { id: 's1', name: 'One', serves: ['g1#n1'] } as Session
 const artifact = (id: string, title: string, created_at: number) => ({
   id,
@@ -26,6 +29,10 @@ vi.mock('@/hooks/use-mobile', () => ({
 }))
 vi.mock('@/components/file-browser/FileBrowserSidebar', () => ({
   FileBrowserSidebar: () => <div data-testid="files-content" />,
+  FileBrowserRefreshButton: () => (
+    <button aria-label="Refresh file list" data-testid="files-refresh" />
+  ),
+  useFileBrowserRootPath: () => ({ rootPath: '/w1', label: 'webhook-retries' }),
 }))
 vi.mock('@/components/chat/SessionNetworkTree', () => ({
   SessionNetworkTree: ({
@@ -52,6 +59,7 @@ vi.mock('@/services/projects', async importOriginal => ({
 vi.mock('@/services/chat', async importOriginal => ({
   ...(await importOriginal<object>()),
   useSessions: () => ({ data: { sessions: [session] } }),
+  useSessionNetwork: () => ({ data: network.value }),
 }))
 
 const tab = (id: string) => screen.getByTestId(`context-panel-tab-${id}`)
@@ -75,6 +83,8 @@ describe('ContextPanel (#98)', () => {
     useChatStore.setState({ activeWorktreeId: null, activeSessionIds: {} })
     useProjectsStore.setState({ selectedWorktreeId: null })
     session.artifacts = undefined
+    session.serves = ['g1#n1']
+    network.value = null
   })
 
   it('shows the file tree on the Files tab', () => {
@@ -136,13 +146,59 @@ describe('ContextPanel (#98)', () => {
     )
   })
 
-  it('names only the selected tab; the others show their icon (#107)', () => {
+  it('names every tab, not only the selected one', () => {
     openSession()
     render(<ContextPanel />)
-    expect(tab('files')).toHaveTextContent('Files')
-    expect(tab('graph').querySelector('.sr-only')).toHaveTextContent('Graph')
-    expect(tab('graph')).toHaveAttribute('title', 'Graph')
+    for (const [id, label] of [
+      ['files', 'Files'],
+      ['network', 'Network'],
+      ['graph', 'Graph'],
+      ['artifacts', 'Artifacts'],
+    ] as const) {
+      expect(tab(id)).toHaveTextContent(label)
+      expect(tab(id).querySelector('.sr-only')).toBeNull()
+    }
     expect(screen.getByRole('tab', { name: 'Artifacts' })).toBeInTheDocument()
+  })
+
+  it('counts linked sessions and graph nodes on their tabs', () => {
+    network.value = { nodes: [{}, {}, {}] }
+    session.serves = ['g1#n1', 'g2#n4']
+    openSession()
+    render(<ContextPanel />)
+    expect(screen.getByTestId('network-tab-count')).toHaveTextContent('2')
+    expect(screen.getByTestId('network-tab-count')).toHaveAttribute(
+      'aria-label',
+      '2 linked sessions'
+    )
+    expect(screen.getByTestId('graph-tab-count')).toHaveTextContent('2')
+    expect(tab('files').querySelector('[data-slot="badge"]')).toBeNull()
+  })
+
+  it('shows no count for a session alone in its network or without a graph', () => {
+    network.value = { nodes: [{}] }
+    session.serves = []
+    openSession()
+    render(<ContextPanel />)
+    expect(screen.queryByTestId('network-tab-count')).toBeNull()
+    expect(screen.queryByTestId('graph-tab-count')).toBeNull()
+  })
+
+  it('heads the panel with the tab, what it shows and its actions', () => {
+    openSession()
+    render(<ContextPanel />)
+    expect(screen.getByTestId('context-panel-title')).toHaveTextContent('Files')
+    expect(screen.getByTestId('context-panel-subtitle')).toHaveTextContent(
+      'webhook-retries'
+    )
+    expect(screen.getByTestId('files-refresh')).toBeInTheDocument()
+
+    fireEvent.click(tab('graph'))
+    expect(screen.getByTestId('context-panel-title')).toHaveTextContent('Graph')
+    expect(screen.getByTestId('context-panel-subtitle')).toHaveTextContent(
+      'One'
+    )
+    expect(screen.queryByTestId('files-refresh')).toBeNull()
   })
 
   it('shows no count and an empty state without artifacts (#107)', () => {

@@ -295,10 +295,20 @@ export function WindowToolbar({
       </div>
 
       {!zenMode && (
-        <div
-          ref={chipsRef}
-          className="ml-2 flex min-w-0 shrink items-center gap-1.5 overflow-hidden @max-[620px]:hidden"
-        />
+        <>
+          <div
+            ref={chipsRef}
+            data-testid="window-toolbar-chips"
+            className="peer ml-2 flex min-w-0 shrink items-center gap-1.5 overflow-hidden @max-[620px]:hidden"
+          />
+          {/* The file browser sits next to the view's git status chips. The
+              separator goes with the chips: none without them. */}
+          <div
+            data-testid="file-browser-toggle-separator"
+            className="mx-1 h-4 w-px shrink-0 bg-border peer-empty:hidden @max-[620px]:hidden"
+          />
+          <FileBrowserToggle />
+        </>
       )}
 
       <div {...drag} className="h-full min-w-4 flex-1" />
@@ -333,7 +343,6 @@ export function WindowToolbar({
         </>
       ) : (
         <>
-          <FileBrowserToggle />
           <div
             ref={actionsRef}
             // Text labels of the view's buttons (data-toolbar-label) give way

@@ -18,6 +18,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **The file browser button moves to the left of the toolbar.** It sits after
+  the git status of the worktree or session (or the project badges), behind a
+  thin separator, instead of between the view's buttons on the right.
+- **The side panel has a header and named tabs.** The header shows the
+  active tab, the folder or session it shows, the tab's actions (Refresh on
+  Files) and the close button. All tabs show their names: Files, Network,
+  Graph, Artifacts. Network counts the linked sessions, Graph the graph nodes
+  the session works on, Artifacts the session's artifacts. A narrow panel
+  wraps the tabs onto two lines.
 - **HTML previews in chat fit their content.** A ```html block no longer
   opens in a fixed 420 px box: the box takes the height the page needs, from
   120 px up to 70 % of the window, and scrolls inside above that. Dragging the

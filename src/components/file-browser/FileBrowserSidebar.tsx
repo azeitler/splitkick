@@ -67,11 +67,47 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 
 interface FileBrowserSidebarProps {
   className?: string
-  /** When true, hide the close button (e.g. mobile sheet has its own chrome) */
-  hideCloseButton?: boolean
+  /** Hide the title row: the context panel shows the title, the refresh
+   *  button (`FileBrowserRefreshButton`) and the close button itself. */
+  hideHeader?: boolean
 }
 
-function useFileBrowserRootPath(): {
+/** Refreshes the file list of the folder the file browser shows. */
+export function FileBrowserRefreshButton() {
+  const queryClient = useQueryClient()
+  const { rootPath } = useFileBrowserRootPath()
+  const { isFetching } = useWorktreeFiles(rootPath)
+  const handleRefresh = () => {
+    if (!rootPath) return
+    void queryClient.invalidateQueries({
+      queryKey: fileQueryKeys.worktreeFiles(rootPath),
+    })
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0"
+          onClick={handleRefresh}
+          disabled={!rootPath || isFetching}
+          aria-label="Refresh file list"
+        >
+          {isFetching ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Refresh</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** The folder the file browser shows and its display name. */
+export function useFileBrowserRootPath(): {
   rootPath: string | null
   label: string | null
 } {
@@ -109,9 +145,8 @@ function useFileBrowserRootPath(): {
 
 export function FileBrowserSidebar({
   className,
-  hideCloseButton = false,
+  hideHeader = false,
 }: FileBrowserSidebarProps) {
-  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
   const setViewingFilePath = useUIStore(state => state.setViewingFilePath)
@@ -123,7 +158,6 @@ export function FileBrowserSidebar({
   const {
     data: files = EMPTY_WORKTREE_FILES,
     isLoading,
-    isFetching,
     isError,
     error,
   } = useWorktreeFiles(rootPath)
@@ -210,13 +244,6 @@ export function FileBrowserSidebar({
     () => flattenVisibleTree(filteredTree, expanded),
     [filteredTree, expanded]
   )
-
-  const handleRefresh = useCallback(() => {
-    if (!rootPath) return
-    void queryClient.invalidateQueries({
-      queryKey: fileQueryKeys.worktreeFiles(rootPath),
-    })
-  }, [queryClient, rootPath])
 
   const toggleDir = useCallback(
     (relativePath: string) => {
@@ -327,40 +354,21 @@ export function FileBrowserSidebar({
       )}
       data-testid="file-browser-sidebar"
     >
-      {/* Header */}
-      <div className="flex items-center gap-1 border-b border-sidebar-border px-2 py-1.5">
-        <FolderTree className="size-3.5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium">Files</p>
-          {label && (
-            <p
-              className="truncate text-[0.625rem] text-muted-foreground"
-              title={rootPath ?? undefined}
-            >
-              {label}
-            </p>
-          )}
-        </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
-              onClick={handleRefresh}
-              disabled={!rootPath || isFetching}
-              aria-label="Refresh file list"
-            >
-              {isFetching ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3.5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Refresh</TooltipContent>
-        </Tooltip>
-        {!hideCloseButton && (
+      {!hideHeader && (
+        <div className="flex items-center gap-1 border-b border-sidebar-border px-2 py-1.5">
+          <FolderTree className="size-3.5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">Files</p>
+            {label && (
+              <p
+                className="truncate text-[0.625rem] text-muted-foreground"
+                title={rootPath ?? undefined}
+              >
+                {label}
+              </p>
+            )}
+          </div>
+          <FileBrowserRefreshButton />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -375,8 +383,8 @@ export function FileBrowserSidebar({
             </TooltipTrigger>
             <TooltipContent side="bottom">Close</TooltipContent>
           </Tooltip>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="border-b border-sidebar-border px-2 py-1.5">

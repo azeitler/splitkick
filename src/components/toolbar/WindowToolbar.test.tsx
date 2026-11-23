@@ -100,6 +100,36 @@ describe('WindowToolbar', () => {
     expect(screen.queryByTestId('toggle-left-sidebar')).toBeNull()
   })
 
+  it('puts the file browser toggle on the left, after the git status chips', () => {
+    render(
+      <ToolbarSlotsProvider>
+        <WindowToolbar fallbackTitle="jean" />
+        <ToolbarContent
+          title="webhook-retries"
+          chips={<span data-testid="git-status-chip">+42/-7</span>}
+          actions={<button data-testid="view-action">Open</button>}
+        />
+      </ToolbarSlotsProvider>
+    )
+    const order = Array.from(
+      toolbar().querySelectorAll(
+        '[data-testid="git-status-chip"], [data-testid="file-browser-toggle-separator"], [data-testid="toggle-file-browser"], [data-testid="view-action"]'
+      )
+    ).map(el => el.getAttribute('data-testid'))
+    expect(order).toEqual([
+      'git-status-chip',
+      'file-browser-toggle-separator',
+      'toggle-file-browser',
+      'view-action',
+    ])
+    // The separator follows the chips slot, so CSS hides it while the slot is empty.
+    const separator = screen.getByTestId('file-browser-toggle-separator')
+    expect(separator.previousElementSibling).toBe(
+      screen.getByTestId('window-toolbar-chips')
+    )
+    expect(separator).toHaveClass('peer-empty:hidden')
+  })
+
   it('drags the window natively, never in web access', () => {
     const { unmount } = renderToolbar()
     expect(toolbar()).toHaveAttribute('data-tauri-drag-region')
