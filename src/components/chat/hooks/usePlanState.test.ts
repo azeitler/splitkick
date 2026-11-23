@@ -40,4 +40,39 @@ describe('usePlanState', () => {
       'Plan:\n- Implement changes\n- Add tests'
     )
   })
+
+  it('a Claude plan approved in its own turn no longer waits (#136)', () => {
+    const planMessage = (output?: string): ChatMessage =>
+      ({
+        id: 'msg-plan',
+        session_id: 's1',
+        role: 'assistant',
+        content: '',
+        timestamp: 0,
+        tool_calls: [
+          { id: 'toolu_plan', name: 'ExitPlanMode', input: {}, output },
+        ],
+      }) as ChatMessage
+    const run = (messages: ChatMessage[], backend: 'claude' | 'opencode') =>
+      renderHook(() =>
+        usePlanState({
+          sessionMessages: messages,
+          currentToolCalls: [],
+          currentStreamingContent: '',
+          currentStreamingContentBlocks: [],
+          isSending: false,
+          sessionBackend: backend,
+        })
+      ).result.current
+
+    expect(
+      run([planMessage('User has approved your plan.')], 'claude')
+        .hasPendingPlanApproval
+    ).toBe(false)
+    // Cut off by the legacy kill, or another backend: still waits.
+    expect(run([planMessage()], 'claude').hasPendingPlanApproval).toBe(true)
+    expect(run([planMessage('done')], 'opencode').hasPendingPlanApproval).toBe(
+      true
+    )
+  })
 })

@@ -2,6 +2,7 @@ import type { ToolCall } from '@/types/chat'
 import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
+import { isPlanAnsweredInTurn } from './claude-dialog-events'
 import { resolveApprovalLabel } from './approval-label-utils'
 import { SplitButton } from '@/components/ui/split-button'
 import { Button } from '@/components/ui/button'
@@ -78,6 +79,9 @@ export function ExitPlanModeButton({
 
   const hasQuestions = toolCalls.some(isAskUserQuestion)
   if (hasQuestions && !isApproved) return null
+
+  // Approved or declined in its own turn (#136): nothing left to approve.
+  if (isPlanAnsweredInTurn(tool, sessionBackend)) return null
 
   if (
     isApproved ||

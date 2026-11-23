@@ -39,6 +39,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Claude questions and plan approvals stay in the same turn.** Splitkick
+  stopped a Claude run the moment it asked a question or presented a plan, so
+  the model got "the session ended before this call's result was recorded",
+  wrote "No response requested.", and your answer arrived later as a new
+  message. Now the run waits for you: the answer (also an "Other…" text and a
+  note) and the plan approval go back as the tool result, and an approved plan
+  goes on in build or yolo in the same turn. Approve and YOLO now show while
+  the plan's run waits. A build/yolo override with another model still starts
+  a new turn. Plan mode can also write its plan file again. A new message
+  instead of an answer still skips the question. (Closes #136)
 - **Edit connection on the "Couldn't connect" screen opens one settings
   pane.** A window for an unreachable remote mounted the Server connections
   dialog twice, so each open stacked a second pane on top. The auto-retry now

@@ -30,6 +30,7 @@ import type {
 } from '@/types/chat'
 import type { QueryClient } from '@tanstack/react-query'
 import { GIT_ALLOWED_TOOLS } from './useMessageHandlers'
+import { skipParkedClaudeDialog } from '../claude-dialog-events'
 import {
   handleCliAuthError,
   isLoginSlashCommand,
@@ -634,6 +635,13 @@ export function useMessageSending({
         `[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`
       )
       if (isSendingNow) {
+        // A live Claude run parked on a question or plan: this message skips
+        // it, the run ends its turn, and the queue sends the message next.
+        if (selectedBackendRef.current === 'claude') {
+          skipParkedClaudeDialog(activeSessionId, sessionId =>
+            invoke('answer_claude_dialog', { sessionId, outcome: 'skipped' })
+          )
+        }
         // Auto-steer: inject the prompt into a steer-capable running turn
         // instead of queueing. All attachment kinds (file @-mentions, skills,
         // pasted images, pasted text files) serialize to path refs via

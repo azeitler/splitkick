@@ -46,6 +46,12 @@ import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences, CliBackend } from '@/types/preferences'
 import type { Worktree } from '@/types/projects'
 import { clearPlanApprovalTransientState } from './plan-approval-state'
+import { getParkedClaudeDialog } from '../claude-dialog-events'
+import {
+  PLAN_CONTINUES_IN_NEW_TURN,
+  planApprovalMessage,
+  resolveApprovalRunSettings,
+} from '../parked-plan-approval'
 import {
   createWorktreeAndWait,
   finishPlanHandoff,
@@ -137,6 +143,7 @@ interface MessageHandlers {
     questions: Question[]
   ) => void
   handleSkipQuestion: (toolCallId: string) => void
+  handleParkedPlanApproval: (mode: 'build' | 'yolo') => void
   handlePlanApproval: (messageId: string, updatedPlan?: string) => void
   handlePlanApprovalYolo: (messageId: string, updatedPlan?: string) => void
   handleStreamingPlanApproval: () => void
@@ -388,11 +395,16 @@ export function useMessageHandlers({
         chatQueryKeys.session(sessionId)
       )
       const isOpenCode = session?.backend === 'opencode'
+      // A live Claude run parked on this question goes on after the answer
+      // (#136), so its streaming content stays, as for OpenCode.
+      const isParkedClaude =
+        session?.backend === 'claude' &&
+        getParkedClaudeDialog(sessionId)?.toolUseId === toolCallId
 
       // Clear the preserved tool calls and review state since we're sending a response.
       // For OpenCode: DON'T clear streaming content — the HTTP POST is still in-flight
       // and StreamingMessage is actively displaying thinking/content blocks.
-      if (!isOpenCode) {
+      if (!isOpenCode && !isParkedClaude) {
         clearToolCalls(sessionId)
         clearStreamingContentBlocks(sessionId)
       }
@@ -564,6 +576,28 @@ export function useMessageHandlers({
       // Mark this question as answered (empty answers = skipped)
       markQuestionAnswered(sessionId, toolCallId, [])
 
+      // A live Claude run parked on this question: decline it so the run ends
+      // its turn (#136). The run still streams, so keep its content.
+      const session = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )
+      if (
+        session?.backend === 'claude' &&
+        getParkedClaudeDialog(sessionId)?.toolUseId === toolCallId
+      ) {
+        setQuestionsSkipped(sessionId, true)
+        invoke('answer_claude_dialog', { sessionId, outcome: 'skipped' }).catch(
+          err => {
+            console.error(
+              '[useMessageHandlers] Failed to skip Claude dialog:',
+              err
+            )
+          }
+        )
+        inputRef.current?.focus()
+        return
+      }
+
       // Set session-level skip state to auto-skip all subsequent questions
       // No message is sent to Claude - the flow is simply cancelled
       setQuestionsSkipped(sessionId, true)
@@ -597,9 +631,6 @@ export function useMessageHandlers({
 
       // For OpenCode: cancel the in-flight HTTP POST that's waiting for the question answer.
       // Without this, the POST would hang for up to 30 minutes.
-      const session = queryClient.getQueryData<Session>(
-        chatQueryKeys.session(sessionId)
-      )
       if (session?.backend === 'opencode') {
         invoke('cancel_process', { sessionId, worktreeId }).catch(err => {
           console.error(
@@ -3434,9 +3465,143 @@ Please apply all these fixes to the respective files.`
     ]
   )
 
+  /**
+   * Approve the plan a live Claude run is parked on (#136).
+   *
+   * The approval goes back as ExitPlanMode's tool result, and the run leaves
+   * plan mode in the same turn. A run cannot switch model, effort or thinking
+   * level mid-turn: when the build/yolo overrides change one of them, the
+   * parked call is declined, and the approval is queued as a new turn with the
+   * overrides. The queue sends it once this turn has ended.
+   */
+  const handleParkedPlanApproval = useCallback(
+    (mode: 'build' | 'yolo') => {
+      const sessionId = activeSessionIdRef.current
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      if (!sessionId || !worktreeId || !worktreePath) return
+      if (getParkedClaudeDialog(sessionId)?.kind !== 'plan') return
+
+      const current = {
+        model: selectedModelRef.current,
+        thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
+      }
+      const overrides =
+        mode === 'build'
+          ? {
+              backend: buildBackendRef.current,
+              model: buildModelRef.current,
+              thinkingLevel: buildThinkingLevelRef.current,
+              effortLevel: buildEffortLevelRef.current,
+            }
+          : {
+              backend: yoloBackendRef.current,
+              model: yoloModelRef.current,
+              thinkingLevel: yoloThinkingLevelRef.current,
+              effortLevel: yoloEffortLevelRef.current,
+            }
+      const target = resolveApprovalRunSettings(
+        selectedBackendRef.current,
+        current,
+        overrides,
+        useAdaptiveThinkingRef.current
+      )
+
+      const { setExecutionMode: setMode, setExecutingMode } =
+        useChatStore.getState()
+      setMode(sessionId, mode)
+      const persistMode = () =>
+        invoke('update_session_state', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          waitingForInput: false,
+          waitingForInputType: null,
+          selectedExecutionMode: mode,
+        }).catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to persist plan approval:',
+            err
+          )
+        })
+
+      if (!target.needsNewTurn) {
+        invoke<boolean>('answer_claude_dialog', {
+          sessionId,
+          outcome: 'approved',
+          mode,
+        })
+          .then(resolved => {
+            if (!resolved) {
+              toast.info(
+                'This plan’s turn has ended. Approve it from the plan message.'
+              )
+              return
+            }
+            setExecutingMode(sessionId, mode)
+            persistMode()
+          })
+          .catch(err => {
+            toast.error(`Failed to approve the plan: ${err}`)
+          })
+        return
+      }
+
+      invoke('answer_claude_dialog', {
+        sessionId,
+        outcome: 'denied',
+        message: PLAN_CONTINUES_IN_NEW_TURN,
+      }).catch(err => {
+        console.debug('[useMessageHandlers] No parked plan to release:', err)
+      })
+      const queuedMsg = {
+        id: generateId(),
+        message: planApprovalMessage(mode),
+        pendingImages: [] as never[],
+        pendingFiles: [] as never[],
+        pendingSkills: [] as never[],
+        pendingTextFiles: [] as never[],
+        model: target.model,
+        provider: getCustomProfileName() ?? null,
+        executionMode: mode,
+        thinkingLevel: target.thinkingLevel,
+        effortLevel: target.effortLevel,
+        mcpConfig: getMcpConfig(),
+        queuedAt: Date.now(),
+      }
+      useChatStore.getState().enqueueMessage(sessionId, queuedMsg)
+      persistEnqueue(worktreeId, worktreePath, sessionId, queuedMsg)
+      persistMode()
+    },
+    [
+      activeSessionIdRef,
+      activeWorktreeIdRef,
+      activeWorktreePathRef,
+      selectedModelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      buildModelRef,
+      buildBackendRef,
+      buildThinkingLevelRef,
+      buildEffortLevelRef,
+      yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
+      yoloEffortLevelRef,
+      selectedBackendRef,
+      getMcpConfig,
+      getCustomProfileName,
+    ]
+  )
+
   return {
     handleQuestionAnswer,
     handleSkipQuestion,
+    handleParkedPlanApproval,
     handlePlanApproval,
     handlePlanApprovalYolo,
     handleStreamingPlanApproval,

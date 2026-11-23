@@ -2645,6 +2645,7 @@ pub async fn dispatch_command(
                 from_field_opt(&args, "answers")?;
             let response: Option<String> = from_field_opt(&args, "response")?;
             let message: Option<String> = from_field_opt(&args, "message")?;
+            let mode: Option<String> = from_field_opt(&args, "mode")?;
             let resolved = crate::chat::answer_claude_dialog(
                 app.clone(),
                 tool_use_id,
@@ -2653,6 +2654,7 @@ pub async fn dispatch_command(
                 answers,
                 response,
                 message,
+                mode,
             )
             .await?;
             to_value(resolved)

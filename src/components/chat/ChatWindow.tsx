@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke } from '@/lib/transport'
+import { hydrateParkedClaudeDialog } from './claude-dialog-events'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
@@ -1015,6 +1016,15 @@ export function ChatWindow({
         EMPTY_CONTENT_BLOCKS)
       : EMPTY_CONTENT_BLOCKS
   )
+  // A reload or another client missed `claude:dialog-waiting`: ask the
+  // backend whether the live turn is parked on its open question or plan (#136).
+  useEffect(() => {
+    if (!isSending || !deferredSessionId || session?.backend !== 'claude')
+      return
+    hydrateParkedClaudeDialog(deferredSessionId, currentToolCalls, toolUseId =>
+      invoke<boolean>('is_claude_dialog_pending', { toolUseId })
+    ).catch(() => undefined)
+  }, [isSending, deferredSessionId, session?.backend, currentToolCalls])
   // Per-session input - check if there's any input for submit button state
   // PERFORMANCE: Track hasValue via callback from ChatInput instead of store subscription
   // ChatInput notifies on mount, session change, and empty/non-empty boundary changes
@@ -1418,6 +1428,7 @@ export function ChatWindow({
     currentStreamingContent: streamingContent,
     currentStreamingContentBlocks,
     isSending,
+    sessionBackend: session?.backend,
   })
 
   // State for plan dialog
@@ -2580,6 +2591,7 @@ export function ChatWindow({
   const {
     handleQuestionAnswer,
     handleSkipQuestion,
+    handleParkedPlanApproval,
     handlePlanApproval,
     handlePlanApprovalYolo,
     handleClearContextApproval,
@@ -3528,6 +3540,9 @@ export function ChatWindow({
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
                                       onCopySteeredText={handleCopySteeredText}
+                                      onParkedPlanApproval={
+                                        handleParkedPlanApproval
+                                      }
                                     />
                                   ) : (
                                     <StreamingMessage
@@ -3549,6 +3564,9 @@ export function ChatWindow({
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
                                       onCopySteeredText={handleCopySteeredText}
+                                      onParkedPlanApproval={
+                                        handleParkedPlanApproval
+                                      }
                                     />
                                   ))}
                                 <StreamingStatusBar

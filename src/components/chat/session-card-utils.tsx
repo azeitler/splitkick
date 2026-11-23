@@ -1,3 +1,4 @@
+import { isPlanAnsweredInTurn } from './claude-dialog-events'
 import type {
   IndicatorShape,
   IndicatorStatus,
@@ -509,7 +510,10 @@ export function computeSessionCardData(
     tc => isAskUserQuestion(tc) && !answeredSet?.has(tc.id)
   )
   const hasStreamingExitPlan = toolCalls.some(
-    tc => isPlanToolCall(tc) && !answeredSet?.has(tc.id)
+    tc =>
+      isPlanToolCall(tc) &&
+      !answeredSet?.has(tc.id) &&
+      !isPlanAnsweredInTurn(tc, session.backend)
   )
 
   // Check persisted session state for waiting status
@@ -574,7 +578,9 @@ export function computeSessionCardData(
           tc => isAskUserQuestion(tc) && !answeredSet?.has(tc.id)
         )
         // Check for unanswered plan approval
-        const hasExitPlan = msg.tool_calls.some(isPlanToolCall)
+        const hasExitPlan = msg.tool_calls.some(
+          tc => isPlanToolCall(tc) && !isPlanAnsweredInTurn(tc, session.backend)
+        )
         if (hasExitPlan && !msg.plan_approved && !approvedPlanIds.has(msg.id)) {
           hasPendingExitPlan = true
           pendingPlanMessageId = msg.id

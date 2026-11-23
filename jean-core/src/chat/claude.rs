@@ -672,8 +672,15 @@ fn split_fast_model(model: &str) -> (&str, bool) {
     }
 }
 
-/// Tools that end a Claude turn: Jean kills the CLI and hands the call to the
-/// UI (question picker, plan approval), then continues in a new turn.
+/// Tools that end a Claude turn when the run has no dialog harness: Jean kills
+/// the CLI and hands the call to the UI (question picker, plan approval), then
+/// continues in a new turn.
+///
+/// A run spawned with `--permission-prompt-tool` (the `jean-dialog` server) is
+/// never killed here: the CLI parks on the permission call until the UI answers,
+/// so the answer comes back as the tool result of the same turn (#136). Killing
+/// it left a dangling `tool_use` that the CLI later closed as "the session ended
+/// before this call's result was recorded".
 ///
 /// The kill must happen on the finished `assistant` message, never on a
 /// `stream_event`. Jean tails the CLI's output file and rebuilds chat history
@@ -1567,6 +1574,12 @@ fn append_permission_prompt_tool_arg(
     args.push(super::jean_mcp::dialog_permission_prompt_tool());
 }
 
+/// Whether the CLI arguments name Jean's dialog permission-prompt tool, so the
+/// CLI parks `AskUserQuestion` / `ExitPlanMode` on it instead of ending the turn.
+fn has_dialog_harness(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--permission-prompt-tool")
+}
+
 /// Execute Claude CLI in detached mode.
 ///
 /// Spawns Claude CLI as a fully detached process that survives Jean quitting.
@@ -1742,6 +1755,10 @@ pub fn execute_claude_detached(
         ));
     }
 
+    // A run with the dialog harness answers its questions and plans in-turn,
+    // so it must not be killed at them (#136).
+    let kill_on_blocking_tool = !has_dialog_harness(&args);
+
     // Tail the output file for real-time updates
     // Use match to ensure unregister_process is always called, even on error
     super::increment_tailer_count();
@@ -1753,6 +1770,7 @@ pub fn execute_claude_detached(
         pid,
         custom_profile_name,
         claude_config_dir,
+        kill_on_blocking_tool,
     ) {
         Ok(resp) => {
             super::decrement_tailer_count();
@@ -1867,6 +1885,7 @@ pub fn tail_claude_output(
     pid: u32,
     custom_profile_name: Option<&str>,
     claude_config_dir: Option<&str>,
+    kill_on_blocking_tool: bool,
 ) -> Result<ClaudeResponse, String> {
     use super::detached::is_process_alive;
     use super::tail::{next_poll_interval, NdjsonTailer};
@@ -2299,7 +2318,7 @@ pub fn tail_claude_output(
                                         // Blocking tools end the turn here: kill the CLI and
                                         // hand the call to the UI. This is the only place that
                                         // may do it — see `is_blocking_tool`.
-                                        if is_blocking_tool(&name) {
+                                        if kill_on_blocking_tool && is_blocking_tool(&name) {
                                             log::trace!("Detected blocking tool {name}, killing detached process");
 
                                             // Let Claude write the call to its own transcript
@@ -4147,6 +4166,19 @@ mod tests {
         assert_eq!(questions[1]["options"][1]["label"], "Don't squash");
     }
 
+    /// #136: only a run without the dialog harness may be killed at a
+    /// question or plan; a run with it answers them in-turn.
+    #[test]
+    fn the_dialog_harness_is_detected_from_the_cli_arguments() {
+        let with = vec![
+            "--print".to_string(),
+            "--permission-prompt-tool".to_string(),
+            "mcp__jean-dialog__permission_prompt".to_string(),
+        ];
+        assert!(has_dialog_harness(&with));
+        assert!(!has_dialog_harness(&["--print".to_string()]));
+    }
+
     #[test]
     fn only_question_and_plan_tools_end_the_turn() {
         assert!(is_blocking_tool("AskUserQuestion"));
@@ -4290,6 +4322,7 @@ mod tests {
             cli.id(),
             None,
             None,
+            true,
         )
         .unwrap();
         let _ = cli.wait();

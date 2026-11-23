@@ -10,8 +10,11 @@ import type {
 } from '@/types/chat'
 import {
   getAskUserQuestions,
+  isPlanToolCall,
   normalizeQuestionMultipleField,
 } from '@/types/chat'
+import { useChatStore } from '@/store/chat-store'
+import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { copyToClipboard } from '@/lib/clipboard'
 import { AskUserQuestion } from './AskUserQuestion'
 import {
@@ -84,6 +87,11 @@ interface StreamingMessageProps {
   areQuestionsSkipped: (sessionId: string) => boolean
   /** Callback to copy a steered user prompt */
   onCopySteeredText?: (text: string) => void
+  /**
+   * Approve the plan a live Claude run is parked on (#136). The approval goes
+   * back as ExitPlanMode's tool result in the same turn.
+   */
+  onParkedPlanApproval?: (mode: 'build' | 'yolo') => void
 }
 
 /**
@@ -103,7 +111,25 @@ export const StreamingMessage = memo(function StreamingMessage({
   getSubmittedAnswers,
   areQuestionsSkipped,
   onCopySteeredText,
+  onParkedPlanApproval,
 }: StreamingMessageProps) {
+  const parkedPlanToolId = useChatStore(state => {
+    const parked = state.parkedClaudeDialogs[sessionId]
+    return parked?.kind === 'plan' ? parked.toolUseId : null
+  })
+  // Only the parked plan call: an answered question earlier in the same turn
+  // would make the plan button hide itself.
+  const parkedPlanToolCalls = useMemo(
+    () =>
+      parkedPlanToolId
+        ? toolCalls.filter(
+            tc => tc.id === parkedPlanToolId && isPlanToolCall(tc)
+          )
+        : [],
+    [toolCalls, parkedPlanToolId]
+  )
+  const showParkedPlanApproval =
+    !!onParkedPlanApproval && parkedPlanToolCalls.length > 0
   const resolvedPlan = useMemo(
     () =>
       resolvePlanContent({
@@ -452,6 +478,18 @@ export const StreamingMessage = memo(function StreamingMessage({
                 resolvedPlan.content
               ) && <Markdown streaming>{streamingContent}</Markdown>}
           </>
+        )}
+
+        {showParkedPlanApproval && (
+          <div data-parked-plan-approval>
+            <ExitPlanModeButton
+              toolCalls={parkedPlanToolCalls}
+              isApproved={false}
+              sessionId={sessionId}
+              onPlanApproval={() => onParkedPlanApproval?.('build')}
+              onPlanApprovalYolo={() => onParkedPlanApproval?.('yolo')}
+            />
+          </div>
         )}
 
         {/* Show edited files during streaming */}

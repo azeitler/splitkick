@@ -29,6 +29,12 @@ import {
   isPlanToolCall,
 } from '@/types/chat'
 
+/** A Claude dialog a live run is parked on (see `parkedClaudeDialogs`). */
+export interface ParkedClaudeDialog {
+  toolUseId: string
+  kind: 'question' | 'plan'
+}
+
 export type ScheduledWakeupStatus = 'pending' | 'fired' | 'cancelled'
 
 export interface ScheduledWakeupState extends ScheduledWakeup {
@@ -124,6 +130,12 @@ interface ChatUIState {
   // Set of session IDs waiting for user input (AskUserQuestion/ExitPlanMode)
   // Separate from sendingSessionIds to allow user to send messages while waiting
   waitingForInputSessionIds: Record<string, boolean>
+  /**
+   * Claude question or plan a live run is parked on, by session (#136). The
+   * run waits for the answer as the tool result of the same call; set by
+   * `claude:dialog-waiting`, cleared by `claude:dialog-resolved`.
+   */
+  parkedClaudeDialogs: Record<string, ParkedClaudeDialog>
 
   // Mapping of session IDs to worktree IDs (for checking all sessions in a worktree)
   sessionWorktreeMap: Record<string, string>
@@ -395,6 +407,10 @@ interface ChatUIState {
 
   // Actions - Session-based waiting for input state
   setWaitingForInput: (sessionId: string, isWaiting: boolean) => void
+  setParkedClaudeDialog: (
+    sessionId: string,
+    dialog: ParkedClaudeDialog | null
+  ) => void
   isWaitingForInput: (sessionId: string) => boolean
 
   // Actions - Worktree-level state checks (checks all sessions in a worktree)
@@ -456,10 +472,7 @@ interface ChatUIState {
     sessionId: string,
     toolCallId: string
   ) => boolean
-  consumeStreamingReplayUserInput: (
-    sessionId: string,
-    text: string
-  ) => boolean
+  consumeStreamingReplayUserInput: (sessionId: string, text: string) => boolean
   clearStreamingReplayContentBlocks: (sessionId: string) => void
 
   // Actions - Thinking content (session-based, for extended thinking)
@@ -756,6 +769,7 @@ export const useChatStore = create<ChatUIState>()(
       completedDurations: {},
       userInitiatedSessionIds: {},
       waitingForInputSessionIds: {},
+      parkedClaudeDialogs: {},
       sessionWorktreeMap: {},
       streamingContents: {},
       activeToolCalls: {},
@@ -1051,10 +1065,7 @@ export const useChatStore = create<ChatUIState>()(
                   },
                 }
               }
-              if (
-                status !== 'review' &&
-                sessionId in state.reviewingSessions
-              ) {
+              if (status !== 'review' && sessionId in state.reviewingSessions) {
                 const { [sessionId]: _, ...rest } = state.reviewingSessions
                 return { reviewingSessions: rest }
               }
@@ -1413,6 +1424,31 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       // Waiting for input state (session-based)
+      setParkedClaudeDialog: (sessionId, dialog) =>
+        set(
+          state => {
+            const current = state.parkedClaudeDialogs[sessionId]
+            if (dialog) {
+              if (
+                current?.toolUseId === dialog.toolUseId &&
+                current.kind === dialog.kind
+              )
+                return state
+              return {
+                parkedClaudeDialogs: {
+                  ...state.parkedClaudeDialogs,
+                  [sessionId]: dialog,
+                },
+              }
+            }
+            if (!current) return state
+            const { [sessionId]: _, ...rest } = state.parkedClaudeDialogs
+            return { parkedClaudeDialogs: rest }
+          },
+          undefined,
+          'setParkedClaudeDialog'
+        ),
+
       setWaitingForInput: (sessionId, isWaiting) =>
         set(
           state => {
@@ -3451,10 +3487,8 @@ export const useChatStore = create<ChatUIState>()(
             } = state.pendingCodexCommandApprovalRequests
             const { [sessionId]: _cpr, ...pendingCodexPermissionRequests } =
               state.pendingCodexPermissionRequests
-            const {
-              [sessionId]: _opr,
-              ...pendingOpencodePermissionRequests
-            } = state.pendingOpencodePermissionRequests
+            const { [sessionId]: _opr, ...pendingOpencodePermissionRequests } =
+              state.pendingOpencodePermissionRequests
             const { [sessionId]: _cui, ...pendingCodexUserInputRequests } =
               state.pendingCodexUserInputRequests
             const {

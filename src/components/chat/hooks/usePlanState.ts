@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { isPlanToolCall } from '@/types/chat'
-import type { ToolCall, ChatMessage, ContentBlock } from '@/types/chat'
+import type { Backend, ToolCall, ChatMessage, ContentBlock } from '@/types/chat'
+import { isPlanAnsweredInTurn } from '../claude-dialog-events'
 import { findPlanFilePath, resolvePlanContent } from '../tool-call-utils'
 
 interface UsePlanStateParams {
@@ -9,6 +10,8 @@ interface UsePlanStateParams {
   currentStreamingContent: string
   currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
+  /** Backend of the session: a Claude plan answered in its own turn no longer waits (#136). */
+  sessionBackend?: Backend | null
 }
 
 /**
@@ -20,6 +23,7 @@ export function usePlanState({
   currentStreamingContent,
   currentStreamingContentBlocks,
   isSending,
+  sessionBackend,
 }: UsePlanStateParams) {
   // Returns the message that has an unapproved plan awaiting action, if any
   const pendingPlanMessage = useMemo(() => {
@@ -31,6 +35,13 @@ export function usePlanState({
         m.role === 'assistant' &&
         m.tool_calls?.some(tc => isPlanToolCall(tc))
       ) {
+        if (
+          m.tool_calls.some(
+            tc => isPlanToolCall(tc) && isPlanAnsweredInTurn(tc, sessionBackend)
+          )
+        ) {
+          break
+        }
         let hasFollowUp = false
         for (let j = i + 1; j < messages.length; j++) {
           if (messages[j]?.role === 'user') {
@@ -45,7 +56,7 @@ export function usePlanState({
       }
     }
     return null
-  }, [sessionMessages])
+  }, [sessionMessages, sessionBackend])
 
   const hasPendingPlanApproval = useMemo(
     () => !!pendingPlanMessage && !isSending,

@@ -11,6 +11,14 @@
 //! closed by the detached `cat input | claude >> output` spawn. The dedicated
 //! `jean-dialog` MCP server (see [`crate::chat::jean_mcp`]) parks a call here
 //! until the UI resolves it through `answer_claude_dialog`.
+//!
+//! The run stays alive while a dialog is parked (#136): the answer is the tool
+//! result of the same call. A plan approval with a mode returns `setMode
+//! acceptEdits` and moves the registry's turn mode to build/yolo, so the run
+//! leaves plan mode in the same turn. A new message instead of an answer skips
+//! the dialog ([`skip_session`]); the model ends its turn and the message runs
+//! next. Only a run without the harness, or one that ended (app restart), falls
+//! back to the answer as a new message.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -41,14 +49,19 @@ pub enum DialogOutcome {
         /// Freeform text the user typed instead of picking an option.
         response: Option<String>,
     },
-    /// Plan approved (`ExitPlanMode` / `EnterPlanMode`).
+    /// Permission granted with the tool's input unchanged.
     Approved,
+    /// Plan approved in its own turn (`ExitPlanMode`): the run leaves plan
+    /// mode and goes on in `mode` (`build` or `yolo`).
+    PlanApproved { mode: String },
     /// User declined, or the turn was cancelled out from under the dialog.
     Denied { message: String },
 }
 
 struct PendingDialog {
     session_id: String,
+    /// `question` or `plan`.
+    kind: String,
     responder: oneshot::Sender<DialogOutcome>,
 }
 
@@ -74,6 +87,7 @@ pub async fn park(
             tool_use_id.to_string(),
             PendingDialog {
                 session_id: session_id.to_string(),
+                kind: kind.to_string(),
                 responder: tx,
             },
         ) {
@@ -199,6 +213,33 @@ pub fn cancel_session(session_id: &str) -> usize {
     count
 }
 
+/// Deny every dialog parked for a session because the user sent a new message
+/// instead of answering (#141). The model is told to end its turn, so the run
+/// finishes and the new message can start the next one.
+pub fn skip_session(session_id: &str) -> usize {
+    resolve_session(
+        session_id,
+        DialogOutcome::Denied {
+            message: SKIPPED_BY_NEW_MESSAGE.to_string(),
+        },
+    )
+}
+
+/// Tool result for a dialog the user skipped by sending a new message.
+pub const SKIPPED_BY_NEW_MESSAGE: &str = "The user skipped this and sent a new message \
+instead. Do not continue the task in this turn: end your turn now with one short sentence \
+and call no more tools. The new message follows in the next turn.";
+
+/// Kind (`question` / `plan`) of the first dialog parked for a session, if any.
+pub fn parked_kind_for_session(session_id: &str) -> Option<String> {
+    PENDING
+        .lock()
+        .unwrap()
+        .values()
+        .find(|p| p.session_id == session_id)
+        .map(|p| p.kind.clone())
+}
+
 /// Whether a dialog is currently parked for `tool_use_id`.
 pub fn is_parked(tool_use_id: &str) -> bool {
     PENDING.lock().unwrap().contains_key(tool_use_id)
@@ -224,6 +265,19 @@ pub fn permission_payload(outcome: &DialogOutcome, original_input: &Value) -> Va
         DialogOutcome::Approved => {
             json!({ "behavior": "allow", "updatedInput": original_input })
         }
+        // Leave plan mode in the same turn. `acceptEdits` for build and yolo
+        // alike: the CLI refuses `bypassPermissions` for a run that did not
+        // start with it, and Jean's own permission verdict (the registry's turn
+        // mode, see `claude_dialog_tool`) approves the rest in yolo.
+        DialogOutcome::PlanApproved { .. } => json!({
+            "behavior": "allow",
+            "updatedInput": original_input,
+            "updatedPermissions": [{
+                "type": "setMode",
+                "mode": "acceptEdits",
+                "destination": "session",
+            }],
+        }),
         DialogOutcome::Denied { message } => {
             json!({ "behavior": "deny", "message": message })
         }
@@ -282,6 +336,42 @@ mod tests {
         assert_eq!(payload["updatedInput"]["plan"], "# Plan\n- do the thing");
     }
 
+    /// An approved plan leaves plan mode in the same turn (#136).
+    #[test]
+    fn plan_approval_switches_the_run_out_of_plan_mode() {
+        let input = json!({"plan": "# Plan", "planFilePath": "/tmp/plans/p.md"});
+        let payload = permission_payload(
+            &DialogOutcome::PlanApproved {
+                mode: "yolo".to_string(),
+            },
+            &input,
+        );
+        assert_eq!(payload["behavior"], "allow");
+        assert_eq!(payload["updatedInput"], input);
+        assert_eq!(payload["updatedPermissions"][0]["type"], "setMode");
+        assert_eq!(payload["updatedPermissions"][0]["mode"], "acceptEdits");
+        assert_eq!(payload["updatedPermissions"][0]["destination"], "session");
+    }
+
+    /// A new message instead of an answer skips the parked dialog (#141) and
+    /// tells the model to end the turn, so the new message can run next.
+    #[tokio::test]
+    async fn skip_session_denies_with_the_end_turn_message() {
+        let rx = park_for_test("toolu_skip_by_message", "skip-by-message-session");
+        assert_eq!(
+            parked_kind_for_session("skip-by-message-session").as_deref(),
+            Some("question")
+        );
+
+        assert_eq!(skip_session("skip-by-message-session"), 1);
+
+        match rx.await.unwrap() {
+            DialogOutcome::Denied { message } => assert_eq!(message, SKIPPED_BY_NEW_MESSAGE),
+            other => panic!("expected a denial, got {other:?}"),
+        }
+        assert!(parked_kind_for_session("skip-by-message-session").is_none());
+    }
+
     #[test]
     fn denial_carries_the_message_and_no_input() {
         let payload = permission_payload(
@@ -315,6 +405,7 @@ mod tests {
                 "toolu_cancel_a".to_string(),
                 PendingDialog {
                     session_id: "cancel-session-a".to_string(),
+                    kind: "question".to_string(),
                     responder: tx_a,
                 },
             );
@@ -322,6 +413,7 @@ mod tests {
                 "toolu_cancel_b".to_string(),
                 PendingDialog {
                     session_id: "cancel-session-b".to_string(),
+                    kind: "question".to_string(),
                     responder: tx_b,
                 },
             );
@@ -344,6 +436,7 @@ mod tests {
             tool_use_id.to_string(),
             PendingDialog {
                 session_id: session_id.to_string(),
+                kind: "question".to_string(),
                 responder: tx,
             },
         );

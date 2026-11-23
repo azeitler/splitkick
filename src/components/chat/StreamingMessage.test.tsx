@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
+import { useChatStore } from '@/store/chat-store'
 import { StreamingMessage } from './StreamingMessage'
 import type { QuestionAnswer, Question } from '@/types/chat'
 
@@ -22,6 +24,61 @@ describe('StreamingMessage', () => {
     getSubmittedAnswers: vi.fn(() => undefined),
     areQuestionsSkipped: vi.fn(() => false),
   }
+
+  describe('a Claude plan parked in a live run (#136)', () => {
+    const planToolCalls = [
+      // An answered question earlier in the same turn must not hide the plan.
+      {
+        id: 'toolu_q',
+        name: 'AskUserQuestion',
+        input: { questions: [] },
+        output: 'The user answered: "Which color?"="Teal".',
+      },
+      {
+        id: 'toolu_plan',
+        name: 'ExitPlanMode',
+        input: { plan: '# Plan\n- Add the file' },
+      },
+    ]
+
+    afterEach(() => {
+      useChatStore.getState().setParkedClaudeDialog('session-1', null)
+    })
+
+    it('offers approval in the streaming message and approves in-turn', async () => {
+      useChatStore.getState().setParkedClaudeDialog('session-1', {
+        toolUseId: 'toolu_plan',
+        kind: 'plan',
+      })
+      const onParkedPlanApproval = vi.fn()
+      render(
+        <StreamingMessage
+          {...baseProps}
+          contentBlocks={[{ type: 'tool_use', tool_call_id: 'toolu_plan' }]}
+          toolCalls={planToolCalls}
+          onParkedPlanApproval={onParkedPlanApproval}
+        />
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      expect(onParkedPlanApproval).toHaveBeenCalledWith('build')
+    })
+
+    it('shows no approval when the run is not parked on the plan', () => {
+      render(
+        <StreamingMessage
+          {...baseProps}
+          contentBlocks={[{ type: 'tool_use', tool_call_id: 'toolu_plan' }]}
+          toolCalls={planToolCalls}
+          onParkedPlanApproval={vi.fn()}
+        />
+      )
+
+      expect(
+        screen.queryByRole('button', { name: 'Approve' })
+      ).not.toBeInTheDocument()
+    })
+  })
 
   it('renders no text before the first streaming chunk arrives', () => {
     render(<StreamingMessage {...baseProps} />)
