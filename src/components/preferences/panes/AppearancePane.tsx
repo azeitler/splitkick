@@ -32,6 +32,7 @@ import {
 } from '@/types/preferences'
 import { getModifierSymbol, isClientMacOS } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
+import { isNativeApp } from '@/lib/environment'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { isValidHex } from '@/lib/terminal-theme'
@@ -594,6 +595,28 @@ export const AppearancePane: React.FC = () => {
           </ScalingField>
         </div>
       </SettingsSection>
+
+      {/* Desktop app only: web access and phones always show the tab strip. */}
+      {isNativeApp() && (
+        <SettingsSection
+          title="Layout"
+          anchorId="pref-appearance-section-layout"
+        >
+          <InlineField
+            label="Vertical navigation"
+            description="Home, the sidebar tabs, Scheduled and Archived in a nav left of the sidebar. Off: the sidebar with a tab strip"
+          >
+            <Switch
+              aria-label="Vertical navigation"
+              data-testid="pref-vertical-navigation"
+              checked={preferences?.vertical_navigation ?? true}
+              onCheckedChange={checked => {
+                patchPreferences.mutate({ vertical_navigation: checked })
+              }}
+            />
+          </InlineField>
+        </SettingsSection>
+      )}
     </div>
   )
 }

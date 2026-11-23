@@ -41,8 +41,8 @@ function Stat({
 }
 
 /**
- * The footer next to the compact sidebar footer on Home (vertical navigation,
- * experimental). Same design as the sidebar footer; empty left, stats right.
+ * The footer next to the compact sidebar footer on Home (vertical
+ * navigation). Same design as the sidebar footer; empty left, stats right.
  */
 export function HomeFooter() {
   const running = useChatStore(state => countTrue(state.sendingSessionIds))

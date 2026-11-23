@@ -1258,7 +1258,8 @@ export interface AppPreferences {
   git_sync_button?: boolean
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   debug_mode_enabled: boolean // Show debug panel in chat sessions
-  /** Experimental: the sidebar as a vertical navigation. Native desktop only (default false) */
+  /** The sidebar as a vertical navigation. Native desktop only (default true;
+   *  false = the sidebar with the tab strip) */
   vertical_navigation?: boolean
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   known_mcp_servers: string[] // All MCP server names ever seen (prevents re-enabling user-disabled servers)
@@ -2513,7 +2514,7 @@ export const defaultPreferences: AppPreferences = {
   git_sync_button: false, // Default: separate pull/push badges
   auto_archive_on_pr_merged: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
-  vertical_navigation: false, // Default: today's sidebar with the tab strip
+  vertical_navigation: true, // Default: the vertical navigation
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   known_mcp_servers: [], // Default: no known servers
   has_seen_feature_tour: false, // Default: not seen

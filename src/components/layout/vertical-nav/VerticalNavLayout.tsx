@@ -43,8 +43,8 @@ interface VerticalNavLayoutProps {
 }
 
 /**
- * The desktop layout with the vertical navigation (experimental, Settings →
- * Experimental). Draft and spec: docs/mockups/vertical-nav/.
+ * The desktop layout with the vertical navigation (default on, Settings →
+ * Appearance → Layout). Draft and spec: docs/mockups/vertical-nav/.
  *
  * - Other tabs: one sidebar column (an empty title strip for the window
  *   controls, nav + panel, today's footer), the main column with the sidebar

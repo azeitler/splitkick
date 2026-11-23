@@ -352,11 +352,11 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
-  // Experimental vertical navigation: native desktop only. Web access and
-  // phones keep today's layout with the setting on.
+  // Vertical navigation (default on, Settings → Appearance): native desktop
+  // only. Web access and phones keep the sidebar with the tab strip.
   const { data: preferences } = usePreferences()
   const verticalNav =
-    isNativeApp() && !isMobile && (preferences?.vertical_navigation ?? false)
+    isNativeApp() && !isMobile && (preferences?.vertical_navigation ?? true)
   useVisualViewportShell(!isNativeApp())
   const zenMode = useUIStore(state => state.zenMode)
   // A phone has no title bar: each screen carries its own heading (the tab's

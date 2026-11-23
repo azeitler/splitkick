@@ -309,9 +309,10 @@ pub struct AppPreferences {
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
-    /// Experimental: the sidebar as a vertical navigation (Home and the tabs
-    /// in a nav left of the panel). Native desktop only. Default: off.
-    #[serde(default)]
+    /// The sidebar as a vertical navigation (Home, the tabs, Scheduled and
+    /// Archived in a nav left of the panel). Native desktop only. Default: on;
+    /// off is the sidebar with the tab strip.
+    #[serde(default = "default_vertical_navigation")]
     pub vertical_navigation: bool,
     #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
@@ -1581,6 +1582,10 @@ fn default_auto_save_context() -> bool {
 
 fn default_auto_pull_base_branch() -> bool {
     true // Enabled by default
+}
+
+fn default_vertical_navigation() -> bool {
+    true
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
@@ -3010,7 +3015,7 @@ impl Default for AppPreferences {
             git_sync_button: false,
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             debug_mode_enabled: false,
-            vertical_navigation: false,
+            vertical_navigation: default_vertical_navigation(),
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             known_mcp_servers: Vec::new(),
@@ -3343,7 +3348,7 @@ pub struct UIState {
     #[serde(default)]
     pub project_rail_hidden: bool,
 
-    /// Whether the vertical navigation (experimental) shows icons only.
+    /// Whether the vertical navigation shows icons only.
     /// Defaults to expanded.
     #[serde(default)]
     pub vertical_nav_collapsed: bool,
@@ -5161,12 +5166,13 @@ mod starred_sessions_tests {
     }
 
     #[test]
-    fn the_vertical_navigation_preference_defaults_off_and_is_client_only() {
-        // A preferences file written before the setting existed loads it off.
+    fn the_vertical_navigation_preference_defaults_on_and_is_client_only() {
+        // A preferences file written before the setting existed loads it on.
         let mut value = serde_json::to_value(crate::AppPreferences::default()).unwrap();
         value.as_object_mut().unwrap().remove("vertical_navigation");
         let old: crate::AppPreferences = serde_json::from_value(value).unwrap();
-        assert!(!old.vertical_navigation);
+        assert!(old.vertical_navigation);
+        assert!(crate::AppPreferences::default().vertical_navigation);
         assert!(crate::CLIENT_ONLY_PREFERENCE_KEYS.contains(&"vertical_navigation"));
     }
 

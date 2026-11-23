@@ -158,7 +158,7 @@ export interface UIState {
   projects_section_collapsed?: boolean
   /** Whether the project canvas hides its Home rail */
   project_rail_hidden?: boolean
-  /** Whether the vertical navigation (experimental) shows icons only */
+  /** Whether the vertical navigation shows icons only */
   vertical_nav_collapsed?: boolean
   /** The phone layout's selected bottom tab; absent means Home */
   mobile_active_tab?: MobileTab | null

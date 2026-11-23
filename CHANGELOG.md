@@ -9,12 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **Vertical navigation (experimental).** Settings → Experimental → "Vertical
-  navigation" shows Home and the sidebar tabs in a nav left of the sidebar,
-  with counts on Starred, Agents, To-Do and Graphs, and a Collapse item for
-  icons only. The sidebar toggle moves in front of back/forward; Home shows no
-  sidebar panel and a footer with session stats. Desktop app only; off by
-  default.
+- **Vertical navigation.** The desktop app shows Home and the sidebar tabs
+  in a nav left of the sidebar, with counts on Starred, Agents, To-Do and
+  Graphs, and a Collapse item for icons only. The sidebar toggle moves in
+  front of back/forward; Home shows no sidebar panel and a footer with session
+  stats. On by default; Settings → Appearance → Layout turns it off for the
+  sidebar with the tab strip. Web access and phones keep the tab strip.
 - **Scheduled and Archived in the vertical navigation.** With the vertical
   navigation on, Scheduled (count: active schedules) and Archived (count:
   archived items) are nav items below Graphs, not rows in the Projects

@@ -175,7 +175,7 @@ interface VerticalNavProps {
 }
 
 /**
- * The vertical navigation (experimental): Home, then the sidebar tabs, the
+ * The vertical navigation: Home, then the sidebar tabs, the
  * Scheduled and Archived pages, and a Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
  * and count badges; expanded shows the counts at the end of the row.
  */

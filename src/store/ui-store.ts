@@ -294,7 +294,7 @@ interface UIState {
   /** The desktop sidebar's tab below Home: the project tree or recent
    *  sessions. Persisted. */
   sidebarTab: SidebarTab
-  /** Whether the vertical navigation (experimental) shows icons only.
+  /** Whether the vertical navigation shows icons only.
    *  Persisted. */
   verticalNavCollapsed: boolean
   /** The Archived page's sort. Persisted. */

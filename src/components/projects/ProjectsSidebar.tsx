@@ -40,7 +40,7 @@ const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
 
 interface ProjectsSidebarProps {
   /** Leave out the Home row, the tab strip and the Scheduled and Archived
-   *  rows: the vertical navigation (experimental) shows them. */
+   *  rows: the vertical navigation shows them. */
   hideNav?: boolean
 }
 

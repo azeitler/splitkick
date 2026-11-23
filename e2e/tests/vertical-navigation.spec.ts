@@ -9,7 +9,7 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * Vertical navigation (Settings → Experimental). Off: today's sidebar with
+ * Vertical navigation (default on, Settings → Appearance). Off: the sidebar with
  * the tab strip. On (desktop app only): Home and the tabs in a nav left of
  * the panel, the sidebar toggle in the main toolbar, and on Home no panel and
  * two footers. Sample data only.
