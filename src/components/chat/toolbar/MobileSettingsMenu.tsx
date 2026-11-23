@@ -958,7 +958,7 @@ export function MobileSettingsMenu({
                 ) : (
                   <ListTodo className="h-4 w-4" />
                 )}
-                {todoAt ? 'Clear To-Do' : 'Mark as To-Do'}
+                {todoAt ? 'Remove from To-Do' : 'Add to To-Do'}
               </DropdownMenuItem>
             </>
           )}

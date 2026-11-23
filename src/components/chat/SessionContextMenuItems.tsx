@@ -21,6 +21,8 @@ import {
   StarOff,
   Trash2,
   Workflow,
+  CircleCheck,
+  CircleDashed,
 } from 'lucide-react'
 import { useRef } from 'react'
 import { toast } from 'sonner'
@@ -115,6 +117,7 @@ export function SessionContextMenuItems({
 }: SessionContextMenuItemsProps) {
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
+  const isCompletedOverride = card.statusOverride === 'completed'
   const { forkInPlace, forkToWorktree } = useSessionFork()
   // Web Access works too when the target allows this origin (CORS).
   const canTransfer = useTransferTargets().length > 0
@@ -230,12 +233,35 @@ export function SessionContextMenuItems({
         {session.todo_at ? (
           <>
             <ListChecks className="mr-2 h-4 w-4" />
-            Clear To-Do
+            Remove from To-Do
           </>
         ) : (
           <>
             <ListTodo className="mr-2 h-4 w-4" />
-            Mark as To-Do
+            Add to To-Do
+          </>
+        )}
+      </ContextMenuItem>
+      <ContextMenuItem
+        // Quick toggle for the 'completed' override; Set Status has it too.
+        onSelect={() => {
+          useChatStore
+            .getState()
+            .setSessionStatusOverride(
+              session.id,
+              isCompletedOverride ? null : 'completed'
+            )
+        }}
+      >
+        {isCompletedOverride ? (
+          <>
+            <CircleDashed className="mr-2 h-4 w-4" />
+            Mark as Incomplete
+          </>
+        ) : (
+          <>
+            <CircleCheck className="mr-2 h-4 w-4" />
+            Mark as Complete
           </>
         )}
       </ContextMenuItem>

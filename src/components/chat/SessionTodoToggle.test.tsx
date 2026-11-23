@@ -35,7 +35,7 @@ describe('SessionTodoToggle', () => {
     const user = userEvent.setup()
     render(<SessionTodoToggle session={session()} worktreeId="w-1" />)
 
-    const button = screen.getByRole('button', { name: 'Mark as To-Do' })
+    const button = screen.getByRole('button', { name: 'Add to To-Do' })
     expect(button).toHaveAttribute('aria-pressed', 'false')
     await user.click(button)
 
@@ -44,10 +44,9 @@ describe('SessionTodoToggle', () => {
 
   it('is pressed on a marked session and offers to clear it', () => {
     render(<SessionTodoToggle session={session(42)} worktreeId="w-1" />)
-    expect(screen.getByRole('button', { name: 'Clear To-Do' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    expect(
+      screen.getByRole('button', { name: 'Remove from To-Do' })
+    ).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('shows the shortcut hint only in the native app', async () => {
@@ -63,7 +62,7 @@ describe('SessionTodoToggle', () => {
     render(<SessionTodoToggle session={session()} worktreeId="w-1" />)
     await user.hover(screen.getByTestId('session-todo-toggle'))
     const tooltip = (await screen.findAllByRole('tooltip'))[0]
-    expect(tooltip).toHaveTextContent('Mark as To-Do')
+    expect(tooltip).toHaveTextContent('Add to To-Do')
     expect(tooltip?.querySelector('kbd')).toBeNull()
   })
 })

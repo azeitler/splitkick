@@ -74,7 +74,7 @@ describe('SessionContextMenuItems — To-Do', () => {
     renderMenu()
     const user = await openMenu()
 
-    await user.click(await screen.findByText('Mark as To-Do'))
+    await user.click(await screen.findByText('Add to To-Do'))
 
     await waitFor(() =>
       expect(setSessionTodoMock).toHaveBeenCalledWith({
@@ -85,12 +85,12 @@ describe('SessionContextMenuItems — To-Do', () => {
     )
   })
 
-  it('offers Clear To-Do on a marked session', async () => {
+  it('offers Remove from To-Do on a marked session', async () => {
     renderMenu(1_700_000_000)
     const user = await openMenu()
 
-    expect(screen.queryByText('Mark as To-Do')).not.toBeInTheDocument()
-    await user.click(await screen.findByText('Clear To-Do'))
+    expect(screen.queryByText('Add to To-Do')).not.toBeInTheDocument()
+    await user.click(await screen.findByText('Remove from To-Do'))
 
     await waitFor(() =>
       expect(setSessionTodoMock).toHaveBeenCalledWith(

@@ -64,7 +64,7 @@ export function SessionStatusMenu({
             className="h-2 w-2"
           />
         </span>
-        Status
+        Set Status
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="w-52">
         <ContextMenuItem

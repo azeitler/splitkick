@@ -31,7 +31,7 @@ export function SessionTodoToggle({
           variant="ghost"
           size="sm"
           className={cn('h-7 px-2 text-xs', marked && 'bg-accent text-sky-500')}
-          aria-label={marked ? 'Clear To-Do' : 'Mark as To-Do'}
+          aria-label={marked ? 'Remove from To-Do' : 'Add to To-Do'}
           aria-pressed={marked}
           data-testid="session-todo-toggle"
           onClick={() => void toggleSessionTodo(session, worktreeId)}
@@ -40,7 +40,7 @@ export function SessionTodoToggle({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {marked ? 'Clear To-Do' : 'Mark as To-Do'}
+        {marked ? 'Remove from To-Do' : 'Add to To-Do'}
         <ShortcutHint action="toggle_session_todo" />
       </TooltipContent>
     </Tooltip>
