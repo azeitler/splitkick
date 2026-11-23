@@ -144,8 +144,30 @@ describe('AskUserQuestion', () => {
     expect(
       screen.queryByText('Answered (details unavailable)')
     ).not.toBeInTheDocument()
+    // Gray, not the green of an answer.
+    expect(screen.getByTestId('question-status-icon')).toHaveClass(
+      'text-muted-foreground'
+    )
+    expect(screen.getByTestId('question-status-icon')).not.toHaveClass(
+      'text-green-500'
+    )
     fireEvent.click(screen.getByText('Skipped'))
     expect(screen.getAllByText('Skipped.')).toHaveLength(questions.length)
+  })
+
+  it('keeps the green check for an answered question', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-answered-green"
+        questions={questions}
+        onSubmit={noopSubmit}
+        readOnly
+        submittedAnswers={[{ questionIndex: 0, selectedOptions: [0] }]}
+      />
+    )
+    expect(screen.getByTestId('question-status-icon')).toHaveClass(
+      'text-green-500'
+    )
   })
 
   it('shows persisted answer labels in the collapsed summary and expanded content', () => {

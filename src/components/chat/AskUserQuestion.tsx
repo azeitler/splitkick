@@ -282,20 +282,18 @@ export function AskUserQuestion({
   }, [readOnly])
 
   // Generate summary text for collapsed view
+  // A stored empty list is a skip: the Skip button, or a new message sent
+  // instead of an answer (supersedePendingQuestions). The follow-up message
+  // of that case must not turn it into "Answered". With no answer data at
+  // all (e.g. state lost after reload), a follow-up message means the user
+  // did respond.
+  const wasSkipped =
+    effectiveAnswers?.length === 0 ||
+    (!effectiveAnswers && (isSkipped || !hasFollowUpMessage))
+
   const getAnswerSummary = useCallback(() => {
-    // A stored empty list is a skip: the Skip button, or a new message sent
-    // instead of an answer (supersedePendingQuestions). The follow-up message
-    // of that case must not turn it into "Answered".
-    if (effectiveAnswers?.length === 0) return 'Skipped'
-    // No answer data available (e.g., Zustand state lost after reload)
-    if (!effectiveAnswers) {
-      // Explicit skip always shows "Skipped"
-      if (isSkipped) return 'Skipped'
-      // If a follow-up user message exists, the user DID respond — show "Answered"
-      // but details are unavailable.
-      if (hasFollowUpMessage) return 'Answered (details unavailable)'
-      return 'Skipped'
-    }
+    if (wasSkipped) return 'Skipped'
+    if (!effectiveAnswers) return 'Answered (details unavailable)'
 
     const summaryParts: string[] = []
     for (const answer of effectiveAnswers) {
@@ -319,7 +317,7 @@ export function AskUserQuestion({
     return summaryParts.length > 0
       ? summaryParts.join(' | ')
       : 'Answered (details unavailable)'
-  }, [effectiveAnswers, questions, isSkipped, hasFollowUpMessage])
+  }, [effectiveAnswers, questions, wasSkipped])
 
   // Render collapsed summary for answered questions
   // Note: Show collapsed view when readOnly=true even if effectiveAnswers is undefined
@@ -336,7 +334,13 @@ export function AskUserQuestion({
             {toolError ? (
               <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-500" />
             ) : (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+              <CheckCircle2
+                data-testid="question-status-icon"
+                className={cn(
+                  'h-4 w-4 shrink-0',
+                  wasSkipped ? 'text-muted-foreground' : 'text-green-500'
+                )}
+              />
             )}
             <span className="truncate font-medium">{getAnswerSummary()}</span>
             <ChevronRight
@@ -615,7 +619,7 @@ export function AskUserQuestion({
                       <div className="pt-1 text-sm text-muted-foreground italic">
                         {toolError
                           ? `The question failed: ${toolError}`
-                          : effectiveAnswers?.length === 0 || isSkipped
+                          : wasSkipped
                             ? 'Skipped.'
                             : 'Answer details unavailable.'}
                       </div>

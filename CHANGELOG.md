@@ -37,7 +37,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   connection".
 - **A skipped question says "Skipped".** When you sent a new message instead
   of answering a question, the question card showed "Answered (details
-  unavailable)". It now shows "Skipped", and its details say so.
+  unavailable)". It now shows "Skipped", and its details say so. The check
+  icon of a skipped question is gray; green stays for real answers.
 - **"Check for Updates" answers in the app.** When a manual check finds no
   update, is busy or fails, the answer now shows in an in-app dialog in the
   app's own style, not in a native macOS dialog.
