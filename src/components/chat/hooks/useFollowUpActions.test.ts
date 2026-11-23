@@ -42,7 +42,7 @@ describe('useFollowUpActions', () => {
     editMock.mockClear()
     appended = []
     useChatStore.setState({ inputDrafts: {} })
-    useUIStore.setState({ followUpsOpen: true })
+    useUIStore.setState({ followUpsOpenSessionIds: new Set(['s1', 's2']) })
     window.addEventListener('append-chat-input', onAppend)
     return () => window.removeEventListener('append-chat-input', onAppend)
   })
@@ -56,7 +56,9 @@ describe('useFollowUpActions', () => {
       id: 'f1',
       done: true,
     })
-    expect(useUIStore.getState().followUpsOpen).toBe(false)
+    expect(useUIStore.getState().followUpsOpenSessionIds.has('s1')).toBe(false)
+    // Another session keeps its own open panel.
+    expect(useUIStore.getState().followUpsOpenSessionIds.has('s2')).toBe(true)
   })
 
   it('Use adds the text on a new line below an existing draft', () => {

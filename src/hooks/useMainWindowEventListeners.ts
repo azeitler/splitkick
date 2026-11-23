@@ -546,7 +546,17 @@ function executeKeybindingAction(
       break
     case 'add_follow_up':
       logger.debug('Keybinding: add_follow_up')
-      useUIStore.getState().setFollowUpsOpen(true)
+      {
+        const uiState = useUIStore.getState()
+        const chatState = useChatStore.getState()
+        const worktreeId = uiState.sessionChatModalOpen
+          ? (uiState.sessionChatModalWorktreeId ?? chatState.activeWorktreeId)
+          : chatState.activeWorktreeId
+        const sessionId = worktreeId
+          ? chatState.activeSessionIds[worktreeId]
+          : undefined
+        if (sessionId) uiState.setFollowUpsOpen(sessionId, true)
+      }
       // The panel focuses its input on mount; this covers an already open one.
       window.dispatchEvent(new CustomEvent('focus-follow-up-input'))
       break

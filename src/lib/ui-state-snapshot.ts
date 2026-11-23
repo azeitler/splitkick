@@ -143,6 +143,7 @@ export function getCurrentUIState(): UIState {
     fileBrowserVisible,
     contextPanelTab,
     zenMode,
+    followUpsOpenSessionIds,
     sessionTerminalIds,
     sessionPrimarySurface,
     seenFailedWorkflowRunIds,
@@ -203,6 +204,7 @@ export function getCurrentUIState(): UIState {
 
   return {
     ...view,
+    follow_ups_open_session_ids: Array.from(followUpsOpenSessionIds),
     expanded_project_ids: Array.from(expandedProjectIds),
     expanded_folder_ids: Array.from(expandedFolderIds),
     expanded_worktree_ids: Array.from(expandedWorktreeIds),

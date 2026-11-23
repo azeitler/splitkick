@@ -3166,6 +3166,10 @@ pub struct UIState {
     #[serde(default)]
     pub zen_mode: Option<bool>,
 
+    /// Sessions whose follow-ups panel is open (per session)
+    #[serde(default)]
+    pub follow_ups_open_session_ids: Vec<String>,
+
     /// Active session ID per worktree (for restoring open tabs)
     #[serde(default)]
     pub active_session_ids: std::collections::HashMap<String, String>,
@@ -3487,6 +3491,7 @@ impl Default for UIState {
             file_browser_visible: None,
             context_panel_tab: None,
             zen_mode: None,
+            follow_ups_open_session_ids: Vec::new(),
             active_session_ids: std::collections::HashMap::new(),
             input_drafts: std::collections::HashMap::new(),
             session_errors: std::collections::HashMap::new(),

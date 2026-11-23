@@ -278,7 +278,8 @@ interface UIState {
   newGraphDialogOpen: boolean
   /** Whether the follow-up list (#46) is open next to the send button.
    *  Not persisted. */
-  followUpsOpen: boolean
+  /** Sessions whose follow-ups panel is open; saved in UI state */
+  followUpsOpenSessionIds: Set<string>
   /** Project whose canvas must show its own home page once, not the last
    *  session. Set by a sidebar project-row click; the canvas consumes it, even
    *  when it mounts later. */
@@ -441,7 +442,7 @@ interface UIState {
   setStartRoleSessionTarget: (target: StartRoleSessionTarget | null) => void
   setAgentDialog: (target: AgentDialogTarget | null) => void
   setNewGraphDialogOpen: (open: boolean) => void
-  setFollowUpsOpen: (open: boolean) => void
+  setFollowUpsOpen: (sessionId: string, open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
   requestProjectHome: (projectId: string) => void
   clearProjectHomeRequest: (projectId: string) => void
@@ -584,7 +585,7 @@ export const useUIStore = create<UIState>()(
       startRoleSessionTarget: null,
       agentDialog: null,
       newGraphDialogOpen: false,
-      followUpsOpen: false,
+      followUpsOpenSessionIds: new Set<string>(),
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
@@ -1347,10 +1348,17 @@ export const useUIStore = create<UIState>()(
           'setNewGraphDialogOpen'
         ),
 
-      setFollowUpsOpen: open =>
+      setFollowUpsOpen: (sessionId, open) =>
         set(
-          state =>
-            state.followUpsOpen === open ? state : { followUpsOpen: open },
+          state => {
+            if (state.followUpsOpenSessionIds.has(sessionId) === open) {
+              return state
+            }
+            const next = new Set(state.followUpsOpenSessionIds)
+            if (open) next.add(sessionId)
+            else next.delete(sessionId)
+            return { followUpsOpenSessionIds: next }
+          },
           undefined,
           'setFollowUpsOpen'
         ),

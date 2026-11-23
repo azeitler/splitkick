@@ -2894,7 +2894,10 @@ export function ChatWindow({
     worktreePath: activeWorktreePath ?? null,
     sendTextMessage,
   })
-  const followUpsOpen = useUIStore(state => state.followUpsOpen)
+  // Per session (saved in UI state): another session keeps its own state.
+  const followUpsOpen = useUIStore(state =>
+    activeSessionId ? state.followUpsOpenSessionIds.has(activeSessionId) : false
+  )
   const followUps =
     (session?.id === activeSessionId ? session?.follow_ups : undefined) ??
     EMPTY_FOLLOW_UPS
@@ -2906,10 +2909,21 @@ export function ChatWindow({
   const artifactCount =
     session?.id === activeSessionId ? (session?.artifacts?.length ?? 0) : 0
   const handleToggleFollowUps = useCallback(() => {
-    const { followUpsOpen, setFollowUpsOpen } = useUIStore.getState()
-    setFollowUpsOpen(!followUpsOpen)
-  }, [])
-  const setFollowUpsOpen = useUIStore(state => state.setFollowUpsOpen)
+    if (!activeSessionId) return
+    const { followUpsOpenSessionIds, setFollowUpsOpen } = useUIStore.getState()
+    setFollowUpsOpen(
+      activeSessionId,
+      !followUpsOpenSessionIds.has(activeSessionId)
+    )
+  }, [activeSessionId])
+  const setFollowUpsOpen = useCallback(
+    (open: boolean) => {
+      if (activeSessionId) {
+        useUIStore.getState().setFollowUpsOpen(activeSessionId, open)
+      }
+    },
+    [activeSessionId]
+  )
   // "Add to follow-ups" from the message context menu
   useEffect(() => {
     const handler = (event: Event) => {

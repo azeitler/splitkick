@@ -267,3 +267,21 @@ describe('transfer session target', () => {
     expect(useUIStore.getState().transferSessionTarget).toBeNull()
   })
 })
+
+describe('follow-ups panel per session', () => {
+  it('keeps the open state per session and skips no-op updates', () => {
+    useUIStore.setState({ followUpsOpenSessionIds: new Set() })
+    const { setFollowUpsOpen } = useUIStore.getState()
+
+    setFollowUpsOpen('a', true)
+    expect(useUIStore.getState().followUpsOpenSessionIds.has('a')).toBe(true)
+    expect(useUIStore.getState().followUpsOpenSessionIds.has('b')).toBe(false)
+
+    const before = useUIStore.getState().followUpsOpenSessionIds
+    setFollowUpsOpen('a', true)
+    expect(useUIStore.getState().followUpsOpenSessionIds).toBe(before)
+
+    setFollowUpsOpen('a', false)
+    expect(useUIStore.getState().followUpsOpenSessionIds.has('a')).toBe(false)
+  })
+})

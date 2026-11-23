@@ -26,6 +26,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   remote with a token has a lock icon; a remote without one has an open lock
   in amber, so an unprotected connection stands out. A tooltip on the lock
   explains it and how to turn on the token.
+- **The follow-ups panel remembers its state per session.** Opening it in one
+  session no longer opens it in every other session, and each session's open
+  state is kept across restarts.
 - **The session menu is grouped.** Right-click a session: Rename and Labels;
   then Star, Pin, Add to To-Do, Mark as Complete, Set Status and Mark as
   Paused; then Move Up/Down, Move to, Fork and

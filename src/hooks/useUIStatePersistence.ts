@@ -324,6 +324,13 @@ export function useUIStatePersistence() {
       useUIStore.getState().setZenMode(uiState.zen_mode)
     }
 
+    const followUpsOpenSessionIds = uiState.follow_ups_open_session_ids ?? []
+    if (followUpsOpenSessionIds.length > 0) {
+      useUIStore.setState({
+        followUpsOpenSessionIds: new Set(followUpsOpenSessionIds),
+      })
+    }
+
     // Restore active project first (selectProject clears selectedWorktreeId)
     // This must happen BEFORE restoring the active worktree
     if (uiState.active_project_id) {
@@ -1058,6 +1065,8 @@ export function useUIStatePersistence() {
     let prevFileBrowserVisible = useUIStore.getState().fileBrowserVisible
     let prevContextPanelTab = useUIStore.getState().contextPanelTab
     let prevZenMode = useUIStore.getState().zenMode
+    let prevFollowUpsOpenSessionIds =
+      useUIStore.getState().followUpsOpenSessionIds
     let prevMobileActiveTab = useUIStore.getState().mobileActiveTab
     let prevSidebarTab = useUIStore.getState().sidebarTab
     let prevVerticalNavCollapsed = useUIStore.getState().verticalNavCollapsed
@@ -1189,6 +1198,8 @@ export function useUIStatePersistence() {
       const contextPanelTabChanged =
         state.contextPanelTab !== prevContextPanelTab
       const zenModeChanged = state.zenMode !== prevZenMode
+      const followUpsOpenChanged =
+        state.followUpsOpenSessionIds !== prevFollowUpsOpenSessionIds
       const mobileActiveTabChanged =
         state.mobileActiveTab !== prevMobileActiveTab
       const sidebarTabChanged = state.sidebarTab !== prevSidebarTab
@@ -1209,6 +1220,7 @@ export function useUIStatePersistence() {
         fileBrowserVisibilityChanged ||
         contextPanelTabChanged ||
         zenModeChanged ||
+        followUpsOpenChanged ||
         mobileActiveTabChanged ||
         sidebarTabChanged ||
         verticalNavCollapsedChanged ||
@@ -1223,6 +1235,7 @@ export function useUIStatePersistence() {
         prevFileBrowserVisible = state.fileBrowserVisible
         prevContextPanelTab = state.contextPanelTab
         prevZenMode = state.zenMode
+        prevFollowUpsOpenSessionIds = state.followUpsOpenSessionIds
         prevMobileActiveTab = state.mobileActiveTab
         prevSidebarTab = state.sidebarTab
         prevVerticalNavCollapsed = state.verticalNavCollapsed

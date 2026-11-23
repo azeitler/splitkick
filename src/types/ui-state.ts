@@ -176,6 +176,8 @@ export interface UIState {
   context_panel_tab?: 'files' | 'network' | 'graph' | 'artifacts' | null
   /** Whether the session chat is using the reduced-chrome zen layout */
   zen_mode?: boolean
+  /** Sessions whose follow-ups panel is open (per session) */
+  follow_ups_open_session_ids?: string[]
   /** Active session ID per worktree (for restoring open tabs) */
   active_session_ids: Record<string, string>
   /** Unsent chat textarea content per session */
@@ -290,6 +292,7 @@ export const defaultUIState: UIState = {
   file_browser_visible: false,
   context_panel_tab: 'files',
   zen_mode: false,
+  follow_ups_open_session_ids: [],
   active_session_ids: {},
   input_drafts: {},
   pending_images: {},

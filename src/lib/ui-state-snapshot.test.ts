@@ -54,3 +54,14 @@ describe('getCurrentUIState view fields (#72)', () => {
     })
   })
 })
+
+describe('getCurrentUIState follow-ups panel', () => {
+  it('saves which sessions have the follow-ups panel open', () => {
+    env.native = true
+    useUIStore.setState({ followUpsOpenSessionIds: new Set(['s1', 's3']) })
+    expect(getCurrentUIState().follow_ups_open_session_ids).toEqual([
+      's1',
+      's3',
+    ])
+  })
+})

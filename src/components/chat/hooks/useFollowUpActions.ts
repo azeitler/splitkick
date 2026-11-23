@@ -27,7 +27,7 @@ export function useFollowUpActions({
       if (!sessionId) return
       const draft = useChatStore.getState().inputDrafts[sessionId] ?? ''
       const text = draft.trim() ? `\n${item.text}` : item.text
-      useUIStore.getState().setFollowUpsOpen(false)
+      useUIStore.getState().setFollowUpsOpen(sessionId, false)
       window.dispatchEvent(
         new CustomEvent('append-chat-input', { detail: { text } })
       )
