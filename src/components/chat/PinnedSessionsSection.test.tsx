@@ -177,8 +177,10 @@ describe('PinnedSessionsSection', () => {
       for (const item of [
         'Rename',
         'Labels',
-        'Status',
+        'Mark as Complete',
+        'Set Status',
         'Mark as Paused',
+        'Fork',
         'Archive Session',
         'Copy Session ID',
         'Delete Session',
