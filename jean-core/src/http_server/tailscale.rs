@@ -36,6 +36,9 @@ use crate::platform::{find_cli_in_host_path, silent_command};
 /// Generous: a cold app binary on a loaded machine can take seconds. The
 /// call runs on a blocking thread, so it does not hold up other commands.
 const CLI_TIMEOUT: Duration = Duration::from_secs(10);
+/// The limit up to 1.5.24. A call slower than this is logged as `slow`, so
+/// the log shows when the old limit would have failed.
+const OLD_CLI_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -270,6 +273,8 @@ struct CliRun {
 /// A CLI call that did not finish: could not start, or timed out.
 #[derive(Debug)]
 struct CliFailure {
+    /// Log label: `binary-missing`, `spawn-failed`, `timeout`, `wait-failed`.
+    cause: &'static str,
     error: String,
     elapsed: Duration,
 }
@@ -285,6 +290,11 @@ fn run_with_timeout(binary: &Path, args: &[&str], timeout: Duration) -> Result<C
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| CliFailure {
+            cause: if e.kind() == std::io::ErrorKind::NotFound {
+                "binary-missing"
+            } else {
+                "spawn-failed"
+            },
             error: format!("could not start the CLI: {e}"),
             elapsed: started.elapsed(),
         })?;
@@ -320,6 +330,7 @@ fn run_with_timeout(binary: &Path, args: &[&str], timeout: Duration) -> Result<C
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(CliFailure {
+                    cause: "timeout",
                     error: format!("timed out after {} s", timeout.as_secs_f32()),
                     elapsed: started.elapsed(),
                 });
@@ -328,6 +339,7 @@ fn run_with_timeout(binary: &Path, args: &[&str], timeout: Duration) -> Result<C
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(CliFailure {
+                    cause: "wait-failed",
                     error: format!("could not wait for the CLI: {e}"),
                     elapsed: started.elapsed(),
                 });
@@ -364,6 +376,40 @@ fn head(text: &str, max: usize) -> String {
         .replace('\n', "\\n")
 }
 
+/// Log context: the binary, whether a file with exactly that name is on
+/// disk (a wrong case resolves on a case-insensitive volume only), and
+/// whether the app has a terminal environment (the macOS binary picks GUI or
+/// CLI mode from it).
+fn log_context(binary: &Path) -> String {
+    let exact = binary
+        .parent()
+        .zip(binary.file_name())
+        .and_then(|(dir, name)| {
+            let entries = std::fs::read_dir(dir).ok()?;
+            Some(
+                entries
+                    .filter_map(Result::ok)
+                    .any(|e| e.file_name() == name),
+            )
+        })
+        .unwrap_or(false);
+    let term = std::env::var_os("TERM").is_some();
+    format!("binary={} exactName={exact} term={term}", binary.display())
+}
+
+/// Log label for output without a JSON object.
+fn not_json_cause(code: Option<i32>, stdout: &str, stderr: &str) -> &'static str {
+    if stdout.contains("GUI failed to start") || stderr.contains("GUI failed to start") {
+        "gui-mode"
+    } else if code != Some(0) {
+        "exit-code"
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        "no-output"
+    } else {
+        "not-json"
+    }
+}
+
 /// Blocking: query the local Tailscale CLI. Never fails.
 pub fn detect(port: u16) -> TailscaleInfo {
     detect_with(tailscale_binary(), port, CLI_TIMEOUT)
@@ -389,15 +435,20 @@ fn detect_with(binary: Option<PathBuf>, port: u16, timeout: Duration) -> Tailsca
                         None => stderr.to_string(),
                     });
                 }
+                let slow = run.elapsed > OLD_CLI_TIMEOUT;
                 if info.running {
-                    if let Some(warning) = &info.warning {
-                        log::info!("Tailscale CLI warning: {}", head(warning, 200));
-                    }
+                    log::info!(
+                        "Tailscale status ok: {} exit={:?} elapsed={:?} slow={slow} warning={:?}",
+                        log_context(&binary),
+                        run.code,
+                        run.elapsed,
+                        info.warning.as_deref().map(|w| head(w, 200)),
+                    );
                 } else {
                     log::warn!(
-                        "Tailscale not running: state={:?} binary={} exit={:?} elapsed={:?} stderr={:?} warning={:?}",
+                        "Tailscale not running: cause=backend-state state={:?} {} exit={:?} elapsed={:?} slow={slow} stderr={:?} warning={:?}",
                         info.state,
-                        binary.display(),
+                        log_context(&binary),
                         run.code,
                         run.elapsed,
                         head(&run.stderr, 200),
@@ -426,8 +477,9 @@ fn detect_with(binary: Option<PathBuf>, port: u16, timeout: Duration) -> Tailsca
                     }
                 };
                 log::warn!(
-                    "Tailscale status failed: {error}; binary={} exit={:?} elapsed={:?} stdout={:?} stderr={:?}",
-                    binary.display(),
+                    "Tailscale status failed: cause={} {} exit={:?} elapsed={:?} stdout={:?} stderr={:?} error={error:?}",
+                    not_json_cause(run.code, &run.stdout, &run.stderr),
+                    log_context(&binary),
                     run.code,
                     run.elapsed,
                     head(&run.stdout, 200),
@@ -442,10 +494,11 @@ fn detect_with(binary: Option<PathBuf>, port: u16, timeout: Duration) -> Tailsca
         },
         Err(failure) => {
             log::warn!(
-                "Tailscale status failed: {}; binary={} elapsed={:?}",
-                failure.error,
-                binary.display(),
+                "Tailscale status failed: cause={} {} elapsed={:?} error={:?}",
+                failure.cause,
+                log_context(&binary),
                 failure.elapsed,
+                failure.error,
             );
             return TailscaleInfo {
                 installed: true,
@@ -458,10 +511,11 @@ fn detect_with(binary: Option<PathBuf>, port: u16, timeout: Duration) -> Tailsca
         match run_with_timeout(&binary, &["serve", "status", "--json"], timeout) {
             Ok(run) => info.serves = parse_serve_status(&run.stdout, port),
             Err(failure) => log::warn!(
-                "Tailscale serve status failed: {}; binary={} elapsed={:?}",
-                failure.error,
-                binary.display(),
+                "Tailscale serve status failed: cause={} {} elapsed={:?} error={:?}",
+                failure.cause,
+                log_context(&binary),
                 failure.elapsed,
+                failure.error,
             ),
         }
     }
@@ -669,6 +723,30 @@ mod tests {
     }
 
     #[test]
+    fn not_json_causes() {
+        assert_eq!(
+            not_json_cause(Some(0), "The Tailscale GUI failed to start: x", ""),
+            "gui-mode"
+        );
+        assert_eq!(not_json_cause(Some(1), "", "no daemon"), "exit-code");
+        assert_eq!(not_json_cause(None, "", ""), "exit-code");
+        assert_eq!(not_json_cause(Some(0), " ", ""), "no-output");
+        assert_eq!(not_json_cause(Some(0), "hello", ""), "not-json");
+    }
+
+    #[test]
+    fn log_context_flags_a_wrong_case() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Tailscale"), "").unwrap();
+        let ok = log_context(&dir.path().join("Tailscale"));
+        assert!(ok.contains("exactName=true"), "{ok}");
+        // Old path: resolves on a case-insensitive volume, but the name on
+        // disk differs, so the log says so.
+        let lower = log_context(&dir.path().join("tailscale"));
+        assert!(lower.contains("exactName=false"), "{lower}");
+    }
+
+    #[test]
     fn no_binary_is_not_installed() {
         let info = detect_with(None, 3456, Duration::from_secs(1));
         assert!(!info.installed && !info.running);
@@ -760,12 +838,27 @@ JSON"#
         }
 
         #[test]
+        fn missing_binary_is_an_error() {
+            let dir = tempfile::tempdir().unwrap();
+            let info = detect_with(Some(dir.path().join("tailscale")), 3456, SECOND);
+            assert!(info.installed && !info.running);
+            assert!(info.error.unwrap().starts_with("could not start the CLI"));
+            let failure =
+                run_with_timeout(&dir.path().join("tailscale"), &["status"], SECOND).unwrap_err();
+            assert_eq!(failure.cause, "binary-missing");
+        }
+
+        #[test]
         fn timeout_is_an_error() {
             let started = Instant::now();
             let info = detect_fake("sleep 5", Duration::from_millis(300));
             assert!(started.elapsed() < Duration::from_secs(3));
             assert!(info.installed && !info.running);
             assert!(info.error.unwrap().starts_with("timed out"));
+            let (_dir, path) = fake("sleep 5");
+            let failure =
+                run_with_timeout(&path, &["status"], Duration::from_millis(200)).unwrap_err();
+            assert_eq!(failure.cause, "timeout");
         }
 
         #[test]
