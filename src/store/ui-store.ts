@@ -290,6 +290,9 @@ interface UIState {
   /** The desktop sidebar's tab below Home: the project tree or recent
    *  sessions. Persisted. */
   sidebarTab: SidebarTab
+  /** Whether the vertical navigation (experimental) shows icons only.
+   *  Persisted. */
+  verticalNavCollapsed: boolean
   /** The Archived page's sort. Persisted. */
   archivedSort: ArchivedSort
   /** Which list the phone's Home tab shows below Continue. Not persisted:
@@ -453,6 +456,7 @@ interface UIState {
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setMobileActiveTab: (tab: MobileTab) => void
   setSidebarTab: (tab: SidebarTab) => void
+  setVerticalNavCollapsed: (collapsed: boolean) => void
   setArchivedSort: (sort: ArchivedSort) => void
   setMobileHomeSegment: (segment: MobileHomeSegment) => void
   setMobileProjectSegment: (segment: MobileProjectSegment) => void
@@ -585,6 +589,7 @@ export const useUIStore = create<UIState>()(
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
       sidebarTab: 'projects',
+      verticalNavCollapsed: false,
       archivedSort: 'archived',
       mobileHomeSegment: 'sessions',
       mobileProjectSegment: 'worktrees',
@@ -1469,6 +1474,16 @@ export const useUIStore = create<UIState>()(
           state => (state.sidebarTab === tab ? state : { sidebarTab: tab }),
           undefined,
           'setSidebarTab'
+        ),
+
+      setVerticalNavCollapsed: (collapsed: boolean) =>
+        set(
+          state =>
+            state.verticalNavCollapsed === collapsed
+              ? state
+              : { verticalNavCollapsed: collapsed },
+          undefined,
+          'setVerticalNavCollapsed'
         ),
 
       setArchivedSort: (sort: ArchivedSort) =>

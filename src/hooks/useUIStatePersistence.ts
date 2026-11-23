@@ -255,6 +255,9 @@ export function useUIStatePersistence() {
     if (isSidebarTab(uiState.sidebar_tab)) {
       useUIStore.getState().setSidebarTab(uiState.sidebar_tab)
     }
+    if (uiState.vertical_nav_collapsed) {
+      useUIStore.getState().setVerticalNavCollapsed(true)
+    }
     if (isArchivedSort(uiState.archived_sort)) {
       useUIStore.getState().setArchivedSort(uiState.archived_sort)
     }
@@ -1057,6 +1060,7 @@ export function useUIStatePersistence() {
     let prevZenMode = useUIStore.getState().zenMode
     let prevMobileActiveTab = useUIStore.getState().mobileActiveTab
     let prevSidebarTab = useUIStore.getState().sidebarTab
+    let prevVerticalNavCollapsed = useUIStore.getState().verticalNavCollapsed
     let prevArchivedSort = useUIStore.getState().archivedSort
     let prevSessionTerminalIds = useUIStore.getState().sessionTerminalIds
     let prevSessionPrimarySurface = useUIStore.getState().sessionPrimarySurface
@@ -1188,6 +1192,8 @@ export function useUIStatePersistence() {
       const mobileActiveTabChanged =
         state.mobileActiveTab !== prevMobileActiveTab
       const sidebarTabChanged = state.sidebarTab !== prevSidebarTab
+      const verticalNavCollapsedChanged =
+        state.verticalNavCollapsed !== prevVerticalNavCollapsed
       const archivedSortChanged = state.archivedSort !== prevArchivedSort
       const sessionTerminalIdsChanged =
         state.sessionTerminalIds !== prevSessionTerminalIds
@@ -1205,6 +1211,7 @@ export function useUIStatePersistence() {
         zenModeChanged ||
         mobileActiveTabChanged ||
         sidebarTabChanged ||
+        verticalNavCollapsedChanged ||
         archivedSortChanged ||
         sessionTerminalIdsChanged ||
         sessionPrimarySurfaceChanged ||
@@ -1218,6 +1225,7 @@ export function useUIStatePersistence() {
         prevZenMode = state.zenMode
         prevMobileActiveTab = state.mobileActiveTab
         prevSidebarTab = state.sidebarTab
+        prevVerticalNavCollapsed = state.verticalNavCollapsed
         prevArchivedSort = state.archivedSort
         prevSessionTerminalIds = state.sessionTerminalIds
         prevSessionPrimarySurface = state.sessionPrimarySurface

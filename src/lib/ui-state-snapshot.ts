@@ -148,6 +148,7 @@ export function getCurrentUIState(): UIState {
     seenFailedWorkflowRunIds,
     mobileActiveTab,
     sidebarTab,
+    verticalNavCollapsed,
     archivedSort,
   } = useUIStore.getState()
   const {
@@ -221,6 +222,7 @@ export function getCurrentUIState(): UIState {
     projects_section_collapsed: projectsSectionCollapsed,
     project_rail_hidden: projectRailHidden,
     sidebar_tab: sidebarTab,
+    vertical_nav_collapsed: verticalNavCollapsed,
     archived_sort: archivedSort,
     left_sidebar_size: leftSidebarSize,
     left_sidebar_visible: leftSidebarVisible,

@@ -308,6 +308,10 @@ pub struct AppPreferences {
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
+    /// Experimental: the sidebar as a vertical navigation (Home and the tabs
+    /// in a nav left of the panel). Native desktop only. Default: off.
+    #[serde(default)]
+    pub vertical_navigation: bool,
     #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
@@ -3005,6 +3009,7 @@ impl Default for AppPreferences {
             git_sync_button: false,
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             debug_mode_enabled: false,
+            vertical_navigation: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             known_mcp_servers: Vec::new(),
@@ -3329,6 +3334,11 @@ pub struct UIState {
     #[serde(default)]
     pub project_rail_hidden: bool,
 
+    /// Whether the vertical navigation (experimental) shows icons only.
+    /// Defaults to expanded.
+    #[serde(default)]
+    pub vertical_nav_collapsed: bool,
+
     /// The phone layout's selected bottom tab (`home`, `starred`, `history`,
     /// `usage`).
     /// Absent means Home. Kept as a string so the frontend owns the set of tabs.
@@ -3518,6 +3528,7 @@ impl Default for UIState {
             graph_relations_shown: false,
             projects_section_collapsed: false,
             project_rail_hidden: false,
+            vertical_nav_collapsed: false,
             mobile_active_tab: None,
             sidebar_tab: None,
             archived_sort: None,
@@ -3793,6 +3804,7 @@ const CLIENT_ONLY_PREFERENCE_KEYS: &[&str] = &[
     "web_access_sounds_enabled",
     "desktop_notifications_enabled",
     "debug_mode_enabled",
+    "vertical_navigation",
     "has_seen_feature_tour",
     "has_seen_external_display_zoom_tip",
     "zoom_level",
@@ -5118,6 +5130,33 @@ mod starred_sessions_tests {
         // A state file written before the rail existed must load with it shown.
         let old: UIState = serde_json::from_str("{}").unwrap();
         assert!(!old.project_rail_hidden);
+    }
+
+    #[test]
+    fn the_vertical_nav_collapse_round_trips_and_defaults_to_expanded() {
+        let collapsed = UIState {
+            vertical_nav_collapsed: true,
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&collapsed).unwrap();
+        assert!(json.contains(r#""vertical_nav_collapsed":true"#));
+
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert!(parsed.vertical_nav_collapsed);
+
+        // A state file written before the nav existed loads expanded.
+        let old: UIState = serde_json::from_str("{}").unwrap();
+        assert!(!old.vertical_nav_collapsed);
+    }
+
+    #[test]
+    fn the_vertical_navigation_preference_defaults_off_and_is_client_only() {
+        // A preferences file written before the setting existed loads it off.
+        let mut value = serde_json::to_value(crate::AppPreferences::default()).unwrap();
+        value.as_object_mut().unwrap().remove("vertical_navigation");
+        let old: crate::AppPreferences = serde_json::from_value(value).unwrap();
+        assert!(!old.vertical_navigation);
+        assert!(crate::CLIENT_ONLY_PREFERENCE_KEYS.contains(&"vertical_navigation"));
     }
 
     #[test]

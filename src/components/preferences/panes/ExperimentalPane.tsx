@@ -48,6 +48,19 @@ export const ExperimentalPane: React.FC = () => {
               }}
             />
           </InlineField>
+          <InlineField
+            label="Vertical navigation"
+            description="Show Home and the sidebar tabs as a vertical navigation left of the sidebar. Desktop app only"
+          >
+            <Switch
+              aria-label="Vertical navigation"
+              data-testid="pref-vertical-navigation"
+              checked={preferences?.vertical_navigation ?? false}
+              onCheckedChange={checked => {
+                patchPreferences.mutate({ vertical_navigation: checked })
+              }}
+            />
+          </InlineField>
         </div>
       </SettingsSection>
 

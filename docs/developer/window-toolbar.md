@@ -49,3 +49,23 @@ return hasToolbar ? (
   subtitle hides.
 - React must not render children into a slot element: the slots stay empty
   for their portals (see the fallback title in `WindowToolbar`).
+
+## Vertical navigation (experimental)
+
+`vertical_navigation` (client-only preference, Settings → Experimental) swaps
+the desktop layout for `components/layout/vertical-nav/VerticalNavLayout.tsx`.
+Native desktop only: `MainWindow` gates it with `isNativeApp()` and
+`useIsMobile()`, so web access and phones keep today's layout. With the
+setting off, `MainWindow` renders the old JSX unchanged.
+
+- The layout reuses today's pieces through opt-in props, all off by default:
+  `ProjectsSidebar hideNav` (no Home row, no tab strip), `SidebarFooter
+  compact` (Home), `WindowToolbar trafficLightInset / sidebarToggle`.
+- Home (`useIsHomeRowActive`) shows no panel: the toolbar spans the window,
+  the nav sits below it, the footer row holds the compact sidebar footer and
+  `HomeFooter`. A tab picked on Home shows its panel next to Home (local
+  state, reset when Home closes).
+- The main content keeps one place in the tree in every state, so a switch
+  between Home and a tab does not remount chats, terminals or browser panes.
+- The collapsed nav is UI state (`vertical_nav_collapsed`).
+- Spec and clickable draft: `docs/mockups/vertical-nav/`.

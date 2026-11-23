@@ -19,7 +19,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { SIDEBAR_TABS, type SidebarTab } from '@/types/ui-state'
 
-const TAB_META: Record<SidebarTab, { label: string; icon: ReactNode }> = {
+export const TAB_META: Record<SidebarTab, { label: string; icon: ReactNode }> = {
   projects: { label: 'Projects', icon: <FolderTree /> },
   recent: { label: 'Recent', icon: <Clock /> },
   starred: { label: 'Starred', icon: <Star /> },
@@ -38,7 +38,7 @@ export const SIDEBAR_TABS_ICONS_ONLY_WIDTH = 200
  * Counts in the tab labels: starred and To-Do sessions, and graph requests
  * that wait for the user. Same caches the tab contents read, so no new query.
  */
-function useSidebarTabCounts(): Partial<Record<SidebarTab, number>> {
+export function useSidebarTabCounts(): Partial<Record<SidebarTab, number>> {
   const stars = useProjectsStore(state => state.starredSessions)
   const { data } = useAllSessions()
   const { data: graphs } = useGraphs()

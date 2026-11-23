@@ -156,6 +156,8 @@ export interface UIState {
   projects_section_collapsed?: boolean
   /** Whether the project canvas hides its Home rail */
   project_rail_hidden?: boolean
+  /** Whether the vertical navigation (experimental) shows icons only */
+  vertical_nav_collapsed?: boolean
   /** The phone layout's selected bottom tab; absent means Home */
   mobile_active_tab?: MobileTab | null
   /** The desktop sidebar's selected tab; absent means Projects */
@@ -278,6 +280,7 @@ export const defaultUIState: UIState = {
   folders_section_collapsed: false,
   projects_section_collapsed: false,
   project_rail_hidden: false,
+  vertical_nav_collapsed: false,
   mobile_active_tab: null,
   sidebar_tab: null,
   archived_sort: null,

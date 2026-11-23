@@ -38,7 +38,13 @@ const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
   graphs: <SidebarGraphsSection />,
 }
 
-export function ProjectsSidebar() {
+interface ProjectsSidebarProps {
+  /** Leave out the Home row and the tab strip: the vertical navigation
+   *  (experimental) shows them. */
+  hideNav?: boolean
+}
+
+export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
   const {
     data: projectsData,
     isLoading,
@@ -82,8 +88,8 @@ export function ProjectsSidebar() {
     <div className="flex h-full flex-col" data-testid="projects-sidebar">
       {/* Home sits above the tabs: it is a place, not a list, and stays one
           click away whatever tab is open. */}
-      <SidebarHomeRow />
-      <SidebarTabs />
+      {!hideNav && <SidebarHomeRow />}
+      {!hideNav && <SidebarTabs />}
 
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and

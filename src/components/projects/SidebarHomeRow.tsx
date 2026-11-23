@@ -9,6 +9,25 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { SIDEBAR_ROW_SELECTED, SIDEBAR_ROW_SHAPE } from './sidebar-row-styles'
 
+/** Whether the Home view shows: Home, and no Archived, graph or Scheduled
+ *  page over it. The Home row and the vertical navigation mark it. */
+export function useIsHomeRowActive(): boolean {
+  const archivedOpen = useUIStore(state => state.archivedViewOpen)
+  const graphOpen = useUIStore(state => state.activeGraphId !== null)
+  const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
+  return useIsHomeActive() && !archivedOpen && !graphOpen && !scheduledOpen
+}
+
+/** Open Home: clear the project and worktree, close the pages that share
+ *  that state. */
+export function openHome(): void {
+  useProjectsStore.getState().selectProject(null)
+  useChatStore.getState().clearActiveWorktree()
+  useUIStore.getState().setArchivedViewOpen(false)
+  useUIStore.getState().setScheduledViewOpen(false)
+  useUIStore.getState().setActiveGraphId(null)
+}
+
 /**
  * The Home row, at the top of the sidebar, above the tabs.
  *
@@ -25,18 +44,10 @@ export function SidebarHomeRow() {
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const isNarrow = sidebarWidth < 180
-  const archivedOpen = useUIStore(state => state.archivedViewOpen)
-  const graphOpen = useUIStore(state => state.activeGraphId !== null)
-  const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
-  const isActive =
-    useIsHomeActive() && !archivedOpen && !graphOpen && !scheduledOpen
+  const isActive = useIsHomeRowActive()
 
   const handleClick = useCallback(() => {
-    useProjectsStore.getState().selectProject(null)
-    useChatStore.getState().clearActiveWorktree()
-    useUIStore.getState().setArchivedViewOpen(false)
-    useUIStore.getState().setScheduledViewOpen(false)
-    useUIStore.getState().setActiveGraphId(null)
+    openHome()
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }

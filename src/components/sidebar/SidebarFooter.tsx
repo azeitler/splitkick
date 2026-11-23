@@ -153,8 +153,10 @@ function MoreMenu() {
   )
 }
 
-/** Bottom of the sidebar: app-level items that belong to no single view. */
-export function SidebarFooter() {
+/** Bottom of the sidebar: app-level items that belong to no single view.
+ *  `compact` (vertical navigation, Home) keeps only the width of the icons:
+ *  a 12 px gap in place of the spacer between the two groups. */
+export function SidebarFooter({ compact = false }: { compact?: boolean }) {
   const commandContext = useCommandContext()
   const settingsShortcut = useShortcutLabel('open_preferences')
   return (
@@ -185,7 +187,7 @@ export function SidebarFooter() {
       </Tooltip>
       {isNativeApp() && <RemoteConnectionsTrigger />}
       <UsagePopover className="ml-1.5" />
-      <div className="flex-1" />
+      <div className={compact ? 'w-3 shrink-0' : 'flex-1'} />
       <UpdatesButton />
       <UnreadBell />
       <MoreMenu />

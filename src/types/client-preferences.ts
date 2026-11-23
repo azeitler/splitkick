@@ -24,6 +24,7 @@ export const CLIENT_PREFERENCE_KEYS = [
   'web_access_sounds_enabled',
   'desktop_notifications_enabled',
   'debug_mode_enabled',
+  'vertical_navigation',
   'has_seen_feature_tour',
   'has_seen_external_display_zoom_tip',
   'zoom_level',

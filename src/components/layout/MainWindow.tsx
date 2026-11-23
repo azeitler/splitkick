@@ -29,6 +29,8 @@ import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog
 import { ClearContextConfirmDialog } from '@/components/chat/ClearContextConfirmDialog'
 import { TeardownOutputDialog } from '@/components/worktree/TeardownOutputDialog'
 import { WindowResizeHandles } from './WindowResizeHandles'
+import { VerticalNavLayout } from './vertical-nav/VerticalNavLayout'
+import { usePreferences } from '@/services/preferences'
 
 // Lazy-loaded heavy modals (code splitting)
 const LeftSideBar = lazy(() =>
@@ -350,6 +352,11 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
+  // Experimental vertical navigation: native desktop only. Web access and
+  // phones keep today's layout with the setting on.
+  const { data: preferences } = usePreferences()
+  const verticalNav =
+    isNativeApp() && !isMobile && (preferences?.vertical_navigation ?? false)
   useVisualViewportShell(!isNativeApp())
   const zenMode = useUIStore(state => state.zenMode)
   // A phone has no title bar: each screen carries its own heading (the tab's
@@ -760,48 +767,57 @@ export function MainWindow() {
         // list, footer); the toolbar sits above the main column and belongs
         // to the view on screen (see components/toolbar/toolbar-slots.tsx).
         <ToolbarSlotsProvider>
-          <div className="flex flex-1 overflow-hidden">
-            {leftSidebarVisible && isInitialized && (
-              <SidebarWidthProvider value={leftSidebarSize}>
-                <div
-                  ref={sidebarRef}
-                  data-testid="sidebar-column"
-                  className="flex h-full flex-col overflow-hidden bg-sidebar"
-                  style={{ width: leftSidebarSize }}
-                >
-                  <SidebarHeader />
-                  <div className="min-h-0 flex-1">
-                    <Suspense fallback={null}>
-                      <LeftSideBar />
-                    </Suspense>
+          {verticalNav ? (
+            <VerticalNavLayout
+              windowTitle={windowTitle}
+              isInitialized={isInitialized}
+            >
+              {contentRow}
+            </VerticalNavLayout>
+          ) : (
+            <div className="flex flex-1 overflow-hidden">
+              {leftSidebarVisible && isInitialized && (
+                <SidebarWidthProvider value={leftSidebarSize}>
+                  <div
+                    ref={sidebarRef}
+                    data-testid="sidebar-column"
+                    className="flex h-full flex-col overflow-hidden bg-sidebar"
+                    style={{ width: leftSidebarSize }}
+                  >
+                    <SidebarHeader />
+                    <div className="min-h-0 flex-1">
+                      <Suspense fallback={null}>
+                        <LeftSideBar />
+                      </Suspense>
+                    </div>
+                    <SidebarFooter />
                   </div>
-                  <SidebarFooter />
+                </SidebarWidthProvider>
+              )}
+
+              {leftSidebarVisible && isInitialized && (
+                <div
+                  role="separator"
+                  tabIndex={-1}
+                  aria-orientation="vertical"
+                  aria-label="Resize left sidebar"
+                  className="relative h-full w-px bg-border"
+                  onMouseDown={handleResizeStart}
+                >
+                  {/* Invisible wider hit area for easier clicking */}
+                  <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
                 </div>
-              </SidebarWidthProvider>
-            )}
+              )}
 
-            {leftSidebarVisible && isInitialized && (
-              <div
-                role="separator"
-                tabIndex={-1}
-                aria-orientation="vertical"
-                aria-label="Resize left sidebar"
-                className="relative h-full w-px bg-border"
-                onMouseDown={handleResizeStart}
-              >
-                {/* Invisible wider hit area for easier clicking */}
-                <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-              </div>
-            )}
-
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <WindowToolbar fallbackTitle={windowTitle} />
-              <DevModeBanner />
-              <div className="flex min-h-0 flex-1 overflow-hidden">
-                {contentRow}
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <WindowToolbar fallbackTitle={windowTitle} />
+                <DevModeBanner />
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                  {contentRow}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </ToolbarSlotsProvider>
       )}
 

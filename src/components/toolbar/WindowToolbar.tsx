@@ -213,7 +213,19 @@ function RemoteInstanceBadge() {
  * come from the view on screen (`ToolbarContent`); without one it shows
  * `fallbackTitle`.
  */
-export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
+export function WindowToolbar({
+  fallbackTitle,
+  trafficLightInset: trafficLightInsetOverride,
+  sidebarToggle: sidebarToggleOverride,
+}: {
+  fallbackTitle: string
+  /** Keep the traffic-light space free. Default: when the sidebar is hidden
+   *  (macOS). The vertical navigation sets it itself. */
+  trafficLightInset?: boolean
+  /** Show the sidebar toggle in front of back/forward. Default: when the
+   *  sidebar is hidden. The vertical navigation sets it itself. */
+  sidebarToggle?: boolean
+}) {
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
   const sidebarVisible = useUIStore(state => state.leftSidebarVisible)
@@ -234,7 +246,9 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
 
   const native = isNativeApp()
   const sidebarShown = sidebarVisible && !zenMode
-  const trafficLightInset = native && isClientMacOS && !sidebarShown
+  const trafficLightInset =
+    native && isClientMacOS && (trafficLightInsetOverride ?? !sidebarShown)
+  const showSidebarToggle = sidebarToggleOverride ?? (!sidebarShown && !zenMode)
   // Only the bar and its spacers drag: Tauri ignores the attribute on children.
   const drag = native ? { 'data-tauri-drag-region': true } : {}
 
@@ -247,7 +261,7 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
       {trafficLightInset && (
         <div {...drag} className={cn('h-full shrink-0', TRAFFIC_LIGHT_INSET)} />
       )}
-      {!sidebarShown && !zenMode && (
+      {showSidebarToggle && (
         <>
           <SidebarToggleButton />
           <div className="mx-1 h-4 w-px bg-border" />
