@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,18 +56,36 @@ async function openMenu() {
   return user
 }
 
+/** Open the submenu by keyboard; a pointer move closes it again in jsdom. */
+async function openForkSubmenu() {
+  const trigger = await screen.findByRole('menuitem', { name: /^fork$/i })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'ArrowRight' })
+}
+
 describe('SessionContextMenuItems — fork', () => {
   beforeEach(() => {
     forkInPlace.mockReset()
     forkToWorktree.mockReset()
   })
 
+  it('groups both forks in a Fork submenu', async () => {
+    await openMenu()
+    await openForkSubmenu()
+    const items = await screen.findAllByRole('menuitem')
+    const names = items.map(item => item.textContent)
+    expect(names).toContain('Same Worktree')
+    expect(names).toContain('New Worktree')
+    expect(names).not.toContain('Fork Session (same Worktree)')
+  })
+
   it('forks into a sibling session in the same worktree', async () => {
     const user = await openMenu()
+    await openForkSubmenu()
 
     await user.click(
       await screen.findByRole('menuitem', {
-        name: /fork session \(same worktree\)/i,
+        name: 'Same Worktree',
       })
     )
 
@@ -82,10 +100,11 @@ describe('SessionContextMenuItems — fork', () => {
 
   it('forks into a new worktree', async () => {
     const user = await openMenu()
+    await openForkSubmenu()
 
     await user.click(
       await screen.findByRole('menuitem', {
-        name: /fork session \(new worktree\)/i,
+        name: 'New Worktree',
       })
     )
 

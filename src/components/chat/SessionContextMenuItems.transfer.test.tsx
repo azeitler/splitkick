@@ -95,7 +95,7 @@ describe('SessionContextMenuItems — transfer', () => {
     connections.list = []
     await openMenu()
 
-    await screen.findByRole('menuitem', { name: /fork session \(same/i })
+    await screen.findByRole('menuitem', { name: /^fork$/i })
     expect(
       screen.queryByRole('menuitem', { name: /transfer to remote/i })
     ).toBeNull()

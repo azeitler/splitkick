@@ -17,6 +17,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   remote with a token has a lock icon; a remote without one has an open lock
   in amber, so an unprotected connection stands out. A tooltip on the lock
   explains it and how to turn on the token.
+- **The session menu is grouped.** Right-click a session: Rename and Labels;
+  then Star, Pin, To-Do and Status; then Move Up/Down, Move to, Fork and
+  Transfer; then Agent, Graph and Network; the native-CLI items; Copy Link and
+  Copy Session ID; and Archive and Delete at the end. Both fork actions are in
+  a **Fork** submenu (Same Worktree, New Worktree).
 - **The Tailscale URL is labelled and listed last.** In Settings → Web Access,
   the URL served through `tailscale serve` now comes after the other access
   URLs, with a "Tailscale" label and a hint: HTTPS for devices in your tailnet,

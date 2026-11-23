@@ -17,7 +17,8 @@ Use it to ask the same agent a different question about the same code.
 
 Where to find it:
 
-- Right-click the session in the sidebar, the tab bar, or a pinned row.
+- Right-click the session in the sidebar, the tab bar, or a pinned row, then
+  **Fork → Same Worktree**.
 - Magic menu → **Fork Session (same Worktree)** (shortcut `H`).
 
 ### Fork Session (new Worktree)
@@ -30,7 +31,8 @@ Use it to try a risky change while the original session keeps working.
 
 Where to find it:
 
-- Right-click the session in the sidebar, the tab bar, or a pinned row.
+- Right-click the session in the sidebar, the tab bar, or a pinned row, then
+  **Fork → New Worktree**.
 - Magic menu → **Fork Session (new Worktree)** (shortcut `W`).
 
 ### Fork from here

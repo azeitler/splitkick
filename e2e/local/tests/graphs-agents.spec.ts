@@ -2175,9 +2175,8 @@ test('fork of an agent session keeps agent, serves and permission', async ({
   await send(page, 'Something to fork')
   await waitForIdle(a, sourceId)
   await openSessionMenu(page, name)
-  await page
-    .getByRole('menuitem', { name: 'Fork Session (same Worktree)' })
-    .click()
+  await page.getByRole('menuitem', { name: 'Fork', exact: true }).hover()
+  await page.getByRole('menuitem', { name: 'Same Worktree' }).click()
   let fork: Meta | undefined
   await expect
     .poll(() => {

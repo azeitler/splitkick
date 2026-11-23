@@ -29,6 +29,9 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from '@/components/ui/context-menu'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -152,6 +155,7 @@ export function SessionContextMenuItems({
         onRename(session.id, session.name)
       }}
     >
+      {/* Edit */}
       <ContextMenuItem
         onSelect={() => {
           renameOnCloseRef.current = true
@@ -165,30 +169,8 @@ export function SessionContextMenuItems({
         currentLabel={card.label}
         onManage={() => onManageLabels(session.id)}
       />
-      {projectId && (
-        <ContextMenuItem
-          onSelect={() => {
-            void togglePinnedSession({
-              projectId,
-              sessionId: session.id,
-              worktreeId,
-              isPinned,
-            })
-          }}
-        >
-          {isPinned ? (
-            <>
-              <PinOff className="mr-2 h-4 w-4" />
-              Unpin from Project
-            </>
-          ) : (
-            <>
-              <Pin className="mr-2 h-4 w-4" />
-              Pin to Project
-            </>
-          )}
-        </ContextMenuItem>
-      )}
+      <ContextMenuSeparator />
+      {/* Mark */}
       {/* A pin is local to one project; a star is global. Both can be set. */}
       {projectId && (
         <ContextMenuItem
@@ -214,37 +196,29 @@ export function SessionContextMenuItems({
           )}
         </ContextMenuItem>
       )}
-      <SessionAgentMenuItems
-        sessionId={session.id}
-        sessionName={session.name}
-      />
-      {reorder && (
-        <>
-          <ContextMenuItem
-            disabled={!reorder.onMoveUp}
-            onSelect={() => reorder.onMoveUp?.()}
-          >
-            <ArrowUp className="mr-2 h-4 w-4" />
-            Move Up
-            {reorder.showShortcutHint && (
-              <ContextMenuShortcut>
-                {formatShortcutDisplay('alt+arrowup')}
-              </ContextMenuShortcut>
-            )}
-          </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!reorder.onMoveDown}
-            onSelect={() => reorder.onMoveDown?.()}
-          >
-            <ArrowDown className="mr-2 h-4 w-4" />
-            Move Down
-            {reorder.showShortcutHint && (
-              <ContextMenuShortcut>
-                {formatShortcutDisplay('alt+arrowdown')}
-              </ContextMenuShortcut>
-            )}
-          </ContextMenuItem>
-        </>
+      {projectId && (
+        <ContextMenuItem
+          onSelect={() => {
+            void togglePinnedSession({
+              projectId,
+              sessionId: session.id,
+              worktreeId,
+              isPinned,
+            })
+          }}
+        >
+          {isPinned ? (
+            <>
+              <PinOff className="mr-2 h-4 w-4" />
+              Unpin from Project
+            </>
+          ) : (
+            <>
+              <Pin className="mr-2 h-4 w-4" />
+              Pin to Project
+            </>
+          )}
+        </ContextMenuItem>
       )}
       {/* On the session itself, so it shows in every client and to agents. */}
       <ContextMenuItem
@@ -294,39 +268,66 @@ export function SessionContextMenuItems({
           </>
         )}
       </ContextMenuItem>
-      {isLinked && (
-        <ContextMenuItem onSelect={() => openSessionNetwork(session.id)}>
-          <Network className="mr-2 h-4 w-4" />
-          Show Session Network
-        </ContextMenuItem>
-      )}
-      <ContextMenuItem onSelect={() => openLinkToGraph(session)}>
-        <Workflow className="mr-2 h-4 w-4" />
-        Link to Graph…
-      </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem
-        onSelect={() => {
-          void forkInPlace({ worktreeId, sessionId: session.id })
-        }}
-      >
-        <GitFork className="mr-2 h-4 w-4" />
-        Fork Session (same Worktree)
-      </ContextMenuItem>
-      <ContextMenuItem
-        onSelect={() => {
-          void forkToWorktree({ worktreeId, sessionId: session.id })
-        }}
-      >
-        <GitBranchPlus className="mr-2 h-4 w-4" />
-        Fork Session (new Worktree)
-      </ContextMenuItem>
+      {/* Organize: order, place, copies */}
+      {reorder && (
+        <>
+          <ContextMenuItem
+            disabled={!reorder.onMoveUp}
+            onSelect={() => reorder.onMoveUp?.()}
+          >
+            <ArrowUp className="mr-2 h-4 w-4" />
+            Move Up
+            {reorder.showShortcutHint && (
+              <ContextMenuShortcut>
+                {formatShortcutDisplay('alt+arrowup')}
+              </ContextMenuShortcut>
+            )}
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!reorder.onMoveDown}
+            onSelect={() => reorder.onMoveDown?.()}
+          >
+            <ArrowDown className="mr-2 h-4 w-4" />
+            Move Down
+            {reorder.showShortcutHint && (
+              <ContextMenuShortcut>
+                {formatShortcutDisplay('alt+arrowdown')}
+              </ContextMenuShortcut>
+            )}
+          </ContextMenuItem>
+        </>
+      )}
       <MoveToSubmenu
         sessionId={session.id}
         worktreeId={worktreeId}
         projectId={projectId}
         disabled={!canMove}
       />
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>
+          <GitFork className="mr-2 h-4 w-4" />
+          Fork
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          <ContextMenuItem
+            onSelect={() => {
+              void forkInPlace({ worktreeId, sessionId: session.id })
+            }}
+          >
+            <GitFork className="mr-2 h-4 w-4" />
+            Same Worktree
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={() => {
+              void forkToWorktree({ worktreeId, sessionId: session.id })
+            }}
+          >
+            <GitBranchPlus className="mr-2 h-4 w-4" />
+            New Worktree
+          </ContextMenuItem>
+        </ContextMenuSubContent>
+      </ContextMenuSub>
       {canTransfer && (
         <ContextMenuItem
           onSelect={() => {
@@ -339,41 +340,68 @@ export function SessionContextMenuItems({
           Transfer to Remote {PRODUCT_NAME}…
         </ContextMenuItem>
       )}
-      {resumeCommand && (
-        <>
-          {onOpenInNativeClient && (
-            <ContextMenuItem
-              disabled={openInNativeClientDisabled}
-              onSelect={() => onOpenInNativeClient(session)}
-            >
-              <Play className="mr-2 h-4 w-4" />
-              Open in Native Client
-            </ContextMenuItem>
-          )}
-          <ContextMenuItem
-            onSelect={() => {
-              void copyToClipboard(resumeCommand)
-                .then(() => toast.success('Resume command copied'))
-                .catch(() => toast.error('Failed to copy resume command'))
-            }}
-          >
-            <Copy className="mr-2 h-4 w-4" />
-            Native Resume Command
-          </ContextMenuItem>
-        </>
-      )}
-      {canReconnectSession(session) && (
-        <ContextMenuItem
-          onSelect={() => void reconnectNativeCliSession(session, worktreeId)}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Reconnect
+      <ContextMenuSeparator />
+      {/* Connect: agent, graph, linked sessions */}
+      <SessionAgentMenuItems
+        sessionId={session.id}
+        sessionName={session.name}
+      />
+      <ContextMenuItem onSelect={() => openLinkToGraph(session)}>
+        <Workflow className="mr-2 h-4 w-4" />
+        Link to Graph…
+      </ContextMenuItem>
+      {isLinked && (
+        <ContextMenuItem onSelect={() => openSessionNetwork(session.id)}>
+          <Network className="mr-2 h-4 w-4" />
+          Show Session Network
         </ContextMenuItem>
       )}
+      {/* Native CLI */}
+      {(resumeCommand || canReconnectSession(session)) && (
+        <>
+          <ContextMenuSeparator />
+          {resumeCommand && (
+            <>
+              {onOpenInNativeClient && (
+                <ContextMenuItem
+                  disabled={openInNativeClientDisabled}
+                  onSelect={() => onOpenInNativeClient(session)}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Open in Native Client
+                </ContextMenuItem>
+              )}
+              <ContextMenuItem
+                onSelect={() => {
+                  void copyToClipboard(resumeCommand)
+                    .then(() => toast.success('Resume command copied'))
+                    .catch(() => toast.error('Failed to copy resume command'))
+                }}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Native Resume Command
+              </ContextMenuItem>
+            </>
+          )}
+          {canReconnectSession(session) && (
+            <ContextMenuItem
+              onSelect={() =>
+                void reconnectNativeCliSession(session, worktreeId)
+              }
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reconnect
+            </ContextMenuItem>
+          )}
+        </>
+      )}
       <ContextMenuSeparator />
-      <ContextMenuItem onSelect={() => onArchive(session.id)}>
-        <Archive className="mr-2 h-4 w-4" />
-        Archive Session
+      {/* Copy */}
+      <ContextMenuItem
+        onSelect={() => copySplitkickLink('session', session.id, session.name)}
+      >
+        <Link className="mr-2 h-4 w-4" />
+        Copy Link
       </ContextMenuItem>
       <ContextMenuItem
         onSelect={() => {
@@ -385,13 +413,11 @@ export function SessionContextMenuItems({
         <Copy className="mr-2 h-4 w-4" />
         Copy Session ID
       </ContextMenuItem>
-      <ContextMenuItem
-        onSelect={() => copySplitkickLink('session', session.id, session.name)}
-      >
-        <Link className="mr-2 h-4 w-4" />
-        Copy Link
-      </ContextMenuItem>
       <ContextMenuSeparator />
+      <ContextMenuItem onSelect={() => onArchive(session.id)}>
+        <Archive className="mr-2 h-4 w-4" />
+        Archive Session
+      </ContextMenuItem>
       <ContextMenuItem
         variant="destructive"
         onSelect={() => onDelete(session.id)}
