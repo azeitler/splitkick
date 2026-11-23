@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { Fragment, useMemo, type ReactNode } from 'react'
 import {
   Archive,
   CalendarClock,
@@ -23,11 +23,25 @@ import { useAgents } from '@/services/agents'
 import { useSchedules } from '@/services/schedules'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { SIDEBAR_TABS, type SidebarTab } from '@/types/ui-state'
+import type { SidebarTab } from '@/types/ui-state'
 
 /** Nav width with labels, and with icons only (the draft's 168 / 46 px). */
 export const NAV_WIDTH_EXPANDED = 168
 export const NAV_WIDTH_COLLAPSED = 46
+
+/** The tabs in nav order, in groups with a divider between them: the
+ *  session lists (To-Do ends them), then Agents and Graphs. The tab strip
+ *  keeps `SIDEBAR_TABS`. */
+const NAV_TAB_GROUPS: SidebarTab[][] = [
+  ['projects', 'recent', 'starred', 'todo'],
+  ['agents', 'graphs'],
+]
+
+function NavDivider() {
+  return (
+    <div aria-hidden="true" className="mx-1 my-1.5 h-px shrink-0 bg-border" />
+  )
+}
 
 /** Tabs that show a count, and what the count means. */
 const COUNT_TEXT: Partial<Record<SidebarTab, (count: number) => string>> = {
@@ -206,26 +220,31 @@ export function VerticalNav({
         collapsed={collapsed}
         onClick={onSelectHome}
       />
-      <div aria-hidden="true" className="mx-1 my-1.5 h-px shrink-0 bg-border" />
-      {SIDEBAR_TABS.map(tab => {
-        const { label, icon } = TAB_META[tab]
-        const count = counts[tab] ?? 0
-        return (
-          <NavItem
-            key={tab}
-            id={tab}
-            label={label}
-            icon={icon}
-            active={!home && selectedTab === tab}
-            collapsed={collapsed}
-            onClick={() => onSelectTab(tab)}
-            count={count}
-            countText={COUNT_TEXT[tab]?.(count)}
-            attention={tab === 'todo'}
-          />
-        )
-      })}
-      <div aria-hidden="true" className="mx-1 my-1.5 h-px shrink-0 bg-border" />
+      <NavDivider />
+      {NAV_TAB_GROUPS.map((group, index) => (
+        <Fragment key={group.join()}>
+          {index > 0 && <NavDivider />}
+          {group.map(tab => {
+            const { label, icon } = TAB_META[tab]
+            const count = counts[tab] ?? 0
+            return (
+              <NavItem
+                key={tab}
+                id={tab}
+                label={label}
+                icon={icon}
+                active={!home && selectedTab === tab}
+                collapsed={collapsed}
+                onClick={() => onSelectTab(tab)}
+                count={count}
+                countText={COUNT_TEXT[tab]?.(count)}
+                attention={tab === 'todo'}
+              />
+            )
+          })}
+        </Fragment>
+      ))}
+      <NavDivider />
       <NavItem
         id="scheduled"
         label="Scheduled"

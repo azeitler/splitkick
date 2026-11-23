@@ -19,6 +19,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   navigation on, Scheduled (count: active schedules) and Archived (count:
   archived items) are nav items below Graphs, not rows in the Projects
   panel. They open their pages in the main area, as the rows do.
+  In the nav, To-Do now sits above Agents, with a divider after it.
 - **Archived row per project.** In the sidebar tree, a project with archived
   worktrees or sessions shows an Archived row with a count as its last
   child. It opens the Archived page filtered to that project.

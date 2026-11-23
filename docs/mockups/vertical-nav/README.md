@@ -5,7 +5,7 @@ Open `index.html` in a browser. It is a clickable draft with sample data.
 ## Layout
 
 - **Vertical nav (rail)** left of the sidebar: Home, then the sidebar tabs
-  (Projects, Recent, Starred, Agents, To-Do, Graphs), then Scheduled and
+  (Projects, Recent, Starred, To-Do | Agents, Graphs), then Scheduled and
   Archived (pages in the main area; their rows leave the Projects panel).
   Collapse/expand button at the bottom of the nav. Collapsed: icons only, tooltips, count badges on
   Starred, Agents, To-Do (blue: waiting for you) and Graphs.

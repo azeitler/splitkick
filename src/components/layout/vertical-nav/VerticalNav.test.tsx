@@ -72,12 +72,40 @@ describe('VerticalNav', () => {
       'Projects',
       'Recent',
       'Starred',
-      'Agents',
       'To-Do',
+      'Agents',
       'Graphs',
       'Scheduled',
       'Archived',
       'Collapse',
+    ])
+  })
+
+  it('puts a divider after Home, after To-Do and after Graphs', () => {
+    renderNav()
+    const nav = screen.getByRole('navigation', { name: 'Sidebar navigation' })
+    // Buttons by test id, dividers as '|'; the spacer above Collapse drops.
+    const sequence = Array.from(nav.children).map(el =>
+      el.tagName === 'BUTTON'
+        ? (el.getAttribute('data-testid') ?? '')
+        : el.getAttribute('aria-hidden') === 'true'
+          ? '|'
+          : ''
+    )
+    expect(sequence.filter(entry => entry !== '')).toEqual([
+      'vertical-nav-home',
+      '|',
+      'vertical-nav-projects',
+      'vertical-nav-recent',
+      'vertical-nav-starred',
+      'vertical-nav-todo',
+      '|',
+      'vertical-nav-agents',
+      'vertical-nav-graphs',
+      '|',
+      'vertical-nav-scheduled',
+      'vertical-nav-archived',
+      'vertical-nav-collapse',
     ])
   })
 
