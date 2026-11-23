@@ -460,6 +460,94 @@ describe('MessageItem', () => {
     expect(screen.getByText('Raptors')).toBeVisible()
   })
 
+  it('ends a message with its time line when a skipped question follows the text', () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        durationMs={77_000}
+        isQuestionAnswered={vi.fn(() => true)}
+        getSubmittedAnswers={vi.fn(() => [])}
+        message={{
+          ...baseMessage,
+          content: 'Checking the sessions.',
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'Read',
+              input: { file_path: '/tmp/demo.ts' },
+              output: 'done',
+            },
+            {
+              id: 'question-1',
+              name: 'AskUserQuestion',
+              input: {
+                questions: [
+                  {
+                    header: 'Next',
+                    question: 'What next?',
+                    multiSelect: false,
+                    options: [
+                      { label: 'Ship', description: 'Ship it' },
+                      { label: 'Wait', description: 'Wait' },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          content_blocks: [
+            { type: 'text', text: 'Checking the sessions.' },
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'tool_use', tool_call_id: 'question-1' },
+          ],
+        }}
+      />
+    )
+
+    const prose = screen.getByText('Checking the sessions.')
+    const question = screen.getByText(/Skipped/)
+    const duration = screen.getByText('1:17m')
+    expect(prose.compareDocumentPosition(duration)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(question.compareDocumentPosition(duration)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.getAllByText('1:17m')).toHaveLength(1)
+  })
+
+  it('keeps the time line under the last text when nothing follows it', () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        durationMs={23_000}
+        message={{
+          ...baseMessage,
+          content: 'All done.',
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'Read',
+              input: { file_path: '/tmp/demo.ts' },
+              output: 'done',
+            },
+          ],
+          content_blocks: [
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'text', text: 'All done.' },
+          ],
+        }}
+      />
+    )
+
+    const prose = screen.getByText('All done.')
+    const duration = screen.getByText('23s')
+    expect(prose.compareDocumentPosition(duration)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.getAllByText('23s')).toHaveLength(1)
+  })
+
   it('renders assistant duration in mm:ss format when minutes are non-zero', () => {
     render(<MessageItem {...baseProps} durationMs={145_000} />)
 

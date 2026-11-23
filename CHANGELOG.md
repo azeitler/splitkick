@@ -49,6 +49,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the plan's run waits. A build/yolo override with another model still starts
   a new turn. Plan mode can also write its plan file again. A new message
   instead of an answer still skips the question. (Closes #136)
+- **A message that ends with a question ends with its time line.** The time
+  and runtime line sat under the last text of a message, so tool calls or a
+  question after that text (for example a skipped question) came after it,
+  and the message looked cut off. The line now closes the message when
+  anything follows the last text, also for a message with no text. (#136)
 - **Edit connection on the "Couldn't connect" screen opens one settings
   pane.** A window for an unreachable remote mounted the Server connections
   dialog twice, so each open stacked a second pane on top. The auto-retry now

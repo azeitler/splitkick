@@ -501,6 +501,18 @@ export const MessageItem = memo(function MessageItem({
                   resolvedPlan.content
                 )
               })?.key
+              // The meta line closes the message. It sits under the last
+              // text only when nothing follows it; tool calls or a question
+              // after the text (e.g. a skipped AskUserQuestion) would
+              // otherwise end the message with no time line.
+              const lastTextIndex = timeline.findIndex(
+                item => item.key === lastVisibleTextKey
+              )
+              const metaAtEnd =
+                message.role === 'assistant' &&
+                (lastVisibleTextKey
+                  ? lastTextIndex < timeline.length - 1
+                  : timeline.length > 0)
               return (
                 <>
                   {fallbackAssistantIntro && (
@@ -512,7 +524,7 @@ export const MessageItem = memo(function MessageItem({
                       >
                         {fallbackAssistantIntro}
                       </Markdown>
-                      {!lastVisibleTextKey && durationBadge}
+                      {!lastVisibleTextKey && !metaAtEnd && durationBadge}
                     </>
                   )}
                   {timeline.map(item => (
@@ -578,6 +590,7 @@ export const MessageItem = memo(function MessageItem({
                                     />
                                   )}
                                   {item.key === lastVisibleTextKey &&
+                                    !metaAtEnd &&
                                     durationBadge}
                                 </div>
                               )
@@ -592,6 +605,7 @@ export const MessageItem = memo(function MessageItem({
                                   {item.text}
                                 </Markdown>
                                 {item.key === lastVisibleTextKey &&
+                                  !metaAtEnd &&
                                   durationBadge}
                               </>
                             )
@@ -742,6 +756,7 @@ export const MessageItem = memo(function MessageItem({
                       }
                     />
                   )}
+                  {metaAtEnd && durationBadge}
                 </>
               )
             })()}
