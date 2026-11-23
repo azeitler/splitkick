@@ -272,6 +272,30 @@ describe('CommandPalette connections', () => {
     ).toBeTruthy()
   })
 
+  it('puts a connection named exactly like the query on top', () => {
+    render(<CommandPalette />)
+    fireEvent.change(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { target: { value: 'build server' } }
+    )
+
+    const headings = Array.from(
+      document.querySelectorAll('[cmdk-group-heading]')
+    ).map(node => node.textContent)
+    expect(headings[0]).toBe('Go to Connection')
+    // Listed once: the pinned row leaves the Connections group.
+    expect(screen.getAllByText('Build server')).toHaveLength(1)
+  })
+
+  it('does not pin a connection on a partial name', () => {
+    render(<CommandPalette />)
+    fireEvent.change(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { target: { value: 'build' } }
+    )
+    expect(screen.queryByText('Go to Connection')).not.toBeInTheDocument()
+  })
+
   it('switches connections through the existing reload flow', async () => {
     render(<CommandPalette reloadApp={reloadApp} />)
 

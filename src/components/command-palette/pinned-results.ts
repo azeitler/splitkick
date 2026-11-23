@@ -55,3 +55,17 @@ export function findPinnedProjects<T extends PinnableProject>(
   }
   return [...exact, ...prefix]
 }
+
+/**
+ * Connections to pin above every other Quick result: only names that equal
+ * the query (case-insensitive). A connection name is short and often a
+ * prefix of other words, so prefix matches would pin too much.
+ */
+export function findExactConnections<T extends PinnableProject>(
+  connections: T[],
+  query: string
+): T[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return []
+  return connections.filter(item => item.label.toLowerCase() === needle)
+}

@@ -27,6 +27,7 @@ import { buildSessionCommands, type SessionCommand } from './session-commands'
 import { HighlightedText } from './highlight-matches'
 import {
   PINNED_KEYWORD,
+  findExactConnections,
   findPinnedProjects,
   paletteFilter,
 } from './pinned-results'
@@ -287,6 +288,18 @@ export function CommandPalette({
     () => (mode === 'quick' ? findPinnedProjects(projectCommands, search) : []),
     [mode, projectCommands, search]
   )
+
+  // Quick only: a connection whose name equals the query goes to the very
+  // top, so its name then Enter switches to it.
+  const pinnedConnections = useMemo(
+    () =>
+      mode === 'quick' ? findExactConnections(connectionCommands, search) : [],
+    [mode, connectionCommands, search]
+  )
+  const otherConnections = useMemo(() => {
+    const pinned = new Set(pinnedConnections.map(command => command.id))
+    return connectionCommands.filter(command => !pinned.has(command.id))
+  }, [connectionCommands, pinnedConnections])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {
@@ -675,6 +688,17 @@ export function CommandPalette({
             </>
           )}
 
+          {/* A connection named exactly like the query outranks everything */}
+          {mode === 'quick' && pinnedConnections.length > 0 && (
+            <CommandGroup heading="Go to Connection">
+              {pinnedConnections.map(command =>
+                renderConnectionRow(command, handleCommandSelect, {
+                  pinned: true,
+                })
+              )}
+            </CommandGroup>
+          )}
+
           {/* Exact or prefix project matches outrank everything while typing */}
           {mode === 'quick' && pinnedProjects.length > 0 && (
             <CommandGroup heading="Go to Project">
@@ -721,30 +745,11 @@ export function CommandPalette({
             </CommandGroup>
           )}
 
-          {mode === 'quick' && connectionCommands.length > 0 && (
+          {mode === 'quick' && otherConnections.length > 0 && (
             <CommandGroup heading="Connections">
-              {connectionCommands.map(command => (
-                <CommandItem
-                  key={command.id}
-                  value={`${command.label} ${command.description} ${command.keywords.join(' ')}`}
-                  onSelect={() => handleCommandSelect(command.id)}
-                  className="items-start"
-                >
-                  {command.local ? (
-                    <Monitor className="mt-0.5 size-4 shrink-0" />
-                  ) : (
-                    <Server className="mt-0.5 size-4 shrink-0" />
-                  )}
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate leading-snug">
-                      {command.label}
-                    </span>
-                    <span className="truncate text-xs leading-snug text-muted-foreground">
-                      {command.description}
-                    </span>
-                  </div>
-                </CommandItem>
-              ))}
+              {otherConnections.map(command =>
+                renderConnectionRow(command, handleCommandSelect)
+              )}
             </CommandGroup>
           )}
 
@@ -908,6 +913,34 @@ function getGroupLabel(groupName: string): string {
     default:
       return groupName.charAt(0).toUpperCase() + groupName.slice(1)
   }
+}
+
+function renderConnectionRow(
+  command: ConnectionCommand,
+  onSelect: (id: string) => void,
+  { pinned = false }: { pinned?: boolean } = {}
+) {
+  return (
+    <CommandItem
+      key={command.id}
+      keywords={pinned ? [PINNED_KEYWORD] : undefined}
+      value={`${command.label} ${command.description} ${command.keywords.join(' ')}`}
+      onSelect={() => onSelect(command.id)}
+      className="items-start"
+    >
+      {command.local ? (
+        <Monitor className="mt-0.5 size-4 shrink-0" />
+      ) : (
+        <Server className="mt-0.5 size-4 shrink-0" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate leading-snug">{command.label}</span>
+        <span className="truncate text-xs leading-snug text-muted-foreground">
+          {command.description}
+        </span>
+      </div>
+    </CommandItem>
+  )
 }
 
 export default CommandPalette
