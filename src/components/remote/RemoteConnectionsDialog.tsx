@@ -1066,6 +1066,37 @@ function AddModeTabs({
 const ROW_SELECT_BUTTON =
   'flex cursor-pointer items-center text-left outline-none focus-visible:outline-none disabled:cursor-default disabled:opacity-60'
 
+/** Lock after a remote's name: does the connection send an access token? */
+function TokenAuthIcon({ tokenAuth }: { tokenAuth: boolean }) {
+  const Icon = tokenAuth ? Lock : LockOpen
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={tokenAuth ? 'Uses an access token' : 'No access token'}
+          className="inline-flex shrink-0"
+        >
+          <Icon
+            className={cn(
+              'size-3',
+              tokenAuth
+                ? 'text-muted-foreground'
+                : 'text-amber-600 dark:text-amber-400'
+            )}
+          />
+        </span>
+      </TooltipTrigger>
+      {/* Above this dialog (z-110), which sits above the recovery screen. */}
+      <TooltipContent side="top" className="z-[120] max-w-64">
+        {tokenAuth
+          ? 'Uses an access token. The server accepts only clients that send this token.'
+          : 'No access token. Anyone who can reach this address can use the server. Turn on "Require access token" in Web Access on that machine, then add the token here.'}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ConnectionRow({
   name,
   detail,
@@ -1119,24 +1150,7 @@ function ConnectionRow({
           className={`size-2 shrink-0 rounded-full ${active ? 'bg-green-500' : 'bg-muted-foreground/35'}`}
         />
         {name}
-        {tokenAuth === true && (
-          <Lock
-            role="img"
-            aria-label="Uses an access token"
-            className="size-3 shrink-0 text-muted-foreground"
-          >
-            <title>Uses an access token</title>
-          </Lock>
-        )}
-        {tokenAuth === false && (
-          <LockOpen
-            role="img"
-            aria-label="No access token"
-            className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
-          >
-            <title>No access token</title>
-          </LockOpen>
-        )}
+        {tokenAuth !== undefined && <TokenAuthIcon tokenAuth={tokenAuth} />}
         {active && <Check className="size-3.5 shrink-0 text-green-500" />}
         {connecting && (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />

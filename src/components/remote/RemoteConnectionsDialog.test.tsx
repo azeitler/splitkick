@@ -341,6 +341,20 @@ describe('RemoteConnectionsDialog', () => {
     expect(within(rowOf('Local')).queryByRole('img')).not.toBeInTheDocument()
   })
 
+  it('explains the lock in a tooltip', async () => {
+    connections.list = [
+      { id: 'remote-2', name: 'mac-3', url: 'http://mac-3:3460', token: '' },
+    ]
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+
+    fireEvent.pointerMove(screen.getByRole('img', { name: 'No access token' }))
+    fireEvent.focus(screen.getByRole('img', { name: 'No access token' }))
+    expect(
+      (await screen.findAllByText(/Anyone who can reach this address/))[0]
+    ).toBeInTheDocument()
+  })
+
   it('adds and selects a remote from a complete Web Access URL', async () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)

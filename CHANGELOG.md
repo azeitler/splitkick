@@ -11,7 +11,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Server connections show whether a remote uses an access token.** A
   remote with a token has a lock icon; a remote without one has an open lock
-  in amber, so an unprotected connection stands out.
+  in amber, so an unprotected connection stands out. A tooltip on the lock
+  explains it and how to turn on the token.
 - **The Tailscale URL is labelled and listed last.** In Settings → Web Access,
   the URL served through `tailscale serve` now comes after the other access
   URLs, with a "Tailscale" label and a hint: HTTPS for devices in your tailnet,
