@@ -113,6 +113,15 @@ describe('VerticalNav', () => {
       'data-collapsed',
       'true'
     )
+    expect(screen.getByTestId('vertical-nav')).toHaveStyle({ width: '46px' })
+    // Collapsed rows centre the icon with no side padding: 34 px (9 + 16 + 9)
+    // would not fit the 33 px inside the nav.
+    for (const id of ['home', 'starred', 'collapse']) {
+      expect(item(id)).toHaveClass('justify-center', 'px-0')
+      expect(item(id)).not.toHaveClass('px-[9px]')
+      // Not clipped: the badge may reach past the row.
+      expect(item(id)).not.toHaveClass('overflow-hidden')
+    }
     // Icons only: the labels are gone, the names stay for assistive tech.
     expect(item('starred')).toHaveTextContent('3')
     expect(item('starred')).not.toHaveTextContent('Starred')
@@ -134,6 +143,9 @@ describe('VerticalNav', () => {
 
     await userEvent.click(item('collapse'))
     expect(useUIStore.getState().verticalNavCollapsed).toBe(false)
+    expect(screen.getByTestId('vertical-nav')).toHaveStyle({ width: '168px' })
+    expect(item('starred')).toHaveClass('px-[9px]')
+    expect(item('starred')).toHaveTextContent('Starred')
     expect(screen.queryByTestId('vertical-nav-badge-todo')).toBeNull()
   })
 })

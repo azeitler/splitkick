@@ -34,11 +34,19 @@ vi.mock('@/components/sidebar/SidebarFooter', () => ({
     <div data-testid="sidebar-footer" data-compact={String(!!compact)} />
   ),
 }))
-vi.mock('@/components/projects/ProjectsSidebar', () => ({
-  ProjectsSidebar: ({ hideNav }: { hideNav?: boolean }) => (
-    <div data-testid="projects-sidebar" data-hide-nav={String(!!hideNav)} />
-  ),
-}))
+vi.mock('@/components/projects/ProjectsSidebar', async () => {
+  const { useSidebarWidth } = await import('../SidebarWidthContext')
+  return {
+    // Shows the width the tab contents get, so the test can read it.
+    ProjectsSidebar: ({ hideNav }: { hideNav?: boolean }) => (
+      <div
+        data-testid="projects-sidebar"
+        data-hide-nav={String(!!hideNav)}
+        data-width={useSidebarWidth()}
+      />
+    ),
+  }
+})
 vi.mock('@/components/toolbar/WindowToolbar', () => ({
   WindowToolbar: ({
     sidebarToggle,
@@ -169,6 +177,25 @@ describe('VerticalNavLayout', () => {
       useProjectsStore.setState({ selectedProjectId: null })
     })
     expect(screen.getByTestId('main-content')).toBe(content)
+  })
+
+  it('sizes the column as panel + expanded nav; collapsing gives the nav room to the panel', async () => {
+    useUIStore.setState({ leftSidebarSize: 250 })
+    renderLayout()
+    openProject()
+    const panel = await screen.findByTestId('projects-sidebar')
+    expect(screen.getByTestId('sidebar-column')).toHaveStyle({ width: '418px' })
+    expect(panel).toHaveAttribute('data-width', '250')
+
+    act(() => {
+      useUIStore.setState({ verticalNavCollapsed: true })
+    })
+    // The column keeps its width; the panel gets 168 - 46 = 122 px more.
+    expect(screen.getByTestId('sidebar-column')).toHaveStyle({ width: '418px' })
+    expect(screen.getByTestId('projects-sidebar')).toHaveAttribute(
+      'data-width',
+      '372'
+    )
   })
 
   it('zen: main column only', () => {

@@ -79,7 +79,11 @@ function NavItem({
       aria-label={hasCount ? `${label}, ${countText}` : label}
       data-testid={`vertical-nav-${id}`}
       className={cn(
-        'relative flex h-8 w-full shrink-0 items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-[7px] px-[9px] text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
+        'relative flex h-8 w-full shrink-0 items-center whitespace-nowrap rounded-[7px] text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
+        // Collapsed: the icon centred in the 33 px the nav has inside its
+        // border (46 px less padding and border); 9 px padding would not fit.
+        // Not clipped, so the badge may reach past the row (the nav clips).
+        collapsed ? 'justify-center px-0' : 'gap-2.5 px-[9px]',
         active
           ? 'bg-background font-medium text-foreground shadow-sm dark:bg-foreground/15'
           : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
@@ -108,7 +112,7 @@ function NavItem({
           aria-hidden="true"
           data-testid={`vertical-nav-badge-${id}`}
           className={cn(
-            'absolute left-[19px] top-[3px] h-[15px] min-w-[15px] rounded-full border-[1.5px] px-1 text-center text-[9px] font-semibold leading-[12px] tabular-nums text-white',
+            'absolute left-[calc(50%+2px)] top-[3px] h-[15px] min-w-[15px] rounded-full border-[1.5px] px-1 text-center text-[9px] font-semibold leading-[12px] tabular-nums text-white',
             attention ? 'bg-blue-600' : 'bg-zinc-500',
             active ? 'border-background' : 'border-sidebar'
           )}
@@ -159,7 +163,7 @@ export function VerticalNav({
       aria-label="Sidebar navigation"
       data-testid="vertical-nav"
       data-collapsed={collapsed ? 'true' : 'false'}
-      className="flex h-full shrink-0 flex-col gap-0.5 overflow-hidden border-r border-border bg-sidebar px-1.5 py-2 transition-[width] duration-200 ease-out"
+      className="flex h-full shrink-0 flex-col gap-0.5 overflow-hidden border-r border-border bg-sidebar px-1.5 py-2 transition-[width] duration-200 ease-out motion-reduce:transition-none"
       style={{ width: collapsed ? NAV_WIDTH_COLLAPSED : NAV_WIDTH_EXPANDED }}
     >
       <NavItem

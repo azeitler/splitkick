@@ -26,7 +26,7 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { browserName: 'webkit' },
-      testMatch: /(toast-visibility|app-update-flow|artifact-sandbox)\.spec\.ts$/,
+      testMatch: /(toast-visibility|app-update-flow|artifact-sandbox|vertical-navigation)\.spec\.ts$/,
     },
   ],
 
