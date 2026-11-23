@@ -9,10 +9,10 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * Vertical navigation (default on, Settings → Appearance). Off: the sidebar with
- * the tab strip. On (desktop app only): Home and the tabs in a nav left of
- * the panel, the sidebar toggle in the main toolbar, and on Home no panel and
- * two footers. Sample data only.
+ * Vertical navigation, the desktop app's layout: Home and the tabs in a nav
+ * left of the panel, the sidebar toggle in the main toolbar, and on Home no
+ * panel and two footers. Web access keeps the sidebar with the tab strip.
+ * Sample data only.
  */
 
 const projects = ['Acme Web', 'Docs site', 'Mobile app'].map((name, i) =>
@@ -181,11 +181,7 @@ const NAV_ITEMS = [
   'collapse',
 ]
 
-function withData(
-  verticalNavigation: boolean,
-  openProject: boolean,
-  navCollapsed = false
-) {
+function withData(openProject: boolean, navCollapsed = false) {
   test.use({
     viewport: { width: 1280, height: 720 },
     responseOverrides: {
@@ -199,7 +195,6 @@ function withData(
         ...mockPreferences,
         zoom_level: 100,
         has_seen_feature_tour: true,
-        vertical_navigation: verticalNavigation,
       },
       load_ui_state: {
         ...mockUIState,
@@ -218,17 +213,21 @@ function withData(
   })
 }
 
-test.describe('Vertical navigation off', () => {
-  withData(false, true)
+test.describe('Web access', () => {
+  withData(true)
 
-  test('keeps the sidebar with the tab strip', async ({ mockPage }) => {
-    await asDesktopApp(mockPage)
+  test('keeps the sidebar with the tab strip and its rows', async ({
+    mockPage,
+  }) => {
+    await expect(mockPage.getByText('Acme Web').first()).toBeVisible()
+    if (!(await mockPage.getByTestId('sidebar-tabs').isVisible())) {
+      await toolbar(mockPage).getByTestId('toggle-left-sidebar').click()
+    }
     await expect(mockPage.getByTestId('sidebar-tabs')).toBeVisible()
     await expect(mockPage.getByTestId('sidebar-home-row')).toBeVisible()
-    await expect(mockPage.getByTestId('sidebar-header')).toBeVisible()
     await expect(mockPage.getByTestId('vertical-nav')).toHaveCount(0)
     await expect(mockPage.getByTestId('vertical-nav-layout')).toHaveCount(0)
-    // The classic sidebar keeps its rows, and the project its Archived row.
+    // The tab-strip sidebar keeps its rows, and the project its Archived row.
     await expect(mockPage.getByTestId('sidebar-scheduled-row')).toBeVisible()
     await expect(mockPage.getByTestId('sidebar-archived-row')).toBeVisible()
     const projectArchived = mockPage.getByTestId(
@@ -238,7 +237,7 @@ test.describe('Vertical navigation off', () => {
     await expect(
       mockPage.getByTestId(`project-archived-row-${projects[1].id}`)
     ).toHaveCount(0)
-    await shot(mockPage, 'vertical-nav-off')
+    await shot(mockPage, 'sidebar-web-access')
 
     // It opens the Archived view filtered to the project.
     await projectArchived.click()
@@ -257,8 +256,8 @@ test.describe('Vertical navigation off', () => {
   })
 })
 
-test.describe('Vertical navigation on, a project open', () => {
-  withData(true, true)
+test.describe('Vertical navigation, a project open', () => {
+  withData(true)
 
   test('shows nav and panel, no tab strip, the sidebar button in the toolbar', async ({
     mockPage,
@@ -391,21 +390,8 @@ test.describe('Vertical navigation on, a project open', () => {
   })
 })
 
-test.describe('Vertical navigation on, web access', () => {
-  withData(true, true)
-
-  test('keeps the sidebar with the tab strip', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Acme Web').first()).toBeVisible()
-    if (!(await mockPage.getByTestId('sidebar-tabs').isVisible())) {
-      await toolbar(mockPage).getByTestId('toggle-left-sidebar').click()
-    }
-    await expect(mockPage.getByTestId('sidebar-tabs')).toBeVisible()
-    await expect(mockPage.getByTestId('vertical-nav')).toHaveCount(0)
-  })
-})
-
 test.describe('Vertical navigation layout geometry', () => {
-  withData(true, true)
+  withData(true)
 
   test('expanded: nav 168 px, panel next to it, toolbar right of the column', async ({
     mockPage,
@@ -530,7 +516,7 @@ test.describe('Vertical navigation layout geometry', () => {
 })
 
 test.describe('Vertical navigation collapsed on start', () => {
-  withData(true, true, true)
+  withData(true, true)
 
   test('restores the collapsed nav from the UI state', async ({ mockPage }) => {
     await asDesktopApp(mockPage)

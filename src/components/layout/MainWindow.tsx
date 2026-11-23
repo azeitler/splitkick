@@ -30,7 +30,6 @@ import { ClearContextConfirmDialog } from '@/components/chat/ClearContextConfirm
 import { TeardownOutputDialog } from '@/components/worktree/TeardownOutputDialog'
 import { WindowResizeHandles } from './WindowResizeHandles'
 import { VerticalNavLayout } from './vertical-nav/VerticalNavLayout'
-import { usePreferences } from '@/services/preferences'
 
 // Lazy-loaded heavy modals (code splitting)
 const LeftSideBar = lazy(() =>
@@ -352,11 +351,9 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
-  // Vertical navigation (default on, Settings → Appearance): native desktop
-  // only. Web access and phones keep the sidebar with the tab strip.
-  const { data: preferences } = usePreferences()
-  const verticalNav =
-    isNativeApp() && !isMobile && (preferences?.vertical_navigation ?? true)
+  // The desktop app uses the vertical navigation. Web access and phones show
+  // the sidebar with the tab strip.
+  const verticalNav = isNativeApp() && !isMobile
   useVisualViewportShell(!isNativeApp())
   const zenMode = useUIStore(state => state.zenMode)
   // A phone has no title bar: each screen carries its own heading (the tab's

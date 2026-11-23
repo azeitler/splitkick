@@ -9,17 +9,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **Vertical navigation.** The desktop app shows Home and the sidebar tabs
-  in a nav left of the sidebar, with counts on Starred, Agents, To-Do and
-  Graphs, and a Collapse item for icons only. The sidebar toggle moves in
-  front of back/forward; Home shows no sidebar panel and a footer with session
-  stats. On by default; Settings → Appearance → Layout turns it off for the
-  sidebar with the tab strip. Web access and phones keep the tab strip.
-- **Scheduled and Archived in the vertical navigation.** With the vertical
-  navigation on, Scheduled (count: active schedules) and Archived (count:
-  archived items) are nav items below Graphs, not rows in the Projects
-  panel. They open their pages in the main area, as the rows do.
-  In the nav, To-Do now sits above Agents, with a divider after it.
+- **Vertical navigation.** The desktop app shows Home, the sidebar tabs
+  (Projects, Recent, Starred, To-Do, then Agents and Graphs), Scheduled and
+  Archived in a nav left of the sidebar, in place of the tab strip. Counts on
+  Starred, To-Do, Agents, Graphs, Scheduled (active schedules) and Archived
+  (archived items); a Collapse item shows icons only. Scheduled and Archived
+  open their pages in the main area and are no longer rows in the Projects
+  list. The sidebar toggle moves in front of back/forward; Home shows no
+  sidebar panel and a footer with session stats. Web access and phones keep
+  the tab strip.
 - **Archived row per project.** In the sidebar tree, a project with archived
   worktrees or sessions shows an Archived row with a count as its last
   child. It opens the Archived page filtered to that project.

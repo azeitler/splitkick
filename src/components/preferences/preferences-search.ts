@@ -706,22 +706,6 @@ const sectionEntries: PreferenceSearchEntry[] = [
     fallbackAnchorId: 'pref-pane-appearance',
   },
   {
-    id: 'appearance-layout',
-    pane: 'appearance',
-    paneTitle: 'Appearance',
-    type: 'section',
-    title: 'Layout',
-    sectionTitle: 'Appearance',
-    keywords: [
-      'vertical navigation',
-      'sidebar nav',
-      'tab strip',
-      'sidebar tabs',
-    ],
-    anchorId: 'pref-appearance-section-layout',
-    fallbackAnchorId: 'pref-pane-appearance',
-  },
-  {
     id: 'providers-claude-cli',
     pane: 'providers',
     paneTitle: 'Providers',

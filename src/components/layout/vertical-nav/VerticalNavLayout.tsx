@@ -43,8 +43,8 @@ interface VerticalNavLayoutProps {
 }
 
 /**
- * The desktop layout with the vertical navigation (default on, Settings →
- * Appearance → Layout). Draft and spec: docs/mockups/vertical-nav/.
+ * The desktop app's layout, with the vertical navigation. Web access and
+ * phones keep the sidebar with the tab strip. Draft and spec: docs/mockups/vertical-nav/.
  *
  * - Other tabs: one sidebar column (an empty title strip for the window
  *   controls, nav + panel, today's footer), the main column with the sidebar

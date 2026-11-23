@@ -52,11 +52,10 @@ return hasToolbar ? (
 
 ## Vertical navigation
 
-`vertical_navigation` (client-only preference, default on, Settings →
-Appearance → Layout) swaps the desktop layout for `components/layout/vertical-nav/VerticalNavLayout.tsx`.
-Native desktop only: `MainWindow` gates it with `isNativeApp()` and
-`useIsMobile()`, so web access and phones keep today's layout. With the
-setting off, `MainWindow` renders the sidebar with the tab strip.
+The desktop app's layout is
+`components/layout/vertical-nav/VerticalNavLayout.tsx`. There is no setting:
+`MainWindow` picks it with `isNativeApp()` and `useIsMobile()`. Web access
+and phones render the sidebar with the tab strip.
 
 - The layout reuses today's pieces through opt-in props, all off by default:
   `ProjectsSidebar hideNav` (no Home row, no tab strip), `SidebarFooter
