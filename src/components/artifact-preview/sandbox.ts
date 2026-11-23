@@ -33,6 +33,8 @@ export const PREVIEW_CSP = [
  */
 export const ARTIFACT_READY_MESSAGE = 'splitkick-artifact-ready'
 export const ARTIFACT_MESSAGE = 'splitkick-artifact'
+/** From the page to the app: the height its content needs, in CSS px. */
+export const ARTIFACT_SIZE_MESSAGE = 'splitkick-artifact-size'
 
 export type ArtifactKind = 'html' | 'svg'
 
@@ -60,7 +62,10 @@ export function detectMarkupKind(code: string): ArtifactKind {
  * of the artifact, so it covers every element the page contains. A page can
  * add its own policies, but each extra policy only restricts more.
  */
-export function buildSandboxedSrcdoc(html: string): string {
+export function buildSandboxedSrcdoc(
+  html: string,
+  { reportSize = false }: { reportSize?: boolean } = {}
+): string {
   // The artifact's own doctype would come after our tags and be ignored.
   const body = html.replace(/^\uFEFF?\s*<!doctype[^>]*>/i, '')
   return (
@@ -68,9 +73,26 @@ export function buildSandboxedSrcdoc(html: string): string {
     '<meta charset="utf-8">' +
     `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">` +
     '<meta name="referrer" content="no-referrer">' +
-    body
+    body +
+    (reportSize ? SIZE_REPORT_SCRIPT : '')
   )
 }
+
+/**
+ * Appended after the artifact, so the page is parsed when it runs. Reports
+ * the height the content needs: the root element's box (it grows with the
+ * content and holds the body's margins), or the scroll height when content
+ * overflows a page that sizes itself to the frame (`height: 100%`). Sends
+ * only a number; the app clamps it and checks `event.source`.
+ */
+const SIZE_REPORT_SCRIPT =
+  '<script>(function(){var last=0;function send(){' +
+  'var d=document.documentElement;' +
+  'var h=Math.ceil(d.getBoundingClientRect().height);' +
+  'if(d.scrollHeight>innerHeight)h=Math.max(h,d.scrollHeight);' +
+  `if(h>0&&h!==last){last=h;parent.postMessage({type:'${ARTIFACT_SIZE_MESSAGE}',height:h},'*')}}` +
+  'try{new ResizeObserver(send).observe(document.documentElement)}catch(e){}' +
+  "addEventListener('load',send);send()})()</script>"
 
 /**
  * An SVG as `data:` URL for an `<img>`. In image context the browser runs no

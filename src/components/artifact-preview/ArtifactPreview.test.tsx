@@ -20,6 +20,35 @@ describe('ArtifactPreview', () => {
     expect(srcdoc).toContain('<p>hi</p>')
   })
 
+  it('passes size reports from its own frame only', () => {
+    const onHeight = vi.fn()
+    render(
+      <ArtifactPreview
+        kind="html"
+        content="<p>hi</p>"
+        title="Preview"
+        onContentHeight={onHeight}
+      />
+    )
+    const frame = screen.getByTitle('Preview') as HTMLIFrameElement
+    expect(frame.getAttribute('srcdoc')).toContain('splitkick-artifact-size')
+
+    const post = (source: unknown, data: unknown) =>
+      window.dispatchEvent(
+        new MessageEvent('message', { data, source: source as Window })
+      )
+    post(window, { type: 'splitkick-artifact-size', height: 900 })
+    post(frame.contentWindow, { type: 'other', height: 300 })
+    post(frame.contentWindow, {
+      type: 'splitkick-artifact-size',
+      height: 'x',
+    })
+    expect(onHeight).not.toHaveBeenCalled()
+
+    post(frame.contentWindow, { type: 'splitkick-artifact-size', height: 312 })
+    expect(onHeight).toHaveBeenCalledWith(312)
+  })
+
   it('renders SVG as an image, not in a frame', () => {
     render(
       <ArtifactPreview

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { isNativeApp } from '@/lib/environment'
@@ -6,6 +6,7 @@ import { invoke } from '@/lib/transport'
 import {
   ARTIFACT_MESSAGE,
   ARTIFACT_READY_MESSAGE,
+  ARTIFACT_SIZE_MESSAGE,
   PREVIEW_IFRAME_SANDBOX,
   buildSandboxedSrcdoc,
   svgToDataUrl,
@@ -16,6 +17,10 @@ interface SandboxedHtmlFrameProps {
   html: string
   title: string
   className?: string
+  /** Called with the height the page's content needs (CSS px). Turns on the
+   * page's size report. */
+  onContentHeight?: (height: number) => void
+  style?: CSSProperties
 }
 
 /**
@@ -32,8 +37,18 @@ export function SandboxedHtmlFrame({
   html,
   title,
   className,
+  onContentHeight,
+  style,
 }: SandboxedHtmlFrameProps) {
-  const srcDoc = useMemo(() => buildSandboxedSrcdoc(html), [html])
+  const reportSize = onContentHeight !== undefined
+  const srcDoc = useMemo(
+    () => buildSandboxedSrcdoc(html, { reportSize }),
+    [html, reportSize]
+  )
+  const onHeightRef = useRef(onContentHeight)
+  useEffect(() => {
+    onHeightRef.current = onContentHeight
+  }, [onContentHeight])
   const native = isNativeApp()
   const frameRef = useRef<HTMLIFrameElement>(null)
   const { data: frameUrl, isError } = useQuery({
@@ -59,6 +74,20 @@ export function SandboxedHtmlFrame({
     return () => window.removeEventListener('message', onMessage)
   }, [native, srcDoc])
 
+  // Size reports: only from our own frame, only a finite number. The page
+  // controls nothing else; the caller clamps the height.
+  useEffect(() => {
+    if (!reportSize) return
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return
+      if (event.data?.type !== ARTIFACT_SIZE_MESSAGE) return
+      const height = Number(event.data.height)
+      if (Number.isFinite(height) && height > 0) onHeightRef.current?.(height)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [reportSize])
+
   // Never fall back to srcdoc in the native app: it would not run scripts.
   if (native && !frameUrl) {
     return isError ? (
@@ -79,6 +108,7 @@ export function SandboxedHtmlFrame({
       referrerPolicy="no-referrer"
       // Pages expect a white canvas, like in a browser.
       className={cn('block w-full border-0 bg-white', className)}
+      style={style}
     />
   )
 }
@@ -106,6 +136,9 @@ interface ArtifactPreviewProps {
   content: string
   title: string
   className?: string
+  /** HTML only: see `SandboxedHtmlFrame`. */
+  onContentHeight?: (height: number) => void
+  style?: CSSProperties
 }
 
 /** Rendered preview of an HTML or SVG artifact. */
@@ -114,6 +147,8 @@ export function ArtifactPreview({
   content,
   title,
   className,
+  onContentHeight,
+  style,
 }: ArtifactPreviewProps) {
   if (kind === 'svg') {
     return (
@@ -132,6 +167,8 @@ export function ArtifactPreview({
       html={content}
       title={title}
       className={cn('rounded-md', className)}
+      onContentHeight={onContentHeight}
+      style={style}
     />
   )
 }

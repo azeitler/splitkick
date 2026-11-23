@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **HTML previews in chat fit their content.** A ```html block no longer
+  opens in a fixed 420 px box: the box takes the height the page needs, from
+  120 px up to 70 % of the window, and scrolls inside above that. Dragging the
+  resize handle still sets your own height; Reload measures again.
 - **Server connections show whether a remote uses an access token.** A
   remote with a token has a lock icon; a remote without one has an open lock
   in amber, so an unprotected connection stands out. A tooltip on the lock

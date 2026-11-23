@@ -3,6 +3,7 @@ import {
   PREVIEW_CSP,
   PREVIEW_IFRAME_SANDBOX,
   buildSandboxedSrcdoc,
+  ARTIFACT_SIZE_MESSAGE,
   detectMarkupKind,
   getArtifactKind,
   svgToDataUrl,
@@ -38,6 +39,18 @@ describe('artifact sandbox rules', () => {
       '<meta http-equiv="Content-Security-Policy" content="default-src *">'
     )
     expect(doc.indexOf(PREVIEW_CSP)).toBeLessThan(doc.indexOf('default-src *'))
+  })
+
+  it('adds the size report only when asked, after the artifact', () => {
+    expect(buildSandboxedSrcdoc('<p>hi</p>')).not.toContain(
+      ARTIFACT_SIZE_MESSAGE
+    )
+    const doc = buildSandboxedSrcdoc('<p>hi</p>', { reportSize: true })
+    expect(doc.indexOf(ARTIFACT_SIZE_MESSAGE)).toBeGreaterThan(
+      doc.indexOf('<p>hi</p>')
+    )
+    // Still inline only: the CSP allows it, nothing loads from the network.
+    expect(doc).not.toMatch(/<script[^>]+src=/)
   })
 
   it('knows previewable files', () => {

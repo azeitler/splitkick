@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen } from '@/test/test-utils'
-import HtmlPreviewBlock from './HtmlPreviewBlock'
+import HtmlPreviewBlock, { clampPreviewHeight } from './HtmlPreviewBlock'
 
 vi.mock('@/components/artifact-preview/ArtifactPreview', () => ({
   ArtifactPreview: () => <div>preview frame</div>,
@@ -40,5 +40,18 @@ describe('HtmlPreviewBlock', () => {
     expect(
       screen.getByRole('button', { name: 'Reload preview' })
     ).toBeInTheDocument()
+  })
+})
+
+describe('clampPreviewHeight', () => {
+  it('takes the content height between the minimum and 70 % of the window', () => {
+    expect(clampPreviewHeight(300, 1000)).toBe(300)
+    expect(clampPreviewHeight(40, 1000)).toBe(120)
+    expect(clampPreviewHeight(5000, 1000)).toBe(700)
+    expect(clampPreviewHeight(300.2, 1000)).toBe(301)
+  })
+
+  it('never goes below the minimum in a tiny window', () => {
+    expect(clampPreviewHeight(500, 100)).toBe(120)
   })
 })
