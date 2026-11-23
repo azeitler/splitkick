@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Vertical navigation (experimental).** Settings → Experimental → "Vertical
+  navigation" shows Home and the sidebar tabs in a nav left of the sidebar,
+  with counts on Starred, Agents, To-Do and Graphs, and a Collapse item for
+  icons only. The sidebar toggle moves in front of back/forward; Home shows no
+  sidebar panel and a footer with session stats. Desktop app only; off by
+  default.
+
 ### Changed
 
 - **HTML previews in chat fit their content.** A ```html block no longer
