@@ -12,6 +12,8 @@ import {
   HardDriveDownload,
   Link2,
   Loader2,
+  Lock,
+  LockOpen,
   Pencil,
   Plus,
   Server,
@@ -937,6 +939,7 @@ export function RemoteConnectionsDialog({
                   detail={connection.url}
                   versionLabel={versionLabelFor(connection.id)}
                   versionWarning={versionMismatchFor(connection.id)}
+                  tokenAuth={connection.token.trim() !== ''}
                   active={
                     activeId === connection.id ||
                     openIds.includes(connection.id)
@@ -1068,6 +1071,7 @@ function ConnectionRow({
   detail,
   versionLabel,
   versionWarning,
+  tokenAuth,
   active,
   connecting,
   onSelect,
@@ -1078,6 +1082,9 @@ function ConnectionRow({
   detail: string
   versionLabel: string
   versionWarning?: boolean
+  /** Remote rows: whether the connection sends an access token. Not shown
+   * for the local row. */
+  tokenAuth?: boolean
   active: boolean
   connecting?: boolean
   onSelect: () => void
@@ -1112,6 +1119,24 @@ function ConnectionRow({
           className={`size-2 shrink-0 rounded-full ${active ? 'bg-green-500' : 'bg-muted-foreground/35'}`}
         />
         {name}
+        {tokenAuth === true && (
+          <Lock
+            role="img"
+            aria-label="Uses an access token"
+            className="size-3 shrink-0 text-muted-foreground"
+          >
+            <title>Uses an access token</title>
+          </Lock>
+        )}
+        {tokenAuth === false && (
+          <LockOpen
+            role="img"
+            aria-label="No access token"
+            className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
+          >
+            <title>No access token</title>
+          </LockOpen>
+        )}
         {active && <Check className="size-3.5 shrink-0 text-green-500" />}
         {connecting && (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />

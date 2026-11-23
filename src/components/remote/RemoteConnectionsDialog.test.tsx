@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
@@ -310,6 +317,28 @@ describe('RemoteConnectionsDialog', () => {
     expect(row?.getAttribute('data-active')).toBe('true')
     expect(select.className).toMatch(/focus-visible:/)
     expect(select.className).toContain('cursor-pointer')
+  })
+
+  it('marks remotes with and without an access token', () => {
+    connections.list = [
+      { id: 'remote-1', name: 'mac-2', url: 'http://mac-2:3460', token: 't' },
+      { id: 'remote-2', name: 'mac-3', url: 'http://mac-3:3460', token: '' },
+    ]
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+
+    const rowOf = (name: string) =>
+      screen
+        .getByRole('button', { name: new RegExp(`^${name}`) })
+        .closest('[data-connection-row]') as HTMLElement
+    expect(
+      within(rowOf('mac-2')).getByRole('img', { name: 'Uses an access token' })
+    ).toBeInTheDocument()
+    expect(
+      within(rowOf('mac-3')).getByRole('img', { name: 'No access token' })
+    ).toBeInTheDocument()
+    // Local has no token concept.
+    expect(within(rowOf('Local')).queryByRole('img')).not.toBeInTheDocument()
   })
 
   it('adds and selects a remote from a complete Web Access URL', async () => {
