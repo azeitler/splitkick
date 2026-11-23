@@ -135,6 +135,9 @@ describe('WebAccessPane Tailscale block (#151)', () => {
   const baseInfo = {
     installed: true,
     running: true,
+    state: 'Running' as string | null,
+    error: null as string | null,
+    warning: null as string | null,
     tailnetName: 'tail1234.ts.net',
     magicDnsEnabled: true,
     dnsName: 'box.tail1234.ts.net',
@@ -178,11 +181,47 @@ describe('WebAccessPane Tailscale block (#151)', () => {
   })
 
   it('says when Tailscale is installed but not connected', async () => {
-    mockTailscale({ ...baseInfo, running: false, dnsName: null })
+    mockTailscale({ ...baseInfo, running: false, state: null, dnsName: null })
     render(<WebAccessPane />)
     expect(
       await screen.findByText('Tailscale is installed but not connected.')
     ).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Stopped', 'Tailscale is stopped. Connect it in the Tailscale app.'],
+    ['NeedsLogin', 'Tailscale needs login. Log in with the Tailscale app.'],
+    [
+      'NeedsMachineAuth',
+      'Tailscale waits until a tailnet admin approves this machine.',
+    ],
+    ['Starting', 'Tailscale is starting.'],
+    ['NoState', 'Tailscale is installed but not connected (state NoState).'],
+  ])('names the backend state %s', async (state, message) => {
+    mockTailscale({ ...baseInfo, running: false, state, dnsName: null })
+    render(<WebAccessPane />)
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(screen.queryByText(/The app log has/)).not.toBeInTheDocument()
+  })
+
+  it('shows a CLI failure as an error, not as "not connected"', async () => {
+    mockTailscale({
+      ...baseInfo,
+      running: false,
+      state: null,
+      error: 'timed out after 10 s',
+      dnsName: null,
+    })
+    render(<WebAccessPane />)
+    expect(
+      await screen.findByText(
+        'Could not read Tailscale status: timed out after 10 s'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText(/The app log has the details/)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/installed but not connected/)
+    ).not.toBeInTheDocument()
   })
 
   it('shows the MagicDNS name and a serve hint when not served', async () => {

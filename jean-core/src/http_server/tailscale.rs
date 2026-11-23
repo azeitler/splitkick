@@ -2,9 +2,18 @@
 //!
 //! Reads `tailscale status --json` and `tailscale serve status --json` and
 //! reports the tailnet, this machine's MagicDNS name, and whether the web
-//! access server is published through `tailscale serve`. Every failure
-//! degrades to "not installed" / "not running": this is information only and
-//! must never block the pane.
+//! access server is published through `tailscale serve`. This is
+//! information only and must never block the pane: a failed CLI call comes
+//! back as `error`, a backend that is not running as its `state`.
+//!
+//! macOS: the app bundle binary is `Tailscale.app/Contents/MacOS/Tailscale`
+//! (capital T; the App Store variant has no other CLI, the Standalone one
+//! adds a `/usr/local/bin/tailscale` wrapper). It reads `TERM`, `SHLVL`,
+//! `PS1` etc. to choose between GUI and CLI; started from a GUI app it tries
+//! to open the GUI and prints "The Tailscale GUI failed to start" with exit
+//! 0. `TAILSCALE_BE_CLI=1` forces CLI mode.
+//! https://tailscale.com/docs/reference/tailscale-cli (macOS section),
+//! https://tailscale.com/docs/concepts/macos-variants
 //!
 //! JSON shapes (Tailscale 1.104): `status` has `BackendState`,
 //! `MagicDNSSuffix`, `CurrentTailnet {Name, MagicDNSSuffix, MagicDNSEnabled}`
@@ -13,8 +22,9 @@
 //! {Proxy}}}}`, `AllowFunnel {"<host>:<port>": true}`, and `Foreground` with
 //! one nested ServeConfig per foreground `tailscale serve` session.
 
-use std::path::PathBuf;
-use std::process::{Output, Stdio};
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -23,13 +33,23 @@ use tauri::AppHandle;
 
 use crate::platform::{find_cli_in_host_path, silent_command};
 
-const CLI_TIMEOUT: Duration = Duration::from_secs(3);
+/// Generous: a cold app binary on a loaded machine can take seconds. The
+/// call runs on a blocking thread, so it does not hold up other commands.
+const CLI_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TailscaleInfo {
     pub installed: bool,
     pub running: bool,
+    /// `BackendState` from `status --json` (`Running`, `Stopped`,
+    /// `NeedsLogin`, `Starting`, ...). `None` when the status was not read.
+    pub state: Option<String>,
+    /// Short reason when the CLI call failed (timeout, exit code, output
+    /// that is not JSON). `running` is false then.
+    pub error: Option<String>,
+    /// Text the CLI printed next to the JSON (e.g. a version warning).
+    pub warning: Option<String>,
     /// Tailnet DNS name, e.g. `tail1234.ts.net`.
     pub tailnet_name: Option<String>,
     pub magic_dns_enabled: bool,
@@ -50,10 +70,29 @@ pub struct TailscaleServe {
     pub funnel: bool,
 }
 
-/// Parse `tailscale status --json`. `None` when the output is not JSON.
+/// Find the JSON object in CLI output that may carry text before or after
+/// it (a version warning, a notice). Returns the value and the other text.
+pub fn extract_json(text: &str) -> Option<(Value, Option<String>)> {
+    if let Ok(v) = serde_json::from_str::<Value>(text) {
+        return Some((v, None));
+    }
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    if end < start {
+        return None;
+    }
+    let v = serde_json::from_str::<Value>(&text[start..=end]).ok()?;
+    let noise = format!("{} {}", text[..start].trim(), text[end + 1..].trim());
+    let noise = noise.trim();
+    Some((v, (!noise.is_empty()).then(|| noise.to_string())))
+}
+
+/// Parse `tailscale status --json`. `None` when the output holds no JSON
+/// object. Text around the JSON goes to `warning`.
 pub fn parse_status(json: &str, port: u16) -> Option<TailscaleInfo> {
-    let v: Value = serde_json::from_str(json).ok()?;
-    let running = v.get("BackendState").and_then(Value::as_str) == Some("Running");
+    let (v, warning) = extract_json(json)?;
+    let state = non_empty(v.get("BackendState"));
+    let running = state.as_deref() == Some("Running");
     let tailnet = v.get("CurrentTailnet");
     let tailnet_name = non_empty(v.get("MagicDNSSuffix"))
         .or_else(|| tailnet.and_then(|t| non_empty(t.get("MagicDNSSuffix"))));
@@ -79,6 +118,9 @@ pub fn parse_status(json: &str, port: u16) -> Option<TailscaleInfo> {
     Some(TailscaleInfo {
         installed: true,
         running,
+        state,
+        error: None,
+        warning,
         tailnet_name,
         magic_dns_enabled,
         dns_name,
@@ -90,7 +132,7 @@ pub fn parse_status(json: &str, port: u16) -> Option<TailscaleInfo> {
 
 /// Parse `tailscale serve status --json` into one entry per proxy handler.
 pub fn parse_serve_status(json: &str, port: u16) -> Vec<TailscaleServe> {
-    let Ok(v) = serde_json::from_str::<Value>(json) else {
+    let Some((v, _)) = extract_json(json) else {
         return Vec::new();
     };
     let mut serves = Vec::new();
@@ -180,12 +222,26 @@ fn non_empty(v: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The CLI inside a macOS app bundle's `Contents/MacOS` directory. Matches
+/// the file name exactly: `Path::exists` would also accept a wrong case on a
+/// case-insensitive volume and then fail on a case-sensitive one.
+fn bundle_cli(macos_dir: &Path) -> Option<PathBuf> {
+    let names: Vec<String> = std::fs::read_dir(macos_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .collect();
+    ["Tailscale", "tailscale"]
+        .into_iter()
+        .find(|want| names.iter().any(|name| name == want))
+        .map(|name| macos_dir.join(name))
+}
+
 fn tailscale_binary() -> Option<PathBuf> {
-    // On macOS the PATH entry is often a shell wrapper around the app binary.
+    // On macOS the PATH entry is a shell wrapper around the app binary (and
+    // missing for the App Store variant), so call the app binary directly.
     #[cfg(target_os = "macos")]
     {
-        let bundled = PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/tailscale");
-        if bundled.exists() {
+        if let Some(bundled) = bundle_cli(Path::new("/Applications/Tailscale.app/Contents/MacOS")) {
             return Some(bundled);
         }
     }
@@ -202,50 +258,211 @@ fn tailscale_binary() -> Option<PathBuf> {
     None
 }
 
-fn run_with_timeout(binary: &PathBuf, args: &[&str]) -> Option<Output> {
+/// One finished CLI call.
+#[derive(Debug)]
+struct CliRun {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    elapsed: Duration,
+}
+
+/// A CLI call that did not finish: could not start, or timed out.
+#[derive(Debug)]
+struct CliFailure {
+    error: String,
+    elapsed: Duration,
+}
+
+fn run_with_timeout(binary: &Path, args: &[&str], timeout: Duration) -> Result<CliRun, CliFailure> {
+    let started = Instant::now();
     let mut child = silent_command(binary)
         .args(args)
+        // Force CLI mode for the macOS app binary (see module docs).
+        .env("TAILSCALE_BE_CLI", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .ok()?;
-    let deadline = Instant::now() + CLI_TIMEOUT;
-    loop {
+        .map_err(|e| CliFailure {
+            error: format!("could not start the CLI: {e}"),
+            elapsed: started.elapsed(),
+        })?;
+    // Drain both pipes on threads: a status with many peers is larger than
+    // the pipe buffer, and an undrained pipe blocks the child until timeout.
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            String::from_utf8_lossy(&buf).into_owned()
+        })
+    };
+    let stdout = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let stderr = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let deadline = started + timeout;
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(25)),
-            _ => {
+            Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(CliFailure {
+                    error: format!("timed out after {} s", timeout.as_secs_f32()),
+                    elapsed: started.elapsed(),
+                });
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(CliFailure {
+                    error: format!("could not wait for the CLI: {e}"),
+                    elapsed: started.elapsed(),
+                });
             }
         }
+    };
+    Ok(CliRun {
+        code: status.code(),
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+        elapsed: started.elapsed(),
+    })
+}
+
+/// The first non-empty line, cut to `max` characters.
+fn first_line(text: &str, max: usize) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    let mut out: String = line.chars().take(max).collect();
+    if line.chars().count() > max {
+        out.push('…');
     }
+    out
+}
+
+fn head(text: &str, max: usize) -> String {
+    text.trim()
+        .chars()
+        .take(max)
+        .collect::<String>()
+        .replace('\n', "\\n")
 }
 
 /// Blocking: query the local Tailscale CLI. Never fails.
 pub fn detect(port: u16) -> TailscaleInfo {
+    detect_with(tailscale_binary(), port, CLI_TIMEOUT)
+}
+
+fn detect_with(binary: Option<PathBuf>, port: u16, timeout: Duration) -> TailscaleInfo {
     let not_installed = TailscaleInfo {
         port,
         ..TailscaleInfo::default()
     };
-    let Some(binary) = tailscale_binary() else {
+    let Some(binary) = binary else {
         return not_installed;
     };
-    // `status --json` prints JSON also when the backend is stopped; a failed
-    // or unreadable call means the daemon is not reachable.
-    let status = run_with_timeout(&binary, &["status", "--json"])
-        .and_then(|out| parse_status(&String::from_utf8_lossy(&out.stdout), port));
-    let Some(mut info) = status else {
-        return TailscaleInfo {
-            installed: true,
-            ..not_installed
-        };
+    // `status --json` prints JSON also when the backend is stopped, so a
+    // missing JSON object is a CLI failure, not "not connected".
+    let mut info = match run_with_timeout(&binary, &["status", "--json"], timeout) {
+        Ok(run) => match parse_status(&run.stdout, port) {
+            Some(mut info) => {
+                let stderr = run.stderr.trim();
+                if !stderr.is_empty() {
+                    info.warning = Some(match info.warning.take() {
+                        Some(w) => format!("{w} {stderr}"),
+                        None => stderr.to_string(),
+                    });
+                }
+                if info.running {
+                    if let Some(warning) = &info.warning {
+                        log::info!("Tailscale CLI warning: {}", head(warning, 200));
+                    }
+                } else {
+                    log::warn!(
+                        "Tailscale not running: state={:?} binary={} exit={:?} elapsed={:?} stderr={:?} warning={:?}",
+                        info.state,
+                        binary.display(),
+                        run.code,
+                        run.elapsed,
+                        head(&run.stderr, 200),
+                        info.warning.as_deref().map(|w| head(w, 200)),
+                    );
+                }
+                info
+            }
+            None => {
+                let detail = if run.stdout.trim().is_empty() {
+                    &run.stderr
+                } else {
+                    &run.stdout
+                };
+                let error = match run.code {
+                    Some(0) if detail.trim().is_empty() => "no output".to_string(),
+                    Some(0) => format!("output is not JSON: {}", first_line(detail, 120)),
+                    code => {
+                        let code = code.map_or("signal".to_string(), |c| c.to_string());
+                        let line = first_line(detail, 120);
+                        if line.is_empty() {
+                            format!("exit code {code}")
+                        } else {
+                            format!("exit code {code}: {line}")
+                        }
+                    }
+                };
+                log::warn!(
+                    "Tailscale status failed: {error}; binary={} exit={:?} elapsed={:?} stdout={:?} stderr={:?}",
+                    binary.display(),
+                    run.code,
+                    run.elapsed,
+                    head(&run.stdout, 200),
+                    head(&run.stderr, 200),
+                );
+                return TailscaleInfo {
+                    installed: true,
+                    error: Some(error),
+                    ..not_installed
+                };
+            }
+        },
+        Err(failure) => {
+            log::warn!(
+                "Tailscale status failed: {}; binary={} elapsed={:?}",
+                failure.error,
+                binary.display(),
+                failure.elapsed,
+            );
+            return TailscaleInfo {
+                installed: true,
+                error: Some(failure.error),
+                ..not_installed
+            };
+        }
     };
     if info.running {
-        if let Some(out) = run_with_timeout(&binary, &["serve", "status", "--json"]) {
-            info.serves = parse_serve_status(&String::from_utf8_lossy(&out.stdout), port);
+        match run_with_timeout(&binary, &["serve", "status", "--json"], timeout) {
+            Ok(run) => info.serves = parse_serve_status(&run.stdout, port),
+            Err(failure) => log::warn!(
+                "Tailscale serve status failed: {}; binary={} elapsed={:?}",
+                failure.error,
+                binary.display(),
+                failure.elapsed,
+            ),
         }
     }
     info
@@ -400,6 +617,170 @@ mod tests {
         assert!(!proxy_targets_local_port("[::1]", 3456));
     }
 
+    #[test]
+    fn leading_warning_line_is_kept() {
+        let out = format!(
+            "Warning: client version \"1.90.0\" != tailscaled server version \"1.92.1\"\n{RUNNING}\n"
+        );
+        let info = parse_status(&out, 3456).unwrap();
+        assert!(info.running);
+        assert_eq!(info.dns_name.as_deref(), Some("box.tail1234.ts.net"));
+        assert!(info.warning.unwrap().starts_with("Warning: client version"));
+        assert_eq!(parse_status(RUNNING, 3456).unwrap().warning, None);
+    }
+
+    #[test]
+    fn backend_states() {
+        for state in ["NeedsLogin", "Stopped", "Starting", "NeedsMachineAuth"] {
+            let json = format!(r#"{{"BackendState": "{state}", "Self": null}}"#);
+            let info = parse_status(&json, 3456).unwrap();
+            assert!(info.installed && !info.running);
+            assert_eq!(info.state.as_deref(), Some(state));
+            assert_eq!(info.error, None);
+        }
+        assert_eq!(
+            parse_status(RUNNING, 3456).unwrap().state.as_deref(),
+            Some("Running")
+        );
+    }
+
+    #[test]
+    fn serve_status_with_noise() {
+        let json = "notice: something\n{\"TCP\": {\"443\": {\"HTTPS\": true}}, \"Web\": {\"box.tail1234.ts.net:443\": {\"Handlers\": {\"/\": {\"Proxy\": \"http://localhost:3456\"}}}}}";
+        assert_eq!(parse_serve_status(json, 3456).len(), 1);
+    }
+
+    #[test]
+    fn bundle_cli_matches_the_exact_name() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(bundle_cli(dir.path()), None);
+        std::fs::write(dir.path().join("Tailscale"), "").unwrap();
+        // On a case-insensitive volume `exists()` would accept any case; the
+        // chosen path must carry the name as it is on disk.
+        assert_eq!(bundle_cli(dir.path()), Some(dir.path().join("Tailscale")));
+        assert_eq!(bundle_cli(&dir.path().join("missing")), None);
+    }
+
+    #[test]
+    fn bundle_cli_accepts_an_old_lowercase_name() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("tailscale"), "").unwrap();
+        assert_eq!(bundle_cli(dir.path()), Some(dir.path().join("tailscale")));
+    }
+
+    #[test]
+    fn no_binary_is_not_installed() {
+        let info = detect_with(None, 3456, Duration::from_secs(1));
+        assert!(!info.installed && !info.running);
+        assert_eq!(info.error, None);
+    }
+
+    #[cfg(unix)]
+    mod fake_cli {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        /// A fake `tailscale` shell script in a temp dir.
+        fn fake(script: &str) -> (tempfile::TempDir, PathBuf) {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("tailscale");
+            std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            (dir, path)
+        }
+
+        fn detect_fake(script: &str, timeout: Duration) -> TailscaleInfo {
+            let (_dir, path) = fake(script);
+            detect_with(Some(path), 3456, timeout)
+        }
+
+        const SECOND: Duration = Duration::from_secs(5);
+
+        #[test]
+        fn running_with_serve_and_warning() {
+            let script = format!(
+                r#"if [ "$1" = serve ]; then
+  echo '{{"TCP": {{"443": {{"HTTPS": true}}}}, "Web": {{"box.tail1234.ts.net:443": {{"Handlers": {{"/": {{"Proxy": "http://localhost:3456"}}}}}}}}}}'
+else
+  echo 'Warning: client version "1" != tailscaled server version "2"' >&2
+  cat <<'JSON'
+{RUNNING}
+JSON
+fi"#
+            );
+            let info = detect_fake(&script, SECOND);
+            assert!(info.running, "{info:?}");
+            assert_eq!(info.error, None);
+            assert_eq!(info.dns_name.as_deref(), Some("box.tail1234.ts.net"));
+            assert_eq!(info.serves.len(), 1);
+            assert!(info.warning.unwrap().contains("client version"));
+        }
+
+        #[test]
+        fn forces_cli_mode() {
+            // The macOS app binary opens its GUI unless TAILSCALE_BE_CLI=1.
+            let script = format!(
+                r#"if [ "$TAILSCALE_BE_CLI" != 1 ]; then echo 'The Tailscale GUI failed to start'; exit 0; fi
+cat <<'JSON'
+{RUNNING}
+JSON"#
+            );
+            assert!(detect_fake(&script, SECOND).running);
+        }
+
+        #[test]
+        fn gui_text_instead_of_json_is_an_error() {
+            let info = detect_fake("echo 'The Tailscale GUI failed to start: denied'", SECOND);
+            assert!(info.installed && !info.running);
+            assert_eq!(
+                info.error.as_deref(),
+                Some("output is not JSON: The Tailscale GUI failed to start: denied")
+            );
+        }
+
+        #[test]
+        fn needs_login_is_a_state_not_an_error() {
+            let info = detect_fake(r#"echo '{"BackendState": "NeedsLogin"}'"#, SECOND);
+            assert!(info.installed && !info.running);
+            assert_eq!(info.state.as_deref(), Some("NeedsLogin"));
+            assert_eq!(info.error, None);
+        }
+
+        #[test]
+        fn non_zero_exit_reports_stderr() {
+            let info = detect_fake(
+                "echo 'failed to connect to local tailscaled' >&2; exit 1",
+                SECOND,
+            );
+            assert_eq!(
+                info.error.as_deref(),
+                Some("exit code 1: failed to connect to local tailscaled")
+            );
+            assert_eq!(info.state, None);
+        }
+
+        #[test]
+        fn timeout_is_an_error() {
+            let started = Instant::now();
+            let info = detect_fake("sleep 5", Duration::from_millis(300));
+            assert!(started.elapsed() < Duration::from_secs(3));
+            assert!(info.installed && !info.running);
+            assert!(info.error.unwrap().starts_with("timed out"));
+        }
+
+        #[test]
+        fn large_output_does_not_block() {
+            // More than a pipe buffer (64 KB) before the JSON.
+            let script = format!(
+                r#"i=0; while [ $i -lt 2000 ]; do echo 'padding padding padding padding padding padding' >&2; i=$((i+1)); done
+cat <<'JSON'
+{RUNNING}
+JSON"#
+            );
+            assert!(detect_fake(&script, SECOND).running);
+        }
+    }
+
     /// Live check against the local CLI: `cargo test --lib live_tailscale -- --ignored --nocapture`.
     #[test]
     #[ignore]
@@ -417,9 +798,12 @@ mod tests {
                 .join(".")
         };
         println!(
-            "installed={} running={} magicDns={} tailnet={:?} dns={:?} ips={} port={}",
+            "installed={} running={} state={:?} error={:?} warning={:?} magicDns={} tailnet={:?} dns={:?} ips={} port={}",
             info.installed,
             info.running,
+            info.state,
+            info.error,
+            info.warning,
             info.magic_dns_enabled,
             info.tailnet_name.as_deref().map(mask),
             info.dns_name.as_deref().map(mask),

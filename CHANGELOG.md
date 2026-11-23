@@ -86,6 +86,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Settings → Web Access finds a connected Tailscale.** On macOS the
+  Tailscale app binary opened its GUI instead of the CLI when Splitkick was
+  not started from a terminal, so the pane said "installed but not
+  connected". Splitkick now forces CLI mode, calls the binary by its real
+  name (`Tailscale`), reads JSON with a warning line around it, waits up to
+  10 s, and reads large output without a stall. The pane names the state
+  (stopped, needs login) or the CLI error, and the app log records the cause.
+
 - **A queued message stays in the chat while its run works.** In a session
   with a cancelled turn among the loaded runs, a refresh that read the
   session before the backend wrote the new run removed the queued message

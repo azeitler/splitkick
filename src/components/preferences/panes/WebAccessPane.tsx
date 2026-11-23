@@ -117,6 +117,12 @@ export interface TailscaleServe {
 export interface TailscaleInfo {
   installed: boolean
   running: boolean
+  /** `BackendState` (`Running`, `Stopped`, `NeedsLogin`, ...); null when unread. */
+  state: string | null
+  /** Short reason when the CLI call failed (timeout, exit code, not JSON). */
+  error: string | null
+  /** Text the CLI printed next to the JSON, e.g. a version warning. */
+  warning: string | null
   tailnetName: string | null
   magicDnsEnabled: boolean
   dnsName: string | null
@@ -203,6 +209,25 @@ async function copyText(text: string, message: string) {
   }
 }
 
+/** Why Tailscale shows no connection: a CLI failure or the backend state. */
+function tailscaleNotRunningMessage(info: TailscaleInfo): string {
+  if (info.error) return `Could not read Tailscale status: ${info.error}`
+  switch (info.state) {
+    case 'Stopped':
+      return 'Tailscale is stopped. Connect it in the Tailscale app.'
+    case 'NeedsLogin':
+      return 'Tailscale needs login. Log in with the Tailscale app.'
+    case 'NeedsMachineAuth':
+      return 'Tailscale waits until a tailnet admin approves this machine.'
+    case 'Starting':
+      return 'Tailscale is starting.'
+    default:
+      return info.state
+        ? `Tailscale is installed but not connected (state ${info.state}).`
+        : 'Tailscale is installed but not connected.'
+  }
+}
+
 const TailscaleSection: React.FC<{ info: TailscaleInfo }> = ({ info }) => {
   const serve = info.serves.find(s => s.servesSplitkick)
   const serveCommand = `tailscale serve --bg ${info.port}`
@@ -214,9 +239,18 @@ const TailscaleSection: React.FC<{ info: TailscaleInfo }> = ({ info }) => {
     >
       <div className="space-y-4">
         {!info.running ? (
-          <p className="text-sm text-muted-foreground">
-            Tailscale is installed but not connected.
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {tailscaleNotRunningMessage(info)}
+            </p>
+            {info.error && (
+              <p className="text-xs text-muted-foreground">
+                Check that the Tailscale app is open, then run{' '}
+                <code className="text-foreground">tailscale status</code> in a
+                terminal. The app log has the details.
+              </p>
+            )}
+          </div>
         ) : (
           <>
             <InlineField
