@@ -1,5 +1,11 @@
 import { useMemo, type ReactNode } from 'react'
-import { ChevronsLeft, ChevronsRight, House } from 'lucide-react'
+import {
+  Archive,
+  CalendarClock,
+  ChevronsLeft,
+  ChevronsRight,
+  House,
+} from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -9,8 +15,12 @@ import {
   TAB_META,
   useSidebarTabCounts,
 } from '@/components/projects/SidebarTabs'
+import { useArchivedCount } from '@/components/archive/useArchivedCount'
+import { openArchivedView } from '@/lib/archived-view'
+import { openScheduledView } from '@/lib/scheduled-view'
 import { cn } from '@/lib/utils'
 import { useAgents } from '@/services/agents'
+import { useSchedules } from '@/services/schedules'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { SIDEBAR_TABS, type SidebarTab } from '@/types/ui-state'
@@ -44,6 +54,18 @@ function useNavCounts(): Partial<Record<SidebarTab, number>> {
   )
   return { ...tabCounts, agents: agentsRunning }
 }
+
+/** Pages in the main area, below the tabs: Scheduled and Archived. Each one
+ *  opens like today's sidebar row did; the panel keeps its tab. The sidebar
+ *  comes back if it was hidden, so the nav stays in view. */
+function openPage(open: () => void): void {
+  open()
+  const { leftSidebarVisible, setLeftSidebarVisible } = useUIStore.getState()
+  if (!leftSidebarVisible) setLeftSidebarVisible(true)
+}
+
+const openScheduledPage = () => openPage(openScheduledView)
+const openArchivedPage = () => openPage(() => openArchivedView())
 
 interface NavItemProps {
   id: string
@@ -139,8 +161,8 @@ interface VerticalNavProps {
 }
 
 /**
- * The vertical navigation (experimental): Home, then the sidebar tabs, and a
- * Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
+ * The vertical navigation (experimental): Home, then the sidebar tabs, the
+ * Scheduled and Archived pages, and a Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
  * and count badges; expanded shows the counts at the end of the row.
  */
 export function VerticalNav({
@@ -151,6 +173,16 @@ export function VerticalNav({
   const selectedTab = useUIStore(state => state.sidebarTab)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
   const counts = useNavCounts()
+  const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
+  // Filtered to one project, the view belongs to that project's row.
+  const archivedOpen = useUIStore(
+    state => state.archivedViewOpen && state.archivedViewProjectId === null
+  )
+  const { data: schedules } = useSchedules()
+  const activeSchedules = (schedules ?? []).filter(
+    schedule => schedule.enabled !== false
+  ).length
+  const archivedCount = useArchivedCount()
 
   const toggleCollapsed = () => {
     const { verticalNavCollapsed, setVerticalNavCollapsed } =
@@ -193,6 +225,27 @@ export function VerticalNav({
           />
         )
       })}
+      <div aria-hidden="true" className="mx-1 my-1.5 h-px shrink-0 bg-border" />
+      <NavItem
+        id="scheduled"
+        label="Scheduled"
+        icon={<CalendarClock />}
+        active={scheduledOpen}
+        collapsed={collapsed}
+        onClick={openScheduledPage}
+        count={activeSchedules}
+        countText={`${activeSchedules} active`}
+      />
+      <NavItem
+        id="archived"
+        label="Archived"
+        icon={<Archive />}
+        active={archivedOpen}
+        collapsed={collapsed}
+        onClick={openArchivedPage}
+        count={archivedCount}
+        countText={`${archivedCount} archived`}
+      />
       <div className="flex-1" />
       <NavItem
         id="collapse"

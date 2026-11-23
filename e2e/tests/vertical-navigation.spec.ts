@@ -42,6 +42,37 @@ const entries = projects.map((project, i) => ({
   sessions: worktrees[i].sessions,
 }))
 
+// Two active schedules and a paused one; three archived items.
+const schedules = [true, true, false].map((enabled, i) => ({
+  id: `schedule-${i + 1}`,
+  origin: 'user',
+  name: ['Nightly build check', 'Weekly report', 'Paused digest'][i],
+  enabled,
+  session_id: worktrees[0].sessions[0].id,
+  worktree_id: worktrees[0].id,
+  prompt: 'Run the checks',
+  reason: '',
+  fire_at_unix: Math.floor(now) + (i + 1) * 3600,
+  created_at_unix: Math.floor(now) - 3600,
+}))
+const archivedWorktrees = [
+  createWorktree(projects[0].id, {
+    name: 'old-spike',
+    branch: 'spike/old',
+    archived_at: Math.floor(now) - 7200,
+  }),
+]
+const archivedSessions = ['Draft release notes', 'Login spike'].map(
+  (name, i) => ({
+    session: createSession({ name, archived_at: Math.floor(now) - 600 * i }),
+    worktree_id: worktrees[0].id,
+    worktree_name: worktrees[0].name,
+    worktree_path: worktrees[0].path,
+    project_id: projects[0].id,
+    project_name: projects[0].name,
+  })
+)
+
 const shotDir = process.env.VERTICAL_NAV_SCREENSHOT_DIR
 const shotStamp = process.env.VERTICAL_NAV_SCREENSHOT_STAMP ?? 'shot'
 
@@ -145,6 +176,8 @@ const NAV_ITEMS = [
   'agents',
   'todo',
   'graphs',
+  'scheduled',
+  'archived',
   'collapse',
 ]
 
@@ -159,6 +192,9 @@ function withData(
       list_projects: projects,
       list_worktrees: worktrees,
       list_all_sessions: { entries },
+      list_schedules: schedules,
+      list_archived_worktrees: archivedWorktrees,
+      list_all_archived_sessions: archivedSessions,
       load_preferences: {
         ...mockPreferences,
         zoom_level: 100,
@@ -192,7 +228,32 @@ test.describe('Vertical navigation off', () => {
     await expect(mockPage.getByTestId('sidebar-header')).toBeVisible()
     await expect(mockPage.getByTestId('vertical-nav')).toHaveCount(0)
     await expect(mockPage.getByTestId('vertical-nav-layout')).toHaveCount(0)
+    // The classic sidebar keeps its rows, and the project its Archived row.
+    await expect(mockPage.getByTestId('sidebar-scheduled-row')).toBeVisible()
+    await expect(mockPage.getByTestId('sidebar-archived-row')).toBeVisible()
+    const projectArchived = mockPage.getByTestId(
+      `project-archived-row-${projects[0].id}`
+    )
+    await expect(projectArchived).toContainText('Archived3')
+    await expect(
+      mockPage.getByTestId(`project-archived-row-${projects[1].id}`)
+    ).toHaveCount(0)
     await shot(mockPage, 'vertical-nav-off')
+
+    // It opens the Archived view filtered to the project.
+    await projectArchived.click()
+    await expect(mockPage.getByTestId('archived-view')).toBeVisible()
+    await expect(
+      mockPage
+        .getByTestId('archived-view')
+        .getByLabel('Project', { exact: true })
+    ).toHaveValue(projects[0].id)
+    await expect(mockPage.getByTestId('archived-row')).toHaveCount(3)
+    await expect(projectArchived).toHaveAttribute('aria-current', 'page')
+    await expect(
+      mockPage.getByTestId('sidebar-archived-row')
+    ).not.toHaveAttribute('aria-current')
+    await shot(mockPage, 'project-archived-row')
   })
 })
 
@@ -231,6 +292,32 @@ test.describe('Vertical navigation on, a project open', () => {
     await expect(mockPage.getByTestId('vertical-nav-count-todo')).toHaveText(
       '2'
     )
+    // Scheduled and Archived are nav items, not rows in the panel.
+    await expect(
+      mockPage.getByTestId('vertical-nav-count-scheduled')
+    ).toHaveText('2')
+    await expect(
+      mockPage.getByTestId('vertical-nav-count-archived')
+    ).toHaveText('3')
+    await expect(mockPage.getByTestId('sidebar-scheduled-row')).toHaveCount(0)
+    await expect(mockPage.getByTestId('sidebar-archived-row')).toHaveCount(0)
+    await navItem(mockPage, 'scheduled').click()
+    await expect(navItem(mockPage, 'scheduled')).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    await expect(column.getByTestId('projects-sidebar')).toBeVisible()
+    await navItem(mockPage, 'archived').click()
+    await expect(mockPage.getByTestId('archived-view')).toBeVisible()
+    await expect(mockPage.getByTestId('archived-row')).toHaveCount(3)
+    await expect(navItem(mockPage, 'archived')).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    await expect(navItem(mockPage, 'scheduled')).not.toHaveAttribute(
+      'aria-current'
+    )
+    await shot(mockPage, 'vertical-nav-archived')
 
     // Collapsed: icons and badges, To-Do blue.
     await navItem(mockPage, 'collapse').click()
@@ -247,6 +334,12 @@ test.describe('Vertical navigation on, a project open', () => {
     await expect(todoBadge).toHaveClass(/bg-blue-600/)
     await expect(navItem(mockPage, 'todo')).toHaveAccessibleName(
       'To-Do, 2 waiting for you'
+    )
+    await expect(
+      mockPage.getByTestId('vertical-nav-badge-scheduled')
+    ).toHaveText('2')
+    await expect(navItem(mockPage, 'archived')).toHaveAccessibleName(
+      'Archived, 3 archived'
     )
     await shot(mockPage, 'vertical-nav-collapsed')
 

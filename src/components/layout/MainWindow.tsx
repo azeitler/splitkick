@@ -229,7 +229,7 @@ import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useUIStore } from '@/store/ui-store'
 import { useContextPanelShown } from './use-context-panel-shown'
-import { openArchivedView } from '@/lib/archived-view'
+import { openArchivedView, type OpenArchivedDetail } from '@/lib/archived-view'
 import { useProjectsStore } from '@/store/projects-store'
 import { useDockSync } from '@/hooks/useDockSync'
 import { useTraySync } from '@/hooks/useTraySync'
@@ -469,9 +469,14 @@ export function MainWindow() {
   // beside the sidebar.
   const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   useEffect(() => {
-    const handler = () => {
-      if (isMobile) setArchivedModalOpen(true)
-      else openArchivedView()
+    const handler = (event: Event) => {
+      const projectId =
+        (event as CustomEvent<OpenArchivedDetail | null>).detail?.projectId ??
+        null
+      if (isMobile) {
+        useUIStore.getState().setArchivedViewProjectId(projectId)
+        setArchivedModalOpen(true)
+      } else openArchivedView(projectId)
     }
     window.addEventListener('command:open-archived-modal', handler)
     return () =>

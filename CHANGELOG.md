@@ -15,6 +15,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   icons only. The sidebar toggle moves in front of back/forward; Home shows no
   sidebar panel and a footer with session stats. Desktop app only; off by
   default.
+- **Scheduled and Archived in the vertical navigation.** With the vertical
+  navigation on, Scheduled (count: active schedules) and Archived (count:
+  archived items) are nav items below Graphs, not rows in the Projects
+  panel. They open their pages in the main area, as the rows do.
+- **Archived row per project.** In the sidebar tree, a project with archived
+  worktrees or sessions shows an Archived row with a count as its last
+  child. It opens the Archived page filtered to that project.
 - **Agents open to show their sessions.** In the Agents tab, each agent row
   opens and closes. Under it: the current session with the sessions it
   started, then the sessions earlier restarts left behind (an archived one

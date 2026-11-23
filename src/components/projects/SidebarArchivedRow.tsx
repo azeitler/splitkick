@@ -18,7 +18,10 @@ export function SidebarArchivedRow() {
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const isNarrow = sidebarWidth < 180
-  const isActive = useUIStore(state => state.archivedViewOpen)
+  // A project's Archived row marks the view filtered to that project.
+  const isActive = useUIStore(
+    state => state.archivedViewOpen && state.archivedViewProjectId === null
+  )
 
   const handleClick = useCallback(() => {
     if (isMobile) {

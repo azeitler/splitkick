@@ -44,6 +44,7 @@ import {
   type LabelFilter,
 } from '@/lib/label-filter'
 import { WorktreeItem } from './WorktreeItem'
+import { ProjectArchivedRow } from './ProjectArchivedRow'
 import { ProjectGraphsSection } from './ProjectGraphsSection'
 import { collectServedGraphIds } from './project-graphs'
 import { WorktreeItemSkeleton } from './WorktreeItemSkeleton'
@@ -747,6 +748,7 @@ export function WorktreeList({
           />
         )
       })}
+      {!isFiltering && <ProjectArchivedRow projectId={projectId} />}
     </div>
   )
 }

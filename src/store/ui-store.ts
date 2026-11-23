@@ -259,6 +259,9 @@ interface UIState {
   /** Whether the main area shows the Archived view. Only meaningful while no
    *  project and no worktree is selected; not persisted. */
   archivedViewOpen: boolean
+  /** Project the Archived view (or dialog) filters to when it opens; null =
+   *  all projects. Set by `openArchivedView`; not persisted. */
+  archivedViewProjectId: string | null
   /** Whether the main area shows the Scheduled view (#38). Like the
    *  Archived view; not persisted. */
   scheduledViewOpen: boolean
@@ -434,6 +437,7 @@ interface UIState {
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
   setArchivedViewOpen: (open: boolean) => void
+  setArchivedViewProjectId: (projectId: string | null) => void
   setScheduledViewOpen: (open: boolean) => void
   setActiveGraphId: (graphId: string | null) => void
   setGraphFocusNodeId: (nodeId: string | null) => void
@@ -578,6 +582,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
       archivedViewOpen: false,
+      archivedViewProjectId: null,
       scheduledViewOpen: false,
       activeGraphId: null,
       graphFocusNodeId: null,
@@ -1277,6 +1282,16 @@ export const useUIStore = create<UIState>()(
               : { archivedViewOpen: open },
           undefined,
           'setArchivedViewOpen'
+        ),
+
+      setArchivedViewProjectId: projectId =>
+        set(
+          state =>
+            state.archivedViewProjectId === projectId
+              ? state
+              : { archivedViewProjectId: projectId },
+          undefined,
+          'setArchivedViewProjectId'
         ),
 
       setScheduledViewOpen: open =>

@@ -51,10 +51,10 @@ vi.mock('./SidebarRecentSessions', () => ({
   SidebarRecentSessions: () => <div data-testid="sidebar-recent-sessions" />,
 }))
 
-function renderSidebar() {
+function renderSidebar(hideNav = false) {
   return render(
     <SidebarWidthProvider value={250}>
-      <ProjectsSidebar />
+      <ProjectsSidebar hideNav={hideNav} />
     </SidebarWidthProvider>
   )
 }
@@ -169,5 +169,19 @@ describe('ProjectsSidebar layout', () => {
     expect(screen.getByTestId('sidebar-home-row')).not.toHaveAttribute(
       'aria-current'
     )
+  })
+
+  it('keeps the Scheduled and Archived rows in the classic sidebar', () => {
+    renderSidebar()
+    expect(screen.getByTestId('sidebar-scheduled-row')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-archived-row')).toBeInTheDocument()
+  })
+
+  it('leaves Scheduled and Archived to the vertical navigation', () => {
+    renderSidebar(true)
+    expect(screen.getByTestId('project-tree')).toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-scheduled-row')).toBeNull()
+    expect(screen.queryByTestId('sidebar-archived-row')).toBeNull()
+    expect(screen.queryByTestId('sidebar-home-row')).toBeNull()
   })
 })

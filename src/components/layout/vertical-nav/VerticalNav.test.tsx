@@ -11,6 +11,8 @@ import type * as SidebarTabsModule from '@/components/projects/SidebarTabs'
 const mocks = vi.hoisted(() => ({
   counts: {} as Record<string, number>,
   agents: [] as Partial<Agent>[],
+  schedules: [] as { id: string; enabled?: boolean }[],
+  archivedCount: 0,
 }))
 
 vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
@@ -19,6 +21,12 @@ vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
 }))
 vi.mock('@/services/agents', () => ({
   useAgents: () => ({ data: mocks.agents }),
+}))
+vi.mock('@/services/schedules', () => ({
+  useSchedules: () => ({ data: mocks.schedules }),
+}))
+vi.mock('@/components/archive/useArchivedCount', () => ({
+  useArchivedCount: () => mocks.archivedCount,
 }))
 
 function renderNav(home = false) {
@@ -40,11 +48,20 @@ describe('VerticalNav', () => {
   beforeEach(() => {
     mocks.counts = {}
     mocks.agents = []
-    useUIStore.setState({ sidebarTab: 'projects', verticalNavCollapsed: false })
+    mocks.schedules = []
+    mocks.archivedCount = 0
+    useUIStore.setState({
+      sidebarTab: 'projects',
+      verticalNavCollapsed: false,
+      leftSidebarVisible: true,
+      archivedViewOpen: false,
+      archivedViewProjectId: null,
+      scheduledViewOpen: false,
+    })
     useChatStore.setState({ sendingSessionIds: {} })
   })
 
-  it('shows Home, then Projects, Recent, Starred, Agents, To-Do, Graphs, then Collapse', () => {
+  it('shows Home, the tabs, Scheduled and Archived, then Collapse', () => {
     renderNav()
     const nav = screen.getByRole('navigation', { name: 'Sidebar navigation' })
     const labels = within(nav)
@@ -58,6 +75,8 @@ describe('VerticalNav', () => {
       'Agents',
       'To-Do',
       'Graphs',
+      'Scheduled',
+      'Archived',
       'Collapse',
     ])
   })
@@ -147,5 +166,55 @@ describe('VerticalNav', () => {
     expect(item('starred')).toHaveClass('px-[9px]')
     expect(item('starred')).toHaveTextContent('Starred')
     expect(screen.queryByTestId('vertical-nav-badge-todo')).toBeNull()
+  })
+
+  it('opens the Scheduled and Archived pages in the main area', async () => {
+    useUIStore.setState({ leftSidebarVisible: false })
+    renderNav(true)
+
+    await userEvent.click(item('scheduled'))
+    expect(useUIStore.getState().scheduledViewOpen).toBe(true)
+    // The sidebar comes back, so the nav stays in view.
+    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
+    expect(item('scheduled')).toHaveAttribute('aria-current', 'page')
+
+    useUIStore.setState({ archivedViewProjectId: 'p1' })
+    await userEvent.click(item('archived'))
+    const ui = useUIStore.getState()
+    expect(ui.archivedViewOpen).toBe(true)
+    expect(ui.scheduledViewOpen).toBe(false)
+    // The nav item shows every project.
+    expect(ui.archivedViewProjectId).toBeNull()
+    expect(item('archived')).toHaveAttribute('aria-current', 'page')
+    expect(item('scheduled')).not.toHaveAttribute('aria-current')
+  })
+
+  it('counts active schedules and archived items', async () => {
+    mocks.schedules = [
+      { id: 's1', enabled: true },
+      { id: 's2', enabled: false },
+      { id: 's3' },
+    ]
+    mocks.archivedCount = 7
+    renderNav()
+    expect(
+      screen.getByTestId('vertical-nav-count-scheduled')
+    ).toHaveTextContent('2')
+    expect(screen.getByTestId('vertical-nav-count-archived')).toHaveTextContent(
+      '7'
+    )
+
+    await userEvent.click(item('collapse'))
+    expect(item('scheduled')).toHaveAccessibleName('Scheduled, 2 active')
+    expect(item('archived')).toHaveAccessibleName('Archived, 7 archived')
+    expect(screen.getByTestId('vertical-nav-badge-archived')).toHaveTextContent(
+      '7'
+    )
+  })
+
+  it('shows no count on Scheduled and Archived when there is nothing', () => {
+    renderNav()
+    expect(screen.queryByTestId('vertical-nav-count-scheduled')).toBeNull()
+    expect(screen.queryByTestId('vertical-nav-count-archived')).toBeNull()
   })
 })

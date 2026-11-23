@@ -49,6 +49,9 @@ interface ArchivedModalProps {
 export function ArchivedView() {
   // Like Home: the window toolbar names the view.
   const hasToolbar = useHasWindowToolbar()
+  // A project's Archived row opens the view filtered to that project; a new
+  // target remounts the list, so the filter starts from it.
+  const projectId = useUIStore(state => state.archivedViewProjectId)
   return (
     <>
       {hasToolbar && (
@@ -58,15 +61,28 @@ export function ArchivedView() {
           search={<ToolbarPaletteSearch />}
         />
       )}
-      <ArchivedItems variant="page" open onOpenChange={() => undefined} />
+      <ArchivedItems
+        key={projectId ?? ''}
+        variant="page"
+        initialProjectId={projectId}
+        open
+        onOpenChange={() => undefined}
+      />
     </>
   )
 }
 
 /** The Archived dialog. The phone layout uses it; it has no main area. */
 export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
+  const projectId = useUIStore(state => state.archivedViewProjectId)
   return (
-    <ArchivedItems variant="dialog" open={open} onOpenChange={onOpenChange} />
+    <ArchivedItems
+      key={projectId ?? ''}
+      variant="dialog"
+      initialProjectId={projectId}
+      open={open}
+      onOpenChange={onOpenChange}
+    />
   )
 }
 
@@ -112,9 +128,14 @@ function useArchivedMessageSearch(query: string): ReadonlyMap<string, string> {
 
 function ArchivedItems({
   variant,
+  initialProjectId,
   open,
   onOpenChange,
-}: ArchivedModalProps & { variant: 'dialog' | 'page' }) {
+}: ArchivedModalProps & {
+  variant: 'dialog' | 'page'
+  /** Project filter to start with; null = all projects. */
+  initialProjectId: string | null
+}) {
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const isDelete = (preferences?.removal_behavior ?? 'archive') === 'delete'
@@ -122,9 +143,10 @@ function ArchivedItems({
   const keyboard = isNativeApp() && !isMobile
 
   const sort = useUIStore(state => state.archivedSort)
-  const [filters, setFilters] = useState<ArchivedFilters>(
-    DEFAULT_ARCHIVED_FILTERS
-  )
+  const [filters, setFilters] = useState<ArchivedFilters>(() => ({
+    ...DEFAULT_ARCHIVED_FILTERS,
+    projectId: initialProjectId ?? '',
+  }))
   const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   )

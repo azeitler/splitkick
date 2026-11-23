@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ArchivedSessionEntry, Session } from '@/types/chat'
@@ -188,7 +188,7 @@ beforeEach(() => {
     return null
   })
   navigateMock.mockReset()
-  useUIStore.setState({ archivedSort: 'archived' })
+  useUIStore.setState({ archivedSort: 'archived', archivedViewProjectId: null })
 })
 
 describe('ArchivedView', () => {
@@ -256,6 +256,18 @@ describe('ArchivedView', () => {
 
     await user.selectOptions(screen.getByLabelText('Backend'), 'codex')
     expect(rowNames()).toEqual(['Bug triage'])
+  })
+
+  it("starts filtered to the project of a project's Archived row", async () => {
+    useUIStore.setState({ archivedViewProjectId: 'p-app' })
+    renderView()
+    expect(screen.getByLabelText('Project')).toHaveValue('p-app')
+    expect(rowNames()).toEqual(['login-fix', 'old-spike', 'Spike notes'])
+
+    // Another project's row restarts the list on that project.
+    act(() => useUIStore.setState({ archivedViewProjectId: 'p-web' }))
+    expect(screen.getByLabelText('Project')).toHaveValue('p-web')
+    expect(rowNames()).toEqual(['Hero image', 'Bug triage'])
   })
 
   it('searches names and message text, and says when nothing matches', async () => {

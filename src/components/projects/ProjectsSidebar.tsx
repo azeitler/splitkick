@@ -39,8 +39,8 @@ const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
 }
 
 interface ProjectsSidebarProps {
-  /** Leave out the Home row and the tab strip: the vertical navigation
-   *  (experimental) shows them. */
+  /** Leave out the Home row, the tab strip and the Scheduled and Archived
+   *  rows: the vertical navigation (experimental) shows them. */
   hideNav?: boolean
 }
 
@@ -146,8 +146,10 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
                 newProjectDisabled={!backendCheckReady || setupIncomplete}
               />
             )}
-            <SidebarScheduledRow />
-            <SidebarArchivedRow />
+            {/* The vertical navigation has its own Scheduled and Archived
+                items. */}
+            {!hideNav && <SidebarScheduledRow />}
+            {!hideNav && <SidebarArchivedRow />}
           </div>
         </div>
 
