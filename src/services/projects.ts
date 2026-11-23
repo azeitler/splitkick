@@ -37,7 +37,12 @@ import { getFileManagerName } from '@/lib/platform'
 
 import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
-import { hasBackend, hasBackendTransport, isNativeApp } from '@/lib/environment'
+import {
+  hasBackend,
+  hasBackendTransport,
+  isNativeApp,
+  NO_BACKEND_ERROR,
+} from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
 import { shouldSuppressAutoFixConflictNotification } from './worktree-conflict-events'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
@@ -325,8 +330,8 @@ export function useAddProject() {
       /** Add the folder as a plain project (no git, #93) */
       plain?: boolean
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Adding project', { path, parentId, plain })
@@ -393,8 +398,8 @@ export function useInitProject() {
       path: string
       parentId?: string
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Initializing new project', { path, parentId })
@@ -448,8 +453,8 @@ export function useInitGitInFolder() {
       /** Commit all files now; false makes an empty initial commit */
       commitAll: boolean
     }): Promise<string> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Initializing git in folder', { path, commitAll })
@@ -535,8 +540,8 @@ export function useCloneProject() {
       path: string
       parentId?: string
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Cloning project', { url, path, parentId })
@@ -588,8 +593,8 @@ export function useRemoveProject() {
 
   return useMutation({
     mutationFn: async (projectId: string): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Removing project', { projectId })
@@ -724,8 +729,8 @@ export function useCreateWorktree() {
       /** When true, skip auto-navigation (CMD+Click from new session modal) */
       background?: boolean
     }): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Creating worktree (background)', {
@@ -898,8 +903,8 @@ export function useCreateWorktreeFromExistingBranch() {
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
     }): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Creating worktree from existing branch', {
@@ -1662,8 +1667,8 @@ export function useRenameWorktree() {
       projectId: string
       newName: string
     }): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Renaming worktree', { worktreeId, newName })
@@ -1712,8 +1717,8 @@ export function useDeleteWorktree() {
       worktreeId: string
       projectId: string
     }): Promise<{ worktreeId: string; projectId: string }> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Deleting worktree (background)', { worktreeId })
@@ -1782,8 +1787,8 @@ export function useArchiveWorktree() {
       worktreeId: string
       projectId: string
     }): Promise<{ worktreeId: string; projectId: string }> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Archiving worktree', { worktreeId })
@@ -1839,8 +1844,8 @@ export function useUnarchiveWorktree() {
 
   return useMutation({
     mutationFn: async (worktreeId: string): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Unarchiving worktree', { worktreeId })
@@ -1881,8 +1886,8 @@ export function useImportWorktree() {
       projectId: string
       path: string
     }): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Importing worktree', { projectId, path })
@@ -1944,8 +1949,8 @@ export function usePermanentlyDeleteWorktree() {
 
   return useMutation({
     mutationFn: async (worktreeId: string): Promise<string> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Permanently deleting worktree', { worktreeId })
@@ -1979,8 +1984,8 @@ export function useCreateBaseSession() {
 
   return useMutation({
     mutationFn: async (projectId: string): Promise<Worktree> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Creating base session', { projectId })
@@ -2041,8 +2046,8 @@ export function useCloseBaseSession() {
       worktreeId: string
       projectId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Closing base session', { worktreeId })
@@ -2090,8 +2095,8 @@ export function useCloseBaseSessionClean() {
       worktreeId: string
       projectId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Closing base session (clean)', { worktreeId })
@@ -2135,8 +2140,8 @@ export function useCloseBaseSessionArchive() {
       worktreeId: string
       projectId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Closing base session (archive)', { worktreeId })
@@ -2306,8 +2311,8 @@ export function useProjectRemotes(
 export function useOpenWorktreeInFinder() {
   return useMutation({
     mutationFn: async (worktreePath: string): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug(`Opening worktree in ${getFileManagerName()}`, {
@@ -2339,8 +2344,8 @@ export function useOpenWorktreeInFinder() {
 export function useRevealPathInFileManager() {
   return useMutation({
     mutationFn: async (path: string): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug(`Revealing path in ${getFileManagerName()}`, { path })
@@ -2369,8 +2374,8 @@ export function useRevealPathInFileManager() {
 export function useOpenProjectWorktreesFolder() {
   return useMutation({
     mutationFn: async (projectId: string): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Opening project worktrees folder', { projectId })
@@ -2403,8 +2408,8 @@ export function useOpenWorktreeInTerminal() {
       worktreePath: string
       terminal?: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Opening worktree in Terminal', { worktreePath, terminal })
@@ -2488,8 +2493,8 @@ export function useOpenWorktreeInEditor() {
       worktreePath: string
       editor?: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Opening worktree in Editor', { worktreePath, editor })
@@ -2692,8 +2697,8 @@ export function useCommitChanges() {
       message: string
       stageAll?: boolean
     }): Promise<string> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Committing changes', { worktreeId, stageAll })
@@ -2791,8 +2796,8 @@ export function useOpenProjectOnGitHub() {
  * Includes uncommitted changes count, branch info, and PR template if available
  */
 export async function getPrPrompt(worktreePath: string): Promise<string> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   logger.debug('Getting PR prompt', { worktreePath })
@@ -2814,8 +2819,8 @@ export interface ReviewPromptResponse {
 export async function getReviewPrompt(
   worktreePath: string
 ): Promise<ReviewPromptResponse> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   logger.debug('Generating review prompt', { worktreePath })
@@ -2837,8 +2842,8 @@ export async function saveWorktreePr(
   prNumber: number,
   prUrl: string
 ): Promise<void> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   logger.debug('Saving PR info', { worktreeId, prNumber, prUrl })
@@ -2855,8 +2860,8 @@ export async function linkWorktreePr(
   worktreePath: string,
   prNumber: number
 ): Promise<LinkWorktreePrResponse> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   logger.debug('Linking PR to worktree', { worktreeId, worktreePath, prNumber })
@@ -2875,8 +2880,8 @@ export async function linkWorktreePr(
  * Backend also removes Jean-managed fork remotes for that PR when unused.
  */
 export async function clearWorktreePr(worktreeId: string): Promise<void> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   logger.debug('Clearing PR info', { worktreeId })
@@ -3005,8 +3010,8 @@ export function useUpdateProjectSettings() {
       linkedProjectIds?: string[]
       preset?: Project['preset']
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Updating project settings', {
@@ -3064,8 +3069,8 @@ export function useReorderProjects() {
     }: {
       projectIds: string[]
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Reordering projects', { projectIds })
@@ -3138,8 +3143,8 @@ export function useReorderWorktrees() {
       projectId,
       worktreeIds,
     }: ReorderWorktreesInput): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Reordering worktrees', { projectId, worktreeIds })
@@ -3251,8 +3256,8 @@ export function useCreateFolder() {
       name: string
       parentId?: string
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Creating folder', { name, parentId })
@@ -3298,8 +3303,8 @@ export function useRenameFolder() {
       folderId: string
       name: string
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Renaming folder', { folderId, name })
@@ -3331,8 +3336,8 @@ export function useDeleteFolder() {
 
   return useMutation({
     mutationFn: async (folderId: string): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Deleting folder', { folderId })
@@ -3372,8 +3377,8 @@ export function useMoveItem() {
       newParentId?: string
       targetIndex?: number
     }): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Moving item', { itemId, newParentId, targetIndex })
@@ -3415,8 +3420,8 @@ export function useReorderItems() {
       itemIds: string[]
       parentId?: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Reordering items', { itemIds, parentId })
@@ -3511,8 +3516,8 @@ export function useSetProjectAvatar() {
 
   return useMutation({
     mutationFn: async (projectId: string): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting project avatar', { projectId })
@@ -3548,8 +3553,8 @@ export function useRemoveProjectAvatar() {
 
   return useMutation({
     mutationFn: async (projectId: string): Promise<Project> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Removing project avatar', { projectId })

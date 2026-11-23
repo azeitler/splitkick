@@ -129,6 +129,14 @@ export const setWebAccessEnabled = (enabled: boolean): void => {
   _webAccessEnabled = enabled
 }
 
+/**
+ * Error of an action that has no backend at all. An action checks
+ * `hasBackendTransport()`, not `hasBackend()`: while a remote connection
+ * reconnects, the transport queues the call and sends it once connected,
+ * instead of failing at once.
+ */
+export const NO_BACKEND_ERROR = 'No backend connection'
+
 /** Whether queries can use a configured backend transport.
  * Unlike hasBackend(), this stays true while web access is connecting so query
  * functions wait/fail instead of returning authoritative empty data. */

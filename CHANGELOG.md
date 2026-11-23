@@ -9,6 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **No more "Not in Tauri context" on remote instances.** While the
+  connection to a remote instance or web access reconnected (for example after
+  sleep, a network change or a suspended browser tab), every action failed at
+  once with "Not in Tauri context". Actions now wait for the connection and
+  run when it is back; with no backend at all, the error says "No backend
+  connection".
 - **"Check for Updates" answers in the app.** When a manual check finds no
   update, is busy or fails, the answer now shows in an in-app dialog in the
   app's own style, not in a native macOS dialog.

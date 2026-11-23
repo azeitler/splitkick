@@ -40,7 +40,7 @@ import type {
   ArtifactOp,
 } from '@/types/chat'
 import { isTauri, projectsQueryKeys } from '@/services/projects'
-import { hasBackendTransport } from '@/lib/environment'
+import { hasBackendTransport, NO_BACKEND_ERROR } from '@/lib/environment'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import type { GraphPermission } from '@/types/graphs'
@@ -945,8 +945,8 @@ export function useLoadOlderMessages() {
       beforeRunIndex: number
       limit?: number
     }): Promise<LoadedMessages> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
       logger.debug('[useLoadOlderMessages] fetching', {
         sessionId,
@@ -1041,8 +1041,8 @@ export function useCreateSession() {
       /** Graph refs; omitted = the agent's default serves. */
       serves?: string[]
     }): Promise<Session> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Creating session', { worktreeId, name })
@@ -1108,8 +1108,8 @@ export function useRenameSession() {
       sessionId: string
       newName: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Renaming session', { sessionId, newName })
@@ -1252,8 +1252,8 @@ export function useUpdateSessionState() {
       selectedExecutionMode?: ExecutionMode | null
       tableCheckedRows?: Record<string, number[]>
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       await invoke('update_session_state', {
@@ -1315,8 +1315,8 @@ export function useCloseSession() {
       worktreePath: string
       sessionId: string
     }): Promise<string | null> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Closing session', { sessionId })
@@ -1396,8 +1396,8 @@ export function useArchiveSession() {
       worktreePath: string
       sessionId: string
     }): Promise<string | null> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Archiving session', { sessionId })
@@ -1470,8 +1470,8 @@ export function useUnarchiveSession() {
       worktreePath: string
       sessionId: string
     }): Promise<Session> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Unarchiving session', { sessionId })
@@ -1527,8 +1527,8 @@ export function useRestoreSessionWithBase() {
       sessionId: string
       projectId: string
     }): Promise<RestoreSessionWithBaseResponse> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Restoring session with base', { sessionId, projectId })
@@ -1588,8 +1588,8 @@ export function useDeleteArchivedSession() {
       worktreePath: string
       sessionId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Deleting archived session', { sessionId })
@@ -1803,8 +1803,8 @@ export function useReorderSessions() {
       worktreePath: string
       sessionIds: string[]
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Reordering sessions', { sessionIds })
@@ -1889,8 +1889,8 @@ export function useSetActiveSession() {
       worktreePath: string
       sessionId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting active session', { sessionId })
@@ -1972,8 +1972,8 @@ export function useSendMessage() {
       /** When false, skip the end-of-turn recap instruction. */
       includeRecap?: boolean
     }): Promise<ChatMessage> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       console.log(
@@ -2340,8 +2340,8 @@ export function useClearSessionHistory() {
       worktreePath: string
       sessionId: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Clearing session history', { sessionId })
@@ -2395,8 +2395,8 @@ export function useClearChatHistory() {
       worktreeId: string
       worktreePath: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Clearing chat history', { worktreeId })
@@ -2444,8 +2444,8 @@ export function useSetSessionModel() {
       sessionId: string
       model: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting session model', { sessionId, model })
@@ -2513,8 +2513,8 @@ export function useSetSessionBackend() {
       sessionId: string
       backend: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting session backend', { sessionId, backend })
@@ -2560,8 +2560,8 @@ export function useSetSessionProvider() {
       sessionId: string
       provider: string | null
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting session provider', { sessionId, provider })
@@ -2613,8 +2613,8 @@ export function useSetSessionThinkingLevel() {
       sessionId: string
       thinkingLevel: ThinkingLevel
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting session thinking level', {
@@ -2669,8 +2669,8 @@ export function useSetSessionEffortLevel() {
       sessionId: string
       effortLevel: EffortLevel
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting session effort level', {
@@ -2724,8 +2724,8 @@ export function useSetWorktreeModel() {
       worktreePath: string
       model: string
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting worktree model', { worktreeId, model })
@@ -2771,8 +2771,8 @@ export function useSetWorktreeThinkingLevel() {
       worktreePath: string
       thinkingLevel: ThinkingLevel
     }): Promise<void> => {
-      if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+      if (!hasBackendTransport()) {
+        throw new Error(NO_BACKEND_ERROR)
       }
 
       logger.debug('Setting worktree thinking level', {
@@ -2976,8 +2976,8 @@ export function formatAnswersAsNaturalLanguage(
  * Used by the frontend to display plan file content in the approval UI
  */
 export async function readPlanFile(path: string): Promise<string> {
-  if (!isTauri()) {
-    throw new Error('Not in Tauri context')
+  if (!hasBackendTransport()) {
+    throw new Error(NO_BACKEND_ERROR)
   }
 
   return invoke<string>('read_plan_file', { path })

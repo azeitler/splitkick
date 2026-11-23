@@ -41,8 +41,10 @@ vi.mock('@/lib/environment', async importOriginal => ({
   // The real one reads the module's own isLocalBackend, which the line above
   // cannot reach.
   canOpenNativeApps: () => mocks.isLocalBackend(),
-  // What `isTauri()` in services/projects really is: a backend exists.
+  // A backend exists: `isTauri()` in services/projects, and the transport
+  // check of its actions.
   hasBackend: () => true,
+  hasBackendTransport: () => true,
 }))
 
 vi.mock('@/lib/transport', async importOriginal => ({
