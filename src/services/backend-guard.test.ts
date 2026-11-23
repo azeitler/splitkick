@@ -7,6 +7,7 @@ vi.mock('@/lib/transport', () => ({
 }))
 
 vi.mock('@/lib/environment', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   ...(await importOriginal<typeof import('@/lib/environment')>()),
   hasBackend: () => env.connected,
   hasBackendTransport: () => env.transport,
