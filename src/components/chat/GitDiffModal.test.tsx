@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/test-utils'
 import { GitDiffModal } from './GitDiffModal'
 import type { GitDiff } from '@/types/git-diff'
 
@@ -223,8 +223,10 @@ describe('GitDiffModal keyboard shortcuts', () => {
     fireEvent.keyDown(document, { key: 'Backspace' })
 
     const dialog = await screen.findByRole('alertdialog')
-    const fileName = dialog.querySelector('.font-mono')
-    expect(fileName).toHaveClass('break-all')
+    // The title names the file and wraps long names (shared ConfirmDialog).
+    const title = within(dialog).getByRole('heading')
+    expect(title.textContent).toMatch(/^Revert file “.+”\?$/)
+    expect(title).toHaveClass('break-words')
   })
 })
 

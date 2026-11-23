@@ -1,13 +1,4 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { usePreferences } from '@/services/preferences'
 import { useUIStore } from '@/store/ui-store'
 
@@ -53,9 +44,7 @@ function CloseWorktreeDialogContent({
     ? isDelete
       ? 'Delete session?'
       : 'Archive session?'
-    : isDelete
-      ? 'Delete worktree?'
-      : 'Archive & close worktree?'
+    : `${isDelete ? 'Delete worktree' : 'Archive & close worktree'}${branchName ? ` “${branchName}”` : ''}?`
 
   const description = isSession
     ? `This will ${isDelete ? 'permanently delete' : 'archive'} this session.`
@@ -64,57 +53,30 @@ function CloseWorktreeDialogContent({
       : `This will ${isDelete ? 'permanently delete' : 'archive and close'} the worktree and all its sessions.`
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent
-        onEscapeKeyDown={e => e.stopPropagation()}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            e.stopPropagation()
-            onConfirm()
-            onOpenChange(false)
-          }
-        }}
-      >
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-2">
-              <p>{description}</p>
-              {isDelete && (
-                <p className="text-xs text-muted-foreground">
-                  Removal behavior is set to delete.{' '}
-                  <button
-                    type="button"
-                    className="underline hover:text-foreground transition-colors"
-                    onClick={() => {
-                      onOpenChange(false)
-                      useUIStore.getState().openPreferencesPane('general')
-                    }}
-                  >
-                    Change in Settings
-                  </button>
-                </p>
-              )}
-            </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            autoFocus
-            onClick={onConfirm}
-            className={
-              isDelete
-                ? 'bg-destructive text-white hover:bg-destructive/90'
-                : undefined
-            }
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      confirmLabel={isDelete ? 'Delete' : 'Archive & Close'}
+      destructive={isDelete}
+      onConfirm={onConfirm}
+    >
+      {isDelete && (
+        <p className="text-xs text-muted-foreground">
+          Removal behavior is set to delete.{' '}
+          <button
+            type="button"
+            className="underline hover:text-foreground transition-colors"
+            onClick={() => {
+              onOpenChange(false)
+              useUIStore.getState().openPreferencesPane('general')
+            }}
           >
-            {isDelete ? 'Delete' : 'Archive & Close'}
-            <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+            Change in Settings
+          </button>
+        </p>
+      )}
+    </ConfirmDialog>
   )
 }

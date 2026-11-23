@@ -1,4 +1,5 @@
 import { Trash2 } from 'lucide-react'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import type { AppCommand } from './types'
@@ -27,14 +28,23 @@ export const maintenanceCommands: AppCommand[] = [
       'disk',
     ],
     async execute(context) {
+      const prefs = context.queryClient.getQueryData<AppPreferences>([
+        'preferences',
+      ])
+      const retentionDays = prefs?.archive_retention_days ?? 0
+      const confirmed = await confirmAction({
+        title: 'Clean up orphaned session data?',
+        description:
+          retentionDays > 0
+            ? `This deletes session data that no worktree uses any more, and archived worktrees and sessions older than ${retentionDays} days. You cannot undo this.`
+            : 'This deletes session data that no worktree uses any more. You cannot undo this.',
+        confirmLabel: 'Clean Up',
+      })
+      if (!confirmed) return
+
       const toastId = toast.loading('Cleaning up orphaned session data...')
 
       try {
-        const prefs = context.queryClient.getQueryData<AppPreferences>([
-          'preferences',
-        ])
-        const retentionDays = prefs?.archive_retention_days ?? 0
-
         const [result, combinedDeleted] = await Promise.all([
           invoke<CleanupResult>('cleanup_old_archives', { retentionDays }),
           invoke<number>('cleanup_combined_contexts'),

@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -140,7 +141,15 @@ export function AntigravityPane() {
                   size="sm"
                   variant="outline"
                   disabled={uninstall.isPending}
-                  onClick={() => uninstall.mutate()}
+                  onClick={async () => {
+                    const confirmed = await confirmAction({
+                      title: 'Remove the Antigravity CLI?',
+                      description:
+                        'This uninstalls the Antigravity CLI from this computer. Sessions that use it stop working until you install it again.',
+                      confirmLabel: 'Remove',
+                    })
+                    if (confirmed) uninstall.mutate()
+                  }}
                 >
                   {uninstall.isPending ? 'Removing…' : 'Remove'}
                 </Button>

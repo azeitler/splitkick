@@ -1,4 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import {
+  cancelDialog,
+  confirmDialog,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ReactQuery from '@tanstack/react-query'
 import { AntigravityPane } from './AntigravityPane'
@@ -108,5 +115,31 @@ describe('AntigravityPane', () => {
       [],
       'login'
     )
+  })
+  it('does not remove the CLI when the dialog is cancelled', async () => {
+    render(<AntigravityPane />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(
+      await screen.findByText('Remove the Antigravity CLI?')
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(uninstallMutate).not.toHaveBeenCalled()
+  })
+
+  it('removes the CLI after confirming', async () => {
+    render(<AntigravityPane />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(
+      await screen.findByText('Remove the Antigravity CLI?')
+    ).toBeInTheDocument()
+    await confirmDialog()
+
+    await waitFor(() => expect(uninstallMutate).toHaveBeenCalledTimes(1))
   })
 })

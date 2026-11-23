@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { invoke } from '@/lib/transport'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,6 +23,15 @@ import {
   PREDEFINED_PI_PROVIDERS,
 } from '@/types/preferences'
 import { SettingsSection } from '../SettingsSection'
+
+function confirmDeleteProvider(name: string | undefined) {
+  return confirmAction({
+    title: name ? `Delete provider “${name}”?` : 'Delete this provider?',
+    description:
+      'Its settings, including any API key stored with it, are deleted. You cannot undo this.',
+    confirmLabel: 'Delete',
+  })
+}
 
 export const ProvidersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
@@ -242,6 +252,7 @@ const CliProfilesEditor: React.FC<{
 
   const deleteProfile = async (index: number) => {
     const profile = profiles[index]
+    if (!(await confirmDeleteProvider(profile?.name))) return
     if (profile) {
       try {
         await invoke('delete_cli_profile', { name: profile.name })
@@ -280,7 +291,7 @@ const CliProfilesEditor: React.FC<{
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={() => deleteProfile(index)}
+            onClick={() => void deleteProfile(index)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -454,7 +465,8 @@ const CodexProvidersEditor: React.FC<{
     resetForm()
   }
 
-  const deleteProvider = (index: number) => {
+  const deleteProvider = async (index: number) => {
+    if (!(await confirmDeleteProvider(providers[index]?.name))) return
     onSave(providers.filter((_, i) => i !== index))
     if (editingIndex === index) cancelEdit()
   }
@@ -485,7 +497,7 @@ const CodexProvidersEditor: React.FC<{
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={() => deleteProvider(index)}
+            onClick={() => void deleteProvider(index)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -708,6 +720,7 @@ const PiProvidersEditor: React.FC<{
 
   const deleteProvider = async (index: number) => {
     const provider = providers[index]
+    if (!(await confirmDeleteProvider(provider?.name))) return
     if (provider) {
       try {
         await invoke('delete_pi_provider', { name: provider.name })
@@ -746,7 +759,7 @@ const PiProvidersEditor: React.FC<{
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={() => deleteProvider(index)}
+            onClick={() => void deleteProvider(index)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

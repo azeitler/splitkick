@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Copy, Play, Plus, Trash2 } from 'lucide-react'
 import {
   ROLE_COLORS,
@@ -8,16 +9,6 @@ import {
   profileFromTemplate,
 } from '@/components/graphs/role-utils'
 import { ServesPicker } from '@/components/graphs/ServesPicker'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -385,21 +376,14 @@ function RoleEditor({
         persona is read when a message is sent. A session keeps the permission
         it was started with.
       </p>
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete role “{profile.name}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sessions started from it stay. They lose its persona and badge,
-              and keep the permission they were started with.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete role “${profile.name}”?`}
+        description="Sessions started from it stay. They lose its persona and badge, and keep the permission they were started with."
+        confirmLabel="Delete"
+        onConfirm={onDelete}
+      />
     </div>
   )
 }

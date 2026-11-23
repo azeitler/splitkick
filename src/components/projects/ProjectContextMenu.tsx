@@ -12,6 +12,7 @@ import {
   Terminal,
   Trash2,
 } from 'lucide-react'
+import { confirmRemoveProject } from '@/lib/destructive-confirms'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -115,7 +116,8 @@ export function ProjectContextMenu({
     createBaseSession.mutate(project.id)
   }
 
-  const handleRemoveProject = () => {
+  const handleRemoveProject = async () => {
+    if (!(await confirmRemoveProject(project.name))) return
     removeProject.mutate(project.id)
   }
 

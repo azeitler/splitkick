@@ -1,10 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { createElement } from 'react'
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react'
 import { useChatWindowEvents } from './useChatWindowEvents'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
 import { installWindowKeyboardFocusRestore } from '@/lib/restore-keyboard-focus'
+import { cancelChatMessage } from '@/services/chat'
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog'
+import { queryClient as appQueryClient } from '@/lib/query-client'
+import { confirmDialog } from '@/test/test-utils'
 
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
@@ -335,5 +346,54 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
 
     expect(params.handleWorktreeBuildApproval).not.toHaveBeenCalled()
     expect(params.handleWorktreeYoloApproval).not.toHaveBeenCalled()
+  })
+
+  describe('cancel-prompt event', () => {
+    beforeEach(() => {
+      useChatStore.setState({ sendingSessionIds: { 'session-1': true } })
+      appQueryClient.setQueryData(['chat', 'session', 'session-1'], {
+        id: 'session-1',
+        name: 'Fix login',
+        messages: [],
+      })
+      vi.mocked(cancelChatMessage).mockResolvedValue(true)
+      render(createElement(ConfirmDialogHost))
+    })
+
+    it('does not cancel the run when the confirmation is dismissed', async () => {
+      renderUseChatWindowEvents()
+
+      act(() => {
+        window.dispatchEvent(new Event('cancel-prompt'))
+      })
+      expect(
+        await screen.findByRole('alertdialog', {
+          name: 'Cancel the run in “Fix login”?',
+        })
+      ).toBeInTheDocument()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Keep Running' }))
+      })
+
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      expect(cancelChatMessage).not.toHaveBeenCalled()
+    })
+
+    it('cancels the run after confirmation', async () => {
+      renderUseChatWindowEvents()
+
+      act(() => {
+        window.dispatchEvent(new Event('cancel-prompt'))
+      })
+      await screen.findByRole('alertdialog', {
+        name: 'Cancel the run in “Fix login”?',
+      })
+      expect(cancelChatMessage).not.toHaveBeenCalled()
+      await act(async () => {
+        await confirmDialog()
+      })
+
+      expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+    })
   })
 })

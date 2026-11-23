@@ -17,6 +17,7 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import { useGitClient } from '@/components/open-in/use-git-client'
 import { copySplitkickLink } from '@/lib/splitkick-links'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 
 interface UseWorktreeMenuActionsProps {
   worktree: Worktree
@@ -109,6 +110,27 @@ export function useWorktreeMenuActions({
     preferences?.removal_behavior,
   ])
 
+  // The "Archive Worktree" menu item. Archive can be undone from the Archived
+  // view and does not ask; with removal behavior "delete" it deletes the
+  // worktree folder and branch, so it asks first.
+  const handleArchiveOrCloseFromMenu = useCallback(async () => {
+    if (!isBase && preferences?.removal_behavior === 'delete') {
+      const confirmed = await confirmAction({
+        title: `Delete worktree “${worktree.name}”?`,
+        description:
+          'Removal behavior is set to delete: this deletes the worktree folder, its branch and all its sessions. You cannot undo this.',
+        confirmLabel: 'Delete',
+      })
+      if (!confirmed) return
+    }
+    handleArchiveOrClose()
+  }, [
+    isBase,
+    preferences?.removal_behavior,
+    worktree.name,
+    handleArchiveOrClose,
+  ])
+
   const handleDelete = useCallback(() => {
     deleteWorktree.mutate({ worktreeId: worktree.id, projectId })
     setShowDeleteConfirm(false)
@@ -121,6 +143,7 @@ export function useWorktreeMenuActions({
 
   return {
     // State
+    worktreeName: worktree.name,
     showDeleteConfirm,
     setShowDeleteConfirm,
     isBase,
@@ -138,6 +161,7 @@ export function useWorktreeMenuActions({
     handleOpenInEditor,
     handleOpenInGitClient,
     handleArchiveOrClose,
+    handleArchiveOrCloseFromMenu,
     handleDelete,
     handleCopyLink,
   }

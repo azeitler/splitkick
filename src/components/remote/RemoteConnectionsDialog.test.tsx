@@ -5,7 +5,9 @@ import {
   screen,
   waitFor,
   within,
-} from '@testing-library/react'
+  confirmDialog,
+  cancelDialog,
+} from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
@@ -421,11 +423,32 @@ describe('RemoteConnectionsDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete mac-2' }))
+    await confirmDialog()
 
     expect(
       await screen.findByText('Keychain delete failed')
     ).toBeInTheDocument()
     expect(removeRemoteConnection).toHaveBeenCalledWith('remote-1')
+  })
+
+  it('keeps the connection when the delete confirmation is cancelled', async () => {
+    connections.list = [
+      { id: 'remote-1', name: 'mac-2', url: 'http://mac-2:3460', token: 't' },
+    ]
+    removeRemoteConnection.mockClear()
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete mac-2' }))
+    expect(
+      await screen.findByText('Delete remote connection “mac-2”?')
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Delete remote connection “mac-2”?')).toBeNull()
+    )
+    expect(removeRemoteConnection).not.toHaveBeenCalled()
   })
 
   it('shows local version and still connects when remote mismatches', async () => {

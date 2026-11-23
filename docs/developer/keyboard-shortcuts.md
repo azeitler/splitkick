@@ -381,3 +381,5 @@ fn default_keybindings() -> std::collections::HashMap<String, String> {
 5. **Support migration**: Add to `MIGRATED_KEYBINDINGS` when changing defaults
 6. **Use `mod` prefix**: Allows cross-platform compatibility
 7. **Provide feedback**: Use notifications or UI changes to confirm execution
+8. **Destructive actions ask first**: a shortcut opens the same confirmation
+   dialog as the menu item, never acts directly (see `confirm-dialogs.md`)

@@ -35,6 +35,8 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from '@/components/ui/context-menu'
+import { confirmAction } from '@/components/ui/confirm-dialog'
+import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { PRODUCT_NAME } from '@/lib/build-info'
@@ -119,6 +121,7 @@ export function SessionContextMenuItems({
   const isPausedOverride = card.statusOverride === 'paused'
   const isCompletedOverride = card.statusOverride === 'completed'
   const { forkInPlace, forkToWorktree } = useSessionFork()
+  const { data: preferences } = usePreferences()
   // Web Access works too when the target allows this origin (CORS).
   const canTransfer = useTransferTargets().length > 0
   // A move waits for an idle session; the backend refuses the same cases.
@@ -446,7 +449,19 @@ export function SessionContextMenuItems({
       </ContextMenuItem>
       <ContextMenuItem
         variant="destructive"
-        onSelect={() => onDelete(session.id)}
+        onSelect={() => {
+          // The label says "Delete", so always ask. Archive (above) can be
+          // undone from the Archived view and does not ask.
+          const isDelete = preferences?.removal_behavior === 'delete'
+          void confirmAction({
+            title: `${isDelete ? 'Delete' : 'Archive'} session “${session.name}”?`,
+            description: isDelete
+              ? 'This permanently deletes the session and its chat history. You cannot undo this.'
+              : 'The session moves to the archive. You can restore it from the Archived view.',
+            confirmLabel: isDelete ? 'Delete' : 'Archive',
+            destructive: isDelete,
+          }).then(ok => ok && onDelete(session.id))
+        }}
       >
         <Trash2 className="mr-2 h-4 w-4" />
         Delete Session

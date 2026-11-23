@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useClearSessionHistory } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 
@@ -61,30 +52,15 @@ export function ClearContextConfirmDialog() {
   }
 
   return (
-    <AlertDialog
+    <ConfirmDialog
       open={target !== null}
       onOpenChange={open => {
         if (!open) setTarget(null)
       }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Clear context?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This deletes the chat history of this session and starts a new
-            conversation with the model. You cannot undo this.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleConfirm}
-            className="bg-destructive text-white hover:bg-destructive/90"
-          >
-            Clear Context
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      title="Clear context?"
+      description="This deletes the chat history of this session and starts a new conversation with the model. You cannot undo this."
+      confirmLabel="Clear Context"
+      onConfirm={handleConfirm}
+    />
   )
 }

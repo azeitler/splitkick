@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { RemotePickerModal } from './RemotePickerModal'
 
 const isMobileState = vi.hoisted(() => ({ value: false }))
@@ -63,5 +70,81 @@ describe('RemotePickerModal', () => {
     expect(
       screen.queryByRole('button', { name: /remove adiologydev remote/i })
     ).not.toBeInTheDocument()
+  })
+
+  async function pressBackspaceOnSecondRemote() {
+    render(<RemotePickerModal />)
+    await screen.findByText('adiologydev')
+    const dialog = screen.getByRole('dialog', { name: 'Pick a remote' })
+    fireEvent.keyDown(dialog, { key: 'ArrowDown' })
+    fireEvent.keyDown(dialog, { key: 'Backspace' })
+  }
+
+  it('does not remove the remote when Backspace is cancelled', async () => {
+    await pressBackspaceOnSecondRemote()
+
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: 'Remove git remote “adiologydev”?',
+      })
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.removeGitRemote).not.toHaveBeenCalled()
+  })
+
+  it('removes the remote after Backspace is confirmed', async () => {
+    await pressBackspaceOnSecondRemote()
+
+    await screen.findByRole('alertdialog', {
+      name: 'Remove git remote “adiologydev”?',
+    })
+    expect(mocks.removeGitRemote).not.toHaveBeenCalled()
+    await confirmDialog()
+
+    await waitFor(() =>
+      expect(mocks.removeGitRemote).toHaveBeenCalledWith('/repo', 'adiologydev')
+    )
+  })
+
+  it('does not remove the remote when the delete button is cancelled', async () => {
+    isMobileState.value = true
+    render(<RemotePickerModal />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /remove adiologydev remote/i })
+    )
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: 'Remove git remote “adiologydev”?',
+      })
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.removeGitRemote).not.toHaveBeenCalled()
+  })
+
+  it('removes the remote after the delete button is confirmed', async () => {
+    isMobileState.value = true
+    render(<RemotePickerModal />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /remove adiologydev remote/i })
+    )
+    await screen.findByRole('alertdialog', {
+      name: 'Remove git remote “adiologydev”?',
+    })
+    expect(mocks.removeGitRemote).not.toHaveBeenCalled()
+    await confirmDialog()
+
+    await waitFor(() =>
+      expect(mocks.removeGitRemote).toHaveBeenCalledWith('/repo', 'adiologydev')
+    )
   })
 })

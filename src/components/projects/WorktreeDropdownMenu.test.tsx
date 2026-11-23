@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { WorktreeDropdownMenu } from './WorktreeDropdownMenu'
 import type { Worktree } from '@/types/projects'
 import type * as EnvironmentModule from '@/lib/environment'
+import type * as ProjectsModule from '@/services/projects'
+import type * as MenuActionsModule from './useWorktreeMenuActions'
 
 const envMocks = vi.hoisted(() => ({
   isNativeApp: false,
@@ -17,6 +25,14 @@ const actionMocks = vi.hoisted(() => ({
   handleRun: vi.fn(),
   handleRunCommand: vi.fn(),
   runScripts: ['bun run dev'] as string[],
+  useRealActions: false,
+}))
+
+const serviceMocks = vi.hoisted(() => ({
+  archiveMutate: vi.fn(),
+  deleteMutate: vi.fn(),
+  closeBaseMutate: vi.fn(),
+  preferences: {} as { removal_behavior?: 'archive' | 'delete' },
 }))
 
 vi.mock('@/lib/environment', async importOriginal => ({
@@ -44,21 +60,47 @@ vi.mock('@/services/github', () => ({
   useWorkflowRuns: () => ({ data: { runs: [], failedCount: 0 } }),
 }))
 
-vi.mock('./useWorktreeMenuActions', () => ({
-  useWorktreeMenuActions: () => ({
-    showDeleteConfirm: false,
-    setShowDeleteConfirm: vi.fn(),
-    isBase: false,
-    runScripts: actionMocks.runScripts,
-    preferences: {},
-    handleRun: actionMocks.handleRun,
-    handleRunCommand: actionMocks.handleRunCommand,
-    handleOpenInFinder: vi.fn(),
-    handleOpenInTerminal: vi.fn(),
-    handleOpenInEditor: vi.fn(),
-    handleArchiveOrClose: vi.fn(),
-    handleDelete: vi.fn(),
-  }),
+vi.mock('./useWorktreeMenuActions', async importOriginal => {
+  const actual = await importOriginal<typeof MenuActionsModule>()
+  return {
+    useWorktreeMenuActions: (
+      props: Parameters<typeof actual.useWorktreeMenuActions>[0]
+    ) =>
+      actionMocks.useRealActions
+        ? actual.useWorktreeMenuActions(props)
+        : {
+            showDeleteConfirm: false,
+            setShowDeleteConfirm: vi.fn(),
+            isBase: false,
+            runScripts: actionMocks.runScripts,
+            preferences: {},
+            handleRun: actionMocks.handleRun,
+            handleRunCommand: actionMocks.handleRunCommand,
+            handleOpenInFinder: vi.fn(),
+            handleOpenInTerminal: vi.fn(),
+            handleOpenInEditor: vi.fn(),
+            handleArchiveOrClose: vi.fn(),
+            handleDelete: vi.fn(),
+          },
+  }
+})
+
+vi.mock('@/services/projects', async importOriginal => ({
+  ...(await importOriginal<typeof ProjectsModule>()),
+  useArchiveWorktree: () => ({ mutate: serviceMocks.archiveMutate }),
+  useDeleteWorktree: () => ({ mutate: serviceMocks.deleteMutate }),
+  useCloseBaseSession: () => ({ mutate: serviceMocks.closeBaseMutate }),
+  useRunScripts: () => ({ data: [] }),
+  useIsPlainProject: () => false,
+  useInstalledApps: () => ({ data: new Set<string>() }),
+}))
+
+vi.mock('@/services/preferences', () => ({
+  usePreferences: () => ({ data: serviceMocks.preferences }),
+}))
+
+vi.mock('@/services/chat', () => ({
+  useSessions: () => ({ data: { sessions: [] } }),
 }))
 
 const worktree: Worktree = {
@@ -80,6 +122,7 @@ describe('WorktreeDropdownMenu', () => {
     envMocks.canOpenInEditor = false
     envMocks.isMobile = true
     actionMocks.runScripts = ['bun run dev']
+    actionMocks.useRealActions = false
     actionMocks.handleRun.mockClear()
     actionMocks.handleRunCommand.mockClear()
   })
@@ -180,5 +223,84 @@ describe('WorktreeDropdownMenu', () => {
       expect(item).not.toHaveAttribute('aria-disabled')
     }
     expect(screen.queryByText('Host only')).toBeNull()
+  })
+})
+
+describe('WorktreeDropdownMenu archive item', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    envMocks.isNativeApp = true
+    envMocks.isLocalBackend = true
+    envMocks.canOpenNativeApps = true
+    envMocks.canOpenInEditor = true
+    envMocks.isMobile = false
+    actionMocks.useRealActions = true
+    serviceMocks.preferences = {}
+  })
+
+  async function clickArchiveItem() {
+    const user = userEvent.setup()
+    render(
+      <WorktreeDropdownMenu
+        worktree={{ ...worktree, name: 'feature-x' }}
+        projectId="project-1"
+        projectPath="/tmp/project"
+      />
+    )
+    await user.click(screen.getByRole('button'))
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Archive Worktree' })
+    )
+  }
+
+  it('archives at once without a dialog when removal behavior is archive', async () => {
+    serviceMocks.preferences = { removal_behavior: 'archive' }
+    await clickArchiveItem()
+
+    await waitFor(() =>
+      expect(serviceMocks.archiveMutate).toHaveBeenCalledWith({
+        worktreeId: 'wt-1',
+        projectId: 'project-1',
+      })
+    )
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(serviceMocks.deleteMutate).not.toHaveBeenCalled()
+  })
+
+  it('does not delete when the delete confirmation is cancelled', async () => {
+    serviceMocks.preferences = { removal_behavior: 'delete' }
+    await clickArchiveItem()
+
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: 'Delete worktree “feature-x”?',
+      })
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(serviceMocks.deleteMutate).not.toHaveBeenCalled()
+    expect(serviceMocks.archiveMutate).not.toHaveBeenCalled()
+  })
+
+  it('deletes the worktree after the delete confirmation', async () => {
+    serviceMocks.preferences = { removal_behavior: 'delete' }
+    await clickArchiveItem()
+
+    await screen.findByRole('alertdialog', {
+      name: 'Delete worktree “feature-x”?',
+    })
+    expect(serviceMocks.deleteMutate).not.toHaveBeenCalled()
+    await confirmDialog()
+
+    await waitFor(() =>
+      expect(serviceMocks.deleteMutate).toHaveBeenCalledWith({
+        worktreeId: 'wt-1',
+        projectId: 'project-1',
+      })
+    )
+    expect(serviceMocks.archiveMutate).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,13 @@
 import React, { type RefObject } from 'react'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import { cancelDialog, confirmDialog } from '@/test/test-utils'
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/store/chat-store'
@@ -840,5 +848,70 @@ describe('useGitOperations conflict resolution', () => {
         sessionId: 'review-session-1',
       })
     )
+  })
+})
+
+describe('useGitOperations merge PR confirmation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.invoke.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === 'merge_github_pr' ? { message: 'Merged' } : undefined
+      )
+    )
+    mocks.listen.mockResolvedValue(vi.fn())
+    render(<ConfirmDialogHost />)
+  })
+
+  it('does not merge the PR when the dialog is cancelled', async () => {
+    const { result } = renderGitOperations()
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.handleMergePr()
+    })
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Merge PR #31 of “feature”?',
+      })
+    ).toBeInTheDocument()
+    await cancelDialog()
+    await act(async () => {
+      await pending
+    })
+
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      'merge_github_pr',
+      expect.anything()
+    )
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      'archive_worktree',
+      expect.anything()
+    )
+  })
+
+  it('merges the PR and archives the worktree after confirm', async () => {
+    const { result } = renderGitOperations()
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.handleMergePr()
+    })
+    await screen.findByRole('heading', { name: 'Merge PR #31 of “feature”?' })
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      'merge_github_pr',
+      expect.anything()
+    )
+    await confirmDialog()
+    await act(async () => {
+      await pending
+    })
+
+    expect(mocks.invoke).toHaveBeenCalledWith('merge_github_pr', {
+      worktreePath: '/repo/worktree',
+    })
+    expect(mocks.invoke).toHaveBeenCalledWith('archive_worktree', {
+      worktreeId: 'wt-1',
+    })
   })
 })

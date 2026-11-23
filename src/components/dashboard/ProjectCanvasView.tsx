@@ -3,6 +3,9 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { confirmCancelRun } from '@/lib/destructive-confirms'
+import { confirmRemoveProject } from '@/lib/destructive-confirms'
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import {
   attachClosestEdge,
@@ -67,16 +70,6 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -2570,7 +2563,9 @@ export function ProjectCanvasView({
       const isSending =
         useChatStore.getState().sendingSessionIds[sessionId] ?? false
       if (isSending) {
-        cancelChatMessage(sessionId, worktreeId)
+        void confirmCancelRun(sessionId).then(
+          ok => ok && cancelChatMessage(sessionId, worktreeId)
+        )
       }
     }
 
@@ -3500,7 +3495,11 @@ export function ProjectCanvasView({
 
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => removeProject.mutate(projectId)}
+          onSelect={() =>
+            void confirmRemoveProject(project.name).then(
+              ok => ok && removeProject.mutate(projectId)
+            )
+          }
           disabled={worktrees.length > 0}
           className="whitespace-nowrap"
         >
@@ -4231,37 +4230,22 @@ export function ProjectCanvasView({
         extraLabels={allWorktreeLabels}
       />
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!labelDeleteTarget}
         onOpenChange={open => {
           if (!open) setLabelDeleteTarget(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete label?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deleting <strong>{labelDeleteTarget?.label.name}</strong> will
-              remove it from the label list
-              {labelDeleteTarget?.assignedCount
-                ? ` and from ${labelDeleteTarget.assignedCount} worktree${
-                    labelDeleteTarget.assignedCount === 1 ? '' : 's'
-                  }`
-                : ''}
-              . This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={handleConfirmDeleteLabel}
-            >
-              Delete label
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={`Delete label “${labelDeleteTarget?.label.name ?? ''}”?`}
+        description={`This removes it from the label list${
+          labelDeleteTarget?.assignedCount
+            ? ` and from ${labelDeleteTarget.assignedCount} worktree${
+                labelDeleteTarget.assignedCount === 1 ? '' : 's'
+              }`
+            : ''
+        }. This cannot be undone.`}
+        confirmLabel="Delete label"
+        onConfirm={handleConfirmDeleteLabel}
+      />
 
       {/* Session Chat Modal */}
       <SessionChatModal

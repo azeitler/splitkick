@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, memo, useState } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Bug, Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { middleClickClose } from '@/lib/middle-click'
@@ -18,16 +19,6 @@ import {
   disposePanelWorktreeTerminals,
   requestRunTerminalDebugSession,
 } from '@/lib/terminal-instances'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { cn } from '@/lib/utils'
@@ -416,42 +407,24 @@ export function TerminalView({
   }, [worktreeId])
 
   const closeConfirmDialog = (
-    <AlertDialog
+    <ConfirmDialog
       open={pendingClose !== null}
       onOpenChange={open => {
         if (!open) setPendingClose(null)
       }}
-    >
-      <AlertDialogContent
-        onEscapeKeyDown={e => e.stopPropagation()}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            e.stopPropagation()
-            confirmPendingClose()
-          }
-        }}
-      >
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {pendingClose?.type === 'all'
-              ? 'Close all terminals?'
-              : 'Close running terminal?'}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {pendingClose?.type === 'all'
-              ? 'One or more terminals still have a running process. Closing them will terminate those processes.'
-              : 'This terminal still has a running process. Closing it will terminate that process.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={confirmPendingClose}>
-            Close
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      title={
+        pendingClose?.type === 'all'
+          ? 'Close all terminals?'
+          : 'Close running terminal?'
+      }
+      description={
+        pendingClose?.type === 'all'
+          ? 'One or more terminals still have a running process. Closing them will terminate those processes.'
+          : 'This terminal still has a running process. Closing it will terminate that process.'
+      }
+      confirmLabel="Close"
+      onConfirm={confirmPendingClose}
+    />
   )
 
   // When collapsed, show collapsed bar but keep terminals mounted (hidden) to preserve state

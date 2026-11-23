@@ -18,18 +18,9 @@ import {
   X,
   Bot,
 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,6 +83,7 @@ export function WorktreeDropdownMenu({
 }: WorktreeDropdownMenuProps) {
   const queryClient = useQueryClient()
   const {
+    worktreeName,
     showDeleteConfirm,
     setShowDeleteConfirm,
     isBase,
@@ -104,7 +96,7 @@ export function WorktreeDropdownMenu({
     handleOpenInEditor,
     handleOpenInGitClient,
     gitClient,
-    handleArchiveOrClose,
+    handleArchiveOrCloseFromMenu,
     handleDelete,
     handleCopyLink,
   } = useWorktreeMenuActions({ worktree, projectId })
@@ -365,7 +357,7 @@ export function WorktreeDropdownMenu({
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={handleArchiveOrClose}>
+          <DropdownMenuItem onClick={() => void handleArchiveOrCloseFromMenu()}>
             {isBase ? (
               <>
                 <X className="mr-2 h-4 w-4" />
@@ -388,37 +380,14 @@ export function WorktreeDropdownMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              e.stopPropagation()
-              handleDelete()
-              setShowDeleteConfirm(false)
-            }
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Worktree</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the worktree, its branch, and all
-              associated sessions. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              autoFocus
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-              <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title={`Delete worktree “${worktreeName}”?`}
+        description="This will permanently delete the worktree, its branch, and all associated sessions. This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+      />
     </>
   )
 }

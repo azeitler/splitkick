@@ -38,6 +38,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Destructive actions ask first.** Every action and shortcut that deletes
+  or loses work shows one shared confirmation: the title names the object,
+  Return confirms, Esc cancels, and the key press that opened it cannot also
+  confirm it. New: Delete Session, Merge PR, Remove Project, Remove Agent,
+  cancel a run, delete schedule / checkpoint / git remote / remote
+  connection / provider / saved context / artifact, reset a magic prompt,
+  regenerate the Web Access token, orphaned-data cleanup, and uninstall from
+  the Antigravity and Opinionated panes. "Archive Worktree" asks when the
+  removal behavior is set to delete. Archive itself does not ask (it can be
+  restored), and actions started by agents through MCP stay as they are.
 - **⌘K puts an exactly named connection on top.** Type a server
   connection's full name in the command palette and it shows first, under "Go
   to Connection", so Enter switches to it. Partial names keep it in the

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, waitFor, within } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@/test/test-utils'
 import { invoke } from '@/lib/transport'
 import { OpinionatedPane } from './OpinionatedPane'
 
@@ -60,12 +67,33 @@ describe('OpinionatedPane', () => {
       superpowersRow as HTMLElement
     ).getByRole('button', { name: /Uninstall/i })
     await user.click(superpowersUninstall)
+    expect(await screen.findByText('Uninstall Superpowers?')).toBeInTheDocument()
+    await confirmDialog()
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('uninstall_opinionated_plugin', {
         pluginName: 'superpowers',
       })
     })
+  })
+
+  it('does not uninstall when the confirmation is cancelled', async () => {
+    const user = userEvent.setup()
+    render(<OpinionatedPane />)
+    await screen.findByRole('button', { name: /Superpowers/i })
+    const row = screen.getByText('Superpowers').closest('.rounded-lg')
+    if (!row) throw new Error('Expected Superpowers row')
+    await user.click(
+      within(row as HTMLElement).getByRole('button', { name: /Uninstall/i })
+    )
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(invoke).not.toHaveBeenCalledWith(
+      'uninstall_opinionated_plugin',
+      expect.anything()
+    )
   })
 
   it('shows opinionated skill installation status for each backend', async () => {

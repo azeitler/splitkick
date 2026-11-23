@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import QRCode from 'qrcode'
 import { connectionLink } from '@/lib/remote-connections'
@@ -393,5 +399,60 @@ describe('WebAccessPane Instance Name and 1Password', () => {
       { label: 'Tailscale', href: 'https://box.ts.net' },
     ])
     expect(onePasswordItemUrls(null, null)).toEqual([])
+  })
+})
+
+describe('WebAccessPane regenerate token confirmation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mobile.value = false
+    localBackend.value = false
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'load_preferences')
+        return Promise.resolve(defaultPreferences)
+      if (command === 'get_http_server_status') {
+        return Promise.resolve({
+          running: true,
+          port: 3456,
+          url: 'http://0.0.0.0:3456',
+          token: 'secret-token',
+          bind_host: '0.0.0.0',
+          localhost_only: false,
+        })
+      }
+      if (command === 'list_http_bind_host_options') return Promise.resolve([])
+      if (command === 'regenerate_http_token')
+        return Promise.resolve('new-token')
+      return Promise.resolve(null)
+    })
+  })
+
+  async function clickRegenerate() {
+    render(<WebAccessPane />)
+    await screen.findByDisplayValue('secret-token')
+    const icon = document.querySelector('svg.lucide-refresh-cw')
+    const button = icon?.closest('button')
+    expect(button).toBeTruthy()
+    await userEvent.click(button as HTMLButtonElement)
+    expect(
+      await screen.findByText('Regenerate the Web Access token?')
+    ).toBeInTheDocument()
+  }
+
+  it('does not regenerate the token when the dialog is cancelled', async () => {
+    await clickRegenerate()
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(invokeMock).not.toHaveBeenCalledWith('regenerate_http_token')
+  })
+
+  it('regenerates the token after confirming', async () => {
+    await clickRegenerate()
+    await confirmDialog()
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('regenerate_http_token')
+    )
   })
 })

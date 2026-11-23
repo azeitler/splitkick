@@ -8,6 +8,7 @@ import {
   memo,
   useTransition,
 } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   FileText,
   Loader2,
@@ -70,16 +71,6 @@ import {
   ContextMenuContent,
   ContextMenuItem,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@/components/ui/alert-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -1773,52 +1764,16 @@ export function GitDiffModal({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
+      <ConfirmDialog
         open={!!revertTarget}
-        onOpenChange={open => !open && setRevertTarget(null)}
-      >
-        <AlertDialogContent
-          onKeyDown={e => e.stopPropagation()}
-          onOpenAutoFocus={e => {
-            e.preventDefault()
-            // Focus the Revert button instead of Cancel
-            const container = e.target as HTMLElement | null
-            const action = container?.querySelector<HTMLButtonElement>(
-              '[data-revert-action]'
-            )
-            action?.focus()
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revert file?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will discard all changes to{' '}
-              <span className="break-all font-mono font-semibold">
-                {revertTarget?.fileName}
-              </span>
-              . This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isReverting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              data-revert-action
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={isReverting}
-              onClick={handleRevertFile}
-            >
-              {isReverting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Reverting...
-                </>
-              ) : (
-                'Revert'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={open => !open && !isReverting && setRevertTarget(null)}
+        title={`Revert file “${revertTarget?.fileName ?? ''}”?`}
+        description="This discards all changes to this file. This cannot be undone."
+        confirmLabel={isReverting ? 'Reverting...' : 'Revert'}
+        confirmDisabled={isReverting}
+        closeOnConfirm={false}
+        onConfirm={() => void handleRevertFile()}
+      />
     </>
   )
 }

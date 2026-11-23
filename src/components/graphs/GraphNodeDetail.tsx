@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   ArrowRight,
   Ban,
@@ -15,16 +16,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Markdown } from '@/components/ui/markdown'
@@ -906,30 +897,19 @@ function DeleteNodeButton({
         <Trash2 className="size-4" aria-hidden="true" />
         Delete node
       </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{node.title}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The node and the relations to it in this graph are removed. The
-              change log keeps it, so you can revert.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                deleteNode.mutate(
-                  { graphId, nodeId: node.id },
-                  { onSuccess: onDeleted }
-                )
-              }
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`Delete “${node.title}”?`}
+        description="The node and the relations to it in this graph are removed. The change log keeps it, so you can revert."
+        confirmLabel="Delete"
+        onConfirm={() =>
+          deleteNode.mutate(
+            { graphId, nodeId: node.id },
+            { onSuccess: onDeleted }
+          )
+        }
+      />
     </>
   )
 }

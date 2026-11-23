@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import {
   ExternalLink,
   FileText,
@@ -128,7 +129,15 @@ export function SessionArtifactsTab({
           variant="ghost"
           size="sm"
           className="h-6 gap-1 px-2 text-xs"
-          onClick={() => void edit({ kind: 'clear' })}
+          onClick={async () => {
+            const confirmed = await confirmAction({
+              title: `Clear all ${sorted.length} ${sorted.length === 1 ? 'artifact' : 'artifacts'}?`,
+              description:
+                'The list is emptied and stored version copies are deleted. The original files stay.',
+              confirmLabel: 'Clear All',
+            })
+            if (confirmed) void edit({ kind: 'clear' })
+          }}
         >
           <Trash2 className="size-3" />
           Clear all
@@ -253,7 +262,15 @@ function ArtifactRow({
               className="size-8 md:size-6"
               aria-label={`Remove ${item.title}`}
               title="Remove"
-              onClick={() => void onEdit({ kind: 'remove', id: item.id })}
+              onClick={async () => {
+                const confirmed = await confirmAction({
+                  title: `Remove artifact “${item.title}”?`,
+                  description:
+                    'Its stored version copies are deleted. The original file stays.',
+                  confirmLabel: 'Remove',
+                })
+                if (confirmed) void onEdit({ kind: 'remove', id: item.id })
+              }}
             >
               <X className="size-3.5" />
             </Button>

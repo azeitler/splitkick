@@ -5,6 +5,7 @@ import {
   Pencil,
   RotateCcw,
 } from 'lucide-react'
+import { confirmRemoveAgent } from '@/lib/destructive-confirms'
 import {
   ContextMenuItem,
   ContextMenuRadioGroup,
@@ -122,7 +123,11 @@ export function SessionAgentMenuItems({
         Restart Agent
       </ContextMenuItem>
       <ContextMenuItem
-        onSelect={() => removeAgent.mutate({ agentId: agent.id })}
+        onSelect={() =>
+          void confirmRemoveAgent(agent.name).then(
+            ok => ok && removeAgent.mutate({ agentId: agent.id })
+          )
+        }
       >
         <BotOff className="mr-2 h-4 w-4" />
         Remove Agent

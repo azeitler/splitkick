@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { useUIStore } from '@/store/ui-store'
 import type { Artifact, Session } from '@/types/chat'
 import { SessionArtifactsTab, displayTarget } from './SessionArtifactsTab'
@@ -151,12 +158,30 @@ describe('SessionArtifactsTab (#107)', () => {
     expect(screen.queryByRole('button', { name: /versions of/ })).toBeNull()
   })
 
-  it('removes one artifact and clears all', () => {
+  it('removes one artifact and clears all after a confirmation', async () => {
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Remove Report' }))
-    expect(mocks.edit).toHaveBeenCalledWith({ kind: 'remove', id: 'a' })
+    await confirmDialog()
+    await waitFor(() =>
+      expect(mocks.edit).toHaveBeenCalledWith({ kind: 'remove', id: 'a' })
+    )
     fireEvent.click(screen.getByRole('button', { name: /Clear all/ }))
-    expect(mocks.edit).toHaveBeenCalledWith({ kind: 'clear' })
+    await confirmDialog()
+    await waitFor(() =>
+      expect(mocks.edit).toHaveBeenCalledWith({ kind: 'clear' })
+    )
+  })
+
+  it('does nothing when the remove or clear confirmation is cancelled', async () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Report' }))
+    await cancelDialog()
+    fireEvent.click(screen.getByRole('button', { name: /Clear all/ }))
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.edit).not.toHaveBeenCalled()
   })
 
   it('closes the phone drawer when an item opens', () => {

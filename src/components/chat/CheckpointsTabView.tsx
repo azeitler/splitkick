@@ -1,4 +1,8 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import {
+  confirmAction,
+  useConfirmKeyboard,
+} from '@/components/ui/confirm-dialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
@@ -267,8 +271,25 @@ export function CheckpointsTabView({
     }
   }, [selected, fileRestoreTarget, worktreeId, loadDiff])
 
+  // Shared confirm rules: the undo button has focus, Return confirms.
+  const fileRestoreKeys = useConfirmKeyboard({
+    open: !!fileRestoreTarget,
+    disabled: fileRestoring,
+    onConfirm: () => void handleApproveFileRestore(),
+  })
+
   const handleDelete = useCallback(
     async (checkpoint: AiCheckpoint) => {
+      const preview = checkpoint.userMessagePreview.trim().split('\n')[0] ?? ''
+      const confirmed = await confirmAction({
+        title: preview
+          ? `Delete checkpoint “${preview.length > 60 ? `${preview.slice(0, 57)}…` : preview}”?`
+          : 'Delete this checkpoint?',
+        description:
+          'You can no longer undo this turn’s file changes. Your files stay as they are.',
+        confirmLabel: 'Delete',
+      })
+      if (!confirmed) return
       try {
         await deleteAiCheckpoint(worktreeId, checkpoint.id)
         toast.success('Checkpoint deleted')
@@ -585,6 +606,7 @@ export function CheckpointsTabView({
             'max-sm:top-auto max-sm:bottom-[max(0.75rem,env(safe-area-inset-bottom))] max-sm:left-1/2 max-sm:translate-x-[-50%] max-sm:translate-y-0 max-sm:rounded-xl',
             'sm:max-w-lg sm:p-6'
           )}
+          {...fileRestoreKeys.contentProps}
         >
           <button
             type="button"
@@ -628,11 +650,12 @@ export function CheckpointsTabView({
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-row-reverse">
             <AlertDialogAction
+              ref={fileRestoreKeys.confirmRef}
               disabled={fileRestoring}
               className="m-0 w-full sm:w-auto"
               onClick={e => {
                 e.preventDefault()
-                void handleApproveFileRestore()
+                fileRestoreKeys.confirm()
               }}
             >
               {fileRestoring ? (

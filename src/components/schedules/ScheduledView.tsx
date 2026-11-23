@@ -1,4 +1,8 @@
 import { useNow } from '@/hooks/useNow'
+import {
+  confirmDeleteSchedule,
+  scheduleDisplayName,
+} from '@/lib/destructive-confirms'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
@@ -363,13 +367,19 @@ export function ScheduledList({
                 <RowAction
                   label="Delete"
                   disabled={disabled}
-                  onClick={() =>
+                  onClick={async () => {
+                    if (
+                      !(await confirmDeleteSchedule(
+                        scheduleDisplayName(schedule)
+                      ))
+                    )
+                      return
                     run(
                       schedule.id,
                       () => deleteSchedule(schedule.id),
                       'Failed to delete'
                     )
-                  }
+                  }}
                 >
                   <Trash2 className="size-4" />
                 </RowAction>

@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { ScheduledBanner, scheduleHeadline } from './ScheduledBanner'
 import type { Schedule } from '@/types/chat'
 import type * as Environment from '@/lib/environment'
@@ -56,11 +63,35 @@ describe('ScheduledBanner', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Cancel schedule' })
     )
+    expect(
+      await screen.findByText('Delete schedule “check the build”?')
+    ).toBeInTheDocument()
+    await confirmDialog()
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('delete_schedule', {
         scheduleId: 'a',
       })
+    })
+  })
+
+  it('keeps the schedule when the confirmation is cancelled', async () => {
+    invoke.mockClear()
+    invoke.mockImplementation((command: string) =>
+      command === 'list_schedules'
+        ? Promise.resolve([schedule('a', 's1', 'check the build')])
+        : Promise.resolve(true)
+    )
+    render(<ScheduledBanner sessionId="s1" />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel schedule' })
+    )
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(invoke).not.toHaveBeenCalledWith('delete_schedule', {
+      scheduleId: 'a',
     })
   })
 

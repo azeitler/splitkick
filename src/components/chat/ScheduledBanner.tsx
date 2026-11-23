@@ -1,4 +1,8 @@
 import { useNow } from '@/hooks/useNow'
+import {
+  confirmDeleteSchedule,
+  scheduleDisplayName,
+} from '@/lib/destructive-confirms'
 import { useCallback, useMemo, useState } from 'react'
 import { Clock, Repeat, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -101,7 +105,11 @@ export function ScheduledBanner({ sessionId }: ScheduledBannerProps) {
             variant="ghost"
             size="icon"
             className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={() => handleCancel(schedule.id)}
+            onClick={async () => {
+              if (!(await confirmDeleteSchedule(scheduleDisplayName(schedule))))
+                return
+              void handleCancel(schedule.id)
+            }}
             disabled={deleting === schedule.id}
             aria-label="Cancel schedule"
           >

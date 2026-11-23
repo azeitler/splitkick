@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, waitFor } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+} from '@/test/test-utils'
 import { MagicModal } from './MagicModal'
 
 const mocks = vi.hoisted(() => {
@@ -715,6 +721,67 @@ describe('MagicModal manual PR link', () => {
     expect(mocks.fetchWorktreesStatus).toHaveBeenCalledWith('project-1')
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Reverted: Test commit', {
       id: 'toast-1',
+    })
+  })
+
+  it('does not merge the PR when the merge confirmation is cancelled', async () => {
+    const user = userEvent.setup()
+    mocks.worktree.pr_number = 12
+    mocks.worktree.pr_url = 'https://github.com/o/r/pull/12'
+
+    render(<MagicModal />)
+
+    await user.click(screen.getByRole('button', { name: /^merge n$/i }))
+
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: 'Merge PR #12 of “feature”?',
+      })
+    ).toBeInTheDocument()
+    await cancelDialog()
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect(mocks.invokeMock).not.toHaveBeenCalledWith(
+      'merge_github_pr',
+      expect.anything()
+    )
+    expect(mocks.invokeMock).not.toHaveBeenCalledWith(
+      'archive_worktree',
+      expect.anything()
+    )
+  })
+
+  it('merges the PR and archives the worktree after confirmation', async () => {
+    const user = userEvent.setup()
+    mocks.worktree.pr_number = 12
+    mocks.worktree.pr_url = 'https://github.com/o/r/pull/12'
+    mocks.invokeMock.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === 'merge_github_pr' ? { message: 'PR #12 merged' } : null
+      )
+    )
+
+    render(<MagicModal />)
+
+    await user.click(screen.getByRole('button', { name: /^merge n$/i }))
+    await screen.findByRole('alertdialog', {
+      name: 'Merge PR #12 of “feature”?',
+    })
+    expect(mocks.invokeMock).not.toHaveBeenCalledWith(
+      'merge_github_pr',
+      expect.anything()
+    )
+    await confirmDialog()
+
+    await waitFor(() => {
+      expect(mocks.invokeMock).toHaveBeenCalledWith('archive_worktree', {
+        worktreeId: 'wt-1',
+      })
+    })
+    expect(mocks.invokeMock).toHaveBeenCalledWith('merge_github_pr', {
+      worktreePath: '/repo/worktree',
     })
   })
 })

@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -539,6 +540,13 @@ const WebAccessServerPane: React.FC = () => {
   }, [portInput, patchPreferences, preferences])
 
   const handleRegenerateToken = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: 'Regenerate the Web Access token?',
+      description:
+        'The old token stops working at once: every paired browser and device must sign in again with the new token.',
+      confirmLabel: 'Regenerate',
+    })
+    if (!confirmed) return
     try {
       const newToken = await invoke<string>('regenerate_http_token')
       patchPreferences.mutate({ http_server_token: newToken })

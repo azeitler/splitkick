@@ -1,14 +1,5 @@
 import { Loader2, Trash2 } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { ArchivedItem } from './archived-items'
 
 /** What the confirmation is about: some rows, or every archive. */
@@ -69,31 +60,23 @@ export function ArchivedDeleteDialog({
 }) {
   const text = target ? describe(target) : null
   return (
-    <AlertDialog
+    <ConfirmDialog
       open={target !== null}
       onOpenChange={open => !open && !busy && onCancel()}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{text?.title}</AlertDialogTitle>
-          <AlertDialogDescription>{text?.body}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => target && onConfirm(target)}
-            disabled={busy}
-            className="bg-destructive text-white hover:bg-destructive/90"
-          >
-            {busy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-2 h-4 w-4" />
-            )}
-            {text?.action}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      title={text?.title}
+      description={text?.body}
+      confirmLabel={
+        <>
+          {busy ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-2 h-4 w-4" />
+          )}
+          {text?.action}
+        </>
+      }
+      confirmDisabled={busy}
+      onConfirm={() => target && onConfirm(target)}
+    />
   )
 }

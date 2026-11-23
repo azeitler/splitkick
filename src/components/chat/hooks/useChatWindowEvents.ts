@@ -5,6 +5,7 @@ import {
   useRef,
   type RefObject,
 } from 'react'
+import { confirmCancelRun } from '@/lib/destructive-confirms'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -347,8 +348,10 @@ export function useChatWindowEvents({
         return
       }
 
-      logger.debug('cancel-prompt: cancelling', { sessionToCancel, wtId })
-      cancelChatMessage(sessionToCancel, wtId)
+      logger.debug('cancel-prompt: confirming', { sessionToCancel, wtId })
+      void confirmCancelRun(sessionToCancel).then(
+        ok => ok && cancelChatMessage(sessionToCancel, wtId)
+      )
     }
     window.addEventListener('cancel-prompt', handler)
     return () => window.removeEventListener('cancel-prompt', handler)

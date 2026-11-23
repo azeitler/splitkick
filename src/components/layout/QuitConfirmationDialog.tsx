@@ -1,15 +1,6 @@
 import { useState, useEffect } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { isNativeApp } from '@/lib/environment'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { logger } from '@/lib/logger'
 
 async function handleQuitAnyway() {
@@ -47,22 +38,18 @@ export function QuitConfirmationDialog() {
   }, [])
 
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Sessions are still running</AlertDialogTitle>
-          <AlertDialogDescription>
-            One or more sessions are actively processing. Quitting now will
-            interrupt them.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleQuitAnyway}>
-            Quit Anyway
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={setOpen}
+      title={<>Sessions are still running</>}
+      description={
+        <>
+          One or more sessions are actively processing. Quitting now will
+          interrupt them.
+        </>
+      }
+      confirmLabel={'Quit Anyway'}
+      onConfirm={handleQuitAnyway}
+    />
   )
 }

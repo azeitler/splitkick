@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useConfirmKeyboard } from '@/components/ui/confirm-dialog'
 import {
   AlertTriangle,
   ChevronLeft,
@@ -330,6 +331,14 @@ export function CheckpointRestoreDialog({
     onOpenChange(false)
   }, [busy, onOpenChange])
 
+  // The approval step is the confirmation: its button has focus and Return
+  // applies the restore (shared rules in useConfirmKeyboard).
+  const approvalKeys = useConfirmKeyboard({
+    open: open && !!checkpoint && showApproval,
+    disabled: restoring,
+    onConfirm: () => void executeApprovedRestore(),
+  })
+
   return (
     <AlertDialog
       open={open && !!checkpoint}
@@ -348,6 +357,7 @@ export function CheckpointRestoreDialog({
           // Override default padding from AlertDialogContent base
           'sm:p-0'
         )}
+        {...approvalKeys.contentProps}
       >
         <AlertDialogHeader className="relative shrink-0 space-y-2 border-b border-border px-4 pb-3 pt-4 text-left sm:px-6 sm:pt-5">
           <div className="flex items-start gap-2 pr-8">
@@ -538,9 +548,10 @@ export function CheckpointRestoreDialog({
           {showApproval ? (
             <div className="flex w-full flex-col gap-2 sm:flex-row-reverse sm:flex-wrap">
               <AlertDialogAction
+                ref={approvalKeys.confirmRef}
                 onClick={e => {
                   e.preventDefault()
-                  void executeApprovedRestore()
+                  approvalKeys.confirm()
                 }}
                 disabled={restoring}
                 className={cn(

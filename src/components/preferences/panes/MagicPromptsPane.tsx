@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   Check,
@@ -1330,15 +1331,28 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
     selectedConfig.defaultValue,
   ])
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (!preferences) return
+    const confirmed = await confirmAction({
+      title: `Reset the “${selectedConfig.label}” prompt?`,
+      description:
+        'Your custom prompt text is replaced with the default. You cannot undo this.',
+      confirmLabel: 'Reset',
+    })
+    if (!confirmed) return
     patchPreferences.mutate({
       magic_prompts: {
         ...currentPrompts,
         [selectedKey]: null,
       },
     })
-  }, [preferences, patchPreferences, currentPrompts, selectedKey])
+  }, [
+    preferences,
+    patchPreferences,
+    currentPrompts,
+    selectedKey,
+    selectedConfig.label,
+  ])
 
   const handleModelChange = useCallback(
     (model: MagicPromptModel) => {
@@ -2666,7 +2680,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleReset}
+              onClick={() => void handleReset()}
               disabled={!isModified}
               className="gap-1.5 h-7"
             >

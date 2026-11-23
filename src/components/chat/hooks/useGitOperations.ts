@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { confirmMergePr } from '@/lib/destructive-confirms'
 import { useCallback, useState, type RefObject } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -1120,6 +1121,14 @@ export function useGitOperations({
       toast.error('No PR open for this worktree')
       return
     }
+    if (
+      !(await confirmMergePr(
+        worktree.pr_number,
+        worktree.name,
+        preferences?.removal_behavior
+      ))
+    )
+      return
 
     const mergePrToastId = toast.loading('Merging PR...')
     try {

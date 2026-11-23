@@ -9,6 +9,7 @@ import {
   lazy,
   Suspense,
 } from 'react'
+import { useConfirmKeyboard } from '@/components/ui/confirm-dialog'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
@@ -2388,6 +2389,13 @@ export function ChatWindow({
     enabledMcpServersRef,
   })
 
+  // Merge to base: "Preserve History" has focus, so Return merges with it
+  // (shared confirm rules). P / S / R pick an option directly.
+  const mergeKeys = useConfirmKeyboard({
+    open: showMergeDialog,
+    onConfirm: () => executeMerge('merge'),
+  })
+
   // Wrap push/pull/commit-and-push with remote picker for multi-remote repos
   const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
@@ -4466,7 +4474,9 @@ export function ChatWindow({
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
           <AlertDialogContent
+            {...mergeKeys.contentProps}
             onKeyDown={e => {
+              mergeKeys.contentProps.onKeyDown(e)
               const key = e.key.toLowerCase()
               if (key === 'p') {
                 e.preventDefault()
@@ -4488,9 +4498,10 @@ export function ChatWindow({
             </AlertDialogHeader>
             <div className="flex flex-col gap-2 py-4">
               <Button
+                ref={mergeKeys.confirmRef}
                 variant="outline"
                 className="h-auto justify-between py-3"
-                onClick={() => executeMerge('merge')}
+                onClick={mergeKeys.confirm}
               >
                 <div className="flex items-center">
                   <GitMerge className="mr-3 h-5 w-5 shrink-0" />

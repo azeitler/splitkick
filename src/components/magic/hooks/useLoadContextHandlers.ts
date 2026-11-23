@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { toastGitHubError } from '@/lib/gh-cli-setup'
@@ -714,6 +715,13 @@ export function useLoadContextHandlers({
   const handleDeleteContext = useCallback(
     async (e: React.MouseEvent, context: SavedContext) => {
       e.stopPropagation()
+      const confirmed = await confirmAction({
+        title: `Delete saved context “${context.name || context.slug || 'Untitled'}”?`,
+        description:
+          'The saved context file is deleted. Sessions that already loaded it keep their copy.',
+        confirmLabel: 'Delete',
+      })
+      if (!confirmed) return
       try {
         await invoke('delete_context_file', { path: context.path })
         refetchContexts()

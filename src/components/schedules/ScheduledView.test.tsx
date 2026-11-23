@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, within } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@/test/test-utils'
 import type { AllSessionsResponse, Schedule } from '@/types/chat'
 import { ScheduledList, lastRunText, nextRunText } from './ScheduledView'
 
@@ -157,7 +164,24 @@ describe('ScheduledList', () => {
     await userEvent.click(
       within(on as HTMLElement).getByRole('button', { name: 'Delete' })
     )
-    expect(mocks.deleteSchedule).toHaveBeenCalledWith('on')
+    await confirmDialog()
+    await waitFor(() =>
+      expect(mocks.deleteSchedule).toHaveBeenCalledWith('on')
+    )
+  })
+
+  it('keeps the schedule when the delete confirmation is cancelled', async () => {
+    mocks.schedules = [schedule({ id: 'on' })]
+    render(<ScheduledList />)
+    const [on] = screen.getAllByTestId('scheduled-row')
+    await userEvent.click(
+      within(on as HTMLElement).getByRole('button', { name: 'Delete' })
+    )
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.deleteSchedule).not.toHaveBeenCalled()
   })
 
   it('edits a schedule through the dialog', async () => {

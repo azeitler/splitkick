@@ -27,6 +27,7 @@ import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
 import { ClearContextConfirmDialog } from '@/components/chat/ClearContextConfirmDialog'
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog'
 import { TeardownOutputDialog } from '@/components/worktree/TeardownOutputDialog'
 import { WindowResizeHandles } from './WindowResizeHandles'
 import { VerticalNavLayout } from './vertical-nav/VerticalNavLayout'
@@ -1025,6 +1026,7 @@ export function MainWindow() {
       )}
       <BranchConflictDialog />
       <ClearContextConfirmDialog />
+      <ConfirmDialogHost />
       <TeardownOutputDialog />
       <Toaster
         position="bottom-right"

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { confirmRemoveAgent } from '@/lib/destructive-confirms'
 import { Archive, BotMessageSquare, X } from 'lucide-react'
 import { groupAgents } from '@/components/agents/agent-rows'
 import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
@@ -407,7 +408,11 @@ function NoSessionActions({ agent }: { agent: Agent }) {
         type="button"
         aria-label={`Remove agent ${agent.name}`}
         title="Remove agent"
-        onClick={() => removeAgent.mutate({ agentId: agent.id })}
+        onClick={() =>
+          void confirmRemoveAgent(agent.name).then(
+            ok => ok && removeAgent.mutate({ agentId: agent.id })
+          )
+        }
         className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
       >
         <X className="size-3" aria-hidden="true" />

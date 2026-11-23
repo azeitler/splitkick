@@ -1,7 +1,12 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  waitFor,
+} from '@/test/test-utils'
 import { getCurrentUIState } from '@/lib/ui-state-snapshot'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -179,7 +184,26 @@ describe('SidebarAgentsSection', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Remove agent Release manager' })
     )
-    expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+    expect(
+      await screen.findByText('Remove agent “Release manager”?')
+    ).toBeInTheDocument()
+    await confirmDialog()
+    await waitFor(() =>
+      expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+    )
+  })
+
+  it('keeps the agent when the remove confirmation is cancelled', async () => {
+    mocks.agents = [agent({ sessionId: null, sessionName: null })]
+    render(<SidebarAgentsSection />)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove agent Release manager' })
+    )
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.remove).not.toHaveBeenCalled()
   })
 
   // The session was archived by a path that did not tell the agents (a

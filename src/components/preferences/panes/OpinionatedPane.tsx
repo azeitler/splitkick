@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import React, { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -206,6 +207,13 @@ function PluginCard({ plugin }: { plugin: PluginDefinition }) {
   const installUnsupported = status?.install_supported === false
 
   const handleUninstall = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: `Uninstall ${plugin.name}?`,
+      description:
+        'This removes the plugin and its files from the AI backends it was installed into.',
+      confirmLabel: 'Uninstall',
+    })
+    if (!confirmed) return
     setUninstalling(true)
     const toastId = toast.loading(`Uninstalling ${plugin.name}...`)
 

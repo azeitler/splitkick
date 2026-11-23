@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { render } from '@/test/test-utils'
+import { confirmDialog, render, waitFor } from '@/test/test-utils'
 import { SidebarWidthProvider } from '@/components/layout/SidebarWidthContext'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -316,7 +316,12 @@ describe('PinnedSessionsSection', () => {
       renderRow()
       const user = await openRowMenu('Investigation')
       await user.click(await screen.findByText('Delete Session'))
+      expect(
+        await screen.findByText('Delete session “Investigation”?')
+      ).toBeInTheDocument()
+      await confirmDialog()
 
+      await waitFor(() => expect(closeMutate).toHaveBeenCalled())
       expect(closeMutate).toHaveBeenCalledWith({
         worktreeId: 'wt-s-1',
         worktreePath: '/tmp/feature-a',
@@ -329,9 +334,28 @@ describe('PinnedSessionsSection', () => {
       renderRow()
       const user = await openRowMenu('Investigation')
       await user.click(await screen.findByText('Delete Session'))
+      expect(
+        await screen.findByText('Archive session “Investigation”?')
+      ).toBeInTheDocument()
+      await confirmDialog()
 
+      await waitFor(() => expect(archiveMutate).toHaveBeenCalledTimes(1))
       expect(closeMutate).not.toHaveBeenCalled()
-      expect(archiveMutate).toHaveBeenCalledTimes(1)
+    })
+
+    it('does nothing when the delete confirmation is cancelled with Esc', async () => {
+      removalBehavior.current = 'delete'
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Delete Session'))
+      await screen.findByRole('alertdialog')
+      await user.keyboard('{Escape}')
+
+      await waitFor(() =>
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      )
+      expect(closeMutate).not.toHaveBeenCalled()
+      expect(archiveMutate).not.toHaveBeenCalled()
     })
   })
 

@@ -6,6 +6,7 @@ import React, {
   useRef,
   type FC,
 } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { invoke } from '@/lib/transport'
 import { loginArgsForBackend } from '@/lib/cli-auth'
 import { activeClaudeAccount, claudeLoginCommand } from '@/lib/claude-accounts'
@@ -126,16 +127,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import {
   Tooltip,
   TooltipTrigger,
@@ -5192,103 +5183,83 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
         </>
       )}
 
-      <AlertDialog
+      <ConfirmDialog
         open={showDeleteAllDialog}
         onOpenChange={setShowDeleteAllDialog}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete all archives?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all archived worktrees and sessions,
-              including their git branches and worktree directories. This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAllArchives}
-              disabled={isDeleting}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {isDeleting ? 'Deleting...' : 'Delete All'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={<>Delete all archives?</>}
+        description={
+          <>
+            This will permanently delete all archived worktrees and sessions,
+            including their git branches and worktree directories. This action
+            cannot be undone.
+          </>
+        }
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete All'}
+        onConfirm={handleDeleteAllArchives}
+        confirmDisabled={isDeleting}
+      />
 
-      <AlertDialog
+      <ConfirmDialog
         open={deleteCliTarget !== null}
         onOpenChange={open => {
           if (!open) setDeleteCliTarget(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {PRODUCT_NAME}-managed{' '}
-              {deleteCliTarget === 'claude'
-                ? 'Claude CLI'
-                : deleteCliTarget === 'codex'
-                  ? 'Codex CLI'
-                  : deleteCliTarget === 'opencode'
-                    ? 'OpenCode CLI'
-                    : deleteCliTarget === 'coderabbit'
-                      ? 'CodeRabbit CLI'
-                      : deleteCliTarget === 'commandcode'
-                        ? 'Command Code CLI'
-                        : deleteCliTarget === 'grok'
-                          ? 'Grok CLI'
-                          : deleteCliTarget === 'kimi'
-                            ? 'Kimi Code CLI'
-                            : deleteCliTarget === 'pi'
-                              ? 'PI CLI'
-                              : 'GitHub CLI'}
-              ?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {(() => {
-                const pathFound =
-                  deleteCliTarget === 'claude'
-                    ? pathDetection?.found
-                    : deleteCliTarget === 'codex'
-                      ? codexPathDetection?.found
-                      : deleteCliTarget === 'opencode'
-                        ? opencodePathDetection?.found
-                        : deleteCliTarget === 'gh'
-                          ? ghPathDetection?.found
-                          : deleteCliTarget === 'coderabbit'
-                            ? coderabbitPathDetection?.found
-                            : deleteCliTarget === 'commandcode'
-                              ? commandcodePathDetection?.found
-                              : deleteCliTarget === 'grok'
-                                ? grokPathDetection?.found
-                                : deleteCliTarget === 'kimi'
-                                  ? kimiPathDetection?.found
-                                  : deleteCliTarget === 'pi'
-                                    ? piPathDetection?.found
-                                    : false
-                return pathFound
-                  ? `The ${PRODUCT_NAME}-managed binary will be removed and the source will switch to System PATH. You can reinstall it later from this page.`
-                  : `The ${PRODUCT_NAME}-managed binary will be removed. No System PATH version was detected, so this backend will be unavailable until you reinstall it.`
-              })()}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingCli}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDeleteCli}
-              disabled={isDeletingCli}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {isDeletingCli ? 'Deleting...' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={
+          <>
+            Delete {PRODUCT_NAME}-managed{' '}
+            {deleteCliTarget === 'claude'
+              ? 'Claude CLI'
+              : deleteCliTarget === 'codex'
+                ? 'Codex CLI'
+                : deleteCliTarget === 'opencode'
+                  ? 'OpenCode CLI'
+                  : deleteCliTarget === 'coderabbit'
+                    ? 'CodeRabbit CLI'
+                    : deleteCliTarget === 'commandcode'
+                      ? 'Command Code CLI'
+                      : deleteCliTarget === 'grok'
+                        ? 'Grok CLI'
+                        : deleteCliTarget === 'kimi'
+                          ? 'Kimi Code CLI'
+                          : deleteCliTarget === 'pi'
+                            ? 'PI CLI'
+                            : 'GitHub CLI'}
+            ?
+          </>
+        }
+        description={
+          <>
+            {(() => {
+              const pathFound =
+                deleteCliTarget === 'claude'
+                  ? pathDetection?.found
+                  : deleteCliTarget === 'codex'
+                    ? codexPathDetection?.found
+                    : deleteCliTarget === 'opencode'
+                      ? opencodePathDetection?.found
+                      : deleteCliTarget === 'gh'
+                        ? ghPathDetection?.found
+                        : deleteCliTarget === 'coderabbit'
+                          ? coderabbitPathDetection?.found
+                          : deleteCliTarget === 'commandcode'
+                            ? commandcodePathDetection?.found
+                            : deleteCliTarget === 'grok'
+                              ? grokPathDetection?.found
+                              : deleteCliTarget === 'kimi'
+                                ? kimiPathDetection?.found
+                                : deleteCliTarget === 'pi'
+                                  ? piPathDetection?.found
+                                  : false
+              return pathFound
+                ? `The ${PRODUCT_NAME}-managed binary will be removed and the source will switch to System PATH. You can reinstall it later from this page.`
+                : `The ${PRODUCT_NAME}-managed binary will be removed. No System PATH version was detected, so this backend will be unavailable until you reinstall it.`
+            })()}
+          </>
+        }
+        confirmLabel={isDeletingCli ? 'Deleting...' : 'Delete'}
+        onConfirm={handleConfirmDeleteCli}
+        confirmDisabled={isDeletingCli}
+      />
     </div>
   )
 }

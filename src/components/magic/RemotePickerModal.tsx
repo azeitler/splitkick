@@ -1,4 +1,5 @@
 import { useCallback, useState, useRef } from 'react'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { GitBranch, Delete } from 'lucide-react'
 import {
   Dialog,
@@ -47,6 +48,13 @@ export function RemotePickerModal() {
     async (index: number) => {
       const remote = remotes[index]
       if (!remote || !remotePickerRepoPath || remote.name === 'origin') return
+      const confirmed = await confirmAction({
+        title: `Remove git remote “${remote.name}”?`,
+        description:
+          'This runs git remote remove: the remote and its remote-tracking branches are removed from this repository.',
+        confirmLabel: 'Remove Remote',
+      })
+      if (!confirmed) return
 
       await removeGitRemote(remotePickerRepoPath, remote.name)
       await queryClient.invalidateQueries({

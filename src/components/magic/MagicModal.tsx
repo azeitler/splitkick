@@ -1,4 +1,6 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { confirmMergePr } from '@/lib/destructive-confirms'
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
   ArrowDownToLine,
@@ -30,16 +32,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -1309,6 +1301,14 @@ export function MagicModal() {
             toast.error('No PR open for this worktree')
             return
           }
+          if (
+            !(await confirmMergePr(
+              worktree.pr_number,
+              worktree.name,
+              preferences?.removal_behavior
+            ))
+          )
+            return
           const mergePrToastId = toast.loading('Merging PR...')
           try {
             const result = await invoke<MergePrResponse>('merge_github_pr', {
@@ -2500,27 +2500,14 @@ ${resolveInstructions}`
         }
         codeRabbitPrAvailable={Boolean(worktree?.pr_number)}
       />
-      <AlertDialog open={revertConfirmOpen} onOpenChange={setRevertConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revert last commit?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will undo the latest local commit on{' '}
-              <span className="font-medium text-foreground">
-                {worktree?.branch ?? worktree?.name ?? 'this worktree'}
-              </span>
-              . Your working tree changes from that commit will be restored, but
-              this action can be disruptive.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmRevertLastCommit}>
-              Revert last commit
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={revertConfirmOpen}
+        onOpenChange={setRevertConfirmOpen}
+        title={`Revert last commit on “${worktree?.branch ?? worktree?.name ?? 'this worktree'}”?`}
+        description="This will undo the latest local commit. Your working tree changes from that commit will be restored, but this action can be disruptive."
+        confirmLabel="Revert last commit"
+        onConfirm={confirmRevertLastCommit}
+      />
       <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent
           ref={contentRef}

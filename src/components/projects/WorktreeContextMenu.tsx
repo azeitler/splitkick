@@ -10,16 +10,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -56,6 +47,7 @@ export function WorktreeContextMenu({
   children,
 }: WorktreeContextMenuProps) {
   const {
+    worktreeName,
     showDeleteConfirm,
     setShowDeleteConfirm,
     isBase,
@@ -68,7 +60,7 @@ export function WorktreeContextMenu({
     handleOpenInEditor,
     handleOpenInGitClient,
     gitClient,
-    handleArchiveOrClose,
+    handleArchiveOrCloseFromMenu,
     handleDelete,
     handleCopyLink,
   } = actions
@@ -166,7 +158,7 @@ export function WorktreeContextMenu({
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem onClick={handleArchiveOrClose}>
+        <ContextMenuItem onClick={() => void handleArchiveOrCloseFromMenu()}>
           {isBase ? (
             <>
               <X className="mr-2 h-4 w-4" />
@@ -188,37 +180,14 @@ export function WorktreeContextMenu({
         )}
       </ContextMenuContent>
 
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              e.stopPropagation()
-              handleDelete()
-              setShowDeleteConfirm(false)
-            }
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Worktree</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the worktree, its branch, and all
-              associated sessions. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              autoFocus
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-              <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title={`Delete worktree “${worktreeName}”?`}
+        description="This will permanently delete the worktree, its branch, and all associated sessions. This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+      />
     </ContextMenu>
   )
 }

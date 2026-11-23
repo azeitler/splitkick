@@ -1,4 +1,5 @@
 import { REMOTE_INSTALL_ENABLED } from '@/lib/remote-install'
+import { confirmAction } from '@/components/ui/confirm-dialog'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import {
   useCallback,
@@ -548,6 +549,15 @@ export function RemoteConnectionsDialog({
   }
 
   const handleDelete = async (id: string) => {
+    const name =
+      connections.find(item => item.id === id)?.name ?? 'this connection'
+    const confirmed = await confirmAction({
+      title: `Delete remote connection “${name}”?`,
+      description:
+        'The saved address and access token are deleted from this device. You need the token again to reconnect.',
+      confirmLabel: 'Delete',
+    })
+    if (!confirmed) return
     const wasActive = id === activeId
     try {
       await removeRemoteConnection(id)

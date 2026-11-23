@@ -2,7 +2,12 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { render } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  waitFor,
+} from '@/test/test-utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -145,6 +150,20 @@ describe('SessionContextMenuItems — agents', () => {
     mocks.agent = agent
     const user = await openMenu()
     await user.click(await screen.findByText('Remove Agent'))
-    expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+    await confirmDialog()
+    await waitFor(() =>
+      expect(mocks.remove).toHaveBeenCalledWith({ agentId: 'a1' })
+    )
+  })
+
+  it('keeps the agent when the remove confirmation is cancelled', async () => {
+    mocks.agent = agent
+    const user = await openMenu()
+    await user.click(await screen.findByText('Remove Agent'))
+    await cancelDialog()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mocks.remove).not.toHaveBeenCalled()
   })
 })

@@ -1,6 +1,13 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@/test/test-utils'
+import {
+  cancelDialog,
+  confirmDialog,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@/test/test-utils'
 import {
   DEFAULT_GLOBAL_SYSTEM_PROMPT,
   defaultPreferences,
@@ -768,5 +775,50 @@ describe('MagicPromptsPane', () => {
     expect(
       within(review).getByRole('combobox', { name: 'Review 1 reasoning' })
     ).toHaveClass('w-full')
+  })
+  async function openGlobalPromptReset() {
+    const user = userEvent.setup()
+    preferencesMock = {
+      ...defaultPreferences,
+      magic_prompts: {
+        ...defaultPreferences.magic_prompts,
+        global_system_prompt: `${DEFAULT_GLOBAL_SYSTEM_PROMPT}\n- extra rule`,
+      },
+    }
+    render(<MagicPromptsPane />)
+    await user.click(
+      within(screen.getByTestId('magic-prompts-sidebar')).getByRole('button', {
+        name: /Global System Prompt/,
+      })
+    )
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(
+      await screen.findByText('Reset the “Global System Prompt” prompt?')
+    ).toBeInTheDocument()
+  }
+
+  it('keeps a custom prompt when the reset dialog is cancelled', async () => {
+    await openGlobalPromptReset()
+    await cancelDialog()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(mutateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        magic_prompts: expect.objectContaining({ global_system_prompt: null }),
+      })
+    )
+  })
+
+  it('resets a custom prompt to the default after confirming', async () => {
+    await openGlobalPromptReset()
+    await confirmDialog()
+
+    await waitFor(() =>
+      expect(mutateMock).toHaveBeenCalledWith({
+        magic_prompts: expect.objectContaining({ global_system_prompt: null }),
+      })
+    )
   })
 })

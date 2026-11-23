@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Zap } from 'lucide-react'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { invoke } from '@/lib/transport'
@@ -36,16 +37,6 @@ import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
 import { ArtifactsButton } from '@/components/chat/toolbar/ArtifactsButton'
 import { FollowUpsButton } from '@/components/chat/toolbar/FollowUpsButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import {
   CODEX_MODEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
@@ -505,24 +496,14 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   return (
     <>
-      <AlertDialog open={revertConfirmOpen} onOpenChange={setRevertConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revert last commit?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will undo the latest local commit on this worktree. Your
-              working tree changes from that commit will be restored, but this
-              action can be disruptive.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={executeRevertLastCommit}>
-              Revert last commit
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={revertConfirmOpen}
+        onOpenChange={setRevertConfirmOpen}
+        title="Revert last commit?"
+        description="This will undo the latest local commit on this worktree. Your working tree changes from that commit will be restored, but this action can be disruptive."
+        confirmLabel="Revert last commit"
+        onConfirm={executeRevertLastCommit}
+      />
 
       <div
         className={cn(
