@@ -214,6 +214,18 @@ describe('WebAccessPane Tailscale block (#151)', () => {
     expect(screen.getByText(/Served via tailscale serve/)).toBeInTheDocument()
     expect(screen.queryByText(/tailscale serve --bg/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Public on the internet/)).not.toBeInTheDocument()
+    // Labelled, with a hint, and listed after the other access URLs.
+    expect(
+      screen.getByText(
+        'HTTPS through tailscale serve, for devices in your tailnet'
+      )
+    ).toBeInTheDocument()
+    const urls = screen
+      .getAllByRole('textbox')
+      .map(input => (input as HTMLInputElement).value)
+      .filter(value => /^https?:\/\//.test(value))
+    expect(urls.at(-1)).toBe('https://box.tail1234.ts.net')
+    expect(urls.length).toBeGreaterThan(1)
   })
 
   it('ignores a serve entry for another port', async () => {
@@ -253,6 +265,11 @@ describe('WebAccessPane Tailscale block (#151)', () => {
     render(<WebAccessPane />)
     expect(
       await screen.findByText(/Public on the internet/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'HTTPS through Tailscale Funnel, open to the whole internet'
+      )
     ).toBeInTheDocument()
   })
 })

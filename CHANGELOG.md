@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The Tailscale URL is labelled and listed last.** In Settings → Web Access,
+  the URL served through `tailscale serve` now comes after the other access
+  URLs, with a "Tailscale" label and a hint: HTTPS for devices in your tailnet,
+  or open to the whole internet when Funnel is on. (#151)
+
 ### Fixed
 
 - **No more "Not in Tauri context" on remote instances.** While the

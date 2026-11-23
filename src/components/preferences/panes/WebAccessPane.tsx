@@ -129,50 +129,67 @@ const AccessUrlRow: React.FC<{
   onCopyConnectionLink?: (url: string) => void
   /** Connection link for the QR code button; no button when absent (#150). */
   qrLink?: string
-}> = ({ url, onOpen, onCopy, onCopyConnectionLink, qrLink }) => (
-  <div className="flex items-center gap-2">
-    <Input
-      type="text"
-      className="w-64 font-mono text-base md:text-xs"
-      value={url}
-      readOnly
-    />
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={() => onOpen(url)}>
-          <ExternalLink className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Open in browser</TooltipContent>
-    </Tooltip>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={() => onCopy(url)}>
-          <Copy className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Copy URL</TooltipContent>
-    </Tooltip>
-    {onCopyConnectionLink && (
+  /** Where the URL comes from (e.g. "Tailscale"), shown above it with `hint`. */
+  label?: string
+  hint?: string
+}> = ({ url, onOpen, onCopy, onCopyConnectionLink, qrLink, label, hint }) => {
+  const row = (
+    <div className="flex items-center gap-2">
+      <Input
+        type="text"
+        className="w-64 font-mono text-base md:text-xs"
+        value={url}
+        readOnly
+      />
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Copy connection link"
-            onClick={() => onCopyConnectionLink(url)}
-          >
-            <Link2 className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={() => onOpen(url)}>
+            <ExternalLink className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>
-          Copy connection link for another {PRODUCT_NAME}
-        </TooltipContent>
+        <TooltipContent>Open in browser</TooltipContent>
       </Tooltip>
-    )}
-    {qrLink && <ConnectionQrButton url={url} link={qrLink} />}
-  </div>
-)
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" onClick={() => onCopy(url)}>
+            <Copy className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Copy URL</TooltipContent>
+      </Tooltip>
+      {onCopyConnectionLink && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Copy connection link"
+              onClick={() => onCopyConnectionLink(url)}
+            >
+              <Link2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Copy connection link for another {PRODUCT_NAME}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {qrLink && <ConnectionQrButton url={url} link={qrLink} />}
+    </div>
+  )
+  if (!label) return row
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground">
+          {label}
+        </span>
+        {hint && <span>{hint}</span>}
+      </div>
+      {row}
+    </div>
+  )
+}
 
 async function copyText(text: string, message: string) {
   try {
@@ -431,7 +448,7 @@ const WebAccessServerPane: React.FC = () => {
     enabled: serverStatus !== null,
     staleTime: 30_000,
   })
-  const tailscaleUrl = tailscale?.serves.find(s => s.servesSplitkick)?.url
+  const tailscaleServe = tailscale?.serves.find(s => s.servesSplitkick)
 
   const handleOpenUrl = useCallback(
     (url: string) => {
@@ -789,15 +806,6 @@ const WebAccessServerPane: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {tailscaleUrl && (
-                  <AccessUrlRow
-                    url={tailscaleUrl}
-                    onOpen={handleOpenUrl}
-                    onCopy={handleCopyUrl}
-                    onCopyConnectionLink={handleCopyConnectionLink}
-                    qrLink={connectionLink(tailscaleUrl, linkToken)}
-                  />
-                )}
                 {showLocalhostUrl && (
                   <AccessUrlRow
                     url={`http://localhost:${serverStatus.port}`}
@@ -812,6 +820,21 @@ const WebAccessServerPane: React.FC = () => {
                     onCopy={handleCopyUrl}
                     onCopyConnectionLink={handleCopyConnectionLink}
                     qrLink={connectionLink(boundUrl, linkToken)}
+                  />
+                )}
+                {tailscaleServe && (
+                  <AccessUrlRow
+                    url={tailscaleServe.url}
+                    onOpen={handleOpenUrl}
+                    onCopy={handleCopyUrl}
+                    onCopyConnectionLink={handleCopyConnectionLink}
+                    qrLink={connectionLink(tailscaleServe.url, linkToken)}
+                    label="Tailscale"
+                    hint={
+                      tailscaleServe.funnel
+                        ? 'HTTPS through Tailscale Funnel, open to the whole internet'
+                        : 'HTTPS through tailscale serve, for devices in your tailnet'
+                    }
                   />
                 )}
               </div>
