@@ -144,13 +144,28 @@ Three ways make one, and all end in the same target:
 ## UI
 
 - Sidebar tab **Agents** (`SidebarAgentsSection`): "Global" first, then one
-  group per project. A row is the row of the agent's current session.
+  group per project. Each agent is a row that opens and closes (open by
+  default; collapsed ids persist as `collapsed_agent_ids` in UI state). Under
+  it: the current session with the sessions it started indented below it
+  (`started_by_session_id`, the session-network links, from
+  `list_all_sessions`; archived children left out), then the past sessions
+  from `pastSessionIds`, newest first. A past session only counts its
+  children ("6d ago · 2 children"). An archived past session opens by
+  restoring it. A deleted one, or one in an archived workspace, is not in
+  `list_all_sessions` and is left out. The rows under an agent hide the
+  agent badge (`showAgentBadge={false}`), which would repeat its name.
 - `AgentDialog` (mounted in `MainWindow`, opened through
   `ui-store.agentDialog`): new agent, make a session an agent, rename.
 - Session context menu (`SessionAgentMenuItems`): Make Agent…, or Rename
   Agent…, Agent Role, Restart Agent, Remove Agent.
 - `AgentBadge` marks the session of an agent wherever `RoleBadge` shows.
 - Settings → **Roles** (`RolesPane`) edits the presets.
+
+## Backup
+
+The session backup (`session_backup`) copies `agents.json` and
+`schedules.json` beside `sessions/`, so a restored backup still knows which
+sessions an agent held. There is no restore of these files yet.
 
 ## Not built
 

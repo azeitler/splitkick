@@ -15,6 +15,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   icons only. The sidebar toggle moves in front of back/forward; Home shows no
   sidebar panel and a footer with session stats. Desktop app only; off by
   default.
+- **Agents open to show their sessions.** In the Agents tab, each agent row
+  opens and closes. Under it: the current session with the sessions it
+  started, then the sessions earlier restarts left behind (an archived one
+  opens by restoring it). The session backup now also copies
+  `agents.json` and `schedules.json`.
 
 ### Changed
 

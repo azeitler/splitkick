@@ -52,6 +52,10 @@ interface ProjectsUIState {
   // Project IDs whose Graphs row (#99) is expanded in the sidebar tree.
   expandedGraphsProjectIds: Set<string>
 
+  // Agent IDs whose row is collapsed in the sidebar's Agents tab. Agents
+  // start expanded, so the set holds the exceptions.
+  collapsedAgentIds: Set<string>
+
   // Starred sessions, across every project, in star order
   starredSessions: StarredSessionRef[]
   // Whether the sidebar's Starred section is collapsed
@@ -129,6 +133,8 @@ interface ProjectsUIState {
   togglePinnedExpanded: (projectId: string) => void
   // Project Graphs row expansion, per project (#99)
   toggleProjectGraphsExpanded: (projectId: string) => void
+  // Agent row expansion in the Agents tab
+  toggleAgentCollapsed: (agentId: string) => void
 
   // Starred sessions
   starSession: (star: StarredSessionRef) => void
@@ -234,6 +240,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedWorktreeIds: new Set<string>(),
       expandedPinnedProjectIds: new Set<string>(),
       expandedGraphsProjectIds: new Set<string>(),
+      collapsedAgentIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
       todoSectionCollapsed: false,
@@ -572,6 +579,21 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'toggleProjectGraphsExpanded'
+        ),
+
+      toggleAgentCollapsed: agentId =>
+        set(
+          state => {
+            const newSet = new Set(state.collapsedAgentIds)
+            if (newSet.has(agentId)) {
+              newSet.delete(agentId)
+            } else {
+              newSet.add(agentId)
+            }
+            return { collapsedAgentIds: newSet }
+          },
+          undefined,
+          'toggleAgentCollapsed'
         ),
 
       // Dashboard collapse actions

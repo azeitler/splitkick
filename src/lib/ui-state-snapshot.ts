@@ -121,6 +121,7 @@ export function getCurrentUIState(): UIState {
     expandedWorktreeIds,
     expandedPinnedProjectIds,
     expandedGraphsProjectIds,
+    collapsedAgentIds,
     starredSessions,
     starredSectionCollapsed,
     todoSectionCollapsed,
@@ -210,6 +211,7 @@ export function getCurrentUIState(): UIState {
     expanded_worktree_ids: Array.from(expandedWorktreeIds),
     expanded_pinned_project_ids: Array.from(expandedPinnedProjectIds),
     expanded_graphs_project_ids: Array.from(expandedGraphsProjectIds),
+    collapsed_agent_ids: Array.from(collapsedAgentIds),
     starred_sessions: starredSessions.map(star => ({
       project_id: star.projectId,
       worktree_id: star.worktreeId,

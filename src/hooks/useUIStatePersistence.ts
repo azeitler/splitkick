@@ -275,6 +275,12 @@ export function useUIStatePersistence() {
         expandedGraphsProjectIds: new Set(expandedGraphsProjectIds),
       })
     }
+    const collapsedAgentIds = uiState.collapsed_agent_ids ?? []
+    if (collapsedAgentIds.length > 0) {
+      useProjectsStore.setState({
+        collapsedAgentIds: new Set(collapsedAgentIds),
+      })
+    }
 
     // Restore left sidebar size (must be at least 150px to be valid)
     if (uiState.left_sidebar_size != null && uiState.left_sidebar_size >= 150) {
@@ -1050,6 +1056,7 @@ export function useUIStatePersistence() {
       useProjectsStore.getState().expandedPinnedProjectIds
     let prevExpandedGraphsProjectIds =
       useProjectsStore.getState().expandedGraphsProjectIds
+    let prevCollapsedAgentIds = useProjectsStore.getState().collapsedAgentIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1132,7 +1139,8 @@ export function useUIStatePersistence() {
         state.projectRailHidden !== prevProjectRailHidden
       const pinnedProjectIdsChanged =
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds ||
-        state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds
+        state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds ||
+        state.collapsedAgentIds !== prevCollapsedAgentIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1165,6 +1173,7 @@ export function useUIStatePersistence() {
         prevExpandedWorktreeIds = state.expandedWorktreeIds
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
+        prevCollapsedAgentIds = state.collapsedAgentIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevTodoSectionCollapsed = state.todoSectionCollapsed

@@ -13,6 +13,9 @@
 //!   logs are about 99 % tool output, so other devices search the digest and
 //!   never scan the raw logs (see `search.rs`).
 //!
+//! It also copies `agents.json` and `schedules.json` from the app-data dir,
+//! so a restored backup still knows which sessions an agent held.
+//!
 //! The backup never deletes: a session deleted here stays in the backup.
 
 pub mod search;
@@ -402,6 +405,28 @@ fn copy_atomic(source: &Path, target: &Path) -> Result<u64, String> {
     Ok(bytes)
 }
 
+/// Files beside `sessions/` that only make sense with the sessions: which
+/// sessions an agent held (`past_session_ids`), and what a schedule targets.
+/// Small, so they are copied on every pass.
+const RECORD_FILES: [&str; 2] = ["agents.json", "schedules.json"];
+
+/// Copy `RECORD_FILES` from the app-data dir (the parent of `sessions_dir`)
+/// into the backup root. A missing file is skipped; a failed copy is logged.
+fn copy_record_files(sessions_dir: &Path, target_root: &Path) {
+    let Some(data_dir) = sessions_dir.parent() else {
+        return;
+    };
+    for name in RECORD_FILES {
+        let source = data_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        if let Err(e) = copy_atomic(&source, &target_root.join(name)) {
+            log::warn!("[SessionBackup] {e}");
+        }
+    }
+}
+
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -486,6 +511,7 @@ pub fn sync_once(app: &AppHandle, shared_dir: &Path) -> Result<SyncReport, Strin
             &mut progress,
             &mut emitter,
         );
+        copy_record_files(&crate::chat::storage::get_sessions_dir(app)?, &target_root);
         write_json_atomic(&target_root.join("projects.json"), &project_digest(app)?)?;
         write_json_atomic(
             &target_root.join("instance.json"),
@@ -903,6 +929,24 @@ mod tests {
         assert_eq!(copy_atomic(&source, &target).unwrap(), 7);
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "content");
         assert!(!target.with_extension("splitkick-tmp").exists());
+    }
+
+    #[test]
+    fn copy_record_files_copies_agents_and_schedules_and_skips_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let sessions = data.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        write(&data.join("agents.json"), "[]");
+        let target = tmp.path().join("backup");
+
+        copy_record_files(&sessions, &target);
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("agents.json")).unwrap(),
+            "[]"
+        );
+        assert!(!target.join("schedules.json").exists());
     }
 
     #[test]

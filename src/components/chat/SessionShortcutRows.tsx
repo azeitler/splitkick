@@ -67,6 +67,8 @@ interface SessionShortcutRowsProps {
   showPinGlyph?: boolean
   /** Mark To-Do sessions. Off where every row is a To-Do anyway. */
   showTodoGlyph?: boolean
+  /** Name the agent a session belongs to. Off under the agent's own row. */
+  showAgentBadge?: boolean
   /**
    * A button beside each row (e.g. the To-Do check). It sits outside the row
    * button, because a button cannot hold another one.
@@ -135,6 +137,7 @@ export function SessionShortcutRows({
   showStarGlyph = true,
   showPinGlyph = true,
   showTodoGlyph = true,
+  showAgentBadge = true,
   renderAction,
   layout = 'inline',
   activeSessionId = null,
@@ -293,7 +296,9 @@ export function SessionShortcutRows({
         )
         const markGlyphs = (
           <>
-            <AgentBadge sessionId={session.id} sessionName={session.name} />
+            {showAgentBadge && (
+              <AgentBadge sessionId={session.id} sessionName={session.name} />
+            )}
             <RoleBadge roleId={session.role_id} sessionName={session.name} />
             <SessionNetworkGlyph
               sessionId={session.id}

@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
+import { getCurrentUIState } from '@/lib/ui-state-snapshot'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -16,9 +17,13 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   restart: vi.fn(),
   refetch: vi.fn(),
+  unarchive: vi.fn(),
 }))
 
-vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+vi.mock('@/hooks/use-mobile', () => ({
+  useIsMobile: () => false,
+  isMobileViewport: () => false,
+}))
 
 vi.mock('@/services/agents', () => ({
   useAgents: () => ({ data: mocks.agents, refetch: mocks.refetch }),
@@ -47,6 +52,10 @@ vi.mock('@/services/chat', async importOriginal => ({
   useRenameSession: () => ({ mutate: vi.fn() }),
   useArchiveSession: () => ({ mutate: vi.fn() }),
   useCloseSession: () => ({ mutate: vi.fn() }),
+  useUnarchiveSession: () => ({
+    mutateAsync: mocks.unarchive,
+    isPending: false,
+  }),
 }))
 
 vi.mock('@/lib/navigate-to-session', async importOriginal => ({
@@ -64,6 +73,11 @@ function session(id: string, name: string) {
     updated_at: 1,
     messages: [],
   } as unknown as Session
+}
+
+/** Add sessions to the first workspace (`w1`, project `p1`). */
+function addSessions(...sessions: Session[]) {
+  mocks.entries[0]?.sessions.push(...sessions)
 }
 
 function agent(extra: Partial<Agent>): Agent {
@@ -90,6 +104,7 @@ describe('SidebarAgentsSection', () => {
     mocks.remove.mockClear()
     mocks.restart.mockClear()
     mocks.refetch.mockClear()
+    mocks.unarchive.mockReset()
     mocks.agents = []
     mocks.entries = [
       {
@@ -110,6 +125,7 @@ describe('SidebarAgentsSection', () => {
       },
     ] as AllSessionsEntry[]
     useProjectsStore.setState({
+      collapsedAgentIds: new Set(),
       starredSessions: [],
       projectCanvasSettings: {},
     })
@@ -185,5 +201,129 @@ describe('SidebarAgentsSection', () => {
     render(<SidebarAgentsSection />)
     await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
     expect(mocks.restart).toHaveBeenCalledWith({ agentId: 'a1' })
+  })
+
+  it('lists the current session, then past sessions, under the agent', () => {
+    addSessions(session('old1', 'first run'), session('old2', 'second run'))
+    mocks.agents = [agent({ pastSessionIds: ['old2', 'old1', 'deleted'] })]
+    render(<SidebarAgentsSection />)
+    const list = screen.getByTestId('sidebar-agent-sessions')
+    const names = ['release work', 'second run', 'first run']
+    const text = list.textContent ?? ''
+    const positions = names.map(name => text.indexOf(name))
+    expect(positions.every(pos => pos >= 0)).toBe(true)
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions)
+    // A deleted past session is not in the list and leaves no row.
+    expect(screen.queryByText('deleted')).not.toBeInTheDocument()
+  })
+
+  it('collapses an agent and shows the session count instead', async () => {
+    addSessions(session('old1', 'first run'))
+    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
+    render(<SidebarAgentsSection />)
+    await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
+    expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
+    expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('2')
+    expect(getCurrentUIState().collapsed_agent_ids).toEqual(['a1'])
+  })
+
+  it('opens a past session', async () => {
+    addSessions(session('old1', 'first run'))
+    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
+    render(<SidebarAgentsSection />)
+    await userEvent.click(screen.getByText('first run'))
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 'old1',
+    })
+  })
+
+  it('restores an archived past session before it opens it', async () => {
+    addSessions({
+      ...session('old1', 'first run'),
+      archived_at: 1,
+    } as Session)
+    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
+    mocks.unarchive.mockResolvedValue({})
+    render(<SidebarAgentsSection />)
+    await userEvent.click(screen.getByTestId('sidebar-agent-archived-session'))
+    expect(mocks.unarchive).toHaveBeenCalledWith({
+      worktreeId: 'w1',
+      worktreePath: '/tmp/w1',
+      sessionId: 'old1',
+    })
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 'old1',
+    })
+  })
+
+  it('keeps past sessions reachable when the agent has no session', () => {
+    addSessions(session('old1', 'first run'))
+    mocks.agents = [
+      agent({ sessionId: null, sessionName: null, pastSessionIds: ['old1'] }),
+    ]
+    render(<SidebarAgentsSection />)
+    expect(screen.getByTestId('sidebar-agent-no-session')).toHaveTextContent(
+      'No session'
+    )
+    expect(screen.getByText('first run')).toBeInTheDocument()
+  })
+
+  it('lists the sessions the current session started under it, newest first', async () => {
+    addSessions(
+      {
+        ...session('c1', 'older child'),
+        started_by_session_id: 's1',
+        updated_at: 10,
+      } as Session,
+      {
+        ...session('c2', 'newer child'),
+        started_by_session_id: 's1',
+        updated_at: 20,
+      } as Session,
+      {
+        ...session('c3', 'archived child'),
+        started_by_session_id: 's1',
+        archived_at: 5,
+      } as Session
+    )
+    mocks.agents = [agent({})]
+    render(<SidebarAgentsSection />)
+    const children = screen.getByTestId('sidebar-agent-children')
+    const text = children.textContent ?? ''
+    expect(text.indexOf('newer child')).toBeLessThan(
+      text.indexOf('older child')
+    )
+    expect(text).not.toContain('archived child')
+
+    await userEvent.click(screen.getByText('newer child'))
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 'c2',
+    })
+  })
+
+  it('counts the children of a past session instead of listing them', () => {
+    addSessions(session('old1', 'first run'), {
+      ...session('c1', 'child of old'),
+      started_by_session_id: 'old1',
+    } as Session)
+    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
+    render(<SidebarAgentsSection />)
+    expect(screen.queryByTestId('sidebar-agent-children')).toBeNull()
+    expect(screen.queryByText('child of old')).toBeNull()
+    expect(screen.getByTestId('sidebar-agent-sessions')).toHaveTextContent(
+      '1 child'
+    )
+  })
+
+  it('does not repeat the agent name as a badge under the agent', () => {
+    mocks.agents = [agent({})]
+    render(<SidebarAgentsSection />)
+    expect(screen.queryByTestId('agent-name-badge')).toBeNull()
   })
 })
