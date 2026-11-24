@@ -385,6 +385,119 @@ describe('buildTimeline with fragmented text deltas', () => {
     })
   })
 
+  // A turn with a sub-agent, main-thread steps, a note, a question answered
+  // in the turn, more steps and the reply: every block stays in turn order.
+  describe('a turn with a sub-agent and an in-turn question', () => {
+    const question = {
+      id: 'q-1',
+      name: 'AskUserQuestion',
+      input: {
+        questions: [
+          {
+            header: 'Next',
+            question: 'Which sample?',
+            multiSelect: false,
+            options: [{ label: 'A' }, { label: 'B' }],
+          },
+        ],
+      },
+      output: 'The user answered: A',
+    }
+    const tools: ToolCall[] = [
+      {
+        id: 'agent-1',
+        name: 'Agent',
+        input: { prompt: 'Read a page' },
+        output: 'done',
+      },
+      {
+        id: 'sub-1',
+        name: 'WebFetch',
+        input: {},
+        output: 'page',
+        parent_tool_use_id: 'agent-1',
+      },
+      { id: 'main-1', name: 'ToolSearch', input: {}, output: 'ok' },
+      {
+        id: 'main-2',
+        name: 'mcp__playwright__browser_navigate',
+        input: {},
+        output: 'ok',
+      },
+      {
+        id: 'main-3',
+        name: 'mcp__playwright__browser_evaluate',
+        input: {},
+        output: 'ok',
+      },
+      {
+        id: 'main-4',
+        name: 'mcp__playwright__browser_evaluate',
+        input: {},
+        output: 'ok',
+      },
+      question,
+      { id: 'main-5', name: 'WebSearch', input: {}, output: 'ok' },
+      { id: 'main-6', name: 'Bash', input: { command: 'ls' }, output: 'ok' },
+    ]
+    const blocks: ContentBlock[] = [
+      { type: 'tool_use', tool_call_id: 'agent-1' },
+      { type: 'tool_use', tool_call_id: 'sub-1' },
+      { type: 'tool_use', tool_call_id: 'main-1' },
+      { type: 'tool_use', tool_call_id: 'main-2' },
+      { type: 'tool_use', tool_call_id: 'main-3' },
+      { type: 'text', text: 'Reading the sample reviews now.' },
+      { type: 'tool_use', tool_call_id: 'main-4' },
+      { type: 'tool_use', tool_call_id: 'q-1' },
+      { type: 'tool_use', tool_call_id: 'main-5' },
+      { type: 'tool_use', tool_call_id: 'main-6' },
+      { type: 'text', text: 'Here is the sample summary.' },
+    ]
+
+    it('keeps main-thread steps out of the finished sub-agent', () => {
+      const timeline = buildTimeline(blocks, tools)
+      const task = timeline.find(item => item.type === 'task')
+      expect(task?.type === 'task' && task.subTools.map(t => t.id)).toEqual([
+        'sub-1',
+      ])
+      expect(timeline.map(item => item.type)).toEqual([
+        'task',
+        'stackedGroup',
+        'text',
+        'standalone',
+        'askUserQuestion',
+        'stackedGroup',
+        'text',
+      ])
+    })
+
+    it('keeps a note that a step separates from the question in place', () => {
+      const timeline = buildTimeline(blocks, tools)
+      const ask = timeline.find(item => item.type === 'askUserQuestion')
+      expect(ask?.type === 'askUserQuestion' && ask.introText).toBeFalsy()
+      expect(timeline[2]).toMatchObject({
+        type: 'text',
+        text: 'Reading the sample reviews now.',
+      })
+    })
+
+    it('still groups old messages without parent ids by turn order', () => {
+      const legacy = tools.map(({ parent_tool_use_id: _, ...tool }) => tool)
+      const timeline = buildTimeline(
+        [
+          { type: 'tool_use', tool_call_id: 'agent-1' },
+          { type: 'tool_use', tool_call_id: 'sub-1' },
+          { type: 'text', text: 'Done.' },
+        ],
+        legacy
+      )
+      const task = timeline.find(item => item.type === 'task')
+      expect(task?.type === 'task' && task.subTools.map(t => t.id)).toEqual([
+        'sub-1',
+      ])
+    })
+  })
+
   it('keeps the final text after a question answered in the same turn (#154)', () => {
     const tools: ToolCall[] = [
       { id: 'cmd-1', name: 'Bash', input: { command: 'ls' }, output: 'ok' },

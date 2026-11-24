@@ -286,8 +286,12 @@ export function buildTimeline(
   // Second pass: Fallback for old messages without parent_tool_use_id
   // Find Tasks and their sub-tools by processing content_blocks in order
   // This respects the actual output sequence - text blocks indicate Task completion
+  // A message that has parent ids is authoritative: a tool without one ran in
+  // the main thread, also right after a sub-agent finished. The fallback would
+  // pull those steps into the sub-agent's group.
+  const hasParentIds = toolCalls.some(tc => !!tc.parent_tool_use_id)
   let currentTaskId: string | null = null
-  for (const block of normalizedBlocks) {
+  for (const block of hasParentIds ? [] : normalizedBlocks) {
     if (
       (block.type === 'text' && block.text.trim()) ||
       block.type === 'user_input'
@@ -369,9 +373,16 @@ export function buildTimeline(
         renderedAskUserQuestions.add(toolCall.id)
 
         // Capture intro text (the text block immediately before this tool)
-        // and remove it from result so it's shown with the questions
+        // and remove it from result so it's shown with the questions. Only
+        // thinking may sit between them: a text that a tool call separates
+        // from the question is a note of its own and stays in place.
         let introText: string | undefined
-        if (lastTextIndex !== null) {
+        if (
+          lastTextIndex !== null &&
+          result
+            .slice(lastTextIndex + 1)
+            .every(item => item.type === 'thinking')
+        ) {
           const lastTextItem = result[lastTextIndex]
           if (lastTextItem && lastTextItem.type === 'text') {
             introText = lastTextItem.text

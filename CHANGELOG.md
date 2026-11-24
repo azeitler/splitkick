@@ -51,6 +51,11 @@ Built on Jean 0.1.73.
   the compact view folded the reply into a closed activity row. The reply
   now shows in full after the question, live and after a reload.
   Closes #154
+- **A turn with a sub-agent and a question keeps its order.** The chat
+  drew the main-thread steps after a finished sub-agent inside the
+  sub-agent's group, and moved a note into the question card although a step
+  stood between them, where the answered card hid it. Each step and note
+  now stays in turn order. Closes #157
 - **A message to a busy session is queued, not lost.** The Splitkick MCP
   tool `send_chat_message` answered "started" for a session with a run in
   progress, but the session refused the second send and the message was
