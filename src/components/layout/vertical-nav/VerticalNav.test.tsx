@@ -6,7 +6,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { Agent } from '@/types/agents'
 import type { Session } from '@/types/chat'
-import { VerticalNav } from './VerticalNav'
+import { VerticalNav, formatBadgeCount } from './VerticalNav'
 import type * as SidebarTabsModule from '@/components/projects/SidebarTabs'
 
 const mocks = vi.hoisted(() => ({
@@ -221,6 +221,16 @@ describe('VerticalNav', () => {
     expect(screen.getByTestId('vertical-nav-badge-agents')).toHaveTextContent(
       '1'
     )
+    // Digits centred by flex, not by line height.
+    expect(screen.getByTestId('vertical-nav-badge-todo')).toHaveClass(
+      'inline-flex',
+      'items-center',
+      'justify-center'
+    )
+    // No width animation on collapse/expand (it lagged).
+    expect(screen.getByTestId('vertical-nav').className).not.toMatch(
+      /transition-\[width\]/
+    )
     expect(item('collapse')).toHaveAccessibleName('Expand')
 
     await userEvent.click(item('collapse'))
@@ -352,5 +362,14 @@ describe('VerticalNav', () => {
       renderNav()
       expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
     })
+  })
+})
+
+describe('formatBadgeCount', () => {
+  it('shows up to two digits and 99+ above', () => {
+    expect(formatBadgeCount(7)).toBe('7')
+    expect(formatBadgeCount(99)).toBe('99')
+    expect(formatBadgeCount(100)).toBe('99+')
+    expect(formatBadgeCount(1234)).toBe('99+')
   })
 })

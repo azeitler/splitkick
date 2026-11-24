@@ -55,6 +55,11 @@ const COUNT_TEXT: Partial<Record<SidebarTab, (count: number) => string>> = {
   graphs: count => `${count} ${count === 1 ? 'request' : 'requests'}`,
 }
 
+/** A collapsed badge has room for two digits; larger counts show "99+". */
+export function formatBadgeCount(count: number): string {
+  return count > 99 ? '99+' : String(count)
+}
+
 /**
  * Counts for the nav: the tab strip's counts (starred, To-Do, graph
  * requests) and the agents that work now: their current session runs, or
@@ -161,12 +166,13 @@ function NavItem({
           aria-hidden="true"
           data-testid={`vertical-nav-badge-${id}`}
           className={cn(
-            'absolute left-[calc(50%+2px)] top-[3px] h-[15px] min-w-[15px] rounded-full border-[1.5px] px-1 text-center text-[9px] font-semibold leading-[12px] tabular-nums text-white',
+            // Flex centering: a line-height alone sat the digits off-centre.
+            'absolute left-[calc(50%+2px)] top-[3px] inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full border-[1.5px] px-[3px] text-[9px] font-semibold leading-none tabular-nums text-white',
             attention ? 'bg-blue-600' : 'bg-zinc-500',
             active ? 'border-background' : 'border-sidebar'
           )}
         >
-          {count}
+          {formatBadgeCount(count)}
         </span>
       )}
     </button>
@@ -222,7 +228,7 @@ export function VerticalNav({
       aria-label="Sidebar navigation"
       data-testid="vertical-nav"
       data-collapsed={collapsed ? 'true' : 'false'}
-      className="flex h-full shrink-0 flex-col gap-0.5 overflow-hidden border-r border-border bg-sidebar px-1.5 py-2 transition-[width] duration-200 ease-out motion-reduce:transition-none"
+      className="flex h-full shrink-0 flex-col gap-0.5 overflow-hidden border-r border-border bg-sidebar px-1.5 py-2"
       style={{ width: collapsed ? NAV_WIDTH_COLLAPSED : NAV_WIDTH_EXPANDED }}
     >
       <NavItem

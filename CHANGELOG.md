@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Collapsed navigation badges are centred and show 99+.** The count sits in
+  the middle of its circle, and counts above 99 show "99+" instead of being cut
+  off. Collapsing and expanding the navigation no longer animates, which made
+  it lag.
+
 ## [1.6.1] - 2026-11-24
 
 Built on Jean 0.1.73.
