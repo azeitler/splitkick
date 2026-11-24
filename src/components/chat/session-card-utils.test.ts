@@ -851,6 +851,32 @@ describe('computeSessionCardData', () => {
     expect(card.status).toBe('input_required')
   })
 
+  // #159: a client that reloads, reconnects or opens later has an empty
+  // store and no events. The saved session alone must say that it waits; in
+  // yolo mode the row showed the red "Yoloing" spinner instead.
+  it('a client with an empty store shows a waiting yolo session as waiting, not running', () => {
+    const waiting = (type: 'question' | 'plan'): Session => ({
+      ...createBaseSession(),
+      messages: [],
+      selected_execution_mode: 'yolo',
+      waiting_for_input: true,
+      waiting_for_input_type: type,
+      last_run_status: 'completed',
+      last_run_execution_mode: 'yolo',
+    })
+
+    const question = computeSessionCardData(
+      waiting('question'),
+      createBaseStoreState()
+    )
+    expect(question.status).toBe('input_required')
+    expect(statusConfig[question.status].indicatorStatus).not.toBe('running')
+
+    const plan = computeSessionCardData(waiting('plan'), createBaseStoreState())
+    expect(plan.status).toBe('plan_approval')
+    expect(statusConfig[plan.status].indicatorStatus).not.toBe('running')
+  })
+
   it('clears waiting once a completed question run is answered', () => {
     const session: Session = {
       ...createBaseSession(),

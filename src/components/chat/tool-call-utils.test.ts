@@ -538,6 +538,45 @@ describe('buildTimeline with fragmented text deltas', () => {
     })
   })
 
+  // A Claude turn ends at its question. What came before it keeps its
+  // order: text, step, note, then the question as the last item.
+  it('keeps the order of a turn that ends at its question', () => {
+    const tools: ToolCall[] = [
+      { id: 'step-1', name: 'Bash', input: { command: 'ls' }, output: 'ok' },
+      {
+        id: 'question-1',
+        name: 'AskUserQuestion',
+        input: {
+          questions: [
+            {
+              header: 'Next',
+              question: 'What next?',
+              multiSelect: false,
+              options: [{ label: 'Ship' }],
+            },
+          ],
+        },
+      },
+    ]
+    const blocks: ContentBlock[] = [
+      { type: 'text', text: 'I check the sample first.' },
+      { type: 'tool_use', tool_call_id: 'step-1' },
+      { type: 'text', text: 'One decision is open.' },
+      { type: 'tool_use', tool_call_id: 'question-1' },
+    ]
+
+    const timeline = buildTimeline(blocks, tools)
+
+    expect(timeline.map(i => i.type)).toEqual([
+      'text',
+      'standalone',
+      'askUserQuestion',
+    ])
+    expect(timeline[0]).toMatchObject({ text: 'I check the sample first.' })
+    // The note right before the question is its intro text, not lost.
+    expect(timeline[2]).toMatchObject({ introText: 'One decision is open.' })
+  })
+
   it('still hides the text that follows an unanswered question', () => {
     const tools: ToolCall[] = [
       {

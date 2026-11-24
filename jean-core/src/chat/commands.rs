@@ -11599,6 +11599,35 @@ mod tests {
         ));
     }
 
+    /// #159: after a turn the CLI ended at its question, the run's question
+    /// counts as pending, so the finalized session is saved as waiting. Uses
+    /// a real run log with the CLI's closing lines.
+    #[test]
+    fn a_question_the_cli_ended_its_turn_at_is_pending_input() {
+        let lines: Vec<String> = include_str!("testdata/dialog_end_turn_run_log.jsonl")
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let run: crate::chat::types::RunEntry = serde_json::from_value(serde_json::json!({
+            "run_id": "run-end-turn",
+            "user_message_id": "user-1",
+            "user_message": "ask me",
+            "started_at": 1,
+            "status": "completed",
+            "backend": "claude",
+        }))
+        .unwrap();
+        let message = crate::chat::run_log::parse_run_to_message(&lines, &run).unwrap();
+
+        let question = &message.tool_calls[0];
+        assert!(!was_answered_in_turn(&Backend::Claude, question));
+        assert!(is_pending_question_tool_call(question));
+        assert!(is_pending_blocking_tool_call_for_mode(
+            question,
+            Some("yolo")
+        ));
+    }
+
     #[test]
     fn unavailable_ask_user_question_error_is_not_pending_input() {
         let tool = ToolCall {

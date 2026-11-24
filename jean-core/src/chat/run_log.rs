@@ -1829,6 +1829,65 @@ mod tests {
         );
     }
 
+    /// #159: the waiting state must be in the saved session. The app quit
+    /// right after the CLI ended its turn at a question, before the run was
+    /// finalized. The log holds the CLI's closing lines and an error result;
+    /// on the next start the session waits on the question, with no error.
+    #[test]
+    fn recovery_keeps_a_turn_the_cli_ended_at_a_question_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let session_id = "session-159-ended-turn";
+        start_test_run(&app, session_id);
+        let run_id = load_metadata(&app, session_id).unwrap().unwrap().runs[0]
+            .run_id
+            .clone();
+        let path = get_session_dir(&app, session_id)
+            .unwrap()
+            .join(format!("{run_id}.jsonl"));
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut file, END_TURN_RUN_LOG.as_bytes()).unwrap();
+
+        recover_incomplete_runs(&app).unwrap();
+
+        let metadata = load_metadata(&app, session_id).unwrap().unwrap();
+        assert_eq!(metadata.runs[0].status, RunStatus::Completed);
+        assert_eq!(metadata.runs[0].run_error, None);
+        assert!(metadata.waiting_for_input);
+        assert_eq!(metadata.waiting_for_input_type.as_deref(), Some("question"));
+    }
+
+    /// A CLI without `interrupt` gets Splitkick's denial text as the result
+    /// of the question. A rebuild from the log must not show it as the answer.
+    #[test]
+    fn a_denied_question_of_a_cli_without_interrupt_keeps_no_output() {
+        let lines: Vec<String> = END_TURN_RUN_LOG
+            .lines()
+            .take(2)
+            .map(|line| {
+                let mut value: serde_json::Value = serde_json::from_str(line).unwrap();
+                if value["type"] == "user" {
+                    value["message"]["content"][0]["content"] =
+                        serde_json::json!(crate::chat::claude_dialog::END_TURN_MESSAGE);
+                    value["tool_result_meta"][0]["non_execution_kind"] =
+                        serde_json::json!("permission-rule");
+                }
+                value.to_string()
+            })
+            .collect();
+
+        assert_eq!(open_dialog_kind(lines.iter().cloned()), Some("question"));
+        let mut run = sample_run();
+        run.backend = Some(Backend::Claude);
+        let message = parse_run_to_message(&lines, &run).unwrap();
+        assert_eq!(message.tool_calls.len(), 1);
+        assert_eq!(message.tool_calls[0].output, None);
+    }
+
     /// A fork's marker must survive the *start* of its first turn and only go
     /// when that turn finishes. Cleared at the start, a cancelled first turn
     /// would lose `--fork-session` while the source's resume id is still on the

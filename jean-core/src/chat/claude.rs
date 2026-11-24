@@ -553,16 +553,31 @@ const DIALOG_EXIT_TIMEOUT: std::time::Duration = if cfg!(test) {
 /// (`DialogOutcome::EndTurn`): "The user doesn't want to proceed …". It is not
 /// an answer. Readers of a run log skip the line, so the call keeps no output
 /// and the session waits on it, as after a kill at that call.
+///
+/// A CLI that does not know `interrupt` hands the model Splitkick's own
+/// denial text instead; that result is skipped too.
 pub fn is_dialog_end_turn_result(msg: &serde_json::Value) -> bool {
-    msg.get("type").and_then(|v| v.as_str()) == Some("user")
-        && msg
-            .get("tool_result_meta")
-            .and_then(|v| v.as_array())
-            .is_some_and(|meta| {
-                meta.iter().any(|m| {
-                    m.get("non_execution_kind").and_then(|v| v.as_str()) == Some("user-rejected")
-                })
+    if msg.get("type").and_then(|v| v.as_str()) != Some("user") {
+        return false;
+    }
+    let rejected = msg
+        .get("tool_result_meta")
+        .and_then(|v| v.as_array())
+        .is_some_and(|meta| {
+            meta.iter().any(|m| {
+                m.get("non_execution_kind").and_then(|v| v.as_str()) == Some("user-rejected")
             })
+        });
+    let denied = msg
+        .pointer("/message/content")
+        .and_then(|v| v.as_array())
+        .is_some_and(|blocks| {
+            blocks.iter().any(|b| {
+                b.get("content").and_then(|v| v.as_str())
+                    == Some(super::claude_dialog::END_TURN_MESSAGE)
+            })
+        });
+    rejected || denied
 }
 
 /// How long Jean waits for Claude to write a blocking tool call to its own
@@ -4225,6 +4240,16 @@ mod tests {
             "tool_result_meta": [{"id": "toolu_q", "non_execution_kind": "permission-rule"}],
         });
         assert!(!is_dialog_end_turn_result(&denied));
+        // A CLI without `interrupt`: the result is Splitkick's own denial text.
+        let no_interrupt = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [{
+                "type": "tool_result", "tool_use_id": "toolu_q", "is_error": true,
+                "content": super::super::claude_dialog::END_TURN_MESSAGE,
+            }]},
+            "tool_result_meta": [{"id": "toolu_q", "non_execution_kind": "permission-rule"}],
+        });
+        assert!(is_dialog_end_turn_result(&no_interrupt));
         let plain = serde_json::json!({
             "type": "user",
             "message": {"role": "user", "content": [
@@ -4409,6 +4434,95 @@ mod tests {
         let events = events.lock().unwrap();
         assert_eq!(events.last().map(String::as_str), Some("chat:done"));
         assert!(!events.iter().any(|e| e == "chat:tool_result"));
+    }
+
+    /// The run log of an ended turn without its Claude session id, so the
+    /// tailer does not wait for a transcript that no test writes.
+    #[cfg(unix)]
+    fn end_turn_run_log_without_session_id() -> String {
+        END_TURN_RUN_LOG
+            .lines()
+            .map(|line| {
+                let mut value: serde_json::Value = serde_json::from_str(line).unwrap();
+                value.as_object_mut().unwrap().remove("session_id");
+                format!("{value}\n")
+            })
+            .collect()
+    }
+
+    /// #136: the cause was the kill at the question. A CLI that ends its turn
+    /// on its own (deny + interrupt) is left to do so: it exits normally.
+    #[cfg(unix)]
+    #[test]
+    fn a_cli_that_ends_its_turn_at_a_question_is_not_killed() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let output = temp.path().join("run.jsonl");
+        std::fs::write(&output, end_turn_run_log_without_session_id()).unwrap();
+        // Stands in for the CLI: it closes the call and exits a moment later.
+        let mut cli = std::process::Command::new("sleep")
+            .arg("0.05")
+            .spawn()
+            .unwrap();
+        let pid = cli.id();
+        let exit = std::thread::spawn(move || cli.wait().unwrap());
+
+        let response = tail_claude_output(
+            &app,
+            "session-own-exit",
+            "worktree-end",
+            &output,
+            pid,
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+
+        let status = exit.join().unwrap();
+        assert!(status.success(), "the CLI must exit on its own: {status:?}");
+        assert_eq!(response.tool_calls[0].name, "AskUserQuestion");
+        assert_eq!(response.tool_calls[0].output, None);
+    }
+
+    /// The fallback: a CLI that goes on after the question (no `interrupt`)
+    /// is ended, so the turn still ends there.
+    #[cfg(unix)]
+    #[test]
+    fn a_cli_that_goes_on_after_a_question_is_killed() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let output = temp.path().join("run.jsonl");
+        std::fs::write(&output, end_turn_run_log_without_session_id()).unwrap();
+        let mut cli = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+
+        let started = std::time::Instant::now();
+        let response = tail_claude_output(
+            &app,
+            "session-goes-on",
+            "worktree-end",
+            &output,
+            cli.id(),
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+
+        let status = cli.wait().unwrap();
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+        assert!(
+            started.elapsed() >= DIALOG_EXIT_TIMEOUT,
+            "it gets time to exit first"
+        );
+        assert_eq!(response.tool_calls[0].output, None);
     }
 
     /// A recovered tail reads past the question: the CLI's closing lines
