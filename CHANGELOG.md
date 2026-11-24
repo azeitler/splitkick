@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The agent tree's toggle sits after the name.** As in the project tree,
+  the chevron (on hover) or the count of hidden sessions follows the agent's
+  name, a child session's name and "Previous Sessions", not the right edge of
+  the row.
 - **Agents and Graphs always show their count.** The navigation counts all
   agents and all graphs, like Starred. Before, Agents counted only the agents
   that were working and Graphs only open requests, so both were empty most of

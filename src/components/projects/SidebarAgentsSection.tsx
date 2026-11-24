@@ -454,7 +454,7 @@ function AgentItem({
     previousCount
   const hasChildren = children.length > 0 || previousCount > 0
 
-  const renderAction = useCallback(
+  const renderTitleAddon = useCallback(
     () =>
       hasChildren ? (
         <TreeToggle
@@ -491,7 +491,7 @@ function AgentItem({
             variant="sidebar"
             sidebarRowClassName="py-1.5 pl-2 pr-1"
             sidebarNested={false}
-            renderAction={renderAction}
+            renderTitleAddon={renderTitleAddon}
             activeSessionId={activeSessionId}
             onOpen={onOpen}
           />
@@ -557,8 +557,10 @@ function AgentItem({
 }
 
 /**
- * The toggle at the right edge of a tree row: a chevron while open, the
- * count of hidden sessions while closed.
+ * The toggle right after a row's name, as in the project tree: a chevron while
+ * open (shown on hover), the count of hidden sessions while closed. It sits
+ * inside the row button, so it is a `span role="button"` that stops the click
+ * (keyboard: Left/Right on the row, see `outlineKeyHandler`).
  */
 function TreeToggle({
   collapsed,
@@ -573,24 +575,35 @@ function TreeToggle({
   label: string
   testId: string
 }) {
+  const isMobile = useIsMobile()
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <span
+      role="button"
+      onClick={event => {
+        event.preventDefault()
+        event.stopPropagation()
+        onToggle()
+      }}
+      onPointerDown={event => event.stopPropagation()}
       aria-expanded={!collapsed}
       aria-label={label}
       data-testid={testId}
-      className="flex h-5 shrink-0 items-center rounded px-0.5 text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
+      className="flex h-4 shrink-0 cursor-pointer items-center rounded px-0.5 text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
     >
       {collapsed ? (
         <CollapsedCountBadge count={hidden} noun="session" className="ml-0" />
       ) : (
         <ChevronDown
-          className="size-3 rotate-180 opacity-60"
+          className={cn(
+            'size-3 rotate-180 transition-opacity',
+            isMobile
+              ? 'opacity-70'
+              : 'opacity-0 group-hover:opacity-50 hover:!opacity-100'
+          )}
           aria-hidden="true"
         />
       )}
-    </button>
+    </span>
   )
 }
 
@@ -637,15 +650,17 @@ function PreviousSessions({
           className="group ml-1 mr-2 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md py-1 pl-[7px] pr-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
           <History className="size-3 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">Previous Sessions</span>
-          {open ? (
-            <ChevronDown
-              className="size-3 shrink-0 rotate-180 opacity-60"
-              aria-hidden="true"
-            />
-          ) : (
-            <CollapsedCountBadge count={count} noun="session" />
-          )}
+          <span className="flex min-w-0 flex-1 items-center gap-0.5">
+            <span className="min-w-0 truncate">Previous Sessions</span>
+            {open ? (
+              <ChevronDown
+                className="size-3 shrink-0 rotate-180 opacity-0 transition-opacity group-hover:opacity-50"
+                aria-hidden="true"
+              />
+            ) : (
+              <CollapsedCountBadge count={count} noun="session" />
+            )}
+          </span>
         </button>
       </div>
       {open && (
@@ -658,7 +673,6 @@ function PreviousSessions({
               shortcuts={past}
               variant="sidebar"
               showAgentBadge={false}
-              renderAction={noAction}
               activeSessionId={activeSessionId}
               onOpen={onOpen}
             />
@@ -671,9 +685,6 @@ function PreviousSessions({
     </div>
   )
 }
-
-/** Keeps a row without children aligned with rows that have a toggle. */
-const noAction = () => null
 
 /**
  * One session in an agent's tree, and the sessions it started below it.
@@ -716,7 +727,7 @@ function AgentSessionNode({
     ? countDescendants(childrenOf, shortcut.sessionId)
     : 0
 
-  const renderAction = useCallback(
+  const renderTitleAddon = useCallback(
     () =>
       children.length === 0 ? null : (
         <TreeToggle
@@ -749,7 +760,7 @@ function AgentSessionNode({
           shortcuts={[shortcut]}
           variant="sidebar"
           showAgentBadge={showAgentBadge}
-          renderAction={renderAction}
+          renderTitleAddon={renderTitleAddon}
           activeSessionId={activeSessionId}
           onOpen={onOpen}
         />

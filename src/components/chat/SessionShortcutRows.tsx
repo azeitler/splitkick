@@ -78,6 +78,12 @@ interface SessionShortcutRowsProps {
    */
   renderAction?: (shortcut: SessionShortcut) => ReactNode
   /**
+   * Something right after the name, inside the row (sidebar rows), like the
+   * chevron of the project tree. It lives in the row button, so it must not be
+   * a button itself: render a `span role="button"` that stops the click.
+   */
+  renderTitleAddon?: (shortcut: SessionShortcut) => ReactNode
+  /**
    * `inline` puts the context after the name on one line. `stacked` gives it
    * a second line, with the time ago beside the name, for lists that span
    * every project (Recent), where "project / workspace" is long.
@@ -142,6 +148,7 @@ export function SessionShortcutRows({
   showTodoGlyph = true,
   showAgentBadge = true,
   renderAction,
+  renderTitleAddon,
   layout = 'inline',
   activeSessionId = null,
   onOpen,
@@ -271,7 +278,9 @@ export function SessionShortcutRows({
               : 'text-muted-foreground',
           isSidebar ? sidebarRowClassName : 'rounded px-2 py-1.5',
           // Room for the action, which overlays the row's right edge.
-          renderAction && 'pr-8'
+          renderAction && 'pr-8',
+          // The title addon shows on row hover (project tree style).
+          renderTitleAddon && 'group'
         )
         const statusDot = (
           <StatusIndicator
@@ -394,14 +403,24 @@ export function SessionShortcutRows({
               renameInput
             ) : (
               <>
-                <span
-                  className={cn(
-                    'truncate',
-                    isSidebar && 'min-w-0 flex-1 text-xs'
-                  )}
-                >
-                  {shortcut.label ?? session.name}
-                </span>
+                {renderTitleAddon && isSidebar ? (
+                  // Name, then the addon right after it (project tree style).
+                  <span className="flex min-w-0 flex-1 items-center gap-0.5">
+                    <span className="min-w-0 truncate text-xs">
+                      {shortcut.label ?? session.name}
+                    </span>
+                    {renderTitleAddon(shortcut)}
+                  </span>
+                ) : (
+                  <span
+                    className={cn(
+                      'truncate',
+                      isSidebar && 'min-w-0 flex-1 text-xs'
+                    )}
+                  >
+                    {shortcut.label ?? session.name}
+                  </span>
+                )}
                 {markGlyphs}
                 {contextText}
                 {labelBadge}

@@ -269,6 +269,22 @@ describe('SidebarAgentsSection', () => {
       expect(mocks.navigateToSession).toHaveBeenCalledTimes(1)
     })
 
+    it('puts the toggle right after the name, inside the row', () => {
+      addSessions({
+        ...session('c1', 'child one'),
+        started_by_session_id: 's1',
+      } as Session)
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+
+      const toggle = screen.getByTestId('sidebar-agent-toggle')
+      const name = screen.getByText('Release manager')
+      // Same place as the project tree: the next element after the name.
+      expect(name.nextElementSibling).toBe(toggle)
+      expect(toggle).toHaveAttribute('role', 'button')
+      expect(toggle.tagName).toBe('SPAN')
+    })
+
     it('shows the status of the current session', () => {
       const entry = mocks.entries[0]
       if (entry) {
