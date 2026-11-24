@@ -240,12 +240,6 @@ export function useUIStatePersistence() {
     if (uiState.graph_relations_shown) {
       useProjectsStore.getState().setGraphRelationsShown(true)
     }
-    if (uiState.folders_section_collapsed) {
-      useProjectsStore.getState().setFoldersSectionCollapsed(true)
-    }
-    if (uiState.projects_section_collapsed) {
-      useProjectsStore.getState().setProjectsSectionCollapsed(true)
-    }
     if (uiState.project_rail_hidden) {
       useProjectsStore.getState().setProjectRailHidden(true)
     }
@@ -1059,10 +1053,6 @@ export function useUIStatePersistence() {
     let prevGraphDetailsShown = useProjectsStore.getState().graphDetailsShown
     let prevGraphRelationsShown =
       useProjectsStore.getState().graphRelationsShown
-    let prevFoldersSectionCollapsed =
-      useProjectsStore.getState().foldersSectionCollapsed
-    let prevProjectsSectionCollapsed =
-      useProjectsStore.getState().projectsSectionCollapsed
     let prevProjectRailHidden = useProjectsStore.getState().projectRailHidden
     let prevExpandedPinnedProjectIds =
       useProjectsStore.getState().expandedPinnedProjectIds
@@ -1148,9 +1138,7 @@ export function useUIStatePersistence() {
       const sectionsCollapsedChanged =
         state.graphsSectionCollapsed !== prevGraphsSectionCollapsed ||
         state.graphDetailsShown !== prevGraphDetailsShown ||
-        state.graphRelationsShown !== prevGraphRelationsShown ||
-        state.foldersSectionCollapsed !== prevFoldersSectionCollapsed ||
-        state.projectsSectionCollapsed !== prevProjectsSectionCollapsed
+        state.graphRelationsShown !== prevGraphRelationsShown
       const projectRailChanged =
         state.projectRailHidden !== prevProjectRailHidden
       const pinnedProjectIdsChanged =
@@ -1200,8 +1188,6 @@ export function useUIStatePersistence() {
         prevGraphsSectionCollapsed = state.graphsSectionCollapsed
         prevGraphDetailsShown = state.graphDetailsShown
         prevGraphRelationsShown = state.graphRelationsShown
-        prevFoldersSectionCollapsed = state.foldersSectionCollapsed
-        prevProjectsSectionCollapsed = state.projectsSectionCollapsed
         prevProjectRailHidden = state.projectRailHidden
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps

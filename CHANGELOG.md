@@ -7,7 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The Projects tree has no "Folders" and "Projects" rows.** Its root lists
+  the folders, then the projects in no folder, in their saved order. New
+  project and New folder are in the "+" menu above the tree, next to Expand
+  all / Collapse all. Drag and drop works as before: reorder at the root, drop
+  a project on a folder, drag it out above the folder row or to the root zone.
+- **Projects has an open-folder icon** in the vertical navigation and in the
+  tab strip.
+
 ### Fixed
+
+- **Dragging the first project in a folder no longer moves it.** A drag that
+  started on the first project of a folder and ended near its place moved the
+  project to the end of the folder (or out of it). The folder now answers
+  drops on its own row only, and a drop on the folder that already holds the
+  project leaves it where it is.
 
 - **The agent tree's toggle sits after the name.** As in the project tree,
   the chevron (on hover) or the count of hidden sessions follows the agent's

@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   draggable,
   dropTargetForElements,
@@ -17,98 +10,43 @@ import {
   extractInstruction,
   type Instruction,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/list-item'
-import {
-  Briefcase,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  Folders,
-} from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
-import { SectionNewButton } from './SectionNewButton'
-import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
 import { FolderTreeItem } from './FolderTreeItem'
 import { useReorderItems, useMoveItem } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   isProjectTreeDragData,
   isProjectTreeDropTargetData,
   ROOT_DROP_TARGET_ID,
 } from '@/lib/drag-and-drop/types'
-import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
 import {
-  SIDEBAR_SECTION_HEADER_PADDING,
-  SIDEBAR_SECTION_ITEMS_INDENT_PX,
-} from './sidebar-row-styles'
-
-const MAX_NESTING_DEPTH = 3
-
-function getDepth(projects: Project[], itemId: string): number {
-  const projectById = new Map(projects.map(p => [p.id, p]))
-  let depth = 0
-  let current = projectById.get(itemId)
-  while (current?.parent_id) {
-    depth++
-    current = projectById.get(current.parent_id)
-  }
-  return depth
-}
-
-function getMaxSubtreeDepth(projects: Project[], itemId: string): number {
-  const children = projects.filter(p => p.parent_id === itemId)
-  if (children.length === 0) return 0
-  return 1 + Math.max(...children.map(c => getMaxSubtreeDepth(projects, c.id)))
-}
+  canMoveIntoFolder,
+  getSortedSiblings,
+  instructionAtRatio,
+  resolveTreeDrop,
+  treeRowOperations,
+} from './project-tree-drop'
 
 interface ProjectTreeProps {
   projects: Project[]
-  /** "+ New" in the Folders header */
-  onNewFolder?: () => void
-  /** "+ New" in the Projects header */
-  onNewProject?: () => void
-  newProjectDisabled?: boolean
 }
 
-function canMoveIntoFolder({
-  projects,
-  activeId,
-  folderId,
-}: {
-  projects: Project[]
-  activeId: string
-  folderId: string
-}): boolean {
-  if (activeId === folderId) return false
-
-  const projectById = new Map(projects.map(p => [p.id, p]))
-  const activeItem = projectById.get(activeId)
-  const folder = projectById.get(folderId)
-  if (!activeItem || !folder || !isFolder(folder)) return false
-
-  const folderDepth = getDepth(projects, folderId)
-  const subtreeDepth = isFolder(activeItem)
-    ? getMaxSubtreeDepth(projects, activeId)
-    : 0
-  if (folderDepth + 1 + subtreeDepth > MAX_NESTING_DEPTH) return false
-
-  if (isFolder(activeItem)) {
-    let currentParent = folder.parent_id
-    while (currentParent) {
-      if (currentParent === activeId) return false
-      const parent = projectById.get(currentParent)
-      currentParent = parent?.parent_id
-    }
-  }
-
-  return true
+/** Whether an item has its children on screen: an open folder or project
+ *  with at least one child row. */
+function isOpenWithChildren(
+  item: Project,
+  projects: Project[],
+  expandedFolderIds: Set<string>
+): boolean {
+  return (
+    isFolder(item) &&
+    expandedFolderIds.has(item.id) &&
+    projects.some(p => p.parent_id === item.id)
+  )
 }
 
 function instructionToInsertBeforeId(
@@ -119,27 +57,6 @@ function instructionToInsertBeforeId(
   if (instruction.operation === 'reorder-before') return targetId
   if (instruction.operation === 'reorder-after') return `after:${targetId}`
   return null
-}
-
-function instructionToClosestEdge(instruction: Instruction | null) {
-  if (!instruction || instruction.blocked) return null
-  if (instruction.operation === 'reorder-before') return 'top' as const
-  if (instruction.operation === 'reorder-after') return 'bottom' as const
-  return null
-}
-
-function getSortedSiblings(
-  projects: Project[],
-  parentId: string | undefined,
-  excludeId?: string
-) {
-  return projects
-    .filter(p => p.parent_id === parentId && p.id !== excludeId)
-    .sort((a, b) => {
-      if (isFolder(a) && !isFolder(b)) return -1
-      if (!isFolder(a) && isFolder(b)) return 1
-      return a.order - b.order
-    })
 }
 
 interface SortableItemProps {
@@ -169,6 +86,13 @@ function SortableItem({
   useEffect(() => {
     const element = elementRef.current
     if (!element) return
+    // A folder answers drops on its own row only. Its wrapper also holds the
+    // child rows, and over them the folder must not compete with the child:
+    // a drag that starts on the first child would read as "before the
+    // folder" and move the child out of it.
+    const dropElement = isFolder(item)
+      ? (dragHandleRef.current ?? element)
+      : element
 
     return combine(
       draggable({
@@ -180,7 +104,7 @@ function SortableItem({
         }),
       }),
       dropTargetForElements({
-        element,
+        element: dropElement,
         canDrop: ({ source }) =>
           isProjectTreeDragData(source.data) && source.data.itemId !== item.id,
         getData: ({ input, element, source }) => {
@@ -195,6 +119,11 @@ function SortableItem({
               activeId: sourceId,
               folderId: item.id,
             })
+          const openWithChildren = isOpenWithChildren(
+            item,
+            allProjects,
+            useProjectsStore.getState().expandedFolderIds
+          )
 
           return attachInstruction(
             {
@@ -205,11 +134,7 @@ function SortableItem({
               input,
               element,
               axis: 'vertical',
-              operations: {
-                'reorder-before': 'available',
-                'reorder-after': 'available',
-                combine: canCombine ? 'available' : 'not-available',
-              },
+              operations: treeRowOperations({ canCombine, openWithChildren }),
             }
           )
         },
@@ -236,10 +161,11 @@ function SortableItem({
   if (isFolder(item)) {
     const isExpanded = expandedFolderIds.has(item.id)
 
+    // The folder row, not this wrapper, carries `data-pdnd-tree-id`: the
+    // wrapper also holds the child rows (see the drop target above).
     return (
       <div
         ref={elementRef}
-        data-pdnd-tree-id={item.id}
         style={style}
         className={cn(
           'relative transition-opacity',
@@ -310,13 +236,7 @@ function NestedItems({
   insertBeforeId,
   activeId,
 }: NestedItemsProps) {
-  const items = projects
-    .filter(p => p.parent_id === parentId)
-    .sort((a, b) => {
-      if (isFolder(a) && !isFolder(b)) return -1
-      if (!isFolder(a) && isFolder(b)) return 1
-      return a.order - b.order
-    })
+  const items = getSortedSiblings(projects, parentId)
 
   return (
     <>
@@ -372,61 +292,15 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
 }
 
 /**
- * Single control that expands or collapses a whole tree section. Shows the
- * action that is currently available: collapse while anything is expanded,
- * expand otherwise.
+ * The folders and projects of the Projects panel as one tree. The root lists
+ * the folders, then the projects in no folder, each in its saved order: the
+ * backend's `move_item` keeps folders first in every level.
  */
-function BulkExpandToggle({
-  isExpanded,
-  onExpandAll,
-  onCollapseAll,
-  section,
-}: {
-  isExpanded: boolean
-  onExpandAll: () => void
-  onCollapseAll: () => void
-  section: string
-}) {
-  const Icon = isExpanded ? ChevronsDownUp : ChevronsUpDown
-  const label = isExpanded ? 'Collapse all' : 'Expand all'
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-          onClick={isExpanded ? onCollapseAll : onExpandAll}
-          aria-label={`${label} ${section}`}
-        >
-          <Icon className="size-3.5" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-/** "+ New" at the right of a section header. */
-export function ProjectTree({
-  projects,
-  onNewFolder,
-  onNewProject,
-  newProjectDisabled,
-}: ProjectTreeProps) {
+export function ProjectTree({ projects }: ProjectTreeProps) {
   const reorderItems = useReorderItems()
   const moveItem = useMoveItem()
-  const {
-    expandFolder,
-    expandedFolderIds,
-    expandedProjectIds,
-    expandAllFolders,
-    collapseAllFolders,
-    expandAllProjects,
-    collapseAllProjects,
-    foldersSectionCollapsed,
-    projectsSectionCollapsed,
-  } = useProjectsStore()
+  const expandFolder = useProjectsStore(state => state.expandFolder)
+  const expandedFolderIds = useProjectsStore(state => state.expandedFolderIds)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
   const [isOverRoot, setIsOverRoot] = useState(false)
@@ -441,40 +315,7 @@ export function ProjectTree({
     activeIdRef.current = activeId
   }, [activeId])
 
-  // Root level items split into folders and standalone projects
-  const rootItems = projects.filter(p => p.parent_id === undefined)
-  const rootFolders = rootItems
-    .filter(isFolder)
-    .sort((a, b) => a.order - b.order)
-  const rootProjects = rootItems
-    .filter(p => !isFolder(p))
-    .sort((a, b) => a.order - b.order)
-
-  // IDs for bulk expand/collapse actions (across all nesting levels)
-  const allFolderIds = useMemo(
-    () => projects.flatMap(p => (isFolder(p) ? [p.id] : [])),
-    [projects]
-  )
-  const allProjectIds = useMemo(
-    () => projects.flatMap(p => (!isFolder(p) ? [p.id] : [])),
-    [projects]
-  )
-
-  // A section counts as expanded while at least one of its items is open, so
-  // the toggle always offers the action that changes something.
-  const anyFolderExpanded = allFolderIds.some(id => expandedFolderIds.has(id))
-  const anyProjectExpanded = allProjectIds.some(id =>
-    expandedProjectIds.has(id)
-  )
-
-  const toggleFoldersSection = useCallback(
-    () => useProjectsStore.getState().toggleFoldersSectionCollapsed(),
-    []
-  )
-  const toggleProjectsSection = useCallback(
-    () => useProjectsStore.getState().toggleProjectsSectionCollapsed(),
-    []
-  )
+  const rootItems = getSortedSiblings(projects, undefined)
 
   const clearDragState = useCallback(() => {
     setActiveId(null)
@@ -483,12 +324,6 @@ export function ProjectTree({
     setInsertBeforeId(null)
     latestDropTargetRef.current = { targetId: null, instruction: null }
   }, [])
-
-  const getSiblings = useCallback(
-    (parentId: string | undefined, excludeId?: string) =>
-      getSortedSiblings(projects, parentId, excludeId),
-    [projects]
-  )
 
   const updateDragTargetState = useCallback(
     (
@@ -534,69 +369,63 @@ export function ProjectTree({
 
   const performTreeDrop = useCallback(
     (activeId: string, targetId: string, instruction: Instruction | null) => {
-      const activeItem = projects.find(p => p.id === activeId)
-      if (!activeItem) return
-
-      if (targetId === ROOT_DROP_TARGET_ID) {
-        if (activeItem.parent_id !== undefined) {
-          moveItem.mutate({ itemId: activeId, newParentId: undefined })
-          announceDrag('Item moved to root level')
-        }
-        return
-      }
-
-      const overItem = projects.find(p => p.id === targetId)
-      if (!overItem || activeId === targetId) return
-
-      if (
-        instruction?.operation === 'combine' &&
-        !instruction.blocked &&
-        canMoveIntoFolder({ projects, activeId, folderId: targetId })
-      ) {
-        moveItem.mutate({ itemId: activeId, newParentId: targetId })
-        expandFolder(targetId)
-        announceDrag(`Item moved into ${overItem.name}`)
-        return
-      }
-
-      const closestEdge = instructionToClosestEdge(instruction)
-      if (!closestEdge) return
-
-      if (activeItem.parent_id !== overItem.parent_id) {
-        const targetParentId = overItem.parent_id
-        const siblings = getSiblings(targetParentId, activeId)
-        const overIndex = siblings.findIndex(p => p.id === targetId)
-        if (overIndex === -1) return
-        const targetIndex = closestEdge === 'bottom' ? overIndex + 1 : overIndex
-
+      const action = resolveTreeDrop(projects, activeId, targetId, instruction)
+      if (action.type === 'move') {
         moveItem.mutate({
-          itemId: activeId,
-          newParentId: targetParentId,
-          targetIndex,
+          itemId: action.itemId,
+          newParentId: action.newParentId,
+          targetIndex: action.targetIndex,
         })
-        announceDrag('Item moved')
-        return
+        if (action.expandFolderId) expandFolder(action.expandFolderId)
+        announceDrag(action.announcement)
+      } else if (action.type === 'reorder') {
+        reorderItems.mutate({
+          itemIds: action.itemIds,
+          parentId: action.parentId,
+        })
+        announceDrag(action.announcement)
       }
-
-      const parentId = activeItem.parent_id
-      const siblings = getSiblings(parentId)
-      const oldIndex = siblings.findIndex(p => p.id === activeId)
-      const newIndex = siblings.findIndex(p => p.id === targetId)
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
-
-      const reorderedItems = reorderWithClosestEdge({
-        items: siblings,
-        startIndex: oldIndex,
-        indexOfTarget: newIndex,
-        closestEdgeOfTarget: closestEdge,
-      })
-      reorderItems.mutate({
-        itemIds: reorderedItems.map(p => p.id),
-        parentId,
-      })
-      announceDrag('Items reordered')
     },
-    [expandFolder, getSiblings, moveItem, projects, reorderItems]
+    [expandFolder, moveItem, projects, reorderItems]
+  )
+
+  /**
+   * The native drag fallback: the tree row under `element` and the
+   * instruction for a pointer at `clientY`. Over the dragged row itself the
+   * target is cleared, so a drop there leaves the item where it was.
+   */
+  const updateNativeDragTarget = useCallback(
+    (element: Element | null, clientY: number, draggingId: string) => {
+      const target = element?.closest<HTMLElement>('[data-pdnd-tree-id]')
+      const targetId = target?.dataset.pdndTreeId ?? null
+      if (!target || !targetId) return false
+      if (targetId === draggingId) {
+        updateDragTargetState(null, null, draggingId)
+        return true
+      }
+      const targetProject = projects.find(p => p.id === targetId)
+      if (!targetProject) return false
+
+      const rect = target.getBoundingClientRect()
+      const instruction = instructionAtRatio({
+        ratio: (clientY - rect.top) / Math.max(rect.height, 1),
+        canCombine:
+          isFolder(targetProject) &&
+          canMoveIntoFolder({
+            projects,
+            activeId: draggingId,
+            folderId: targetId,
+          }),
+        openWithChildren: isOpenWithChildren(
+          targetProject,
+          projects,
+          useProjectsStore.getState().expandedFolderIds
+        ),
+      })
+      updateDragTargetState(targetId, instruction, draggingId)
+      return true
+    },
+    [projects, updateDragTargetState]
   )
 
   const nativeTreeDropHandledRef = useRef(false)
@@ -665,37 +494,17 @@ export function ProjectTree({
   const handleNativeTreeDragOver = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       if (!activeId) return
-      const target = (event.target as HTMLElement | null)?.closest(
-        '[data-pdnd-tree-id]'
-      ) as HTMLElement | null
-      const targetId = target?.dataset.pdndTreeId ?? null
-      if (!target || !targetId || targetId === activeId) return
-
-      const targetProject = projects.find(p => p.id === targetId)
-      if (!targetProject) return
-
-      event.preventDefault()
-      const rect = target.getBoundingClientRect()
-      const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1)
-      let instruction: Instruction | null
       if (
-        isFolder(targetProject) &&
-        ratio > 0.25 &&
-        ratio < 0.75 &&
-        canMoveIntoFolder({ projects, activeId, folderId: targetId })
+        updateNativeDragTarget(
+          event.target as HTMLElement | null,
+          event.clientY,
+          activeId
+        )
       ) {
-        instruction = { operation: 'combine', blocked: false, axis: 'vertical' }
-      } else {
-        instruction = {
-          operation: ratio < 0.5 ? 'reorder-before' : 'reorder-after',
-          blocked: false,
-          axis: 'vertical',
-        }
+        event.preventDefault()
       }
-
-      updateDragTargetState(targetId, instruction, activeId)
     },
-    [activeId, projects, updateDragTargetState]
+    [activeId, updateNativeDragTarget]
   )
 
   const handleNativeTreeDrop = useCallback(
@@ -718,51 +527,12 @@ export function ProjectTree({
   }, [clearDragState])
 
   const onDocumentDragOver = useEffectEvent((event: DragEvent) => {
-    const getDocumentTarget = () => {
-      const element = document.elementFromPoint(
-        event.clientX,
-        event.clientY
-      ) as HTMLElement | null
-      return element?.closest('[data-pdnd-tree-id]') as HTMLElement | null
-    }
-
     const draggingId = activeIdRef.current
     if (!draggingId) return
-    const target = getDocumentTarget()
-    const targetId = target?.dataset.pdndTreeId ?? null
-    if (!target || !targetId || targetId === draggingId) return
-
-    const targetProject = projects.find(p => p.id === targetId)
-    if (!targetProject) return
-
-    event.preventDefault()
-    const rect = target.getBoundingClientRect()
-    const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1)
-    let instruction: Instruction | null
-    if (
-      isFolder(targetProject) &&
-      ratio > 0.25 &&
-      ratio < 0.75 &&
-      canMoveIntoFolder({
-        projects,
-        activeId: draggingId,
-        folderId: targetId,
-      })
-    ) {
-      instruction = {
-        operation: 'combine',
-        blocked: false,
-        axis: 'vertical',
-      }
-    } else {
-      instruction = {
-        operation: ratio < 0.5 ? 'reorder-before' : 'reorder-after',
-        blocked: false,
-        axis: 'vertical',
-      }
+    const element = document.elementFromPoint(event.clientX, event.clientY)
+    if (updateNativeDragTarget(element, event.clientY, draggingId)) {
+      event.preventDefault()
     }
-
-    updateDragTargetState(targetId, instruction, draggingId)
   })
 
   const onDocumentDrop = useEffectEvent((event: DragEvent) => {
@@ -811,103 +581,23 @@ export function ProjectTree({
   }, [expandFolder, expandedFolderIds, overFolderId])
 
   return (
-    // `contents`: the Folders and Projects headers share the scroller as their
-    // containing block with Starred, so each stays stuck in its slot after you
-    // scroll past its section (sidebar-sticky.ts).
+    // `contents`: the rows share the scroller as their containing block, so
+    // each folder and project row sticks in its slot (sidebar-sticky.ts).
     <div
       className="contents"
       onDragOver={handleNativeTreeDragOver}
       onDrop={handleNativeTreeDrop}
       onDragEnd={handleNativeTreeDragEnd}
     >
-      <SidebarStickySectionHeader
-        top="var(--sb-folders-top)"
-        // Stacked folders, so the header does not look like one of its rows.
-        icon={<Folders className="size-3.5 shrink-0" aria-hidden="true" />}
-        label="Folders"
-        count={rootFolders.length}
-        noun="folder"
-        expanded={!foldersSectionCollapsed}
-        onToggle={toggleFoldersSection}
-        // Glyph and label on the Home row's columns.
-        className={SIDEBAR_SECTION_HEADER_PADDING}
-        testId="sidebar-folders-toggle"
-        actions={
-          <>
-            {rootFolders.length > 0 && !foldersSectionCollapsed && (
-              <BulkExpandToggle
-                isExpanded={anyFolderExpanded}
-                onExpandAll={() => expandAllFolders(allFolderIds)}
-                onCollapseAll={collapseAllFolders}
-                section="folders"
-              />
-            )}
-            <SectionNewButton label="New folder" onClick={onNewFolder} />
-          </>
-        }
-      />
-      {!foldersSectionCollapsed && rootFolders.length > 0 && (
-        <div
-          data-testid="sidebar-folders-items"
-          className="sidebar-sticky-folders"
-          style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
-        >
-          {rootFolders.map(item => (
+      {rootItems.length > 0 && (
+        <div data-testid="sidebar-tree-items" className="sidebar-sticky-tree">
+          {rootItems.map(item => (
             <SortableItem
               key={item.id}
               item={item}
               allProjects={projects}
               depth={0}
               isOverFolder={overFolderId === item.id}
-              expandedFolderIds={expandedFolderIds}
-              overFolderId={overFolderId}
-              insertBeforeId={insertBeforeId}
-              activeId={activeId}
-            />
-          ))}
-        </div>
-      )}
-      <SidebarStickySectionHeader
-        top="var(--sb-projects-top)"
-        icon={<Briefcase className="size-3.5 shrink-0" aria-hidden="true" />}
-        label="Projects"
-        count={rootProjects.length}
-        noun="project"
-        expanded={!projectsSectionCollapsed}
-        onToggle={toggleProjectsSection}
-        className={SIDEBAR_SECTION_HEADER_PADDING}
-        testId="sidebar-projects-toggle"
-        actions={
-          <>
-            {rootProjects.length > 0 && !projectsSectionCollapsed && (
-              <BulkExpandToggle
-                isExpanded={anyProjectExpanded}
-                onExpandAll={() => expandAllProjects(allProjectIds)}
-                onCollapseAll={collapseAllProjects}
-                section="projects"
-              />
-            )}
-            <SectionNewButton
-              label="New project"
-              onClick={onNewProject}
-              disabled={newProjectDisabled}
-            />
-          </>
-        }
-      />
-      {!projectsSectionCollapsed && rootProjects.length > 0 && (
-        <div
-          data-testid="sidebar-projects-items"
-          className="sidebar-sticky-projects"
-          style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
-        >
-          {rootProjects.map(item => (
-            <SortableItem
-              key={item.id}
-              item={item}
-              allProjects={projects}
-              depth={0}
-              isOverFolder={false}
               expandedFolderIds={expandedFolderIds}
               overFolderId={overFolderId}
               insertBeforeId={insertBeforeId}

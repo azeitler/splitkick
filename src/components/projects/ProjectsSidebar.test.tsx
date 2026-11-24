@@ -67,7 +67,7 @@ function follows(a: HTMLElement, b: HTMLElement) {
 
 describe('ProjectsSidebar layout', () => {
   beforeEach(() => {
-    mocks.projects = []
+    mocks.projects = [{ id: 'p1', name: 'acme' } as Project]
     mocks.createFolder.mockClear()
     useUIStore.setState({ sidebarTab: 'projects', archivedViewOpen: false })
     useProjectsStore.getState().selectProject(null)
@@ -139,12 +139,39 @@ describe('ProjectsSidebar layout', () => {
     expect(screen.getByTestId('project-tree')).not.toHaveTextContent(
       'assistant'
     )
-    mocks.projects = []
   })
 
-  it('renders the tree even with no projects, so its New buttons stay reachable', () => {
+  it('shows an empty state instead of the tree with no projects', () => {
+    mocks.projects = []
     renderSidebar()
-    expect(screen.getByTestId('project-tree')).toBeInTheDocument()
+    expect(screen.queryByTestId('project-tree')).toBeNull()
+    expect(screen.getByTestId('projects-tree-empty')).toHaveTextContent(
+      'No projects yet'
+    )
+    // The toolbar with its New menu stays.
+    expect(
+      screen.getByRole('button', { name: 'New project or folder' })
+    ).toBeInTheDocument()
+  })
+
+  it('creates a folder from the toolbar menu above the scroller', async () => {
+    const user = userEvent.setup()
+    renderSidebar(true)
+
+    // Above the scroller, so it never scrolls away with the tree.
+    expect(
+      screen
+        .getByTestId('sidebar-projects-scroll')
+        .contains(screen.getByTestId('projects-panel-toolbar'))
+    ).toBe(false)
+
+    await user.click(
+      screen.getByRole('button', { name: 'New project or folder' })
+    )
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'New folder' })
+    )
+    expect(mocks.createFolder).toHaveBeenCalledWith({ name: 'New Folder' })
   })
 
   it('has no footer New or Archived buttons', () => {

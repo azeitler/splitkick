@@ -134,8 +134,8 @@ export function FolderTreeItem({
   return (
     <FolderContextMenu folder={folder}>
       <div>
-        {/* A top-level folder row sticks under the Starred and Folders
-            headers while its projects scroll (sidebar-sticky.ts). Nested
+        {/* A top-level folder row sticks at the top of the scroller while
+            its projects scroll (sidebar-sticky.ts). Nested
             folders scroll, so the stack does not grow with the depth. */}
         <div
           ref={stickyRef}
@@ -153,6 +153,9 @@ export function FolderTreeItem({
           <div
             ref={dragHandleRef}
             data-testid={`folder-row-${folder.id}`}
+            // The drop target of the projects tree: the row only, not the
+            // child rows below it (ProjectTree's native drag fallback).
+            data-pdnd-tree-id={folder.id}
             className={cn(
               'group relative flex h-8 cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 transition-colors duration-150',
               nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
@@ -212,6 +215,8 @@ export function FolderTreeItem({
         {isExpanded && (
           <div
             className={cn(
+              // Its rows stick below this folder's row (App.css).
+              !nested && 'sidebar-sticky-folder-children',
               childCount > 0 && 'pb-0.5',
               childCount > 0 &&
                 (nested ? SIDEBAR_NESTED_CHILD_LIST : SIDEBAR_WORKTREE_LIST)

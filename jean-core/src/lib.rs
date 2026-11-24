@@ -3321,10 +3321,6 @@ pub struct UIState {
     #[serde(default)]
     pub todo_sessions_collapsed: bool,
 
-    /// Whether the sidebar's Folders section is collapsed. Defaults to open.
-    #[serde(default)]
-    pub folders_section_collapsed: bool,
-
     /// Whether the sidebar's Graphs section is collapsed. Defaults to open.
     #[serde(default)]
     pub graphs_section_collapsed: bool,
@@ -3336,10 +3332,6 @@ pub struct UIState {
     /// Whether graph detail panels show the Relationships foldout. Defaults to hidden.
     #[serde(default)]
     pub graph_relations_shown: bool,
-
-    /// Whether the sidebar's Projects section is collapsed. Defaults to open.
-    #[serde(default)]
-    pub projects_section_collapsed: bool,
 
     /// Whether the project canvas hides its Home rail (recent sessions, recent
     /// activity, open issues). Defaults to shown.
@@ -3538,11 +3530,9 @@ impl Default for UIState {
             starred_sessions: Vec::new(),
             starred_sessions_collapsed: false,
             todo_sessions_collapsed: false,
-            folders_section_collapsed: false,
             graphs_section_collapsed: false,
             graph_details_shown: false,
             graph_relations_shown: false,
-            projects_section_collapsed: false,
             project_rail_hidden: false,
             vertical_nav_collapsed: false,
             mobile_active_tab: None,
@@ -5108,26 +5098,6 @@ mod starred_sessions_tests {
         let json = serde_json::to_string(&state).unwrap();
         let parsed: UIState = serde_json::from_str(&json).unwrap();
         assert!(parsed.todo_sessions_collapsed);
-    }
-
-    #[test]
-    fn the_folders_and_projects_sections_round_trip_and_default_to_open() {
-        let defaults: UIState = serde_json::from_str("{}").unwrap();
-        assert!(!defaults.folders_section_collapsed);
-        assert!(!defaults.projects_section_collapsed);
-
-        let collapsed = UIState {
-            folders_section_collapsed: true,
-            projects_section_collapsed: true,
-            ..UIState::default()
-        };
-        let json = serde_json::to_string(&collapsed).unwrap();
-        assert!(json.contains(r#""folders_section_collapsed":true"#));
-        assert!(json.contains(r#""projects_section_collapsed":true"#));
-
-        let parsed: UIState = serde_json::from_str(&json).unwrap();
-        assert!(parsed.folders_section_collapsed);
-        assert!(parsed.projects_section_collapsed);
     }
 
     #[test]

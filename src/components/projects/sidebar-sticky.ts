@@ -1,12 +1,10 @@
 /**
  * The sidebar's sticky stack (#45).
  *
- * Section headers (Folders, Projects) and the folder, project and
- * worktree rows are `position: sticky`; their `top` values come from CSS
- * variables on the scroller (`.sidebar-sticky-scroll` in App.css). Each row
- * sticks inside its own wrapper, so the end of a project or worktree pushes its
- * row out. The section headers share one containing block (their section
- * wrappers are `display: contents`), so a header you scroll past stays stuck.
+ * The folder, project and worktree rows are `position: sticky`; their `top`
+ * values come from CSS variables (`.sidebar-sticky-scroll` and its neighbours
+ * in App.css). Each row sticks inside its own wrapper, so the end of a project
+ * or worktree pushes its row out.
  *
  * CSS alone cannot tell whether a sticky element is stuck: scroll-state
  * container queries are not in WebKit. `useSidebarStickyStack` marks stuck

@@ -2,7 +2,7 @@ import { useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import {
   BotMessageSquare,
   Clock,
-  FolderTree,
+  FolderOpen,
   ListTodo,
   Star,
   Workflow,
@@ -20,7 +20,7 @@ import { useUIStore } from '@/store/ui-store'
 import { SIDEBAR_TABS, type SidebarTab } from '@/types/ui-state'
 
 export const TAB_META: Record<SidebarTab, { label: string; icon: ReactNode }> = {
-  projects: { label: 'Projects', icon: <FolderTree /> },
+  projects: { label: 'Projects', icon: <FolderOpen /> },
   recent: { label: 'Recent', icon: <Clock /> },
   starred: { label: 'Starred', icon: <Star /> },
   agents: { label: 'Agents', icon: <BotMessageSquare /> },

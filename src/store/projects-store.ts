@@ -73,9 +73,6 @@ interface ProjectsUIState {
   graphDetailsShown: boolean
   // Whether graph detail panels show the "Relationships" foldout
   graphRelationsShown: boolean
-  // Whether the sidebar's Folders and Projects sections are collapsed
-  foldersSectionCollapsed: boolean
-  projectsSectionCollapsed: boolean
 
   // Whether the project canvas hides its Home rail (recent sessions, activity,
   // open issues). Defaults to shown; the rail is the point of the project view.
@@ -167,10 +164,6 @@ interface ProjectsUIState {
   setGraphsSectionCollapsed: (collapsed: boolean) => void
   setGraphDetailsShown: (shown: boolean) => void
   setGraphRelationsShown: (shown: boolean) => void
-  toggleFoldersSectionCollapsed: () => void
-  setFoldersSectionCollapsed: (collapsed: boolean) => void
-  toggleProjectsSectionCollapsed: () => void
-  setProjectsSectionCollapsed: (collapsed: boolean) => void
   toggleProjectRailHidden: () => void
   setProjectRailHidden: (hidden: boolean) => void
 
@@ -262,8 +255,6 @@ export const useProjectsStore = create<ProjectsUIState>()(
       graphsSectionCollapsed: false,
       graphDetailsShown: false,
       graphRelationsShown: false,
-      foldersSectionCollapsed: false,
-      projectsSectionCollapsed: false,
       projectRailHidden: false,
       dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
@@ -509,44 +500,6 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { graphsSectionCollapsed: collapsed },
           undefined,
           'setGraphsSectionCollapsed'
-        ),
-
-      toggleFoldersSectionCollapsed: () =>
-        set(
-          state => ({
-            foldersSectionCollapsed: !state.foldersSectionCollapsed,
-          }),
-          undefined,
-          'toggleFoldersSectionCollapsed'
-        ),
-
-      setFoldersSectionCollapsed: collapsed =>
-        set(
-          state =>
-            state.foldersSectionCollapsed === collapsed
-              ? state
-              : { foldersSectionCollapsed: collapsed },
-          undefined,
-          'setFoldersSectionCollapsed'
-        ),
-
-      toggleProjectsSectionCollapsed: () =>
-        set(
-          state => ({
-            projectsSectionCollapsed: !state.projectsSectionCollapsed,
-          }),
-          undefined,
-          'toggleProjectsSectionCollapsed'
-        ),
-
-      setProjectsSectionCollapsed: collapsed =>
-        set(
-          state =>
-            state.projectsSectionCollapsed === collapsed
-              ? state
-              : { projectsSectionCollapsed: collapsed },
-          undefined,
-          'setProjectsSectionCollapsed'
         ),
 
       toggleProjectRailHidden: () =>

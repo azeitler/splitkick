@@ -156,10 +156,6 @@ export interface UIState {
   graph_details_shown?: boolean
   /** Whether graph detail panels show the "Relationships" foldout */
   graph_relations_shown?: boolean
-  /** Whether the sidebar's Folders section is collapsed */
-  folders_section_collapsed?: boolean
-  /** Whether the sidebar's Projects section is collapsed */
-  projects_section_collapsed?: boolean
   /** Whether the project canvas hides its Home rail */
   project_rail_hidden?: boolean
   /** Whether the vertical navigation shows icons only */
@@ -288,8 +284,6 @@ export const defaultUIState: UIState = {
   graphs_section_collapsed: false,
   graph_details_shown: false,
   graph_relations_shown: false,
-  folders_section_collapsed: false,
-  projects_section_collapsed: false,
   project_rail_hidden: false,
   vertical_nav_collapsed: false,
   mobile_active_tab: null,

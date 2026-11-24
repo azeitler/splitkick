@@ -55,6 +55,13 @@ describe('SidebarTabs', () => {
     expect(tab(/^Recent$/)).toHaveAttribute('aria-selected', 'false')
   })
 
+  it('gives Projects the same open-folder icon as the vertical navigation', () => {
+    renderTabs()
+    expect(tab(/^Projects$/).querySelector('svg')).toHaveClass(
+      'lucide-folder-open'
+    )
+  })
+
   it('switches the store tab on click', async () => {
     renderTabs()
     await userEvent.click(tab(/^Starred$/))

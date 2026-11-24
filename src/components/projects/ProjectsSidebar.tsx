@@ -11,6 +11,8 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
+import { ProjectsPanelToolbar } from './ProjectsPanelToolbar'
+import { SidebarTabEmpty } from './SidebarTabEmpty'
 import { SidebarArchivedRow } from './SidebarArchivedRow'
 import { SidebarScheduledRow } from './SidebarScheduledRow'
 import { SidebarHomeRow } from './SidebarHomeRow'
@@ -25,6 +27,7 @@ import { scheduleIdleWork } from '@/lib/idle'
 import { useSidebarReveal } from './useSidebarReveal'
 import { useSidebarStickyStack } from './useSidebarStickyStack'
 import { Button } from '@/components/ui/button'
+import { FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isVisibleProject } from '@/types/projects'
 import type { SidebarTab } from '@/types/ui-state'
@@ -108,9 +111,15 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
             sidebarTab !== 'projects' && 'invisible'
           )}
         >
-          {/* Folders and Projects scroll in one list with a sticky stack: each
-              section header stays stuck once you scroll past it, and the
-              folder, project and worktree rows stick below them
+          {/* The tree has no root header rows; its actions live here. */}
+          <ProjectsPanelToolbar
+            projects={projects}
+            onNewFolder={handleNewFolder}
+            onNewProject={handleNewProject}
+            newProjectDisabled={!backendCheckReady || setupIncomplete}
+          />
+          {/* Folders and projects scroll in one list with a sticky stack: the
+              folder, project and worktree rows stick at the top
               (sidebar-sticky.ts). */}
           <div
             ref={scrollRef}
@@ -137,14 +146,15 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
                   Retry
                 </Button>
               </div>
-            ) : (
-              // Rendered even when empty: its headers hold the "+ New" buttons.
-              <ProjectTree
-                projects={projects}
-                onNewFolder={handleNewFolder}
-                onNewProject={handleNewProject}
-                newProjectDisabled={!backendCheckReady || setupIncomplete}
+            ) : projects.length === 0 ? (
+              <SidebarTabEmpty
+                testId="projects-tree-empty"
+                icon={<FolderOpen />}
+                title="No projects yet"
+                hint="Add one with the + button above."
               />
+            ) : (
+              <ProjectTree projects={projects} />
             )}
             {/* The vertical navigation has its own Scheduled and Archived
                 items. */}

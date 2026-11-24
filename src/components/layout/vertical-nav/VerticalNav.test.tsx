@@ -120,6 +120,12 @@ describe('VerticalNav', () => {
     ])
   })
 
+  it('gives Projects an open-folder icon', () => {
+    renderNav()
+    const icon = item('projects').querySelector('svg')
+    expect(icon).toHaveClass('lucide-folder-open')
+  })
+
   it('puts a divider after Home, after To-Do and after Graphs', () => {
     renderNav()
     const nav = screen.getByRole('navigation', { name: 'Sidebar navigation' })

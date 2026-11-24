@@ -5,32 +5,21 @@
  * Every level's leading glyph (folder chevron, project avatar, workspace
  * status dot, session dot) sits one step further right:
  *
- *   Home, Archived, section header (Starred, Folders, Projects)   16
- *   starred session                                               32
- *   folder / project at depth d   32 + 16·d
- *   workspace                     48 + 16·d
- *   session group label (IDLE)    64 + 16·d
- *   session in a group            76 + 16·d
+ *   Home, Archived, section header (Starred)   16
+ *   starred session                            32
+ *   folder / project at depth d   16 + 16·d
+ *   workspace                     32 + 16·d
+ *   session group label (IDLE)    48 + 16·d
+ *   session in a group            60 + 16·d
  *
  * Folder and project rows share one shape (`SIDEBAR_ROW_SHAPE`,
  * `SIDEBAR_PROJECT_ROW_PADDING`). Inside a folder they sit in the folder's
  * guide-lined list, like workspaces in a project, and take the nested shape
- * (`SIDEBAR_NESTED_ROW_SHAPE`, `SIDEBAR_WORKTREE_ROW_PADDING`), inside the
- * section's one-step indent (`SIDEBAR_SECTION_ITEMS_INDENT_PX`). Workspaces and
+ * (`SIDEBAR_NESTED_ROW_SHAPE`, `SIDEBAR_WORKTREE_ROW_PADDING`). The tree root
+ * has no section header, so root rows sit on the Home column. Workspaces and
  * sessions sit in lists with a guide line under the parent's glyph, so their
  * offsets below are measured from that line. Change one value, check them all.
  */
-
-/** One tree level, in px. */
-export const SIDEBAR_INDENT_STEP_PX = 16
-
-/** A section header (Starred, Folders, Projects): no pill, so 16 of padding
- * puts the glyph at 16, level with the Home and Archived glyphs. */
-export const SIDEBAR_SECTION_HEADER_PADDING = 'pl-4'
-
-/** The rows of the Folders and Projects sections sit one step in from the
- * section header, like the rows of Starred. */
-export const SIDEBAR_SECTION_ITEMS_INDENT_PX = SIDEBAR_INDENT_STEP_PX
 
 /** Inset and rounding of a top-level row (Home, folder depth 0, project). The
  * width is explicit: a `<button>` row does not stretch to fill like a block. */

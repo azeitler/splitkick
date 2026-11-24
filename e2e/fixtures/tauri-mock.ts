@@ -298,6 +298,37 @@ export { expect }
  */
 export const MOD = 'Control'
 
+/** The mock app is Web Access; a stub Tauri IPC makes it the desktop app.
+ *  Calls still go to the e2e mock handlers. */
+export async function asDesktopApp(page: Page) {
+  await page.addInitScript(() => {
+    let next = 1
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__TAURI_INTERNALS__ = {
+      invoke: () => Promise.resolve(null),
+      transformCallback: () => next++,
+      unregisterCallback: () => undefined,
+      convertFileSrc: (src: string) => src,
+      metadata: {
+        currentWindow: { label: 'main' },
+        currentWebview: { windowLabel: 'main', label: 'main' },
+      },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener: () => undefined,
+    }
+  })
+  await page.reload()
+  // The desktop app greets with the onboarding tour; close it.
+  const skip = page.getByRole('button', { name: /^Skip/ })
+  const shown = await skip
+    .waitFor({ timeout: 5000 })
+    .then(() => true)
+    .catch(() => false)
+  if (shown) await skip.click()
+}
+
 /** The left sidebar. Worktree names also appear on the canvas, so scope to it. */
 export function sidebar(page: Page): Locator {
   return page.getByTestId('projects-sidebar')
