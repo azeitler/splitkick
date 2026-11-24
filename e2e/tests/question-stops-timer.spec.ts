@@ -9,9 +9,9 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * A question that waits inside a live run (#136) stops the running timer and
- * the activity spinner: nothing runs while the user decides. After the
- * answer the run works again, and so do they.
+ * A streamed question that waits inside a live run (OpenCode, Codex) stops
+ * the running timer and the activity spinner: nothing runs while the user
+ * decides. After the answer the run works again, and so do they.
  */
 
 const QUESTION_ID = 'toolu_e2e_timer_question'
@@ -102,14 +102,14 @@ for (const view of ['normal', 'compact'] as const) {
       const timer = modal.getByTestId('streaming-status-bar')
       await expect(timer).toBeVisible()
 
-      // The run parks on the question.
+      // The run waits on the question.
       await emitEvent('chat:tool_use', { ...base, ...questionTool })
       await emitEvent('chat:tool_block', { ...base, tool_call_id: QUESTION_ID })
-      await emitEvent('claude:dialog-waiting', {
-        sessionId: session.id,
-        toolUseId: QUESTION_ID,
-        kind: 'question',
-      })
+      // The backend's request event marks the session as waiting.
+      await page.evaluate(async sessionId => {
+        const { useChatStore } = await import('/src/store/chat-store.ts')
+        useChatStore.getState().setWaitingForInput(sessionId, true)
+      }, session.id)
       await expect(modal.getByRole('button', { name: /^Answer/ })).toBeVisible()
       await expect(timer).toHaveCount(0)
       await expect(modal.locator('.animate-spin')).toHaveCount(0)
@@ -123,13 +123,10 @@ for (const view of ['normal', 'compact'] as const) {
             .markQuestionAnswered(sessionId, toolId, [
               { questionIndex: 0, selectedOptions: [0] },
             ])
+          useChatStore.getState().setWaitingForInput(sessionId, false)
         },
         { sessionId: session.id, toolId: QUESTION_ID }
       )
-      await emitEvent('claude:dialog-resolved', {
-        sessionId: session.id,
-        toolUseId: QUESTION_ID,
-      })
       await emitEvent('chat:tool_result', {
         ...base,
         tool_use_id: QUESTION_ID,

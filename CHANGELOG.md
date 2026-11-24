@@ -32,6 +32,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   that names the question. The turn ends without a kill: Claude records the
   question as closed, so it no longer reads "the session ended before this
   call's result was recorded" when it gets the answer (#159, #136).
+  The note "The agent is paused" on a question or plan is gone: every
+  waiting question is in that state now. A plan approval is a new turn again,
+  with the build or yolo model settings.
 - **Dragging the first project in a folder no longer moves it.** A drag that
   started on the first project of a folder and ended near its place moved the
   project to the end of the folder (or out of it). The folder now answers

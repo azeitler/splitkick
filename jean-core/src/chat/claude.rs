@@ -574,9 +574,9 @@ const TRANSCRIPT_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_
 /// Claude streams a finished `assistant` message to stdout before it writes it
 /// to `<config dir>/projects/<cwd>/<id>.jsonl`. A kill in between drops the
 /// turn from the transcript: on `--resume` the model sees a synthetic
-/// "No response requested." where its question was (#57). The CLI is parked
-/// on Jean's dialog permission prompt meanwhile, so it is free to write.
-/// Returns false on timeout; the caller kills the CLI anyway.
+/// "No response requested." where its question was (#57). Only for a CLI that
+/// did not end its turn on its own (see `DIALOG_EXIT_TIMEOUT`). Returns false
+/// on timeout; the caller kills the CLI anyway.
 fn wait_for_transcript_entry(
     config_dirs: &[std::path::PathBuf],
     claude_session_id: &str,
@@ -696,17 +696,16 @@ fn split_fast_model(model: &str) -> (&str, bool) {
     }
 }
 
-/// Tools that end a Claude turn when the run has no dialog harness: Jean kills
-/// the CLI and hands the call to the UI (question picker, plan approval), then
-/// continues in a new turn.
+/// Tools that end a Claude turn: Jean hands the call to the UI (question
+/// picker, plan approval), the session waits, and the answer starts a new turn.
 ///
-/// A run spawned with `--permission-prompt-tool` (the `jean-dialog` server) is
-/// never killed here: the CLI parks on the permission call until the UI answers,
-/// so the answer comes back as the tool result of the same turn (#136). Killing
-/// it left a dangling `tool_use` that the CLI later closed as "the session ended
-/// before this call's result was recorded".
+/// The CLI ends the turn itself: the `jean-dialog` permission tool answers
+/// these calls with deny + `interrupt` (`claude_dialog::DialogOutcome::EndTurn`),
+/// so the call is closed in Claude's transcript. A plain kill left a dangling
+/// `tool_use` that the CLI later closed as "the session ended before this
+/// call's result was recorded" (#136); it is now only the fallback.
 ///
-/// The kill must happen on the finished `assistant` message, never on a
+/// The turn must end on the finished `assistant` message, never on a
 /// `stream_event`. Jean tails the CLI's output file and rebuilds chat history
 /// from that same file (`run_log::parse_run_to_message`, which reads only
 /// `assistant` lines). Killing on the last streamed input chunk could land
@@ -719,8 +718,8 @@ fn is_blocking_tool(name: &str) -> bool {
     matches!(name, "AskUserQuestion" | "ExitPlanMode")
 }
 
-/// End a detached Claude CLI at once: at a blocking tool without the dialog
-/// harness, or when a parked dialog pauses the run (#155).
+/// End a detached Claude CLI at once: one that goes on after a question or
+/// plan (see `DIALOG_EXIT_TIMEOUT`).
 fn kill_detached_cli(pid: u32) {
     #[cfg(unix)]
     unsafe {
@@ -2390,9 +2389,6 @@ pub fn tail_claude_output(
                                             if is_process_alive(pid) {
                                                 kill_detached_cli(pid);
                                             }
-                                            // Release a dialog parked just before the kill.
-                                            super::claude_dialog::cancel_session(session_id);
-
                                             // Emit done event so frontend knows streaming is complete
                                             let done_event = DoneEvent {
                                                 session_id: session_id.to_string(),
@@ -2862,38 +2858,6 @@ pub fn tail_claude_output(
         // Check if completed
         if completed {
             break;
-        }
-
-        // A question or plan that waited past DIALOG_PARK_TIMEOUT pauses the
-        // run (#155). End the CLI before it gets a tool result, so the model
-        // writes no closing text. The call keeps no result, so the session
-        // waits on it as after the legacy blocking-tool kill, and the answer
-        // resumes the session as a new message.
-        if let Some(confirm) = super::claude_dialog::take_pause_request(session_id) {
-            log::info!("Pausing session {session_id}: its question waited too long");
-            kill_detached_cli(pid);
-            flush_pending_chunks(app, session_id, worktree_id, &run_id, &mut chunk_coalescer);
-            let done_event = DoneEvent {
-                session_id: session_id.to_string(),
-                worktree_id: worktree_id.to_string(),
-                waiting_for_plan: false,
-            };
-            if let Err(e) = app.emit_all("chat:done", &done_event) {
-                log::error!("Failed to emit done event: {e}");
-            }
-            // Only now may the parked call return (and emit
-            // claude:dialog-resolved): the UI already holds the waiting state.
-            let _ = confirm.send(());
-            return Ok(ClaudeResponse {
-                content: full_content,
-                session_id: claude_session_id,
-                tool_calls,
-                content_blocks,
-                cancelled: false,
-                usage,
-                limit_hit,
-                run_error: error_state.run_error,
-            });
         }
 
         // Check if externally cancelled (process removed from registry by cancel_process)
@@ -4396,73 +4360,6 @@ mod tests {
         assert!(
             args.is_empty(),
             "unparseable config must not enable the flag"
-        );
-    }
-
-    /// #155: a question that waits past the park timeout pauses the run. The
-    /// tailer ends the CLI, the turn is not cancelled, the question keeps no
-    /// result (so the session waits on it) and the resume id is kept.
-    #[cfg(unix)]
-    #[test]
-    fn a_paused_dialog_ends_the_run_quietly_and_keeps_it_resumable() {
-        let temp = tempfile::tempdir().unwrap();
-        let app =
-            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
-        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let sink = events.clone();
-        app.set_event_sink(move |event, _| {
-            sink.lock().unwrap().push(event.to_string());
-            Ok(())
-        });
-        let output = temp.path().join("run.jsonl");
-        std::fs::write(
-            &output,
-            concat!(
-                r#"{"type":"system","subtype":"init","session_id":"claude-sid-155"}"#,
-                "\n",
-                r#"{"type":"assistant","session_id":"claude-sid-155","message":{"id":"msg_155","role":"assistant","content":[{"type":"tool_use","id":"toolu_q155","name":"AskUserQuestion","input":{"questions":[{"question":"Which color?","header":"Color","multiSelect":false,"options":[{"label":"Teal"}]}]}}]}}"#,
-                "\n",
-            ),
-        )
-        .unwrap();
-        // Stands in for the CLI parked on the question.
-        let mut cli = std::process::Command::new("sleep")
-            .arg("30")
-            .spawn()
-            .unwrap();
-        let session = "session-155-pause";
-        assert!(super::super::registry::register_detached_process(
-            session.to_string(),
-            cli.id()
-        ));
-        let mut confirmed = super::super::claude_dialog::request_pause_for_test(session);
-
-        let response = tail_claude_output(
-            &app,
-            session,
-            "worktree-155",
-            &output,
-            cli.id(),
-            None,
-            None,
-            false,
-        )
-        .unwrap();
-        super::super::registry::unregister_process(session);
-
-        // The CLI is gone, and the parked call was told so.
-        let status = cli.wait().unwrap();
-        assert!(!status.success(), "the CLI must be killed");
-        assert_eq!(confirmed.try_recv(), Ok(()));
-
-        assert!(!response.cancelled);
-        assert_eq!(response.session_id, "claude-sid-155");
-        assert_eq!(response.tool_calls.len(), 1);
-        assert_eq!(response.tool_calls[0].name, "AskUserQuestion");
-        assert!(response.tool_calls[0].output.is_none());
-        assert_eq!(
-            events.lock().unwrap().last().map(String::as_str),
-            Some("chat:done")
         );
     }
 

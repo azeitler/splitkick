@@ -71,15 +71,11 @@ afterEach(() => {
   invokeMock.mockReset()
   const store = useChatStore.getState()
   store.removeSendingSession(SESSION)
-  store.setParkedClaudeDialog(SESSION, null)
 })
 
-describe('answering a Claude question (#155)', () => {
-  it('resumes a paused session with the answer as the next message', async () => {
-    // Nothing is parked: the run was paused or ended before the answer.
-    invokeMock.mockImplementation((command: string) =>
-      Promise.resolve(command === 'answer_claude_dialog' ? false : undefined)
-    )
+describe('answering a Claude question', () => {
+  it('sends the answer as the next message, with the question named', async () => {
+    invokeMock.mockResolvedValue(undefined)
     const { handlers, sendMessage } = setup()
 
     handlers.handleQuestionAnswer(
@@ -93,34 +89,38 @@ describe('answering a Claude question (#155)', () => {
       sessionId: SESSION,
       message: 'Answer to your question "Which color?": Teal',
     })
+    // The turn ended at the question: nothing in the host waits for a call.
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'answer_claude_dialog',
+      expect.anything()
+    )
   })
 
-  it('answers a live parked run in its turn, with no new message', async () => {
-    useChatStore.getState().setParkedClaudeDialog(SESSION, {
-      toolUseId: QUESTION_ID,
-      kind: 'question',
-    })
-    invokeMock.mockImplementation((command: string) =>
-      Promise.resolve(command === 'answer_claude_dialog' ? true : undefined)
-    )
+  it('carries an own answer and the note in the message', async () => {
+    invokeMock.mockResolvedValue(undefined)
     const { handlers, sendMessage } = setup()
 
     handlers.handleQuestionAnswer(
       QUESTION_ID,
-      [{ questionIndex: 0, selectedOptions: [1] }],
+      [
+        {
+          questionIndex: 0,
+          selectedOptions: [],
+          customText: 'Sand, like the sample',
+          note: 'Matte finish',
+        },
+      ],
       questions
     )
 
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith(
-        'answer_claude_dialog',
-        expect.objectContaining({ toolUseId: QUESTION_ID })
-      )
-    )
-    expect(sendMessage.mutate).not.toHaveBeenCalled()
+    await waitFor(() => expect(sendMessage.mutate).toHaveBeenCalledTimes(1))
+    expect(sendMessage.mutate.mock.calls[0]?.[0]).toMatchObject({
+      message:
+        'Answer to your question "Which color?": Sand, like the sample\nNote: Matte finish',
+    })
   })
 
-  it('resumes a paused plan in build mode when the user approves it', async () => {
+  it('starts the approved plan in build mode as a new message', async () => {
     invokeMock.mockResolvedValue(undefined)
     const { handlers, sendMessage } = setup()
 

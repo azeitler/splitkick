@@ -415,8 +415,6 @@ mod tests {
     fn a_question_ends_the_turn_over_the_local_socket() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-        use crate::chat::claude_dialog;
-
         let temp = tempfile::tempdir().unwrap();
         let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
         let socket = temp.path().join("dialog-mcp.sock");
@@ -477,7 +475,6 @@ mod tests {
 
             assert_eq!(payload["behavior"], "deny");
             assert_eq!(payload["interrupt"], true, "{payload}");
-            assert!(!claude_dialog::is_parked("toolu_socket_dialog"));
 
             let _ = handle.shutdown_tx.send(());
         });

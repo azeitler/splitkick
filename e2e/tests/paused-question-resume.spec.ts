@@ -7,9 +7,8 @@ import {
 } from '../fixtures/mock-data'
 
 /**
- * A question whose run is paused (#155): no answer came within 10 minutes,
- * or the app quit while it waited. The card stays open, says the agent is
- * paused, and the answer resumes the session as a new message that names the
+ * A Claude question ends its turn. The card stays open while the session
+ * waits, and the answer starts the next turn as a new message that names the
  * question.
  */
 
@@ -82,21 +81,17 @@ test.use({
   },
 })
 
-test('a paused question says so, and the answer resumes the session', async ({
+test('the answer to a waiting question resumes the session as a new message', async ({
   mockPage: page,
 }) => {
   await activateWorktree(page, 'paused-tree')
   await page.locator(`[data-session-id="${session.id}"]`).first().click()
   const modal = page.getByTestId('session-chat-modal-swipe')
 
-  await expect(modal.getByTestId('question-paused-note')).toHaveText(
-    'The agent is paused — answering resumes it.'
-  )
-
   await page.evaluate(() => {
     const w = window as any
     w.__sent = []
-    // Nothing is parked: the run ended. The answer goes as a new message.
+    // The turn ended at the question. The answer goes as a new message.
     w.__JEAN_E2E_MOCK__.invokeHandlers.send_chat_message = (args: unknown) => {
       w.__sent.push(args)
       return new Promise(() => {})
@@ -111,5 +106,7 @@ test('a paused question says so, and the answer resumes the session', async ({
       page.evaluate(() => (window as any).__sent.map((a: any) => a.message))
     )
     .toEqual([`Answer to your question "${QUESTION}": Teal`])
-  await expect(modal.getByTestId('question-paused-note')).toHaveCount(0)
+  await expect(
+    modal.getByRole('button', { name: /^Answer(?!ed)/ })
+  ).toHaveCount(0)
 })

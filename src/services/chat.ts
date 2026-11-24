@@ -2883,44 +2883,8 @@ export async function saveCancelledMessage(
 // ============================================================================
 
 /**
- * Shape Claude's `AskUserQuestion` expects its answers in: question text ->
- * the chosen option label, with multi-select joined by ", ".
- *
- * These are spliced back into the tool's own input via the permission
- * response, which is how the answers reach the model — the tool's `call()` is
- * a passthrough that reads `answers` out of its input, which Claude renders as
- * "The user answered: ...". The "Other…" text is one more answer next to the
- * chosen labels; a note follows them: "Memcached (note: ...)".
- */
-export function formatAnswersForClaude(
-  questions: Question[],
-  answers: QuestionAnswer[]
-): Record<string, string> {
-  const formatted: Record<string, string> = {}
-
-  for (const answer of answers) {
-    const question = questions[answer.questionIndex]
-    if (!question) continue
-
-    const selectedLabels = answer.selectedOptions.flatMap(idx => {
-      const label = question.options[idx]?.label
-      return label ? [label] : []
-    })
-
-    // "Other…" text is one more chosen answer; the note adds context.
-    const custom = answer.customText?.trim()
-    const choice = [...selectedLabels, ...(custom ? [custom] : [])].join(', ')
-    const note = answer.note?.trim() ?? ''
-    const value = choice && note ? `${choice} (note: ${note})` : choice || note
-    if (value) formatted[question.question] = value
-  }
-
-  return formatted
-}
-
-/**
- * Format question answers as a new message: for a backend without an in-turn
- * answer, and for a Claude run that ended before the answer (#155).
+ * Format question answers as a new message (Claude, Codex): the turn ended
+ * at the question, and this message starts the next one.
  *
  * Example output:
  * Answer to your question "Which areas?": API, Docs; the plugin system too
@@ -2944,8 +2908,8 @@ export function formatAnswersAsNaturalLanguage(
     const custom = answer.customText?.trim()
     const note = answer.note?.trim()
     if (selectedLabels.length > 0 || custom || note) {
-      // Name the question: the answer may come as a new message long after
-      // it was asked, when a paused run resumes (#155).
+      // Name the question: the answer is a new message, and it may come long
+      // after the question was asked.
       const reply = [
         ...(selectedLabels.length > 0 ? [selectedLabels.join(', ')] : []),
         ...(custom ? [custom] : []),

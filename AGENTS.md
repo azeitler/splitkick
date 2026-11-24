@@ -272,6 +272,31 @@ accumulating `PiResponse`. Both the batch parser (`parse_pi_json_stream_inner`)
 and the live streaming parser (`parse_pi_stream`) call it per line — never
 re-parse the whole accumulated buffer (avoids O(n²) on long sessions).
 
+#### Claude Questions and Plans End the Turn
+
+**Read this before changing `claude_dialog.rs`, `claude_dialog_tool.rs` or the
+blocking-tool path in `claude.rs`.**
+
+- `AskUserQuestion` and `ExitPlanMode` end the Claude turn. The session's saved
+  state (`waiting_for_input`, written when the run is finalized) is the one
+  place that says it waits. The answer or approval starts the next turn as a
+  new message (`formatAnswersAsNaturalLanguage` names the question).
+- The turn ends without a kill: the `jean-dialog` permission tool answers these
+  calls with deny + `interrupt: true` (`DialogOutcome::EndTurn`). The CLI
+  closes the call as rejected in its own transcript and exits. The tailer
+  waits up to 5 s for that, then kills as a fallback (`DIALOG_EXIT_TIMEOUT`).
+- The CLI's closing lines are not an answer and not an error: readers of a run
+  log skip the tool result marked `non_execution_kind: "user-rejected"`
+  (`is_dialog_end_turn_result`) and ignore a result with
+  `terminal_reason: "aborted_tools"` (`run_error_from_line`).
+- **Do not keep the run alive at a question.** 1.6.0 did (#136): the waiting
+  state then lived only in host memory and reached clients through one event,
+  which produced #154, #155, #157 and #159 within two days. A state that a
+  remote client must see has to be in the saved session.
+- Sessions from 1.6.0 and 1.6.1 hold turns with a question or plan answered
+  in the turn (`isPlanAnsweredInTurn`, text after an answered question in
+  `buildTimeline`). Keep that display code.
+
 #### Claude CLI JSON Schema Pattern
 
 **CRITICAL:** When using `--json-schema` with Claude CLI, structured output is returned via a tool call, not plain text.

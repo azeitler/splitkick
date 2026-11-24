@@ -206,7 +206,6 @@ mod tests {
                 serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
             assert_eq!(payload["behavior"], "deny", "{tool}");
             assert_eq!(payload["interrupt"], true, "{tool}");
-            assert!(!claude_dialog::is_parked("toolu_end"), "{tool}");
         }
     }
 

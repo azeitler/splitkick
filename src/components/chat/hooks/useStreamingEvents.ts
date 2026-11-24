@@ -69,13 +69,7 @@ import type {
 import { saveCancelledMessage } from '@/services/chat'
 import { stripAllMarkers } from '@/components/chat/message-content-utils'
 import { supersedePendingQuestions } from '@/components/chat/supersede-pending-questions'
-import {
-  applyClaudeDialogResolved,
-  applyClaudeDialogWaiting,
-  isPlanAnsweredInTurn,
-  type ClaudeDialogResolvedEvent,
-  type ClaudeDialogWaitingEvent,
-} from '@/components/chat/claude-dialog-events'
+import { isPlanAnsweredInTurn } from '@/components/chat/claude-dialog-events'
 import {
   applySessionSettingToSession,
   type SessionSettingKey,
@@ -983,21 +977,6 @@ export default function useStreamingEvents({
         }
       )
 
-    // A live Claude run parked on AskUserQuestion / ExitPlanMode (#136): the
-    // answer goes back as the tool result of the same call.
-    const unlistenClaudeDialogWaiting = listen<ClaudeDialogWaitingEvent>(
-      'claude:dialog-waiting',
-      event => {
-        if (!applyClaudeDialogWaiting(event.payload)) return
-        playWaitingSound()
-        notifySession(event.payload.sessionId, 'input', 'waiting')
-      }
-    )
-    const unlistenClaudeDialogResolved = listen<ClaudeDialogResolvedEvent>(
-      'claude:dialog-resolved',
-      event => applyClaudeDialogResolved(event.payload)
-    )
-
     const unlistenCodexUserInputRequest = listen<CodexUserInputRequestEvent>(
       'chat:codex_user_input_request',
       event => {
@@ -1230,9 +1209,6 @@ export default function useStreamingEvents({
       const hasPendingPermissionDenials =
         (useChatStore.getState().pendingPermissionDenials[sessionId]?.length ??
           0) > 0
-
-      // The run is over: nothing can still be parked on it.
-      useChatStore.getState().setParkedClaudeDialog(sessionId, null)
 
       // Clear compacting state (safety net in case chat:compacted was missed)
       useChatStore.getState().setCompacting(sessionId, false)
@@ -2549,8 +2525,6 @@ export default function useStreamingEvents({
       unlistenOpencodePermissionReplied.then(f => f())
       unlistenCodexCommandApprovalRequest.then(f => f())
       unlistenCodexUserInputRequest.then(f => f())
-      unlistenClaudeDialogWaiting.then(f => f())
-      unlistenClaudeDialogResolved.then(f => f())
       unlistenCodexMcpElicitation.then(f => f())
       unlistenCodexDynamicToolCall.then(f => f())
       unlistenCodexGoal.then(f => f())

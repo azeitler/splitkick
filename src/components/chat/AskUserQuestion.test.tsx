@@ -41,46 +41,6 @@ describe('AskUserQuestion', () => {
     // noop for test
   }
 
-  // #155: the run ended before the answer; the answer resumes the session.
-  it('says that the agent is paused when no run waits for the answer', () => {
-    render(
-      <AskUserQuestion
-        toolCallId="toolu_paused"
-        questions={questions}
-        onSubmit={noopSubmit}
-        paused
-      />
-    )
-
-    expect(screen.getByTestId('question-paused-note')).toHaveTextContent(
-      'The agent is paused — answering resumes it.'
-    )
-    expect(screen.getByRole('button', { name: /^Answer/ })).toBeEnabled()
-  })
-
-  it('shows no paused note on an answered or a live question', () => {
-    const { rerender } = render(
-      <AskUserQuestion
-        toolCallId="toolu_paused_answered"
-        questions={questions}
-        onSubmit={noopSubmit}
-        paused
-        readOnly
-        submittedAnswers={[{ questionIndex: 0, selectedOptions: [0] }]}
-      />
-    )
-    expect(screen.queryByTestId('question-paused-note')).toBeNull()
-
-    rerender(
-      <AskUserQuestion
-        toolCallId="toolu_paused_live"
-        questions={questions}
-        onSubmit={noopSubmit}
-      />
-    )
-    expect(screen.queryByTestId('question-paused-note')).toBeNull()
-  })
-
   // azeitler/jean#32: the options never arrived, and the block rendered only
   // the intro sentence with nothing to answer.
   it('says so when a question arrives without options', () => {

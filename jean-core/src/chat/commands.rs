@@ -200,11 +200,9 @@ pub(crate) fn has_active_send(session_id: &str) -> bool {
 
 /// A run is in flight, so a direct send would be rejected with "Session
 /// already has an active request": a new message must go into the queue
-/// (#156). Not busy while a Claude question or plan is parked in the live
-/// run: a direct send skips that dialog and runs next (#141).
+/// (#156).
 pub fn session_busy_for_new_message(session_id: &str) -> bool {
-    (has_active_send(session_id) || super::registry::is_session_actively_managed(session_id))
-        && super::claude_dialog::parked_kind_for_session(session_id).is_none()
+    has_active_send(session_id) || super::registry::is_session_actively_managed(session_id)
 }
 
 /// Sessions with a `send_chat_message` call in flight. Their run is already
@@ -906,7 +904,6 @@ pub async fn get_session_status(
     let latest_run = metadata.runs.last();
     let actively_managed = crate::chat::registry::is_session_actively_managed(&session_id);
     let status = run_status_label(actively_managed, latest_run.map(|run| &run.status));
-    let parked_dialog = super::claude_dialog::parked_kind_for_session(&session_id);
 
     Ok(serde_json::json!({
         "sessionId": session_id,
@@ -917,10 +914,8 @@ pub async fn get_session_status(
         "selectedModel": metadata.selected_model,
         "selectedProvider": metadata.selected_provider,
         "selectedExecutionMode": metadata.selected_execution_mode,
-        // A Claude question or plan parked in a live run waits too (#136): the
-        // run is still going, so the metadata flags are not set yet.
-        "waitingForInput": metadata.waiting_for_input || parked_dialog.is_some(),
-        "waitingForInputType": parked_dialog.or(metadata.waiting_for_input_type),
+        "waitingForInput": metadata.waiting_for_input,
+        "waitingForInputType": metadata.waiting_for_input_type,
         "latestRun": latest_run.map(|run| serde_json::json!({
             "runId": run.run_id,
             "status": run.status,
@@ -3032,14 +3027,6 @@ pub async fn send_chat_message(
     }
 
     clear_stale_pending_cancel_before_send(&session_id);
-
-    // A new message instead of an answer skips a Claude question or plan the
-    // live run is parked on (#141): deny it and let that turn end. Before the
-    // send claim: the parked turn's own send holds it until the run is done.
-    if super::claude_dialog::skip_session(&session_id) > 0 {
-        log::info!("[SendChat] session={session_id} skipped a parked Claude dialog");
-        wait_for_skipped_turn_to_end(&app, &session_id, &worktree_id).await;
-    }
 
     // Guard: atomically claim the session's send slot for the duration of this
     // call. Closes the race window where two concurrent sends (queue processor
@@ -7374,124 +7361,6 @@ fn pasted_text_filename(preferred_name: Option<&str>) -> String {
         sanitized
     };
     format!("{prefix}-{timestamp}-{short_uuid}.txt")
-}
-
-/// Wait until the turn whose dialog was just skipped has ended and is
-/// finalized, so the new message can start its own run.
-///
-/// The model was told to end its turn at once; a run that ignores that is
-/// cancelled after a short grace period.
-async fn wait_for_skipped_turn_to_end(app: &AppHandle, session_id: &str, worktree_id: &str) {
-    use std::time::{Duration, Instant};
-
-    const GRACE: Duration = Duration::from_secs(45);
-    const FINALIZE: Duration = Duration::from_secs(15);
-    let turn_is_open = |app: &AppHandle| {
-        has_active_send(session_id)
-            || super::registry::is_session_actively_managed(session_id)
-            || load_metadata(app, session_id)
-                .ok()
-                .flatten()
-                .and_then(|m| m.runs.last().map(|r| r.status == RunStatus::Running))
-                .unwrap_or(false)
-    };
-
-    let started = Instant::now();
-    let mut cancelled = false;
-    while turn_is_open(app) {
-        let waited = started.elapsed();
-        if !cancelled && waited > GRACE {
-            log::warn!("[SendChat] session={session_id} turn did not end after a skip; cancelling");
-            let _ = super::registry::cancel_process(app, session_id, worktree_id);
-            cancelled = true;
-        }
-        if waited > GRACE + FINALIZE {
-            log::warn!("[SendChat] session={session_id} turn still open after a skip");
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-}
-
-/// Resolve a Claude dialog the UI just answered.
-///
-/// Returns `false` when nothing was parked for `tool_use_id` — the caller
-/// should then fall back to sending the answer as a normal message, which is
-/// what happens for a dialog that timed out, or a transcript reloaded after
-/// the run ended.
-pub async fn answer_claude_dialog(
-    _app: AppHandle,
-    tool_use_id: Option<String>,
-    session_id: Option<String>,
-    outcome: String,
-    answers: Option<serde_json::Map<String, serde_json::Value>>,
-    response: Option<String>,
-    message: Option<String>,
-    mode: Option<String>,
-) -> Result<bool, String> {
-    use super::claude_dialog::{self, DialogOutcome};
-
-    let outcome = match outcome.as_str() {
-        "answered" => DialogOutcome::Answered {
-            answers: serde_json::Value::Object(answers.unwrap_or_default()),
-            response,
-        },
-        // A plan approved with a mode leaves plan mode in the same turn.
-        "approved" => match mode.filter(|m| m == "build" || m == "yolo") {
-            Some(mode) => DialogOutcome::PlanApproved { mode },
-            None => DialogOutcome::Approved,
-        },
-        "denied" => DialogOutcome::Denied {
-            message: message.unwrap_or_else(|| "The user declined.".to_string()),
-        },
-        // The user sent a new message instead of answering (#141).
-        "skipped" => DialogOutcome::Denied {
-            message: claude_dialog::SKIPPED_BY_NEW_MESSAGE.to_string(),
-        },
-        other => return Err(format!("Unknown dialog outcome '{other}'")),
-    };
-
-    match (tool_use_id.filter(|id| !id.is_empty()), session_id) {
-        (Some(tool_use_id), _) => {
-            let resolved = claude_dialog::resolve_live(
-                &tool_use_id,
-                outcome,
-                super::registry::is_process_running,
-            );
-            log::info!("[ClaudeDialog] answer tool_use_id={tool_use_id} resolved={resolved}");
-            Ok(resolved)
-        }
-        // Session-scoped: plan approval resolves whatever is parked without
-        // threading the ExitPlanMode tool_use id through the plan UI.
-        (None, Some(session_id)) => {
-            if !super::registry::is_process_running(&session_id) {
-                // The turn ended: unblock an orphaned shim, report not delivered
-                // so the UI starts a new turn instead.
-                claude_dialog::cancel_session(&session_id);
-                return Ok(false);
-            }
-            if let DialogOutcome::PlanApproved { mode } = &outcome {
-                // Jean's own permission verdict follows the new mode for the
-                // rest of this turn (see `claude_dialog_tool`).
-                super::registry::set_turn_execution_mode(&session_id, Some(mode));
-            }
-            let resolved = claude_dialog::resolve_session(&session_id, outcome) > 0;
-            log::info!("[ClaudeDialog] answer session={session_id} resolved={resolved}");
-            Ok(resolved)
-        }
-        (None, None) => Err("answer_claude_dialog needs toolUseId or sessionId".to_string()),
-    }
-}
-
-/// Whether a Claude dialog is currently parked for this tool call.
-///
-/// The UI uses this to decide between resolving the MCP call and the legacy
-/// send-as-message path.
-pub async fn is_claude_dialog_pending(
-    _app: AppHandle,
-    tool_use_id: String,
-) -> Result<bool, String> {
-    Ok(super::claude_dialog::is_parked(&tool_use_id))
 }
 
 #[cfg(test)]

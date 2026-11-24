@@ -1,73 +1,30 @@
-//! Pending Claude dialog registry.
+//! The permission answers for Claude's dialog tools.
 //!
 //! Claude Code gates `AskUserQuestion`, `EnterPlanMode` and `ExitPlanMode`
 //! behind `--permission-prompt-tool`: under `--print` the tools are only
 //! offered when the host names an MCP tool that can answer permission
-//! requests. Those three tools always return `behavior: "ask"`, and the
-//! *answers ride back inside the permission response* — `AskUserQuestion`'s
-//! `call()` is a passthrough that reads `answers` out of its own input.
+//! requests. Jean's `jean-dialog` MCP server is that tool (see
+//! [`crate::chat::jean_mcp`] and [`crate::chat::claude_dialog_tool`]).
 //!
-//! So Jean answers them over MCP rather than over Claude's stdin, which is
-//! closed by the detached `cat input | claude >> output` spawn. The dedicated
-//! `jean-dialog` MCP server (see [`crate::chat::jean_mcp`]) parks a call here
-//! until the UI resolves it through `answer_claude_dialog`.
+//! A question or plan ends the turn ([`DialogOutcome::EndTurn`]): the answer
+//! is deny + `interrupt`, so the CLI closes the call as rejected in its own
+//! transcript and exits. The tailer ends the run at the same call
+//! (`claude.rs`), the session's saved state says that it waits, and the answer
+//! or approval starts the next turn as a new message.
 //!
-//! The run stays alive while a dialog is parked (#136): the answer is the tool
-//! result of the same call. A plan approval with a mode returns `setMode
-//! acceptEdits` and moves the registry's turn mode to build/yolo, so the run
-//! leaves plan mode in the same turn. A new message instead of an answer skips
-//! the dialog ([`skip_session`]); the model ends its turn and the message runs
-//! next. Only a run without the harness, or one that ended (app restart), falls
-//! back to the answer as a new message.
-//!
-//! A dialog that waits longer than [`DIALOG_PARK_TIMEOUT`] pauses the run
-//! (#155): Jean does not answer the MCP call. It asks the run's tailer to end
-//! the CLI quietly, so the model gets no tool result and writes no closing
-//! text. The session keeps waiting on the question, and a later answer resumes
-//! it as a new message.
+//! Nothing waits in memory. 1.6.0 kept the run alive and parked the call here
+//! until the UI answered (#136); the waiting state then lived only in this
+//! process, and every client that missed its one event showed the session as
+//! running (#155, #159). Do not bring that back without a saved state.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
-
-use once_cell::sync::Lazy;
 use serde_json::{json, Value};
-use tauri::AppHandle;
-use tokio::sync::oneshot;
 
-use crate::http_server::EmitExt;
-
-/// How long a dialog may park inside the run before Jean pauses the run (#155).
-///
-/// The CLI's own ceiling is the per-server `timeout` Jean sets on the
-/// `jean-dialog` MCP entry (`DIALOG_TOOL_TIMEOUT_MS`); it must stay above this
-/// value plus [`PAUSE_CONFIRM_TIMEOUT`], so Jean ends the run before the CLI
-/// gives up on the call.
-pub const DIALOG_PARK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-
-/// How long a timed-out dialog waits for the tailer to end the CLI. The
-/// tailer polls at least every 250 ms; this only bounds a run with no tailer.
-pub const PAUSE_CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Tool result when no tailer ended the run in time. Only a fallback: the
-/// model reads it and ends its turn, which a quiet pause avoids.
-pub const PARK_TIMED_OUT: &str = "Timed out waiting for the user to respond.";
-
-/// What the UI decided about a parked dialog.
+/// The answer to one permission request.
 #[derive(Debug, Clone)]
 pub enum DialogOutcome {
-    /// Questions answered: question text -> selected label(s).
-    Answered {
-        answers: Value,
-        /// Freeform text the user typed instead of picking an option.
-        response: Option<String>,
-    },
     /// Permission granted with the tool's input unchanged.
     Approved,
-    /// Plan approved in its own turn (`ExitPlanMode`): the run leaves plan
-    /// mode and goes on in `mode` (`build` or `yolo`).
-    PlanApproved { mode: String },
-    /// User declined, or the turn was cancelled out from under the dialog.
+    /// Permission refused; the model reads the message and goes on.
     Denied { message: String },
     /// End the turn at a question or plan: the CLI closes the call as
     /// rejected, writes that to its transcript and exits. The session then
@@ -75,290 +32,17 @@ pub enum DialogOutcome {
     EndTurn,
 }
 
-struct PendingDialog {
-    session_id: String,
-    /// `question` or `plan`.
-    kind: String,
-    responder: oneshot::Sender<DialogOutcome>,
-}
-
-static PENDING: Lazy<Mutex<HashMap<String, PendingDialog>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
-/// Sessions whose dialog timed out, by session id. The run's tailer takes the
-/// request, ends the CLI, and confirms through the sender.
-static PAUSE_REQUESTS: Lazy<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
-/// Take the pause request for a session, if its dialog timed out.
-///
-/// The caller (the tailer) must end the CLI process, then send `()` on the
-/// returned sender so the parked MCP call returns into a dead process.
-pub fn take_pause_request(session_id: &str) -> Option<oneshot::Sender<()>> {
-    PAUSE_REQUESTS.lock().unwrap().remove(session_id)
-}
-
-/// Put a pause request as a timed-out dialog does, without the wait.
-#[cfg(test)]
-pub fn request_pause_for_test(session_id: &str) -> oneshot::Receiver<()> {
-    let (tx, rx) = oneshot::channel();
-    PAUSE_REQUESTS
-        .lock()
-        .unwrap()
-        .insert(session_id.to_string(), tx);
-    rx
-}
-
-/// Ask the session's tailer to end the run quietly and wait until it did.
-///
-/// Returns the outcome for the MCP call. After a confirmed pause nobody reads
-/// it: the CLI is dead. Without a confirmation the call falls back to a
-/// timeout denial, so the CLI never hangs on it.
-async fn pause_run(session_id: &str, wait: Duration) -> DialogOutcome {
-    let (tx, rx) = oneshot::channel();
-    PAUSE_REQUESTS
-        .lock()
-        .unwrap()
-        .insert(session_id.to_string(), tx);
-    match tokio::time::timeout(wait, rx).await {
-        Ok(Ok(())) => DialogOutcome::Denied {
-            message: "Splitkick paused this run until the user answers.".to_string(),
-        },
-        _ => {
-            PAUSE_REQUESTS.lock().unwrap().remove(session_id);
-            log::warn!("No tailer paused session {session_id}; the dialog times out instead");
-            DialogOutcome::Denied {
-                message: PARK_TIMED_OUT.to_string(),
-            }
-        }
-    }
-}
-
-/// Park until the UI answers `tool_use_id`, or the timeout expires.
-///
-/// The caller is the MCP `permission_prompt` handler, running on the socket
-/// task — blocking here blocks only that one MCP call, not the app.
-pub async fn park(
-    app: &AppHandle,
-    session_id: &str,
-    tool_use_id: &str,
-    kind: &str,
-) -> DialogOutcome {
-    let (tx, rx) = oneshot::channel();
-    {
-        let mut pending = PENDING.lock().unwrap();
-        // A retried tool_use_id replaces the old waiter; the stale one resolves
-        // as denied so its MCP call unblocks instead of leaking.
-        if let Some(previous) = pending.insert(
-            tool_use_id.to_string(),
-            PendingDialog {
-                session_id: session_id.to_string(),
-                kind: kind.to_string(),
-                responder: tx,
-            },
-        ) {
-            let _ = previous.responder.send(DialogOutcome::Denied {
-                message: "Superseded by a newer request for the same tool call.".to_string(),
-            });
-        }
-    }
-
-    // Tell the UI a turn is parked on user input. The tool_use block itself
-    // already streams through the normal chat path, so this only drives the
-    // waiting-state affordances (canvas badge, sidebar dot, notifications).
-    let _ = app.emit_all(
-        "claude:dialog-waiting",
-        &json!({
-            "sessionId": session_id,
-            "toolUseId": tool_use_id,
-            "kind": kind,
-        }),
-    );
-
-    let outcome = wait_or_pause(session_id, tool_use_id, rx, DIALOG_PARK_TIMEOUT).await;
-
-    let _ = app.emit_all(
-        "claude:dialog-resolved",
-        &json!({
-            "sessionId": session_id,
-            "toolUseId": tool_use_id,
-        }),
-    );
-
-    outcome
-}
-
-/// Wait for the UI's answer; after `timeout`, pause the run instead (#155).
-async fn wait_or_pause(
-    session_id: &str,
-    tool_use_id: &str,
-    rx: oneshot::Receiver<DialogOutcome>,
-    timeout: Duration,
-) -> DialogOutcome {
-    match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(outcome)) => outcome,
-        // Sender dropped without answering (session cancelled, app shutting down).
-        Ok(Err(_)) => DialogOutcome::Denied {
-            message: "Splitkick closed this request before it was answered.".to_string(),
-        },
-        Err(_) => {
-            // From now on an answer finds nothing parked and goes as a new
-            // message, which waits for this run to end.
-            PENDING.lock().unwrap().remove(tool_use_id);
-            pause_run(session_id, PAUSE_CONFIRM_TIMEOUT).await
-        }
-    }
-}
-
-/// Resolve a parked dialog without checking that its turn still lives.
-///
-/// Test-only. Production goes through [`resolve_live`]: a shim outlives the CLI
-/// it answered for, so an unchecked resolve reports a dead turn as answered and
-/// the UI drops the follow-up message.
-#[cfg(test)]
-pub fn resolve(tool_use_id: &str, outcome: DialogOutcome) -> bool {
-    let Some(pending) = PENDING.lock().unwrap().remove(tool_use_id) else {
-        return false;
-    };
-    pending.responder.send(outcome).is_ok()
-}
-
-/// Resolve a parked dialog only when its turn can still take the answer.
-///
-/// A `permission_prompt` request can reach Jean after the blocking-tool kill
-/// released the session's dialogs: the shim outlives the CLI. That waiter
-/// belongs to a dead turn, so report `false` and let the caller send the
-/// answer as a new message.
-pub fn resolve_live(
-    tool_use_id: &str,
-    outcome: DialogOutcome,
-    is_live: impl Fn(&str) -> bool,
-) -> bool {
-    let Some(pending) = PENDING.lock().unwrap().remove(tool_use_id) else {
-        return false;
-    };
-    if !is_live(&pending.session_id) {
-        // Unblock the orphaned shim so it exits.
-        let _ = pending.responder.send(DialogOutcome::Denied {
-            message: "The turn that asked this has ended.".to_string(),
-        });
-        return false;
-    }
-    pending.responder.send(outcome).is_ok()
-}
-
-/// Apply one outcome to every dialog parked for a session.
-///
-/// Used by plan approval, which resolves the parked `ExitPlanMode` without
-/// needing to thread the tool_use id through the plan UI.
-pub fn resolve_session(session_id: &str, outcome: DialogOutcome) -> usize {
-    let drained: Vec<PendingDialog> = {
-        let mut pending = PENDING.lock().unwrap();
-        let ids: Vec<String> = pending
-            .iter()
-            .filter(|(_, p)| p.session_id == session_id)
-            .map(|(id, _)| id.clone())
-            .collect();
-        ids.iter().filter_map(|id| pending.remove(id)).collect()
-    };
-    let count = drained.len();
-    for pending in drained {
-        let _ = pending.responder.send(outcome.clone());
-    }
-    count
-}
-
-/// Deny every dialog parked for a session. Called when a run is cancelled so
-/// the detached CLI does not sit on an MCP call nothing will ever answer.
-pub fn cancel_session(session_id: &str) -> usize {
-    let drained: Vec<PendingDialog> = {
-        let mut pending = PENDING.lock().unwrap();
-        let ids: Vec<String> = pending
-            .iter()
-            .filter(|(_, p)| p.session_id == session_id)
-            .map(|(id, _)| id.clone())
-            .collect();
-        ids.iter().filter_map(|id| pending.remove(id)).collect()
-    };
-    let count = drained.len();
-    for pending in drained {
-        let _ = pending.responder.send(DialogOutcome::Denied {
-            message: "The user cancelled this turn.".to_string(),
-        });
-    }
-    count
-}
-
-/// Deny every dialog parked for a session because the user sent a new message
-/// instead of answering (#141). The model is told to end its turn, so the run
-/// finishes and the new message can start the next one.
-pub fn skip_session(session_id: &str) -> usize {
-    resolve_session(
-        session_id,
-        DialogOutcome::Denied {
-            message: SKIPPED_BY_NEW_MESSAGE.to_string(),
-        },
-    )
-}
-
 /// Denial text of [`DialogOutcome::EndTurn`], read only by a CLI without
 /// `interrupt`.
 pub const END_TURN_MESSAGE: &str = "The user has not answered yet. End your turn now and call \
 no more tools. The answer follows in the next user message.";
 
-/// Tool result for a dialog the user skipped by sending a new message.
-pub const SKIPPED_BY_NEW_MESSAGE: &str = "The user skipped this and sent a new message \
-instead. Do not continue the task in this turn: end your turn now with one short sentence \
-and call no more tools. The new message follows in the next turn.";
-
-/// Kind (`question` / `plan`) of the first dialog parked for a session, if any.
-pub fn parked_kind_for_session(session_id: &str) -> Option<String> {
-    PENDING
-        .lock()
-        .unwrap()
-        .values()
-        .find(|p| p.session_id == session_id)
-        .map(|p| p.kind.clone())
-}
-
-/// Whether a dialog is currently parked for `tool_use_id`.
-pub fn is_parked(tool_use_id: &str) -> bool {
-    PENDING.lock().unwrap().contains_key(tool_use_id)
-}
-
 /// Build the MCP `permission_prompt` payload Claude expects back.
-///
-/// `allow` splices `updatedInput` into the tool's input before `call()` runs,
-/// which is how answers reach `AskUserQuestion` — its `call()` reads `answers`
-/// straight out of its own input and hands it to the model.
 pub fn permission_payload(outcome: &DialogOutcome, original_input: &Value) -> Value {
     match outcome {
-        DialogOutcome::Answered { answers, response } => {
-            let mut updated = original_input.clone();
-            if let Some(obj) = updated.as_object_mut() {
-                obj.insert("answers".to_string(), answers.clone());
-                if let Some(response) = response.as_ref().filter(|r| !r.trim().is_empty()) {
-                    obj.insert("response".to_string(), Value::String(response.clone()));
-                }
-            }
-            json!({ "behavior": "allow", "updatedInput": updated })
-        }
         DialogOutcome::Approved => {
             json!({ "behavior": "allow", "updatedInput": original_input })
         }
-        // Leave plan mode in the same turn. `acceptEdits` for build and yolo
-        // alike: the CLI refuses `bypassPermissions` for a run that did not
-        // start with it, and Jean's own permission verdict (the registry's turn
-        // mode, see `claude_dialog_tool`) approves the rest in yolo.
-        DialogOutcome::PlanApproved { .. } => json!({
-            "behavior": "allow",
-            "updatedInput": original_input,
-            "updatedPermissions": [{
-                "type": "setMode",
-                "mode": "acceptEdits",
-                "destination": "session",
-            }],
-        }),
         DialogOutcome::Denied { message } => {
             json!({ "behavior": "deny", "message": message })
         }
@@ -378,46 +62,6 @@ pub fn permission_payload(outcome: &DialogOutcome, original_input: &Value) -> Va
 mod tests {
     use super::*;
 
-    #[test]
-    fn answers_are_spliced_into_the_original_input() {
-        let input = json!({
-            "questions": [{"question": "Which cache?", "options": [{"label": "Redis"}]}]
-        });
-        let payload = permission_payload(
-            &DialogOutcome::Answered {
-                answers: json!({"Which cache?": "Redis"}),
-                response: None,
-            },
-            &input,
-        );
-        assert_eq!(payload["behavior"], "allow");
-        // The questions must survive: AskUserQuestion's call() echoes both back.
-        assert!(payload["updatedInput"]["questions"].is_array());
-        assert_eq!(payload["updatedInput"]["answers"]["Which cache?"], "Redis");
-        assert!(payload["updatedInput"].get("response").is_none());
-    }
-
-    #[test]
-    fn freeform_response_is_included_when_non_empty() {
-        let payload = permission_payload(
-            &DialogOutcome::Answered {
-                answers: json!({}),
-                response: Some("neither, use Postgres".to_string()),
-            },
-            &json!({"questions": []}),
-        );
-        assert_eq!(payload["updatedInput"]["response"], "neither, use Postgres");
-
-        let blank = permission_payload(
-            &DialogOutcome::Answered {
-                answers: json!({}),
-                response: Some("   ".to_string()),
-            },
-            &json!({"questions": []}),
-        );
-        assert!(blank["updatedInput"].get("response").is_none());
-    }
-
     /// A question or plan ends the turn: deny with `interrupt`, so the CLI
     /// closes the call and exits instead of handing the model a denial.
     #[test]
@@ -436,42 +80,6 @@ mod tests {
         assert_eq!(payload["updatedInput"]["plan"], "# Plan\n- do the thing");
     }
 
-    /// An approved plan leaves plan mode in the same turn (#136).
-    #[test]
-    fn plan_approval_switches_the_run_out_of_plan_mode() {
-        let input = json!({"plan": "# Plan", "planFilePath": "/tmp/plans/p.md"});
-        let payload = permission_payload(
-            &DialogOutcome::PlanApproved {
-                mode: "yolo".to_string(),
-            },
-            &input,
-        );
-        assert_eq!(payload["behavior"], "allow");
-        assert_eq!(payload["updatedInput"], input);
-        assert_eq!(payload["updatedPermissions"][0]["type"], "setMode");
-        assert_eq!(payload["updatedPermissions"][0]["mode"], "acceptEdits");
-        assert_eq!(payload["updatedPermissions"][0]["destination"], "session");
-    }
-
-    /// A new message instead of an answer skips the parked dialog (#141) and
-    /// tells the model to end the turn, so the new message can run next.
-    #[tokio::test]
-    async fn skip_session_denies_with_the_end_turn_message() {
-        let rx = park_for_test("toolu_skip_by_message", "skip-by-message-session");
-        assert_eq!(
-            parked_kind_for_session("skip-by-message-session").as_deref(),
-            Some("question")
-        );
-
-        assert_eq!(skip_session("skip-by-message-session"), 1);
-
-        match rx.await.unwrap() {
-            DialogOutcome::Denied { message } => assert_eq!(message, SKIPPED_BY_NEW_MESSAGE),
-            other => panic!("expected a denial, got {other:?}"),
-        }
-        assert!(parked_kind_for_session("skip-by-message-session").is_none());
-    }
-
     #[test]
     fn denial_carries_the_message_and_no_input() {
         let payload = permission_payload(
@@ -483,145 +91,5 @@ mod tests {
         assert_eq!(payload["behavior"], "deny");
         assert_eq!(payload["message"], "nope");
         assert!(payload.get("updatedInput").is_none());
-    }
-
-    #[test]
-    fn resolve_reports_false_when_nothing_is_parked() {
-        assert!(!resolve(
-            "toolu_never_parked",
-            DialogOutcome::Denied {
-                message: "x".to_string()
-            }
-        ));
-    }
-
-    #[tokio::test]
-    async fn cancel_session_denies_only_that_session() {
-        let (tx_a, rx_a) = oneshot::channel();
-        let (tx_b, rx_b) = oneshot::channel();
-        {
-            let mut pending = PENDING.lock().unwrap();
-            pending.insert(
-                "toolu_cancel_a".to_string(),
-                PendingDialog {
-                    session_id: "cancel-session-a".to_string(),
-                    kind: "question".to_string(),
-                    responder: tx_a,
-                },
-            );
-            pending.insert(
-                "toolu_cancel_b".to_string(),
-                PendingDialog {
-                    session_id: "cancel-session-b".to_string(),
-                    kind: "question".to_string(),
-                    responder: tx_b,
-                },
-            );
-        }
-
-        assert_eq!(cancel_session("cancel-session-a"), 1);
-        assert!(matches!(rx_a.await.unwrap(), DialogOutcome::Denied { .. }));
-        // The other session is untouched and still parked.
-        assert!(is_parked("toolu_cancel_b"));
-
-        // Leave the shared registry as we found it: PENDING is a process-wide
-        // static, so a test that abandons an entry breaks its neighbours.
-        assert_eq!(cancel_session("cancel-session-b"), 1);
-        drop(rx_b);
-    }
-
-    fn park_for_test(tool_use_id: &str, session_id: &str) -> oneshot::Receiver<DialogOutcome> {
-        let (tx, rx) = oneshot::channel();
-        PENDING.lock().unwrap().insert(
-            tool_use_id.to_string(),
-            PendingDialog {
-                session_id: session_id.to_string(),
-                kind: "question".to_string(),
-                responder: tx,
-            },
-        );
-        rx
-    }
-
-    fn answered() -> DialogOutcome {
-        DialogOutcome::Answered {
-            answers: json!({"Which cache?": "Redis"}),
-            response: None,
-        }
-    }
-
-    /// The shim outlives the killed CLI, so its request can park after the
-    /// kill released the session. Reporting that answer as delivered made the
-    /// UI skip the follow-up message, and the answer was lost.
-    #[tokio::test]
-    async fn an_answer_for_a_dead_turn_is_not_reported_as_delivered() {
-        let rx = park_for_test("toolu_dead_turn", "dead-turn-session");
-
-        assert!(!resolve_live("toolu_dead_turn", answered(), |_| false));
-
-        // The orphaned shim is unblocked, and nothing stays parked.
-        assert!(matches!(rx.await.unwrap(), DialogOutcome::Denied { .. }));
-        assert!(!is_parked("toolu_dead_turn"));
-    }
-
-    #[tokio::test]
-    async fn an_answer_for_a_live_turn_is_delivered() {
-        let rx = park_for_test("toolu_live_turn", "live-turn-session");
-
-        assert!(resolve_live("toolu_live_turn", answered(), |session| {
-            session == "live-turn-session"
-        }));
-
-        assert!(matches!(rx.await.unwrap(), DialogOutcome::Answered { .. }));
-        assert!(!is_parked("toolu_live_turn"));
-    }
-
-    /// A dialog that outlives the park timeout asks the tailer to end the run
-    /// and gives the model no answer of its own (#155).
-    #[tokio::test]
-    async fn a_timed_out_dialog_pauses_the_run_through_the_tailer() {
-        let rx = park_for_test("toolu_pause", "pause-session");
-        let waiter = tokio::spawn(wait_or_pause(
-            "pause-session",
-            "toolu_pause",
-            rx,
-            Duration::from_millis(10),
-        ));
-
-        // The tailer finds the request, ends the CLI and confirms.
-        let confirm = loop {
-            if let Some(confirm) = take_pause_request("pause-session") {
-                break confirm;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        };
-        // An answer that comes now finds nothing parked: it goes as a new
-        // message that resumes the session.
-        assert!(!is_parked("toolu_pause"));
-        confirm.send(()).unwrap();
-
-        match waiter.await.unwrap() {
-            DialogOutcome::Denied { message } => assert_ne!(message, PARK_TIMED_OUT),
-            other => panic!("expected the paused outcome, got {other:?}"),
-        }
-        assert!(take_pause_request("pause-session").is_none());
-    }
-
-    /// Without a tailer to end the run, the call still returns, so the CLI
-    /// does not hang until its own MCP timeout.
-    #[tokio::test]
-    async fn a_pause_without_a_tailer_falls_back_to_the_timeout_denial() {
-        match pause_run("pause-no-tailer-session", Duration::from_millis(10)).await {
-            DialogOutcome::Denied { message } => assert_eq!(message, PARK_TIMED_OUT),
-            other => panic!("expected a denial, got {other:?}"),
-        }
-        assert!(take_pause_request("pause-no-tailer-session").is_none());
-    }
-
-    #[test]
-    fn resolve_live_reports_false_when_nothing_is_parked() {
-        assert!(!resolve_live("toolu_never_parked_live", answered(), |_| {
-            true
-        }));
     }
 }

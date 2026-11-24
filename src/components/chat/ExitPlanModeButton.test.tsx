@@ -232,30 +232,6 @@ beforeEach(() => {
 })
 
 describe('ExitPlanModeButton', () => {
-  // #155: the run ended at the plan; approving resumes it in a new turn.
-  it('says that the agent is paused only when no run waits for the approval', () => {
-    const { rerender } = render(
-      <ExitPlanModeButton
-        toolCalls={planToolCalls}
-        isApproved={false}
-        sessionId="session-1"
-        paused
-      />
-    )
-    expect(screen.getByTestId('plan-paused-note')).toHaveTextContent(
-      'The agent is paused — approving resumes it.'
-    )
-
-    rerender(
-      <ExitPlanModeButton
-        toolCalls={planToolCalls}
-        isApproved={false}
-        sessionId="session-1"
-      />
-    )
-    expect(screen.queryByTestId('plan-paused-note')).toBeNull()
-  })
-
   it('keeps YOLO as the primary left button and Approve as the secondary right button', async () => {
     const user = userEvent.setup()
     const onPlanApproval = vi.fn()

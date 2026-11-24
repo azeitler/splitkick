@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { MessageItem } from './MessageItem'
@@ -9,7 +9,6 @@ import type {
   Question,
 } from '@/types/chat'
 import { useUIStore } from '@/store/ui-store'
-import { useChatStore } from '@/store/chat-store'
 import { formatMessageTimestamp } from '@/lib/relative-time'
 
 const mocks = vi.hoisted(() => ({
@@ -569,61 +568,6 @@ describe('MessageItem', () => {
     expect(question.compareDocumentPosition(finalText)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     )
-  })
-
-  describe('a question with no run behind it (#155)', () => {
-    const pausedMessage = {
-      ...baseMessage,
-      content: '',
-      tool_calls: [
-        {
-          id: 'question-paused',
-          name: 'AskUserQuestion',
-          input: {
-            questions: [
-              {
-                header: 'Next',
-                question: 'What next?',
-                multiSelect: false,
-                options: [
-                  { label: 'Ship', description: 'Ship it' },
-                  { label: 'Wait', description: 'Wait' },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-      content_blocks: [
-        { type: 'tool_use' as const, tool_call_id: 'question-paused' },
-      ],
-    }
-
-    afterEach(() => {
-      const store = useChatStore.getState()
-      store.setParkedClaudeDialog(baseMessage.session_id, null)
-      store.removeSendingSession(baseMessage.session_id)
-    })
-
-    it('says the agent is paused when the run ended before the answer', () => {
-      render(<MessageItem {...baseProps} message={pausedMessage} />)
-      expect(screen.getByTestId('question-paused-note')).toBeInTheDocument()
-    })
-
-    it('shows no note while a live run is parked on the question', () => {
-      useChatStore.getState().setParkedClaudeDialog(baseMessage.session_id, {
-        toolUseId: 'question-paused',
-        kind: 'question',
-      })
-      render(<MessageItem {...baseProps} message={pausedMessage} />)
-      expect(screen.queryByTestId('question-paused-note')).toBeNull()
-    })
-
-    it('shows no note while the session sends a new turn', () => {
-      useChatStore.getState().addSendingSession(baseMessage.session_id)
-      render(<MessageItem {...baseProps} message={pausedMessage} />)
-      expect(screen.queryByTestId('question-paused-note')).toBeNull()
-    })
   })
 
   it('keeps the time line under the last text when nothing follows it', () => {

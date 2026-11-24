@@ -17,17 +17,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import {
-  AlertTriangle,
-  ChevronRight,
-  CheckCircle2,
-  Circle,
-  CirclePause,
-} from 'lucide-react'
+import { AlertTriangle, ChevronRight, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { getQuestionToolError } from '@/types/chat'
-import { PAUSED_QUESTION_NOTE } from './claude-dialog-events'
 import type { Question, QuestionAnswer } from '@/types/chat'
 
 interface AskUserQuestionProps {
@@ -51,11 +44,6 @@ interface AskUserQuestionProps {
   isSkipped?: boolean
   /** Persisted tool output (fallback when Zustand state is lost after reload) */
   toolOutput?: string
-  /**
-   * No run waits for this answer any more (#155): the answer resumes the
-   * session as a new message. Shows a note on the open card.
-   */
-  paused?: boolean
 }
 
 /**
@@ -81,7 +69,6 @@ export function AskUserQuestion({
   hasFollowUpMessage = false,
   isSkipped = false,
   toolOutput,
-  paused = false,
 }: AskUserQuestionProps) {
   // Local state for answers
   // Structure: answers[questionIndex] = { selectedOptions: [0, 2], customText: 'foo' }
@@ -661,16 +648,6 @@ export function AskUserQuestion({
               The question failed: {toolError}. Your answer goes to the agent as
               a new message.
             </span>
-          </div>
-        )}
-
-        {!readOnly && !toolError && paused && (
-          <div
-            data-testid="question-paused-note"
-            className="flex items-start gap-2 text-muted-foreground"
-          >
-            <CirclePause className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{PAUSED_QUESTION_NOTE}</span>
           </div>
         )}
 

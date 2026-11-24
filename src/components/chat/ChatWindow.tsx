@@ -28,10 +28,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke } from '@/lib/transport'
-import {
-  hydrateParkedClaudeDialog,
-  isRunAwaitingAnswer,
-} from './claude-dialog-events'
+import { isRunAwaitingAnswer } from './claude-dialog-events'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
@@ -1014,14 +1011,10 @@ export function ChatWindow({
       ? (state.activeToolCalls[deferredSessionId] ?? EMPTY_TOOL_CALLS)
       : EMPTY_TOOL_CALLS
   )
-  // The live run waits for an answer to a question or plan: no running timer.
-  const hasParkedDialog = useChatStore(state =>
-    deferredSessionId ? !!state.parkedClaudeDialogs[deferredSessionId] : false
-  )
+  // The live run waits for an answer to a streamed question: no running timer.
   const runAwaitsAnswer = useMemo(
     () =>
       isRunAwaitingAnswer({
-        parked: hasParkedDialog,
         toolCalls: currentToolCalls,
         isAnswered: id =>
           !!deferredSessionId && isQuestionAnswered(deferredSessionId, id),
@@ -1029,7 +1022,6 @@ export function ChatWindow({
     // answeredQuestionsSize re-runs this when a question is answered.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      hasParkedDialog,
       currentToolCalls,
       deferredSessionId,
       isQuestionAnswered,
@@ -1042,15 +1034,6 @@ export function ChatWindow({
         EMPTY_CONTENT_BLOCKS)
       : EMPTY_CONTENT_BLOCKS
   )
-  // A reload or another client missed `claude:dialog-waiting`: ask the
-  // backend whether the live turn is parked on its open question or plan (#136).
-  useEffect(() => {
-    if (!isSending || !deferredSessionId || session?.backend !== 'claude')
-      return
-    hydrateParkedClaudeDialog(deferredSessionId, currentToolCalls, toolUseId =>
-      invoke<boolean>('is_claude_dialog_pending', { toolUseId })
-    ).catch(() => undefined)
-  }, [isSending, deferredSessionId, session?.backend, currentToolCalls])
   // Per-session input - check if there's any input for submit button state
   // PERFORMANCE: Track hasValue via callback from ChatInput instead of store subscription
   // ChatInput notifies on mount, session change, and empty/non-empty boundary changes
@@ -2624,7 +2607,6 @@ export function ChatWindow({
   const {
     handleQuestionAnswer,
     handleSkipQuestion,
-    handleParkedPlanApproval,
     handlePlanApproval,
     handlePlanApprovalYolo,
     handleClearContextApproval,
@@ -3587,9 +3569,6 @@ export function ChatWindow({
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
                                       onCopySteeredText={handleCopySteeredText}
-                                      onParkedPlanApproval={
-                                        handleParkedPlanApproval
-                                      }
                                     />
                                   ) : (
                                     <StreamingMessage
@@ -3611,9 +3590,6 @@ export function ChatWindow({
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
                                       onCopySteeredText={handleCopySteeredText}
-                                      onParkedPlanApproval={
-                                        handleParkedPlanApproval
-                                      }
                                     />
                                   ))}
                                 <StreamingStatusBar

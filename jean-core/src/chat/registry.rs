@@ -417,8 +417,6 @@ pub fn cleanup_session_registrations(session_id: &str) {
         .is_some();
     lock_recover(&CODEX_YOLO_AUTO_APPROVE, "CODEX_YOLO_AUTO_APPROVE").remove(session_id);
     lock_recover(&TURN_EXECUTION_MODE, "TURN_EXECUTION_MODE").remove(session_id);
-    // A detached CLI may still be parked on a dialog nothing will answer now.
-    crate::chat::claude_dialog::cancel_session(session_id);
 
     if removed_pid.is_some() || removed_pending || removed_flag || removed_turn {
         log::warn!(
@@ -777,9 +775,6 @@ pub fn cancel_process(
         registry.remove(session_id)
     };
     lock_recover(&DETACHED_SESSIONS, "DETACHED_SESSIONS").remove(session_id);
-    // Unpark any dialog first: killing the CLI takes its MCP child with it, so
-    // nothing would ever answer, and the waiter would linger until it timed out.
-    crate::chat::claude_dialog::cancel_session(session_id);
 
     if let Some(pid) = pid {
         // SAFETY: Never kill PID 0 (would kill our own process group) or PID 1 (init/launchd)

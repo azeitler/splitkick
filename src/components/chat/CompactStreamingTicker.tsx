@@ -18,7 +18,6 @@ import {
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { StreamingMessage } from './StreamingMessage'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
-import { useChatStore } from '@/store/chat-store'
 import { isRunAwaitingAnswer } from './claude-dialog-events'
 import {
   coalesceContentBlocks,
@@ -288,11 +287,9 @@ export const CompactStreamingTicker = memo(function CompactStreamingTicker(
   } = props
   const [isOpen, setIsOpen] = useState(false)
   // No spinner while the run waits for an answer: nothing runs then.
-  const parked = useChatStore(state => !!state.parkedClaudeDialogs[sessionId])
   const showLoadingIndicator =
     (props.showLoadingIndicator ?? true) &&
     !isRunAwaitingAnswer({
-      parked,
       toolCalls,
       isAnswered: id => isQuestionAnswered(sessionId, id),
     })
