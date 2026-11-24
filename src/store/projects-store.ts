@@ -55,6 +55,9 @@ interface ProjectsUIState {
   // Agent IDs whose row is collapsed in the sidebar's Agents tab. Agents
   // start expanded, so the set holds the exceptions.
   collapsedAgentIds: Set<string>
+  // Collapsed session nodes inside the Agents tab tree, keyed
+  // `<agentId>:<sessionId>`. Child lists start open.
+  collapsedAgentNodeKeys: Set<string>
 
   // Starred sessions, across every project, in star order
   starredSessions: StarredSessionRef[]
@@ -135,6 +138,9 @@ interface ProjectsUIState {
   toggleProjectGraphsExpanded: (projectId: string) => void
   // Agent row expansion in the Agents tab
   toggleAgentCollapsed: (agentId: string) => void
+  toggleAgentNodeCollapsed: (nodeKey: string) => void
+  // Collapse all / Expand all: replace both sets at once.
+  setAgentTreeCollapsed: (agentIds: string[], nodeKeys: string[]) => void
 
   // Starred sessions
   starSession: (star: StarredSessionRef) => void
@@ -241,6 +247,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedPinnedProjectIds: new Set<string>(),
       expandedGraphsProjectIds: new Set<string>(),
       collapsedAgentIds: new Set<string>(),
+      collapsedAgentNodeKeys: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
       todoSectionCollapsed: false,
@@ -594,6 +601,41 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'toggleAgentCollapsed'
+        ),
+
+      toggleAgentNodeCollapsed: nodeKey =>
+        set(
+          state => {
+            const newSet = new Set(state.collapsedAgentNodeKeys)
+            if (newSet.has(nodeKey)) {
+              newSet.delete(nodeKey)
+            } else {
+              newSet.add(nodeKey)
+            }
+            return { collapsedAgentNodeKeys: newSet }
+          },
+          undefined,
+          'toggleAgentNodeCollapsed'
+        ),
+
+      setAgentTreeCollapsed: (agentIds, nodeKeys) =>
+        set(
+          state => {
+            if (
+              agentIds.length === 0 &&
+              nodeKeys.length === 0 &&
+              state.collapsedAgentIds.size === 0 &&
+              state.collapsedAgentNodeKeys.size === 0
+            ) {
+              return state
+            }
+            return {
+              collapsedAgentIds: new Set(agentIds),
+              collapsedAgentNodeKeys: new Set(nodeKeys),
+            }
+          },
+          undefined,
+          'setAgentTreeCollapsed'
         ),
 
       // Dashboard collapse actions

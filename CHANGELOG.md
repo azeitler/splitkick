@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Every level of the agent tree opens and closes.** In the Agents tab, the
+  sessions an agent's current session started nest to any depth, and each
+  row with children has its own toggle; a closed row shows how many
+  sessions it hides. Splitkick remembers each row. Left/Right close and open
+  a focused row in the desktop app, and a header button collapses or
+  expands everything.
+
 ## [1.6.0] - 2026-11-23
 
 Built on Jean 0.1.73.

@@ -281,6 +281,12 @@ export function useUIStatePersistence() {
         collapsedAgentIds: new Set(collapsedAgentIds),
       })
     }
+    const collapsedAgentNodeKeys = uiState.collapsed_agent_node_keys ?? []
+    if (collapsedAgentNodeKeys.length > 0) {
+      useProjectsStore.setState({
+        collapsedAgentNodeKeys: new Set(collapsedAgentNodeKeys),
+      })
+    }
 
     // Restore left sidebar size (must be at least 150px to be valid)
     if (uiState.left_sidebar_size != null && uiState.left_sidebar_size >= 150) {
@@ -1057,6 +1063,8 @@ export function useUIStatePersistence() {
     let prevExpandedGraphsProjectIds =
       useProjectsStore.getState().expandedGraphsProjectIds
     let prevCollapsedAgentIds = useProjectsStore.getState().collapsedAgentIds
+    let prevCollapsedAgentNodeKeys =
+      useProjectsStore.getState().collapsedAgentNodeKeys
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1140,7 +1148,8 @@ export function useUIStatePersistence() {
       const pinnedProjectIdsChanged =
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds ||
         state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds ||
-        state.collapsedAgentIds !== prevCollapsedAgentIds
+        state.collapsedAgentIds !== prevCollapsedAgentIds ||
+        state.collapsedAgentNodeKeys !== prevCollapsedAgentNodeKeys
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1174,6 +1183,7 @@ export function useUIStatePersistence() {
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
         prevCollapsedAgentIds = state.collapsedAgentIds
+        prevCollapsedAgentNodeKeys = state.collapsedAgentNodeKeys
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevTodoSectionCollapsed = state.todoSectionCollapsed

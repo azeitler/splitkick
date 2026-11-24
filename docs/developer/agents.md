@@ -144,16 +144,21 @@ Three ways make one, and all end in the same target:
 ## UI
 
 - Sidebar tab **Agents** (`SidebarAgentsSection`): "Global" first, then one
-  group per project. Each agent is a row that opens and closes (open by
-  default; collapsed ids persist as `collapsed_agent_ids` in UI state). Under
-  it: the current session with the sessions it started indented below it
-  (`started_by_session_id`, the session-network links, from
-  `list_all_sessions`; archived children left out), then the past sessions
-  from `pastSessionIds`, newest first. A past session only counts its
-  children ("6d ago · 2 children"). An archived past session opens by
-  restoring it. A deleted one, or one in an archived workspace, is not in
-  `list_all_sessions` and is left out. The rows under an agent hide the
-  agent badge (`showAgentBadge={false}`), which would repeat its name.
+  group per project. Each agent row opens and closes. Under it: the current
+  session as the root of a tree of the sessions it started, nested to any
+  depth (`started_by_session_id`, the session-network links, from
+  `list_all_sessions`; archived children and link loops left out), then the
+  past sessions from `pastSessionIds`, newest first. A past session only
+  counts its children ("6d ago · 2 children"). An archived past session
+  opens by restoring it. A deleted one, or one in an archived workspace, is
+  not in `list_all_sessions` and is left out. Every session row with
+  children has its own toggle (a chevron while open, the count of hidden
+  sessions while closed); Left/Right on a focused row close and open it in
+  the desktop app. The header button collapses or expands everything. Open
+  state persists in UI state: `collapsed_agent_ids` for agent rows (open by
+  default) and `collapsed_agent_node_keys` (`<agentId>:<sessionId>`) for
+  session nodes (open by default). The rows under an agent hide the agent
+  badge (`showAgentBadge={false}`), which would repeat its name.
 - `AgentDialog` (mounted in `MainWindow`, opened through
   `ui-store.agentDialog`): new agent, make a session an agent, rename.
 - Session context menu (`SessionAgentMenuItems`): Make Agent…, or Rename

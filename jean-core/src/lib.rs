@@ -3142,6 +3142,10 @@ pub struct UIState {
     #[serde(default)]
     pub collapsed_agent_ids: Vec<String>,
 
+    /// Collapsed session nodes in the Agents tab tree, `<agentId>:<sessionId>`
+    #[serde(default)]
+    pub collapsed_agent_node_keys: Vec<String>,
+
     /// Left sidebar width in pixels, defaults to 250
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
@@ -3486,6 +3490,7 @@ impl Default for UIState {
             expanded_pinned_project_ids: Vec::new(),
             expanded_graphs_project_ids: Vec::new(),
             collapsed_agent_ids: Vec::new(),
+            collapsed_agent_node_keys: Vec::new(),
             left_sidebar_size: None,
             left_sidebar_visible: None,
             file_browser_size: None,

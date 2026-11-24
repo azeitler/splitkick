@@ -1,6 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+} from 'react'
 import { confirmRemoveAgent } from '@/lib/destructive-confirms'
-import { Archive, BotMessageSquare, X } from 'lucide-react'
+import {
+  Archive,
+  BotMessageSquare,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  X,
+} from 'lucide-react'
 import { groupAgents } from '@/components/agents/agent-rows'
 import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -10,6 +23,8 @@ import {
   type SessionShortcut,
 } from '@/components/chat/SessionShortcutRows'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isNativeApp } from '@/lib/environment'
+import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
 import { cn } from '@/lib/utils'
@@ -50,6 +65,68 @@ const AGENT_SESSION_LIST = 'ml-[18px] border-l border-border/40'
 
 /** Guide line under the current session's status dot, for its children. */
 const AGENT_CHILD_LIST = 'ml-[14px] border-l border-border/40'
+
+/** The key of a session node in the Agents tab tree. */
+export function agentNodeKey(agentId: string, sessionId: string): string {
+  return `${agentId}:${sessionId}`
+}
+
+/** Parent session id → the sessions it started, newest first. */
+type ChildrenMap = Map<string, FoundSession[]>
+
+/** Every session below `sessionId`. `seen` stops a link loop. */
+function countDescendants(
+  childrenOf: ChildrenMap,
+  sessionId: string,
+  seen = new Set<string>([sessionId])
+): number {
+  let count = 0
+  for (const child of childrenOf.get(sessionId) ?? []) {
+    if (seen.has(child.session.id)) continue
+    seen.add(child.session.id)
+    count += 1 + countDescendants(childrenOf, child.session.id, seen)
+  }
+  return count
+}
+
+/** The keys of every node under an agent's current session that has children. */
+function parentNodeKeys(
+  agentId: string,
+  childrenOf: ChildrenMap,
+  sessionId: string,
+  seen = new Set<string>([sessionId])
+): string[] {
+  const children = childrenOf.get(sessionId) ?? []
+  if (children.length === 0) return []
+  const keys = [agentNodeKey(agentId, sessionId)]
+  for (const child of children) {
+    if (seen.has(child.session.id)) continue
+    seen.add(child.session.id)
+    keys.push(...parentNodeKeys(agentId, childrenOf, child.session.id, seen))
+  }
+  return keys
+}
+
+/**
+ * Left/Right on a focused tree row, as in a macOS outline: Left closes an
+ * open row, Right opens a closed one. Desktop app only, like the other
+ * keyboard-only affordances.
+ */
+function outlineKeyHandler(
+  enabled: boolean,
+  open: boolean,
+  toggle: () => void
+): ((e: KeyboardEvent) => void) | undefined {
+  if (!enabled) return undefined
+  return e => {
+    if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+    if (e.target !== e.currentTarget.querySelector('button')) return
+    if ((e.key === 'ArrowLeft' && open) || (e.key === 'ArrowRight' && !open)) {
+      e.preventDefault()
+      toggle()
+    }
+  }
+}
 
 /** "6d ago · 2 children": a past session tells how many it started. */
 function pastContext(updatedAt: number, children: number): string {
@@ -110,19 +187,16 @@ export function SidebarAgentsSection() {
     return map
   }, [agents, data?.entries])
 
-  // Sessions an agent session started (`started_by_session_id`, the links of
-  // the session network), newest first. Archived children are left out.
+  // Sessions another session started (`started_by_session_id`, the links of
+  // the session network), newest first, so the tree can nest them. Archived
+  // children are left out.
   const childrenByParent = useMemo(() => {
-    const parents = new Set<string>()
-    for (const agent of agents) {
-      if (agent.sessionId) parents.add(agent.sessionId)
-      for (const id of agent.pastSessionIds) parents.add(id)
-    }
-    const map = new Map<string, FoundSession[]>()
+    const map: ChildrenMap = new Map()
+    if (agents.length === 0) return map
     for (const entry of data?.entries ?? []) {
       for (const session of entry.sessions) {
         const parent = session.started_by_session_id
-        if (!parent || !parents.has(parent) || session.archived_at) continue
+        if (!parent || session.archived_at) continue
         const list = map.get(parent) ?? []
         list.push({
           projectId: entry.project_id,
@@ -138,7 +212,7 @@ export function SidebarAgentsSection() {
       list.sort((a, b) => b.session.updated_at - a.session.updated_at)
     }
     return map
-  }, [agents, data?.entries])
+  }, [agents.length, data?.entries])
 
   const toShortcut = useCallback(
     (found: FoundSession, context: string): SessionShortcut => ({
@@ -201,6 +275,27 @@ export function SidebarAgentsSection() {
     [isMobile]
   )
 
+  // Collapse all / Expand all. "Expand all" once everything is closed.
+  const allCollapsed = useProjectsStore(state =>
+    agents.every(agent => state.collapsedAgentIds.has(agent.id))
+  )
+  const handleCollapseAll = useCallback(() => {
+    const { setAgentTreeCollapsed } = useProjectsStore.getState()
+    if (allCollapsed) {
+      setAgentTreeCollapsed([], [])
+      return
+    }
+    const nodeKeys = agents.flatMap(agent =>
+      agent.sessionId
+        ? parentNodeKeys(agent.id, childrenByParent, agent.sessionId)
+        : []
+    )
+    setAgentTreeCollapsed(
+      agents.map(agent => agent.id),
+      nodeKeys
+    )
+  }, [agents, allCollapsed, childrenByParent])
+
   if (agents.length === 0) {
     return (
       <div className="flex flex-col items-center">
@@ -217,7 +312,21 @@ export function SidebarAgentsSection() {
 
   return (
     <div data-testid="sidebar-agents-section">
-      <div className="flex items-center justify-end px-2 pt-1">
+      <div className="flex items-center justify-end gap-0.5 px-2 pt-1">
+        <button
+          type="button"
+          onClick={handleCollapseAll}
+          aria-label={allCollapsed ? 'Expand all' : 'Collapse all'}
+          title={allCollapsed ? 'Expand all' : 'Collapse all'}
+          data-testid="sidebar-agents-collapse-all"
+          className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
+        >
+          {allCollapsed ? (
+            <ChevronsUpDown className="size-3" aria-hidden="true" />
+          ) : (
+            <ChevronsDownUp className="size-3" aria-hidden="true" />
+          )}
+        </button>
         <SectionNewButton label="New agent" onClick={openNewAgent} />
       </div>
       {groups.map(group => (
@@ -265,15 +374,8 @@ export function SidebarAgentsSection() {
                     ? currentBySession.get(agent.sessionId)
                     : undefined
                 }
-                currentChildren={(agent.sessionId
-                  ? (childrenByParent.get(agent.sessionId) ?? [])
-                  : []
-                ).map(child =>
-                  toShortcut(
-                    child,
-                    formatRelativeTime(child.session.updated_at)
-                  )
-                )}
+                childrenOf={childrenByParent}
+                toShortcut={toShortcut}
                 past={past}
                 archived={archived}
                 activeSessionId={activeSessionId}
@@ -288,16 +390,18 @@ export function SidebarAgentsSection() {
 }
 
 /**
- * One agent: a row that opens and closes, then its current session with the
- * sessions it started (indented), then its past sessions. Children of past
- * sessions are only counted on their row ("2 children"); the session network
- * shows them. The open state is per agent and persisted
- * (`collapsedAgentIds`; agents start open).
+ * One agent: a row that opens and closes, then its current session as the
+ * root of a tree of the sessions it started (each level opens and closes on
+ * its own), then its past sessions. Children of past sessions are only
+ * counted on their row ("2 children"); the session network shows them. The
+ * open state is persisted: `collapsedAgentIds` for agent rows (agents start
+ * open), `collapsedAgentNodeKeys` for session nodes (child lists start open).
  */
 function AgentItem({
   agent,
   current,
-  currentChildren,
+  childrenOf,
+  toShortcut,
   past,
   archived,
   activeSessionId,
@@ -305,12 +409,14 @@ function AgentItem({
 }: {
   agent: Agent
   current: SessionShortcut | undefined
-  currentChildren: SessionShortcut[]
+  childrenOf: ChildrenMap
+  toShortcut: (found: FoundSession, context: string) => SessionShortcut
   past: SessionShortcut[]
   archived: ArchivedPast[]
   activeSessionId: string | null
   onOpen: (shortcut: SessionShortcut) => void
 }) {
+  const isMobile = useIsMobile()
   const collapsed = useProjectsStore(state =>
     state.collapsedAgentIds.has(agent.id)
   )
@@ -318,7 +424,10 @@ function AgentItem({
     useProjectsStore.getState().toggleAgentCollapsed(agent.id)
   }, [agent.id])
   const hasSession = agent.sessionId !== null
-  const count = (current ? 1 : 0) + past.length + archived.length
+  const count =
+    (current ? 1 + countDescendants(childrenOf, current.sessionId) : 0) +
+    past.length +
+    archived.length
 
   return (
     <div
@@ -330,50 +439,52 @@ function AgentItem({
             : 'sidebar-agent-pending'
       }
     >
-      <SidebarSectionRow
-        icon={
-          <BotMessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
-        }
-        label={agent.name}
-        count={count}
-        expanded={!collapsed}
-        onToggle={handleToggle}
-        actions={hasSession ? undefined : <NoSessionActions agent={agent} />}
-        className="pl-3"
-        testId="sidebar-agent-toggle"
-      />
+      <div
+        onKeyDown={outlineKeyHandler(
+          !isMobile && isNativeApp(),
+          !collapsed,
+          handleToggle
+        )}
+      >
+        <SidebarSectionRow
+          icon={
+            <BotMessageSquare
+              className="size-3.5 shrink-0"
+              aria-hidden="true"
+            />
+          }
+          label={agent.name}
+          count={count}
+          expanded={!collapsed}
+          onToggle={handleToggle}
+          actions={hasSession ? undefined : <NoSessionActions agent={agent} />}
+          className="pl-3"
+          testId="sidebar-agent-toggle"
+        />
+      </div>
       {!collapsed && count > 0 && (
         <div
           className={cn('py-0.5', AGENT_SESSION_LIST)}
           data-testid="sidebar-agent-sessions"
         >
           {current && (
-            <SessionShortcutRows
-              shortcuts={[current]}
-              variant="sidebar"
+            <AgentSessionNode
+              agentId={agent.id}
+              shortcut={current}
+              childrenOf={childrenOf}
+              toShortcut={toShortcut}
+              ancestors={new Set([current.sessionId])}
               showAgentBadge={false}
               activeSessionId={activeSessionId}
               onOpen={onOpen}
             />
-          )}
-          {current && currentChildren.length > 0 && (
-            <div
-              className={cn('py-0.5', AGENT_CHILD_LIST)}
-              data-testid="sidebar-agent-children"
-            >
-              <SessionShortcutRows
-                shortcuts={currentChildren}
-                variant="sidebar"
-                activeSessionId={activeSessionId}
-                onOpen={onOpen}
-              />
-            </div>
           )}
           {past.length > 0 && (
             <SessionShortcutRows
               shortcuts={past}
               variant="sidebar"
               showAgentBadge={false}
+              renderAction={noAction}
               activeSessionId={activeSessionId}
               onOpen={onOpen}
             />
@@ -384,6 +495,128 @@ function AgentItem({
         </div>
       )}
     </div>
+  )
+}
+
+/** Keeps a row without children aligned with rows that have a toggle. */
+const noAction = () => null
+
+/**
+ * One session in an agent's tree, and the sessions it started below it.
+ * A row with children has a toggle at its right edge: a chevron while open,
+ * the count of hidden sessions while closed. A row without keeps the same
+ * right padding, so the names line up.
+ */
+function AgentSessionNode({
+  agentId,
+  shortcut,
+  childrenOf,
+  toShortcut,
+  ancestors,
+  showAgentBadge = true,
+  activeSessionId,
+  onOpen,
+}: {
+  agentId: string
+  shortcut: SessionShortcut
+  childrenOf: ChildrenMap
+  toShortcut: (found: FoundSession, context: string) => SessionShortcut
+  /** Sessions above this node, so a link loop cannot recurse forever. */
+  ancestors: Set<string>
+  showAgentBadge?: boolean
+  activeSessionId: string | null
+  onOpen: (shortcut: SessionShortcut) => void
+}) {
+  const isMobile = useIsMobile()
+  const nodeKey = agentNodeKey(agentId, shortcut.sessionId)
+  const collapsed = useProjectsStore(state =>
+    state.collapsedAgentNodeKeys.has(nodeKey)
+  )
+  const handleToggle = useCallback(() => {
+    useProjectsStore.getState().toggleAgentNodeCollapsed(nodeKey)
+  }, [nodeKey])
+  const children = (childrenOf.get(shortcut.sessionId) ?? []).filter(
+    child => !ancestors.has(child.session.id)
+  )
+  const hidden = collapsed
+    ? countDescendants(childrenOf, shortcut.sessionId)
+    : 0
+
+  const renderAction = useCallback(
+    () =>
+      children.length === 0 ? null : (
+        <button
+          type="button"
+          onClick={handleToggle}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? 'Show' : 'Hide'} sessions started by ${
+            shortcut.session.name || 'Untitled'
+          }`}
+          data-testid="sidebar-agent-node-toggle"
+          className="flex h-5 shrink-0 items-center rounded px-0.5 text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
+        >
+          {collapsed ? (
+            <CollapsedCountBadge
+              count={hidden}
+              noun="session"
+              className="ml-0"
+            />
+          ) : (
+            <ChevronDown
+              className="size-3 rotate-180 opacity-60"
+              aria-hidden="true"
+            />
+          )}
+        </button>
+      ),
+    [children.length, collapsed, handleToggle, hidden, shortcut.session.name]
+  )
+
+  return (
+    <>
+      <div
+        onKeyDown={
+          children.length > 0
+            ? outlineKeyHandler(
+                !isMobile && isNativeApp(),
+                !collapsed,
+                handleToggle
+              )
+            : undefined
+        }
+      >
+        <SessionShortcutRows
+          shortcuts={[shortcut]}
+          variant="sidebar"
+          showAgentBadge={showAgentBadge}
+          renderAction={renderAction}
+          activeSessionId={activeSessionId}
+          onOpen={onOpen}
+        />
+      </div>
+      {!collapsed && children.length > 0 && (
+        <div
+          className={cn('py-0.5', AGENT_CHILD_LIST)}
+          data-testid="sidebar-agent-children"
+        >
+          {children.map(child => (
+            <AgentSessionNode
+              key={child.session.id}
+              agentId={agentId}
+              shortcut={toShortcut(
+                child,
+                formatRelativeTime(child.session.updated_at)
+              )}
+              childrenOf={childrenOf}
+              toShortcut={toShortcut}
+              ancestors={new Set([...ancestors, child.session.id])}
+              activeSessionId={activeSessionId}
+              onOpen={onOpen}
+            />
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

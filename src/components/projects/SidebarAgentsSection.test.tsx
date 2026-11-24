@@ -1,12 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  cancelDialog,
-  confirmDialog,
-  render,
-  waitFor,
-} from '@/test/test-utils'
+import { cancelDialog, confirmDialog, render, waitFor } from '@/test/test-utils'
 import { getCurrentUIState } from '@/lib/ui-state-snapshot'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -23,6 +18,13 @@ const mocks = vi.hoisted(() => ({
   restart: vi.fn(),
   refetch: vi.fn(),
   unarchive: vi.fn(),
+  native: false,
+}))
+
+vi.mock('@/lib/environment', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import('@/lib/environment')>()),
+  isNativeApp: () => mocks.native,
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({
@@ -54,6 +56,7 @@ vi.mock('@/services/chat', async importOriginal => ({
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   ...(await importOriginal<typeof import('@/services/chat')>()),
   useAllSessions: () => ({ data: { entries: mocks.entries } }),
+  useIsSessionLinked: () => false,
   useRenameSession: () => ({ mutate: vi.fn() }),
   useArchiveSession: () => ({ mutate: vi.fn() }),
   useCloseSession: () => ({ mutate: vi.fn() }),
@@ -110,6 +113,7 @@ describe('SidebarAgentsSection', () => {
     mocks.restart.mockClear()
     mocks.refetch.mockClear()
     mocks.unarchive.mockReset()
+    mocks.native = false
     mocks.agents = []
     mocks.entries = [
       {
@@ -131,6 +135,7 @@ describe('SidebarAgentsSection', () => {
     ] as AllSessionsEntry[]
     useProjectsStore.setState({
       collapsedAgentIds: new Set(),
+      collapsedAgentNodeKeys: new Set(),
       starredSessions: [],
       projectCanvasSettings: {},
     })
@@ -349,5 +354,163 @@ describe('SidebarAgentsSection', () => {
     mocks.agents = [agent({})]
     render(<SidebarAgentsSection />)
     expect(screen.queryByTestId('agent-name-badge')).toBeNull()
+  })
+
+  describe('nested tree', () => {
+    // s1 (current) started c1 and c2; c1 started g1 and g2.
+    function nestedTree() {
+      addSessions(
+        {
+          ...session('c1', 'child one'),
+          started_by_session_id: 's1',
+          updated_at: 20,
+        } as Session,
+        {
+          ...session('c2', 'child two'),
+          started_by_session_id: 's1',
+          updated_at: 10,
+        } as Session,
+        {
+          ...session('g1', 'grandchild one'),
+          started_by_session_id: 'c1',
+        } as Session,
+        {
+          ...session('g2', 'grandchild two'),
+          started_by_session_id: 'c1',
+        } as Session
+      )
+      mocks.agents = [agent({})]
+    }
+
+    function toggleFor(name: string) {
+      return screen.getByRole('button', {
+        name: new RegExp(`sessions started by ${name}$`),
+      })
+    }
+
+    it('nests the children of children, each level open by default', () => {
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      expect(screen.getByText('grandchild one')).toBeInTheDocument()
+      // Toggles only on rows with children: the current session and c1.
+      expect(screen.getAllByTestId('sidebar-agent-node-toggle')).toHaveLength(2)
+      expect(toggleFor('release work')).toHaveAttribute('aria-expanded', 'true')
+      expect(toggleFor('child one')).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('collapses one level and keeps its parent open, with a count badge', async () => {
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      await userEvent.click(toggleFor('child one'))
+      expect(screen.queryByText('grandchild one')).toBeNull()
+      expect(screen.getByText('child two')).toBeInTheDocument()
+      expect(toggleFor('child one')).toHaveTextContent('2')
+      expect(
+        useProjectsStore.getState().collapsedAgentNodeKeys.has('a1:c1')
+      ).toBe(true)
+      expect(getCurrentUIState().collapsed_agent_node_keys).toEqual(['a1:c1'])
+    })
+
+    it('collapses the current session with every session below it', async () => {
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      await userEvent.click(toggleFor('release work'))
+      expect(screen.queryByText('child one')).toBeNull()
+      expect(screen.queryByText('grandchild two')).toBeNull()
+      expect(toggleFor('release work')).toHaveTextContent('4')
+    })
+
+    it('counts every session of a collapsed agent, nested ones included', async () => {
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
+      expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('5')
+    })
+
+    it('shows a node closed when its key was restored', () => {
+      nestedTree()
+      useProjectsStore.setState({
+        collapsedAgentNodeKeys: new Set(['a1:c1']),
+      })
+      render(<SidebarAgentsSection />)
+      expect(screen.getByText('child one')).toBeInTheDocument()
+      expect(screen.queryByText('grandchild one')).toBeNull()
+    })
+
+    it('does not loop on a session link cycle', () => {
+      addSessions(
+        {
+          ...session('c1', 'child one'),
+          started_by_session_id: 's1',
+        } as Session,
+        {
+          ...session('c2', 'child two'),
+          started_by_session_id: 'c1',
+        } as Session
+      )
+      // A broken link: s1 claims c2 as its parent.
+      const entry = mocks.entries[0]
+      if (entry) {
+        entry.sessions = entry.sessions.map(s =>
+          s.id === 's1' ? ({ ...s, started_by_session_id: 'c2' } as Session) : s
+        )
+      }
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      expect(screen.getByText('child two')).toBeInTheDocument()
+      expect(screen.getAllByText('release work')).toHaveLength(1)
+    })
+
+    it('collapses and expands everything from the header', async () => {
+      nestedTree()
+      mocks.agents = [
+        agent({}),
+        agent({
+          id: 'a2',
+          name: 'Assistant',
+          sessionId: null,
+          sessionName: null,
+        }),
+      ]
+      render(<SidebarAgentsSection />)
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Collapse all' })
+      )
+      const state = useProjectsStore.getState()
+      expect([...state.collapsedAgentIds].sort()).toEqual(['a1', 'a2'])
+      expect([...state.collapsedAgentNodeKeys].sort()).toEqual([
+        'a1:c1',
+        'a1:s1',
+      ])
+      expect(screen.queryByText('release work')).toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+      expect(screen.getByText('grandchild one')).toBeInTheDocument()
+      expect(useProjectsStore.getState().collapsedAgentNodeKeys.size).toBe(0)
+    })
+
+    it('Left and Right close and open a focused row in the desktop app', async () => {
+      mocks.native = true
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      const row = screen.getByText('child one').closest('button')
+      row?.focus()
+      await userEvent.keyboard('{ArrowLeft}')
+      expect(screen.queryByText('grandchild one')).toBeNull()
+      await userEvent.keyboard('{ArrowRight}')
+      expect(screen.getByText('grandchild one')).toBeInTheDocument()
+
+      screen.getByTestId('sidebar-agent-toggle').focus()
+      await userEvent.keyboard('{ArrowLeft}')
+      expect(screen.queryByText('child one')).toBeNull()
+    })
+
+    it('ignores Left and Right outside the desktop app', async () => {
+      nestedTree()
+      render(<SidebarAgentsSection />)
+      screen.getByText('child one').closest('button')?.focus()
+      await userEvent.keyboard('{ArrowLeft}')
+      expect(screen.getByText('grandchild one')).toBeInTheDocument()
+    })
   })
 })

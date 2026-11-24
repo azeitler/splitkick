@@ -300,6 +300,80 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists the collapsed nodes of the agent tree', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().toggleAgentNodeCollapsed('agent-1:session-1')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          collapsed_agent_node_keys: ['agent-1:session-1'],
+        })
+      )
+    })
+  })
+
+  it('restores the agent tree after a reload, also from an old state file', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        collapsed_agent_ids: ['agent-2'],
+        collapsed_agent_node_keys: ['agent-1:session-1'],
+      }),
+      isSuccess: true,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      const state = useProjectsStore.getState()
+      expect(state.collapsedAgentIds.has('agent-2')).toBe(true)
+      expect(state.collapsedAgentNodeKeys.has('agent-1:session-1')).toBe(true)
+    })
+  })
+
+  it('loads an old state file without collapsed agent nodes', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({ collapsed_agent_ids: ['agent-2'] }),
+      isSuccess: true,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useProjectsStore.getState().collapsedAgentIds.has('agent-2')).toBe(
+        true
+      )
+    })
+    expect(useProjectsStore.getState().collapsedAgentNodeKeys.size).toBe(0)
+  })
+
   it('restores zen mode after a reload', async () => {
     mockUseUIState.mockReturnValue({
       data: buildUiState({ zen_mode: true }),
