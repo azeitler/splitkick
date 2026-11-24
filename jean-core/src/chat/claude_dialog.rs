@@ -312,6 +312,26 @@ pub fn parked_kind_for_session(session_id: &str) -> Option<String> {
         .map(|p| p.kind.clone())
 }
 
+/// Every parked dialog, in the `claude:dialog-waiting` payload shape. A client
+/// that missed the event (reload, reconnect, a remote opened later) syncs from
+/// this list, or it shows the waiting run as still running.
+pub fn parked_dialogs() -> Vec<Value> {
+    let mut dialogs: Vec<Value> = PENDING
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(tool_use_id, p)| {
+            json!({
+                "sessionId": p.session_id,
+                "toolUseId": tool_use_id,
+                "kind": p.kind,
+            })
+        })
+        .collect();
+    dialogs.sort_by(|a, b| a["toolUseId"].as_str().cmp(&b["toolUseId"].as_str()));
+    dialogs
+}
+
 /// Whether a dialog is currently parked for `tool_use_id`.
 pub fn is_parked(tool_use_id: &str) -> bool {
     PENDING.lock().unwrap().contains_key(tool_use_id)
@@ -359,6 +379,38 @@ pub fn permission_payload(outcome: &DialogOutcome, original_input: &Value) -> Va
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A client that missed `claude:dialog-waiting` syncs from this list.
+    #[test]
+    fn parked_dialogs_lists_waiting_dialogs_until_resolved() {
+        let session = "session-parked-list";
+        let (tx, _rx) = oneshot::channel();
+        PENDING.lock().unwrap().insert(
+            "toolu_parked_list".to_string(),
+            PendingDialog {
+                session_id: session.to_string(),
+                kind: "question".to_string(),
+                responder: tx,
+            },
+        );
+        let mine = || {
+            parked_dialogs()
+                .into_iter()
+                .filter(|d| d["sessionId"] == session)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            mine(),
+            vec![json!({
+                "sessionId": session,
+                "toolUseId": "toolu_parked_list",
+                "kind": "question",
+            })]
+        );
+
+        resolve("toolu_parked_list", DialogOutcome::Approved);
+        assert!(mine().is_empty());
+    }
 
     #[test]
     fn answers_are_spliced_into_the_original_input() {

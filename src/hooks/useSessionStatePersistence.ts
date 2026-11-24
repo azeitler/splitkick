@@ -319,8 +319,11 @@ export function useSessionStatePersistence() {
     // but waiting/reviewing must track remote web/mobile completion immediately.
     const statusCurrentState = useChatStore.getState()
     const statusUpdates: Partial<typeof statusCurrentState> = {}
+    // A Claude dialog the live run is parked on is the host's own truth; the
+    // stored flag can lag it (the client that saves it may be another one).
     const effectiveWaiting =
-      sessionCanBeWaiting(session) && (session.waiting_for_input ?? false)
+      (sessionCanBeWaiting(session) && (session.waiting_for_input ?? false)) ||
+      !!statusCurrentState.parkedClaudeDialogs[activeSessionId]
     const statusCurrentWaiting =
       statusCurrentState.waitingForInputSessionIds[activeSessionId] ?? false
     if (statusCurrentWaiting !== effectiveWaiting) {
@@ -555,7 +558,9 @@ export function useSessionStatePersistence() {
 
       // Load waiting for input status
       const waitingForInput =
-        sessionCanBeWaiting(session) && (session.waiting_for_input ?? false)
+        (sessionCanBeWaiting(session) &&
+          (session.waiting_for_input ?? false)) ||
+        !!currentState.parkedClaudeDialogs[activeSessionId]
       const currentWaiting =
         currentState.waitingForInputSessionIds[activeSessionId] ?? false
       if (currentWaiting !== waitingForInput) {

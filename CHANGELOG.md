@@ -22,6 +22,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A remote no longer shows a waiting yolo run as "Yoloing".** When the
+  agent asked a question while a remote window or web access reloaded,
+  reconnected or was not open yet, that client showed the red running spinner
+  until the question was answered. Clients now ask the host for the questions
+  that wait and show the session as waiting (#159).
 - **Dragging the first project in a folder no longer moves it.** A drag that
   started on the first project of a folder and ended near its place moved the
   project to the end of the folder (or out of it). The folder now answers

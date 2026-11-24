@@ -2664,6 +2664,10 @@ pub async fn dispatch_command(
             .await?;
             to_value(resolved)
         }
+        "list_parked_claude_dialogs" => {
+            let dialogs = crate::chat::list_parked_claude_dialogs(app.clone()).await?;
+            to_value(dialogs)
+        }
         "is_claude_dialog_pending" => {
             let tool_use_id: String = field(&args, "toolUseId", "tool_use_id")?;
             let pending = crate::chat::is_claude_dialog_pending(app.clone(), tool_use_id).await?;

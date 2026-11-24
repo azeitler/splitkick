@@ -72,6 +72,7 @@ import { supersedePendingQuestions } from '@/components/chat/supersede-pending-q
 import {
   applyClaudeDialogResolved,
   applyClaudeDialogWaiting,
+  refreshParkedClaudeDialogs,
   isPlanAnsweredInTurn,
   type ClaudeDialogResolvedEvent,
   type ClaudeDialogWaitingEvent,
@@ -997,6 +998,12 @@ export default function useStreamingEvents({
       'claude:dialog-resolved',
       event => applyClaudeDialogResolved(event.payload)
     )
+    // A dialog parked before this client listened (reload, reconnect — this
+    // effect re-runs on wsConnected — or a remote opened later) never reaches
+    // it as an event: ask the host.
+    Promise.all([unlistenClaudeDialogWaiting, unlistenClaudeDialogResolved])
+      .then(() => refreshParkedClaudeDialogs())
+      .catch(() => undefined)
 
     const unlistenCodexUserInputRequest = listen<CodexUserInputRequestEvent>(
       'chat:codex_user_input_request',
