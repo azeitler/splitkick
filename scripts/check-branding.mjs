@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Lists user-visible "Jean" / "JeanZ" text left in the source.
+ * Lists user-visible "Jean" / "JeanZ" text left in the source and in the
+ * user guide (docs/userguide).
  *
  * Splitkick is built on Jean. After an upstream merge, new upstream strings
  * name the product "Jean"; this check finds them so they can be switched to
@@ -25,6 +26,8 @@ const ROOTS = [
   ['src', /\.(ts|tsx)$/],
   ['jean-core/src', /\.rs$/],
   ['src-tauri/src', /\.rs$/],
+  // The user guide is user-visible text too.
+  ['docs/userguide', /\.md$/],
 ]
 
 const SKIP_FILE = /(\.test\.tsx?$|\/test\/|\/tests?\.rs$|_tests?\.rs$)/
@@ -89,7 +92,8 @@ for (const [dir, pattern] of ROOTS) {
           return
         }
       }
-      if (isComment(line)) return
+      // A Markdown bullet can start with `*`; it is text, not a comment.
+      if (!rel.endsWith('.md') && isComment(line)) return
       // Strip a trailing line comment so `foo(); // Jean` does not count.
       const code = line.replace(/\s\/\/\s.*$/, '')
       if (!NAME.test(code)) return

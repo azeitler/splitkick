@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 import {
   PRODUCT_NAME,
   WEB_ICONS,
+  devBrandingResponse,
   resolveWebIcons,
   rewriteIndexHtml,
   rewriteWebManifest,
@@ -176,5 +177,34 @@ describe('web app manifest', () => {
       () => rewriteWebManifest(renamed, resolveWebIcons()),
       /short_name is no longer "Jean"/
     )
+  })
+})
+
+describe('dev server', () => {
+  for (const file of WEB_ICONS) {
+    it(`serves the Splitkick ${file}`, () => {
+      const response = devBrandingResponse(`/${file}?v=1`)
+      assert.equal(response?.type, 'image/png')
+      assert.deepEqual(response?.body, readFileSync(join(root, ICON_DIR, file)))
+    })
+  }
+
+  it('serves a manifest named Splitkick', () => {
+    const response = devBrandingResponse('/manifest.webmanifest')
+    const manifest = JSON.parse(String(response?.body))
+    assert.equal(manifest.name, 'Splitkick')
+    assert.equal(manifest.short_name, 'Splitkick')
+  })
+
+  it('leaves every other request to Vite', () => {
+    assert.equal(devBrandingResponse('/src/main.tsx'), null)
+    assert.equal(devBrandingResponse(undefined), null)
+  })
+
+  it('renames the product in index.html without icon rewrites', () => {
+    const html = readFileSync(join(root, 'index.html'), 'utf8')
+    const branded = rewriteIndexHtml(html, [])
+    assert.ok(branded.includes('<title>Splitkick</title>'))
+    assert.ok(branded.includes('"/favicon.png"'))
   })
 })

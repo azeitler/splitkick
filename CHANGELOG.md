@@ -37,6 +37,11 @@ Built on Jean 0.1.73.
   sessions it hides. Splitkick remembers each row. Left/Right close and open
   a focused row in the desktop app, and a header button collapses or
   expands everything.
+- **The development build no longer shows Jean's branding.** The dev build
+  (`bun run tauri:dev`) shows the Splitkick icon with a DEV mark and the
+  Splitkick version, publisher and copyright. The dev server serves the
+  Splitkick page title, favicon and Home Screen manifest. The branding check
+  also covers the user guide.
 
 ### Fixed
 

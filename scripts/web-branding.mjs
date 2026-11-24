@@ -157,3 +157,34 @@ export function writeWebManifest(outDir, icons) {
     rewriteWebManifest(source, icons)
   )
 }
+
+/**
+ * The branded answer for a dev-server request, or null to let Vite serve it.
+ * `vite dev` serves public/ as upstream has it, so without this the dev build
+ * shows the upstream favicon and Home Screen name. Plain names here: the dev
+ * server sends no long cache headers, so no hash is needed.
+ *
+ * @param {string | undefined} url
+ * @returns {{ type: string, body: Buffer | string } | null}
+ */
+export function devBrandingResponse(url) {
+  const pathname = (url ?? '').split('?')[0]
+  const icon = WEB_ICONS.find(file => pathname === `/${file}`)
+  if (icon) {
+    return {
+      type: 'image/png',
+      body: readFileSync(path.resolve(ICON_DIR, icon)),
+    }
+  }
+  if (pathname === '/manifest.webmanifest') {
+    const source = readFileSync(
+      path.resolve('public/manifest.webmanifest'),
+      'utf8'
+    )
+    return {
+      type: 'application/manifest+json',
+      body: rewriteWebManifest(source, []),
+    }
+  }
+  return null
+}

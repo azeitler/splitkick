@@ -1,9 +1,17 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Splitkick",
+  "version": "1.6.1",
   "identifier": "app.splitkick.desktop.dev",
   "build": {
     "beforeDevCommand": "bun run scripts/tauri-dev-before.mjs"
+  },
+  "bundle": {
+    "icon": ["icons-fork/dev/icon.png", "icons-fork/dev/icon.icns"],
+    "publisher": "Planetfall Software",
+    "shortDescription": "Splitkick - local-first workbench for AI agents",
+    "longDescription": "Splitkick is a local-first, cross-device workbench for AI coding agents: multi-project, multi-worktree, multi-session and multi-agent. Built on Jean by coolLabs.",
+    "copyright": "© 2026 Planetfall Software. Built on Jean, © 2025 Andras Bacsai (Apache 2.0)."
   },
   "app": {
     "windows": [

@@ -5,6 +5,7 @@ import path from 'path'
 import { execSync } from 'child_process'
 import {
   PRODUCT_NAME,
+  devBrandingResponse,
   resolveWebIcons,
   rewriteIndexHtml,
   writeWebIcons,
@@ -107,6 +108,29 @@ function jeanWebBrandingPlugin(): Plugin {
 }
 
 /**
+ * The same branding for `vite dev`, which serves index.html and public/ as
+ * upstream has them: the product name in index.html, and the Splitkick
+ * favicon, Home Screen icon and manifest under their plain names.
+ */
+function jeanDevBrandingPlugin(): Plugin {
+  return {
+    name: 'jean-dev-branding',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const response = devBrandingResponse(req.url)
+        if (!response) return next()
+        res.setHeader('Content-Type', response.type)
+        res.end(response.body)
+      })
+    },
+    transformIndexHtml(html) {
+      return rewriteIndexHtml(html, [])
+    },
+  }
+}
+
+/**
  * Writes `dist/sw.js`, the Web Access service worker (#72), with this
  * build's id and the files that index.html loads. Build only: the dev server
  * has no stable asset names, and `src/lib/service-worker.ts` never registers
@@ -137,6 +161,7 @@ export default defineConfig(async () => ({
     tailwindcss(),
     jeanWebBuildInfoPlugin(),
     jeanWebBrandingPlugin(),
+    jeanDevBrandingPlugin(),
     jeanServiceWorkerPlugin(),
   ],
   define: {

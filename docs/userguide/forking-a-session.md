@@ -59,7 +59,7 @@ answer questions about the earlier conversation from the first message you send.
 - Queued messages, pending permission requests and a scheduled wake-up.
 - Checkpoints. You cannot restore a checkpoint that the original session took; make new
   changes in the fork and it takes its own.
-- The session name is set to "Fork of \<original name\>". Jean renames it automatically
+- The session name is set to "Fork of \<original name\>". Splitkick renames it automatically
   once the fork has its own conversation.
 
 ## Limits

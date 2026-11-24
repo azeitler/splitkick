@@ -93,7 +93,7 @@ export function cutChangelog(markdown, { version, date, upstream }) {
 export function setOverlayVersion(json, version) {
   const line = /^(\s*"version":\s*)"[^"]*"/m
   if (!line.test(json)) {
-    throw new Error('tauri.fork.conf.json has no "version" line')
+    throw new Error('the Tauri config has no "version" line')
   }
   return json.replace(line, `$1${JSON.stringify(version)}`)
 }
@@ -225,6 +225,8 @@ function main() {
 
   const changelogPath = resolve(root, 'CHANGELOG.md')
   const overlayPath = resolve(root, 'src-tauri/tauri.fork.conf.json')
+  // The dev build carries the same version, so it does not show upstream's.
+  const devConfigPath = resolve(root, 'src-tauri/tauri.conf.dev.json')
   let cut
   try {
     cut = cutChangelog(readFileSync(changelogPath, 'utf8'), {
@@ -246,10 +248,9 @@ function main() {
   }
 
   writeFileSync(changelogPath, cut)
-  writeFileSync(
-    overlayPath,
-    setOverlayVersion(readFileSync(overlayPath, 'utf8'), version)
-  )
+  for (const path of [overlayPath, devConfigPath]) {
+    writeFileSync(path, setOverlayVersion(readFileSync(path, 'utf8'), version))
+  }
   console.log(
     `Cut ${version}. Review CHANGELOG.md, then commit and push to publish it.`
   )

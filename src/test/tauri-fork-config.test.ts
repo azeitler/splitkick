@@ -74,6 +74,41 @@ describe('Splitkick configuration', () => {
     expect(dev.productName).toBe('Splitkick')
   })
 
+  // `bun run tauri:dev` merges only the dev config onto the upstream base, so
+  // it has to carry the Splitkick identity itself; otherwise the dev build
+  // shows Jean's icon, version, publisher and copyright.
+  it('gives the development build the Splitkick identity and a dev icon', () => {
+    const dev = mergeJsonConfig(
+      base,
+      readConfig('src-tauri/tauri.conf.dev.json')
+    ) as typeof resolved & {
+      version: string
+      bundle: Record<string, unknown> & { icon: string[] }
+    }
+    const release = resolved as typeof resolved & {
+      version: string
+      bundle: Record<string, unknown>
+    }
+
+    expect(dev.version).toBe(release.version)
+    for (const field of [
+      'publisher',
+      'shortDescription',
+      'longDescription',
+      'copyright',
+    ]) {
+      expect(dev.bundle[field]).toBe(release.bundle[field])
+    }
+    // Tauri takes the macOS dev Dock icon from the first .icns and the window
+    // icon from the first .png in this list.
+    expect(dev.bundle.icon.some(icon => icon.endsWith('.icns'))).toBe(true)
+    expect(dev.bundle.icon.some(icon => icon.endsWith('.png'))).toBe(true)
+    for (const icon of dev.bundle.icon) {
+      expect(icon.startsWith('icons-fork/dev/')).toBe(true)
+      expect(existsSync(join(process.cwd(), 'src-tauri', icon))).toBe(true)
+    }
+  })
+
   it('preserves the complete main-window configuration', () => {
     expect(resolved.app.windows[0]).toMatchObject({
       title: 'Splitkick',
