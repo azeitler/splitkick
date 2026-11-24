@@ -36,6 +36,7 @@ import { getProviderChangeBeforeMessage } from './message-settings-labels'
 import { ProviderChangeSeparator } from './ProviderChangeSeparator'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { AskUserQuestion } from './AskUserQuestion'
+import { useIsDialogPaused } from './claude-dialog-events'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
 import { buildTimeline, coalesceContentBlocks } from './tool-call-utils'
 import { getAssistantDurationMs } from './time-utils'
@@ -614,6 +615,8 @@ function CompactQuestionMessage({
   durationFor,
 }: CompactQuestionMessageProps) {
   const stripped = useMemo(() => stripQuestionsFromMessage(message), [message])
+  // A question here waits with no run behind it (#155).
+  const isDialogPaused = useIsDialogPaused(sessionId)
 
   const questionItems = useMemo(() => {
     const blocks = message.content_blocks ?? []
@@ -678,6 +681,7 @@ function CompactQuestionMessage({
                 : undefined
             }
             toolOutput={item.tool.output ?? undefined}
+            paused={isDialogPaused(item.tool.id)}
           />
         )
       })}

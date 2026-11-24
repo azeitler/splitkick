@@ -30,6 +30,7 @@ import { FileMentionBadge } from './FileMentionBadge'
 import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
+import { useIsDialogPaused } from './claude-dialog-events'
 import { PlanHandoffNotice } from './PlanHandoffNotice'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import {
@@ -64,6 +65,8 @@ import {
 import {
   getAskUserQuestions,
   hasQuestionAnswerOutput,
+  isAskUserQuestion,
+  isPlanToolCall,
   normalizeQuestionMultipleField,
 } from '@/types/chat'
 import { MessageSettingsBadges } from '@/components/chat/MessageSettingsBadges'
@@ -283,6 +286,19 @@ export const MessageItem = memo(function MessageItem({
   )
 
   // Stable callback for checking if finding is fixed
+  // A question or plan here waits with no run behind it (#155). Only such a
+  // message subscribes, so a turn start or end does not re-render them all.
+  const hasDialog =
+    message.role === 'assistant' &&
+    (message.tool_calls ?? []).some(
+      tc => isAskUserQuestion(tc) || isPlanToolCall(tc)
+    )
+  const isDialogPaused = useIsDialogPaused(
+    hasDialog ? message.session_id : null
+  )
+  const lastPlanToolId =
+    (message.tool_calls ?? []).filter(isPlanToolCall).at(-1)?.id ?? ''
+
   const handleIsFindingFixed = useCallback(
     (findingKey: string) => isFindingFixed(sessionId, findingKey),
     [isFindingFixed, sessionId]
@@ -694,6 +710,7 @@ export const MessageItem = memo(function MessageItem({
                                     : undefined
                                 }
                                 toolOutput={item.tool.output ?? undefined}
+                                paused={isDialogPaused(item.tool.id)}
                               />
                             )
                           }
@@ -766,6 +783,7 @@ export const MessageItem = memo(function MessageItem({
             toolCalls={message.tool_calls}
             isApproved={message.plan_approved ?? false}
             isLatestPlanRequest={isLatestPlanRequest}
+            paused={isDialogPaused(lastPlanToolId)}
             hasFollowUpMessage={hasFollowUpMessage}
             onPlanApproval={handlePlanApproval}
             onPlanApprovalYolo={handlePlanApprovalYolo}
@@ -869,6 +887,7 @@ export const MessageItem = memo(function MessageItem({
                 toolCalls={message.tool_calls}
                 isApproved={message.plan_approved ?? false}
                 isLatestPlanRequest={isLatestPlanRequest}
+                paused={isDialogPaused(lastPlanToolId)}
                 hasFollowUpMessage={hasFollowUpMessage}
                 onPlanApproval={handlePlanApproval}
                 onPlanApprovalYolo={handlePlanApprovalYolo}

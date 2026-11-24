@@ -23,6 +23,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import {
   canReconnectSession,
+  formatAnswersAsNaturalLanguage,
   mergeFetchedSession,
   prefetchSessions,
   reconnectNativeCliSession,
@@ -678,5 +679,60 @@ describe('mergeFetchedSession', () => {
     expect(
       mergeFetchedSession(session([msg('u-1', 'user')], 0), fresh, false)
     ).toBe(fresh)
+  })
+})
+
+describe('formatAnswersAsNaturalLanguage', () => {
+  const questions = [
+    {
+      header: 'Color',
+      question: 'Which color?',
+      multiSelect: true,
+      options: [{ label: 'Teal' }, { label: 'Amber' }],
+    },
+    {
+      header: 'Size',
+      question: 'Which size?',
+      multiSelect: false,
+      options: [{ label: 'Small' }],
+    },
+  ]
+
+  // The answer resumes a paused session as a new message, so it names the
+  // question it answers (#155).
+  it('names the question each answer belongs to', () => {
+    expect(
+      formatAnswersAsNaturalLanguage(questions, [
+        { questionIndex: 0, selectedOptions: [0, 1] },
+        { questionIndex: 1, selectedOptions: [], customText: 'Medium' },
+      ])
+    ).toBe(
+      'Answer to your question "Which color?": Teal, Amber\n\n' +
+        'Answer to your question "Which size?": Medium'
+    )
+  })
+
+  it('keeps typed text and the note next to the picked options', () => {
+    expect(
+      formatAnswersAsNaturalLanguage(questions, [
+        {
+          questionIndex: 0,
+          selectedOptions: [0],
+          customText: 'or close to it',
+          note: 'for the header only',
+        },
+      ])
+    ).toBe(
+      'Answer to your question "Which color?": Teal; or close to it\n' +
+        'Note: for the header only'
+    )
+  })
+
+  it('says so when nothing was picked', () => {
+    expect(
+      formatAnswersAsNaturalLanguage(questions, [
+        { questionIndex: 0, selectedOptions: [] },
+      ])
+    ).toBe('No specific preferences selected.')
   })
 })

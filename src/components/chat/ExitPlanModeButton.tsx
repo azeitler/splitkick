@@ -2,10 +2,11 @@ import type { ToolCall } from '@/types/chat'
 import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
-import { isPlanAnsweredInTurn } from './claude-dialog-events'
+import { isPlanAnsweredInTurn, PAUSED_PLAN_NOTE } from './claude-dialog-events'
 import { resolveApprovalLabel } from './approval-label-utils'
 import { SplitButton } from '@/components/ui/split-button'
 import { Button } from '@/components/ui/button'
+import { CirclePause } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -35,6 +36,11 @@ interface ExitPlanModeButtonProps {
   shortcutClearContextBuild?: string
   sessionId?: string
   hideApproveButtons?: boolean
+  /**
+   * No run waits for this approval any more (#155): approving resumes the
+   * session in a new turn. Shows a note above the buttons.
+   */
+  paused?: boolean
 }
 
 export function ExitPlanModeButton({
@@ -53,6 +59,7 @@ export function ExitPlanModeButton({
   sessionId,
   shortcutYolo,
   hideApproveButtons,
+  paused = false,
 }: ExitPlanModeButtonProps) {
   const { data: preferences } = usePreferences()
   const sessionBackend = useChatStore(state =>
@@ -104,6 +111,15 @@ export function ExitPlanModeButton({
     : 'Approve with yolo mode'
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
+      {paused && (
+        <div
+          data-testid="plan-paused-note"
+          className="flex basis-full items-start gap-2 text-sm text-muted-foreground"
+        >
+          <CirclePause className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{PAUSED_PLAN_NOTE}</span>
+        </div>
+      )}
       {hasYoloDropdownItems ? (
         <SplitButton
           label="YOLO"

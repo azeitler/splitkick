@@ -6,6 +6,7 @@ import {
   applyClaudeDialogWaiting,
   getParkedClaudeDialog,
   hydrateParkedClaudeDialog,
+  isDialogPaused,
   isPlanAnsweredInTurn,
   skipParkedClaudeDialog,
 } from './claude-dialog-events'
@@ -113,5 +114,22 @@ describe('claude dialog events (#136)', () => {
       )
     ).resolves.toBeUndefined()
     expect(getParkedClaudeDialog(SESSION)).toBeUndefined()
+  })
+})
+
+describe('a dialog with no run behind it is paused (#155)', () => {
+  it('is paused when nothing sends and no live run is parked on it', () => {
+    expect(
+      isDialogPaused({ sending: false, parkedToolUseId: null, toolUseId: 'q' })
+    ).toBe(true)
+  })
+
+  it('is live while a run is parked on it or the session sends', () => {
+    expect(
+      isDialogPaused({ sending: false, parkedToolUseId: 'q', toolUseId: 'q' })
+    ).toBe(false)
+    expect(
+      isDialogPaused({ sending: true, parkedToolUseId: null, toolUseId: 'q' })
+    ).toBe(false)
   })
 })

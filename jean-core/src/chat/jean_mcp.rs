@@ -59,11 +59,13 @@ pub const JEAN_DIALOG_SERVER: &str = crate::brand::MCP_DIALOG_SERVER_NAME;
 
 /// Per-server MCP tool-call timeout for the dialog server, in milliseconds.
 ///
-/// This is the hard bound on how long a question may park. It also raises the
-/// CLI's idle-abort threshold, which is why the dialog path needs no progress
+/// The CLI's hard bound on a parked question. It also raises the CLI's
+/// idle-abort threshold, which is why the dialog path needs no progress
 /// notifications: without an explicit `timeout` the CLI aborts a silent MCP
-/// call and the question dies before anyone can answer it.
-const DIALOG_TOOL_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+/// call and the question dies before anyone can answer it. It sits above
+/// `DIALOG_PARK_TIMEOUT` plus the pause confirmation, so Jean pauses the run
+/// (#155) before the CLI gives up on the call.
+pub(crate) const DIALOG_TOOL_TIMEOUT_MS: u64 = 12 * 60 * 1000;
 
 /// Fully-qualified tool name for `--permission-prompt-tool`.
 pub fn dialog_permission_prompt_tool() -> String {
@@ -171,4 +173,18 @@ fn merge_entry_into_mcp_config(entry: Value, existing: Option<&str>) -> Option<S
 /// it knows its Jean MCP recursion depth.
 pub fn child_depth_env() -> (String, String) {
     (JEAN_MCP_DEPTH_ENV.to_string(), next_depth().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chat::claude_dialog::{DIALOG_PARK_TIMEOUT, PAUSE_CONFIRM_TIMEOUT};
+
+    /// Jean must pause a waiting run before the CLI gives up on the parked
+    /// call; otherwise the model reads an MCP error and ends its turn (#155).
+    #[test]
+    fn the_cli_dialog_timeout_outlasts_the_park_and_the_pause() {
+        let jean_side = DIALOG_PARK_TIMEOUT + PAUSE_CONFIRM_TIMEOUT;
+        assert!(u128::from(DIALOG_TOOL_TIMEOUT_MS) > jean_side.as_millis());
+    }
 }

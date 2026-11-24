@@ -1734,6 +1734,70 @@ mod tests {
         assert_eq!(run_status(&app, session_id), RunStatus::Crashed);
     }
 
+    const OPEN_QUESTION_LINES: &str = concat!(
+        r#"{"type":"system","subtype":"init","session_id":"claude-sid-155"}"#,
+        "\n",
+        r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_cmd","name":"Bash","input":{}}]}}"#,
+        "\n",
+        r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_cmd","content":"ok"}]}}"#,
+        "\n",
+        r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_q","name":"AskUserQuestion","input":{}}]}}"#,
+        "\n",
+    );
+
+    /// #155: only a question or plan with no tool result is still open.
+    #[test]
+    fn finds_the_question_a_run_ended_on() {
+        let lines = || OPEN_QUESTION_LINES.lines().map(str::to_string);
+        assert_eq!(open_dialog_kind(lines()), Some("question"));
+
+        let answered = lines().chain(std::iter::once(
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q","content":"Teal"}]}}"#
+                .to_string(),
+        ));
+        assert_eq!(open_dialog_kind(answered), None);
+
+        let plan = std::iter::once(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_p","name":"ExitPlanMode","input":{}}]}}"#
+                .to_string(),
+        );
+        assert_eq!(open_dialog_kind(plan), Some("plan"));
+    }
+
+    /// #155: the app quit (or crashed) while a Claude run waited on a
+    /// question, and the CLI ended there. On the next start the run counts as
+    /// paused: completed, waiting for the answer, and resumable.
+    #[test]
+    fn recovery_keeps_a_run_that_ended_on_a_question_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let session_id = "session-155-paused";
+        start_test_run(&app, session_id);
+        let run_id = load_metadata(&app, session_id).unwrap().unwrap().runs[0]
+            .run_id
+            .clone();
+        let path = get_session_dir(&app, session_id)
+            .unwrap()
+            .join(format!("{run_id}.jsonl"));
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        std::io::Write::write_all(&mut file, OPEN_QUESTION_LINES.as_bytes()).unwrap();
+
+        recover_incomplete_runs(&app).unwrap();
+
+        let metadata = load_metadata(&app, session_id).unwrap().unwrap();
+        assert_eq!(metadata.runs[0].status, RunStatus::Completed);
+        assert!(metadata.waiting_for_input);
+        assert_eq!(metadata.waiting_for_input_type.as_deref(), Some("question"));
+        assert_eq!(
+            metadata.claude_session_id.as_deref(),
+            Some("claude-sid-155")
+        );
+    }
+
     /// A fork's marker must survive the *start* of its first turn and only go
     /// when that turn finishes. Cleared at the start, a cancelled first turn
     /// would lose `--fork-session` while the source's resume id is still on the
@@ -2746,8 +2810,24 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                     } else {
                         // Process is dead - check if it completed successfully
                         let completed = jsonl_has_result_line(app, &session_id, &run.run_id);
+                        let is_claude =
+                            run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude;
+                        // A Claude run that ended at an open question or plan
+                        // (app quit or crash while it waited) is paused, not
+                        // crashed: it waits for the answer, which resumes it (#155).
+                        let paused_on = if !completed && is_claude {
+                            jsonl_open_dialog_kind(app, &session_id, &run.run_id).filter(|kind| {
+                                *kind == "question" || run.execution_mode.as_deref() != Some("yolo")
+                            })
+                        } else {
+                            None
+                        };
+                        if let Some(kind) = paused_on {
+                            metadata.waiting_for_input = true;
+                            metadata.waiting_for_input_type = Some(kind.to_string());
+                        }
 
-                        if completed {
+                        if completed || paused_on.is_some() {
                             run.status = RunStatus::Completed;
                             if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude
                             {
@@ -2870,6 +2950,59 @@ fn jsonl_claude_outcome(
         }
     }
     (limit_hit, errors.run_error)
+}
+
+/// The kind (`question` / `plan`) of a Claude `AskUserQuestion` /
+/// `ExitPlanMode` call in a run's JSONL that never got a tool result: the run
+/// ended while it waited for the user (#155).
+fn jsonl_open_dialog_kind(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    run_id: &str,
+) -> Option<&'static str> {
+    let session_dir = get_session_dir(app, session_id).ok()?;
+    let file = File::open(session_dir.join(format!("{run_id}.jsonl"))).ok()?;
+    open_dialog_kind(BufReader::new(file).lines().map_while(Result::ok))
+}
+
+fn open_dialog_kind(lines: impl Iterator<Item = String>) -> Option<&'static str> {
+    let mut open: Vec<(String, &'static str)> = Vec::new();
+    for line in lines {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let line_type = value.get("type").and_then(|t| t.as_str());
+        if !matches!(line_type, Some("assistant" | "user")) {
+            continue;
+        }
+        let blocks = value
+            .pointer("/message/content")
+            .and_then(|c| c.as_array())
+            .into_iter()
+            .flatten();
+        for block in blocks {
+            match block.get("type").and_then(|t| t.as_str()) {
+                Some("tool_use") if line_type == Some("assistant") => {
+                    let dialog = match block.get("name").and_then(|n| n.as_str()) {
+                        Some("AskUserQuestion") => "question",
+                        Some("ExitPlanMode") => "plan",
+                        _ => continue,
+                    };
+                    if let Some(id) = block.get("id").and_then(|i| i.as_str()) {
+                        open.retain(|(open_id, _)| open_id != id);
+                        open.push((id.to_string(), dialog));
+                    }
+                }
+                Some("tool_result") => {
+                    if let Some(id) = block.get("tool_use_id").and_then(|i| i.as_str()) {
+                        open.retain(|(open_id, _)| open_id != id);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    open.last().map(|(_, kind)| *kind)
 }
 
 /// Check if a run's JSONL file contains a "type":"result" line,

@@ -49,7 +49,56 @@ fn handle_message(line: &str, role: McpRole) -> Option<Value> {
     handle_protocol_message(body, role, |tool_call| proxy_tool_call(tool_call, role))
 }
 
+/// Dialog tools park the CLI on a human (#155). If the app goes away while
+/// one waits (quit, crash), an MCP error would reach the model and it would
+/// end its turn with a closing text. End the CLI quietly instead: the run then
+/// ends at the open question, and the app resumes it when the user answers.
+/// Other permission checks keep the error: a run must survive an app quit.
+fn pauses_run_when_app_is_gone(role: McpRole, tool_call: &ToolCallRequest) -> bool {
+    role == McpRole::Dialog
+        && matches!(
+            tool_call.arguments.get("tool_name").and_then(Value::as_str),
+            Some("AskUserQuestion" | "ExitPlanMode" | "EnterPlanMode")
+        )
+}
+
+/// Whether the app still serves its MCP socket.
+#[cfg(unix)]
+fn app_is_gone(socket: &str) -> bool {
+    std::os::unix::net::UnixStream::connect(socket).is_err()
+}
+
+/// End the CLI that started this MCP server (our parent), then this process.
+#[cfg(unix)]
+fn end_parent_cli_quietly() -> ! {
+    // SAFETY: getppid and kill have no memory preconditions.
+    unsafe {
+        let parent = libc::getppid();
+        // PID 1 means the CLI is already gone and init adopted us.
+        if parent > 1 {
+            libc::kill(parent, libc::SIGKILL);
+        }
+    }
+    std::process::exit(0)
+}
+
 fn proxy_tool_call(tool_call: ToolCallRequest, role: McpRole) -> Result<Value, String> {
+    let pauses_run = pauses_run_when_app_is_gone(role, &tool_call);
+    let result = proxy_tool_call_inner(tool_call, role);
+    #[cfg(unix)]
+    if result.is_err() && pauses_run {
+        if let Ok(socket) = std::env::var(JEAN_MCP_SOCKET_ENV) {
+            if app_is_gone(&socket) {
+                end_parent_cli_quietly();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = pauses_run;
+    result
+}
+
+fn proxy_tool_call_inner(tool_call: ToolCallRequest, role: McpRole) -> Result<Value, String> {
     let socket =
         std::env::var(JEAN_MCP_SOCKET_ENV).map_err(|_| format!("Missing {JEAN_MCP_SOCKET_ENV}"))?;
     let token =
@@ -222,7 +271,35 @@ fn parent_error_message(response: &Value) -> Option<String> {
 mod tests {
     use serde_json::json;
 
-    use super::{parent_error_message, run_pipe_io};
+    use super::{parent_error_message, pauses_run_when_app_is_gone, run_pipe_io};
+    use crate::jean_mcp_core::{McpRole, ToolCallRequest};
+
+    fn prompt_for(tool: &str) -> ToolCallRequest {
+        ToolCallRequest {
+            name: "permission_prompt".to_string(),
+            arguments: json!({ "tool_name": tool, "input": {} }),
+        }
+    }
+
+    /// #155: only a parked question or plan ends the CLI when the app goes
+    /// away; any other permission check keeps the run alive.
+    #[test]
+    fn only_dialog_tools_pause_the_run_when_the_app_is_gone() {
+        for tool in ["AskUserQuestion", "ExitPlanMode", "EnterPlanMode"] {
+            assert!(pauses_run_when_app_is_gone(
+                McpRole::Dialog,
+                &prompt_for(tool)
+            ));
+        }
+        assert!(!pauses_run_when_app_is_gone(
+            McpRole::Dialog,
+            &prompt_for("Bash")
+        ));
+        assert!(!pauses_run_when_app_is_gone(
+            McpRole::Full,
+            &prompt_for("AskUserQuestion")
+        ));
+    }
 
     /// `run_server()` serves `--jean-mcp-stdio` from inside its own
     /// `block_on`, so the pipe I/O starts within a tokio runtime. A nested

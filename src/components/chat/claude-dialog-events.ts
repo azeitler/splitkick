@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useChatStore, type ParkedClaudeDialog } from '@/store/chat-store'
 import type { Backend, ToolCall } from '@/types/chat'
 
@@ -115,4 +116,40 @@ export async function hydrateParkedClaudeDialog(
   }
   applyClaudeDialogWaiting({ sessionId, ...dialog })
   return dialog
+}
+
+/** The note on a question or plan whose run has ended (#155). */
+export const PAUSED_QUESTION_NOTE =
+  'The agent is paused — answering resumes it.'
+export const PAUSED_PLAN_NOTE = 'The agent is paused — approving resumes it.'
+
+/**
+ * A question or plan in a finished message waits with no run behind it: no
+ * turn is sending and no live run is parked on this call (#155). Claude pauses
+ * such a run after 10 minutes, or it ended another way (app quit, crash). The
+ * answer resumes the session as a new message.
+ */
+export function isDialogPaused(state: {
+  sending: boolean
+  parkedToolUseId: string | null
+  toolUseId: string
+}): boolean {
+  return !state.sending && state.parkedToolUseId !== state.toolUseId
+}
+
+/** {@link isDialogPaused} for one session, subscribed to the store data. */
+export function useIsDialogPaused(
+  sessionId: string | null | undefined
+): (toolUseId: string) => boolean {
+  const sending = useChatStore(state =>
+    sessionId ? !!state.sendingSessionIds[sessionId] : false
+  )
+  const parkedToolUseId = useChatStore(state =>
+    sessionId ? (state.parkedClaudeDialogs[sessionId]?.toolUseId ?? null) : null
+  )
+  return useCallback(
+    (toolUseId: string) =>
+      isDialogPaused({ sending, parkedToolUseId, toolUseId }),
+    [sending, parkedToolUseId]
+  )
 }

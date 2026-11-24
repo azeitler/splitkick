@@ -19,6 +19,12 @@
 //! the dialog ([`skip_session`]); the model ends its turn and the message runs
 //! next. Only a run without the harness, or one that ended (app restart), falls
 //! back to the answer as a new message.
+//!
+//! A dialog that waits longer than [`DIALOG_PARK_TIMEOUT`] pauses the run
+//! (#155): Jean does not answer the MCP call. It asks the run's tailer to end
+//! the CLI quietly, so the model gets no tool result and writes no closing
+//! text. The session keeps waiting on the question, and a later answer resumes
+//! it as a new message.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -31,14 +37,21 @@ use tokio::sync::oneshot;
 
 use crate::http_server::EmitExt;
 
-/// How long a dialog may park before Jean gives up on it.
+/// How long a dialog may park inside the run before Jean pauses the run (#155).
 ///
 /// The CLI's own ceiling is the per-server `timeout` Jean sets on the
-/// `jean-dialog` MCP entry; this is the parent-side twin so a dialog whose
-/// session died cannot leak a waiter forever. Kept slightly under the CLI
-/// value so Jean answers first and the model gets a real `deny` rather than
-/// an opaque MCP timeout.
-pub const DIALOG_PARK_TIMEOUT: Duration = Duration::from_secs(25 * 60);
+/// `jean-dialog` MCP entry (`DIALOG_TOOL_TIMEOUT_MS`); it must stay above this
+/// value plus [`PAUSE_CONFIRM_TIMEOUT`], so Jean ends the run before the CLI
+/// gives up on the call.
+pub const DIALOG_PARK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// How long a timed-out dialog waits for the tailer to end the CLI. The
+/// tailer polls at least every 250 ms; this only bounds a run with no tailer.
+pub const PAUSE_CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Tool result when no tailer ended the run in time. Only a fallback: the
+/// model reads it and ends its turn, which a quiet pause avoids.
+pub const PARK_TIMED_OUT: &str = "Timed out waiting for the user to respond.";
 
 /// What the UI decided about a parked dialog.
 #[derive(Debug, Clone)]
@@ -67,6 +80,55 @@ struct PendingDialog {
 
 static PENDING: Lazy<Mutex<HashMap<String, PendingDialog>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Sessions whose dialog timed out, by session id. The run's tailer takes the
+/// request, ends the CLI, and confirms through the sender.
+static PAUSE_REQUESTS: Lazy<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Take the pause request for a session, if its dialog timed out.
+///
+/// The caller (the tailer) must end the CLI process, then send `()` on the
+/// returned sender so the parked MCP call returns into a dead process.
+pub fn take_pause_request(session_id: &str) -> Option<oneshot::Sender<()>> {
+    PAUSE_REQUESTS.lock().unwrap().remove(session_id)
+}
+
+/// Put a pause request as a timed-out dialog does, without the wait.
+#[cfg(test)]
+pub fn request_pause_for_test(session_id: &str) -> oneshot::Receiver<()> {
+    let (tx, rx) = oneshot::channel();
+    PAUSE_REQUESTS
+        .lock()
+        .unwrap()
+        .insert(session_id.to_string(), tx);
+    rx
+}
+
+/// Ask the session's tailer to end the run quietly and wait until it did.
+///
+/// Returns the outcome for the MCP call. After a confirmed pause nobody reads
+/// it: the CLI is dead. Without a confirmation the call falls back to a
+/// timeout denial, so the CLI never hangs on it.
+async fn pause_run(session_id: &str, wait: Duration) -> DialogOutcome {
+    let (tx, rx) = oneshot::channel();
+    PAUSE_REQUESTS
+        .lock()
+        .unwrap()
+        .insert(session_id.to_string(), tx);
+    match tokio::time::timeout(wait, rx).await {
+        Ok(Ok(())) => DialogOutcome::Denied {
+            message: "Splitkick paused this run until the user answers.".to_string(),
+        },
+        _ => {
+            PAUSE_REQUESTS.lock().unwrap().remove(session_id);
+            log::warn!("No tailer paused session {session_id}; the dialog times out instead");
+            DialogOutcome::Denied {
+                message: PARK_TIMED_OUT.to_string(),
+            }
+        }
+    }
+}
 
 /// Park until the UI answers `tool_use_id`, or the timeout expires.
 ///
@@ -109,19 +171,7 @@ pub async fn park(
         }),
     );
 
-    let outcome = match tokio::time::timeout(DIALOG_PARK_TIMEOUT, rx).await {
-        Ok(Ok(outcome)) => outcome,
-        // Sender dropped without answering (session cancelled, app shutting down).
-        Ok(Err(_)) => DialogOutcome::Denied {
-            message: "Splitkick closed this request before it was answered.".to_string(),
-        },
-        Err(_) => {
-            PENDING.lock().unwrap().remove(tool_use_id);
-            DialogOutcome::Denied {
-                message: "Timed out waiting for the user to respond.".to_string(),
-            }
-        }
-    };
+    let outcome = wait_or_pause(session_id, tool_use_id, rx, DIALOG_PARK_TIMEOUT).await;
 
     let _ = app.emit_all(
         "claude:dialog-resolved",
@@ -132,6 +182,28 @@ pub async fn park(
     );
 
     outcome
+}
+
+/// Wait for the UI's answer; after `timeout`, pause the run instead (#155).
+async fn wait_or_pause(
+    session_id: &str,
+    tool_use_id: &str,
+    rx: oneshot::Receiver<DialogOutcome>,
+    timeout: Duration,
+) -> DialogOutcome {
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(outcome)) => outcome,
+        // Sender dropped without answering (session cancelled, app shutting down).
+        Ok(Err(_)) => DialogOutcome::Denied {
+            message: "Splitkick closed this request before it was answered.".to_string(),
+        },
+        Err(_) => {
+            // From now on an answer finds nothing parked and goes as a new
+            // message, which waits for this run to end.
+            PENDING.lock().unwrap().remove(tool_use_id);
+            pause_run(session_id, PAUSE_CONFIRM_TIMEOUT).await
+        }
+    }
 }
 
 /// Resolve a parked dialog without checking that its turn still lives.
@@ -474,6 +546,48 @@ mod tests {
 
         assert!(matches!(rx.await.unwrap(), DialogOutcome::Answered { .. }));
         assert!(!is_parked("toolu_live_turn"));
+    }
+
+    /// A dialog that outlives the park timeout asks the tailer to end the run
+    /// and gives the model no answer of its own (#155).
+    #[tokio::test]
+    async fn a_timed_out_dialog_pauses_the_run_through_the_tailer() {
+        let rx = park_for_test("toolu_pause", "pause-session");
+        let waiter = tokio::spawn(wait_or_pause(
+            "pause-session",
+            "toolu_pause",
+            rx,
+            Duration::from_millis(10),
+        ));
+
+        // The tailer finds the request, ends the CLI and confirms.
+        let confirm = loop {
+            if let Some(confirm) = take_pause_request("pause-session") {
+                break confirm;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        };
+        // An answer that comes now finds nothing parked: it goes as a new
+        // message that resumes the session.
+        assert!(!is_parked("toolu_pause"));
+        confirm.send(()).unwrap();
+
+        match waiter.await.unwrap() {
+            DialogOutcome::Denied { message } => assert_ne!(message, PARK_TIMED_OUT),
+            other => panic!("expected the paused outcome, got {other:?}"),
+        }
+        assert!(take_pause_request("pause-session").is_none());
+    }
+
+    /// Without a tailer to end the run, the call still returns, so the CLI
+    /// does not hang until its own MCP timeout.
+    #[tokio::test]
+    async fn a_pause_without_a_tailer_falls_back_to_the_timeout_denial() {
+        match pause_run("pause-no-tailer-session", Duration::from_millis(10)).await {
+            DialogOutcome::Denied { message } => assert_eq!(message, PARK_TIMED_OUT),
+            other => panic!("expected a denial, got {other:?}"),
+        }
+        assert!(take_pause_request("pause-no-tailer-session").is_none());
     }
 
     #[test]

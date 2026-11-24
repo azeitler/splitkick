@@ -2919,14 +2919,12 @@ export function formatAnswersForClaude(
 }
 
 /**
- * Format question answers into natural language for Claude
+ * Format question answers as a new message: for a backend without an in-turn
+ * answer, and for a Claude run that ended before the answer (#155).
  *
  * Example output:
- * "For 'What aspect of Coolify would you like to focus on?', I selected:
- * - v5 development
- * - API improvements
- *
- * Additionally: I'm interested in the new plugin system"
+ * Answer to your question "Which areas?": API, Docs; the plugin system too
+ * Note: keep it short
  */
 export function formatAnswersAsNaturalLanguage(
   questions: Question[],
@@ -2943,24 +2941,17 @@ export function formatAnswersAsNaturalLanguage(
       return label ? [label] : []
     })
 
-    if (selectedLabels.length > 0 || answer.customText || answer.note) {
-      let text = `For "${question.question}"`
-
-      if (selectedLabels.length > 0) {
-        text += `, I selected:\n${selectedLabels.map(l => `- ${l}`).join('\n')}`
-      }
-
-      if (answer.customText) {
-        text +=
-          selectedLabels.length > 0
-            ? `\n\nAdditionally: ${answer.customText}`
-            : `: ${answer.customText}`
-      }
-
-      if (answer.note) {
-        text += `\n\nNote: ${answer.note}`
-      }
-
+    const custom = answer.customText?.trim()
+    const note = answer.note?.trim()
+    if (selectedLabels.length > 0 || custom || note) {
+      // Name the question: the answer may come as a new message long after
+      // it was asked, when a paused run resumes (#155).
+      const reply = [
+        ...(selectedLabels.length > 0 ? [selectedLabels.join(', ')] : []),
+        ...(custom ? [custom] : []),
+      ].join('; ')
+      let text = `Answer to your question "${question.question}": ${reply || '(see note)'}`
+      if (note) text += `\nNote: ${note}`
       parts.push(text)
     }
   }

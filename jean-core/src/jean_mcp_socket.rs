@@ -635,7 +635,7 @@ mod tests {
                 "type": "stdio",
                 "command": shim,
                 "args": [crate::jean_mcp_core::JEAN_MCP_STDIO_ARG, crate::jean_mcp_core::JEAN_MCP_DIALOG_ARG],
-                "timeout": 1_800_000,
+                "timeout": crate::chat::jean_mcp::DIALOG_TOOL_TIMEOUT_MS,
                 "env": {
                     "JEAN_MCP_SOCKET": socket,
                     "JEAN_MCP_TOKEN": "verify-token",
