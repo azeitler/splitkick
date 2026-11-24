@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/test-utils'
@@ -80,7 +80,7 @@ describe('VerticalNav', () => {
       leftSidebarVisible: true,
       archivedViewOpen: false,
       archivedViewProjectId: null,
-      scheduledViewOpen: false,
+      activeScheduleId: null,
     })
     useChatStore.setState({
       sendingSessionIds: {},
@@ -267,31 +267,39 @@ describe('VerticalNav', () => {
     expect(screen.queryByTestId('vertical-nav-badge-todo')).toBeNull()
   })
 
-  it('opens the Scheduled and Archived pages in the main area', async () => {
-    useUIStore.setState({ leftSidebarVisible: false })
-    renderNav(true)
-
+  it('selects Scheduled as a tab', async () => {
+    const { onSelectTab } = renderNav()
     await userEvent.click(item('scheduled'))
-    expect(useUIStore.getState().scheduledViewOpen).toBe(true)
-    // The sidebar comes back, so the nav stays in view.
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
+    expect(onSelectTab).toHaveBeenCalledWith('scheduled')
+
+    act(() => useUIStore.setState({ sidebarTab: 'scheduled' }))
     expect(item('scheduled')).toHaveAttribute('aria-current', 'page')
+    expect(item('projects')).not.toHaveAttribute('aria-current')
+  })
+
+  it('opens the Archived page and marks no tab while it shows', async () => {
+    useUIStore.setState({ leftSidebarVisible: false, sidebarTab: 'recent' })
+    renderNav()
+    expect(item('recent')).toHaveAttribute('aria-current', 'page')
 
     useUIStore.setState({ archivedViewProjectId: 'p1' })
     await userEvent.click(item('archived'))
     const ui = useUIStore.getState()
     expect(ui.archivedViewOpen).toBe(true)
-    expect(ui.scheduledViewOpen).toBe(false)
     // The nav item shows every project.
     expect(ui.archivedViewProjectId).toBeNull()
+    // The sidebar comes back, so the nav stays in view.
+    expect(ui.leftSidebarVisible).toBe(true)
     expect(item('archived')).toHaveAttribute('aria-current', 'page')
-    expect(item('scheduled')).not.toHaveAttribute('aria-current')
+    expect(item('recent')).not.toHaveAttribute('aria-current')
   })
 
   it('leaves Archived unmarked while the page is filtered to a project', () => {
     useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: 'p1' })
     renderNav()
     expect(item('archived')).not.toHaveAttribute('aria-current')
+    // The filtered page belongs to the project's row in the Projects tab.
+    expect(item('projects')).toHaveAttribute('aria-current', 'page')
   })
 
   it('counts active schedules and archived items', async () => {

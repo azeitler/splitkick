@@ -34,7 +34,7 @@ describe('ProjectArchivedRow', () => {
     useUIStore.setState({
       archivedViewOpen: false,
       archivedViewProjectId: null,
-      scheduledViewOpen: false,
+      activeScheduleId: null,
       leftSidebarVisible: true,
     })
     useProjectsStore.getState().selectProject(null)

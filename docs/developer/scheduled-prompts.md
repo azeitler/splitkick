@@ -17,8 +17,11 @@ so no window has to be open.
 - `src-tauri/src/desktop_commands.rs`: `install_schedule_notifier()`.
 - Frontend: `src/services/schedules.ts`, `src/lib/schedule-compose.ts`,
   `src/components/chat/ScheduleDialog.tsx`, `useComposerSchedule.tsx`,
-  `ScheduledBanner.tsx`, `src/components/schedules/ScheduledView.tsx`,
-  the Scheduled item in `src/components/layout/vertical-nav/VerticalNav.tsx`.
+  `ScheduledBanner.tsx`. The Scheduled sidebar tab
+  (`src/components/projects/SidebarScheduledSection.tsx`) lists the
+  schedules; a row opens `src/components/schedules/ScheduleDetailView.tsx`
+  in the main area (`openScheduleView`, `useUIStore.activeScheduleId`, not
+  persisted), with the run list from `ScheduleRuns.tsx`.
 
 ## Model (`Schedule`, snake_case, Pattern A)
 
@@ -32,6 +35,7 @@ so no window has to be open.
 | `enabled` | `false` = paused |
 | `recurrence` | `{cron, tz}`; absent = one-off, removed after it ran |
 | `last_*` | Last run time, outcome (`queued`, `skipped`, `failed`), error, session |
+| `history` | The last 50 fires, oldest first: `fired_at_unix`, `outcome`, `session_id`, `error`, and `end` / `ended_at_unix` once the queue drain reports the run's end (`completed`, `waiting`, `cancelled`, `failed`). Written in `apply_fire_result` / `take_due` and `scheduled_run_finished`. A run with no `end` takes its state from its session in the UI (`scheduleRunState`), because the frontend queue processor can send a scheduled prompt without the end report |
 
 Every new field has `#[serde(default)]`: older files still load.
 

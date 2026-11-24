@@ -15,7 +15,7 @@ export function openGraphView(graphId: string, nodeId?: string): void {
   useChatStore.getState().clearActiveWorktree()
   const ui = useUIStore.getState()
   ui.setArchivedViewOpen(false)
-  ui.setScheduledViewOpen(false)
+  ui.setActiveScheduleId(null)
   ui.setActiveGraphId(graphId)
   ui.setGraphFocusNodeId(nodeId ?? null)
 }

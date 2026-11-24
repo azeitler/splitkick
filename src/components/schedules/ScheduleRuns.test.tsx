@@ -8,7 +8,7 @@ import type {
   Session,
 } from '@/types/chat'
 import {
-  ScheduleRuns,
+  ScheduleRunList,
   VISIBLE_RUNS,
   scheduleRunState,
   sessionPlaces,
@@ -117,7 +117,7 @@ describe('scheduleRunState', () => {
   })
 })
 
-describe('ScheduleRuns', () => {
+describe('ScheduleRunList', () => {
   const places = sessionPlaces(
     sessions([
       session({ last_run_status: 'running' }),
@@ -125,19 +125,21 @@ describe('ScheduleRuns', () => {
     ])
   )
 
-  it('renders nothing for a schedule that never ran', () => {
-    const { container } = render(
-      <ScheduleRuns
+  it('says so when the schedule never ran', () => {
+    render(
+      <ScheduleRunList
         schedule={schedule([])}
         places={places}
         now={Date.now()}
         onOpenSession={vi.fn()}
       />
     )
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.getByTestId('schedule-runs-empty')).toHaveTextContent(
+      'No runs yet.'
+    )
   })
 
-  it('is collapsed with a count and the last state, expands newest first and opens a session', async () => {
+  it('lists the runs newest first and opens the session of one', async () => {
     const onOpen = vi.fn()
     const history: ScheduleRun[] = [
       queued(nowSec - 7200, 's2', { end: 'completed' }),
@@ -149,7 +151,7 @@ describe('ScheduleRuns', () => {
       queued(nowSec - 600),
     ]
     render(
-      <ScheduleRuns
+      <ScheduleRunList
         schedule={schedule(history)}
         places={places}
         now={Date.now()}
@@ -157,12 +159,6 @@ describe('ScheduleRuns', () => {
       />
     )
 
-    const toggle = screen.getByRole('button', { name: /3 runs/ })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveTextContent('last: Running')
-    expect(screen.queryByTestId('schedule-runs')).not.toBeInTheDocument()
-
-    await userEvent.click(toggle)
     const rows = screen.getAllByTestId('schedule-run')
     expect(rows).toHaveLength(3)
     expect(rows[0]).toHaveTextContent('Nightly run · Acme › main')
@@ -184,9 +180,6 @@ describe('ScheduleRuns', () => {
         session: expect.objectContaining({ id: 's2' }),
       })
     )
-
-    await userEvent.click(screen.getByRole('button', { name: /3 runs/ }))
-    expect(screen.queryByTestId('schedule-runs')).not.toBeInTheDocument()
   })
 
   it('shows the last runs and all of them on request', async () => {
@@ -194,16 +187,14 @@ describe('ScheduleRuns', () => {
       queued(nowSec - 10_000 + i, 's2', { end: 'completed' })
     )
     render(
-      <ScheduleRuns
-        schedule={{ ...schedule(history), id: 'sch-many' }}
+      <ScheduleRunList
+        schedule={schedule(history)}
         places={places}
         now={Date.now()}
         onOpenSession={vi.fn()}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: /15 runs/ }))
     expect(screen.getAllByTestId('schedule-run')).toHaveLength(VISIBLE_RUNS)
-
     await userEvent.click(screen.getByRole('button', { name: 'Show all 15' }))
     expect(screen.getAllByTestId('schedule-run')).toHaveLength(15)
   })

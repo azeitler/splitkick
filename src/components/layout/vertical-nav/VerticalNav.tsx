@@ -1,11 +1,5 @@
 import { Fragment, useMemo, type ReactNode } from 'react'
-import {
-  Archive,
-  CalendarClock,
-  ChevronsLeft,
-  ChevronsRight,
-  House,
-} from 'lucide-react'
+import { Archive, ChevronsLeft, ChevronsRight, House } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -14,7 +8,6 @@ import {
 import { TAB_META, useSidebarTabCounts } from './tab-meta'
 import { useArchivedCount } from '@/components/archive/useArchivedCount'
 import { openArchivedView } from '@/lib/archived-view'
-import { openScheduledView } from '@/lib/scheduled-view'
 import { cn } from '@/lib/utils'
 import {
   agentActivity,
@@ -33,10 +26,12 @@ export const NAV_WIDTH_EXPANDED = 168
 export const NAV_WIDTH_COLLAPSED = 46
 
 /** The tabs in nav order, in groups with a divider between them: the
- *  session lists (To-Do ends them), then Agents and Graphs. */
+ *  session lists (To-Do ends them), then Agents and Graphs, then Scheduled
+ *  (the Archived page follows it). */
 const NAV_TAB_GROUPS: SidebarTab[][] = [
   ['projects', 'recent', 'starred', 'todo'],
   ['agents', 'graphs'],
+  ['scheduled'],
 ]
 
 function NavDivider() {
@@ -73,6 +68,10 @@ function useNavCounts(): {
   const tabCounts = useSidebarTabCounts()
   const { data: agents } = useAgents()
   const { data: graphs } = useGraphs()
+  const { data: schedules } = useSchedules()
+  const activeSchedules = (schedules ?? []).filter(
+    schedule => schedule.enabled !== false
+  ).length
   const hasAgents = (agents?.length ?? 0) > 0
   const { data: allSessions } = useAllSessions(hasAgents)
   const storeState = useCanvasStoreState()
@@ -88,7 +87,12 @@ function useNavCounts(): {
   )
   const agentDetail = agentActivityText(activity)
   return {
-    counts: { ...tabCounts, agents: agentCount, graphs: graphCount },
+    counts: {
+      ...tabCounts,
+      agents: agentCount,
+      graphs: graphCount,
+      scheduled: activeSchedules,
+    },
     texts: {
       agents: [plural(agentCount, 'agent'), agentDetail]
         .filter(Boolean)
@@ -99,6 +103,7 @@ function useNavCounts(): {
       ]
         .filter(Boolean)
         .join(', '),
+      scheduled: `${activeSchedules} active`,
     },
     attention: {
       todo: true,
@@ -108,17 +113,14 @@ function useNavCounts(): {
   }
 }
 
-/** Pages in the main area, below the tabs: Scheduled and Archived. Each one
- *  opens like today's sidebar row did; the panel keeps its tab. The sidebar
- *  comes back if it was hidden, so the nav stays in view. */
-function openPage(open: () => void): void {
-  open()
+/** The Archived page, below the tabs: it opens in the main area, and no
+ *  tab item is active while it shows. The sidebar comes back if it was
+ *  hidden, so the nav stays in view. */
+function openArchivedPage(): void {
+  openArchivedView()
   const { leftSidebarVisible, setLeftSidebarVisible } = useUIStore.getState()
   if (!leftSidebarVisible) setLeftSidebarVisible(true)
 }
-
-const openScheduledPage = () => openPage(openScheduledView)
-const openArchivedPage = () => openPage(() => openArchivedView())
 
 interface NavItemProps {
   id: string
@@ -215,8 +217,8 @@ interface VerticalNavProps {
 }
 
 /**
- * The vertical navigation: Home, then the sidebar tabs, the
- * Scheduled and Archived pages, and a Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
+ * The vertical navigation: Home, then the sidebar tabs (Scheduled is the
+ * last), the Archived page, and a Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
  * and count badges; expanded shows the counts at the end of the row.
  */
 export function VerticalNav({
@@ -227,15 +229,11 @@ export function VerticalNav({
   const selectedTab = useUIStore(state => state.sidebarTab)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
   const { counts, texts, attention } = useNavCounts()
-  const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
-  // Filtered to one project, the view belongs to that project's row.
+  // Filtered to one project, the view belongs to that project's row (in
+  // the Projects tab, which then stays active).
   const archivedOpen = useUIStore(
     state => state.archivedViewOpen && state.archivedViewProjectId === null
   )
-  const { data: schedules } = useSchedules()
-  const activeSchedules = (schedules ?? []).filter(
-    schedule => schedule.enabled !== false
-  ).length
   const archivedCount = useArchivedCount()
 
   const toggleCollapsed = () => {
@@ -273,7 +271,7 @@ export function VerticalNav({
                 id={tab}
                 label={label}
                 icon={icon}
-                active={!home && selectedTab === tab}
+                active={!home && !archivedOpen && selectedTab === tab}
                 collapsed={collapsed}
                 onClick={() => onSelectTab(tab)}
                 count={count}
@@ -284,17 +282,6 @@ export function VerticalNav({
           })}
         </Fragment>
       ))}
-      <NavDivider />
-      <NavItem
-        id="scheduled"
-        label="Scheduled"
-        icon={<CalendarClock />}
-        active={scheduledOpen}
-        collapsed={collapsed}
-        onClick={openScheduledPage}
-        count={activeSchedules}
-        countText={`${activeSchedules} active`}
-      />
       <NavItem
         id="archived"
         label="Archived"

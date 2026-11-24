@@ -9,14 +9,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **The Scheduled view lists the runs of each schedule.** A schedule that ran
-  shows its run count and the state of its last run; open it to see the last
-  10 runs (or all), each with its time, session, project and state (running,
-  queued, waiting for input, completed, cancelled, failed, skipped). Click a
-  run to open its session. Each schedule keeps its last 50 runs.
+- **Scheduled is a sidebar tab, and each schedule shows its runs.** The
+  Scheduled tab lists every schedule with its next time and the state of its
+  last run. Click one to see its settings and actions (pause, edit, run now,
+  delete) and the runs it started: the last 10 (or all), each with its time,
+  session, project and state (running, queued, waiting for input, completed,
+  cancelled, failed, skipped). Click a run to open its session. Each schedule
+  keeps its last 50 runs.
 
 ### Changed
 
+- **Archived marks only itself in the navigation.** While the Archived page
+  shows, no tab is marked; picking a tab leaves the page.
 - **Agents start collapsed in the Agents tab.** Each agent row shows only
   itself and the count of the sessions below it; you open the agents you
   need, and Splitkick remembers which ones. The open/closed state of earlier

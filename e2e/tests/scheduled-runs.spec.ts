@@ -149,26 +149,44 @@ test.use({
   },
 })
 
-test('the Scheduled view lists the runs of a schedule and opens one', async ({
+test('Scheduled is a sidebar tab: the list in the panel, a schedule with its runs in the main area', async ({
   mockPage,
 }) => {
   await asDesktopApp(mockPage)
-  await mockPage.getByTestId('vertical-nav-scheduled').first().click()
+  const navItem = (id: string) =>
+    mockPage.getByTestId(`vertical-nav-${id}`).first()
 
-  const rows = mockPage.getByTestId('scheduled-row')
-  await expect(rows).toHaveCount(2)
-  const nightly = rows.filter({ hasText: 'Nightly check' })
-  const once = rows.filter({ hasText: 'Release reminder' })
-  // A schedule that never ran shows no run list.
-  await expect(once.getByRole('button', { name: /\d+ runs?/ })).toHaveCount(0)
+  await navItem('recent').click()
+  await expect(navItem('recent')).toHaveAttribute('aria-current', 'page')
 
-  const toggle = nightly.getByRole('button', { name: /12 runs/ })
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  await expect(toggle).toContainText('last: Running')
-  await shot(mockPage, 'scheduled-runs-collapsed')
+  // The tab: Recent is no longer marked, the panel lists the schedules.
+  await navItem('scheduled').click()
+  await expect(navItem('scheduled')).toHaveAttribute('aria-current', 'page')
+  await expect(navItem('recent')).not.toHaveAttribute('aria-current')
+  const section = mockPage.getByTestId('sidebar-scheduled-section')
+  const nightlyRow = section.getByTestId('sidebar-schedule-row-nightly')
+  await expect(nightlyRow).toContainText('Nightly check')
+  await expect(nightlyRow).toContainText(/in \d+h · daily at 02:00/)
+  await expect(
+    nightlyRow.getByTestId('sidebar-schedule-last-state')
+  ).toHaveAttribute('data-state', 'running')
+  await expect(section.getByTestId('sidebar-schedule-row-once')).toContainText(
+    'Release reminder'
+  )
 
-  await toggle.click()
-  const runs = nightly.getByTestId('schedule-run')
+  // A row opens the schedule: settings at the top, then the runs.
+  await nightlyRow.click()
+  await expect(nightlyRow).toHaveAttribute('aria-current', 'page')
+  const detail = mockPage.getByTestId('schedule-detail')
+  await expect(
+    detail.getByRole('heading', { name: 'Nightly check' })
+  ).toBeVisible()
+  await expect(detail.getByTestId('schedule-detail-prompt')).toContainText(
+    'Run the checks and report what failed'
+  )
+  await expect(detail).toContainText('a new session each run')
+  await expect(detail).toContainText('daily at 02:00')
+  const runs = detail.getByTestId('schedule-run')
   await expect(runs).toHaveCount(10)
   await expect(runs.nth(0)).toContainText('Nightly check · today')
   await expect(runs.nth(0)).toContainText('Running')
@@ -180,14 +198,27 @@ test('the Scheduled view lists the runs of a schedule and opens one', async ({
   await expect(runs.nth(4)).toContainText('No session')
   await expect(runs.nth(5)).toContainText('Skipped')
   await expect(runs.nth(6)).toContainText('Completed')
-  await shot(mockPage, 'scheduled-runs-expanded')
+  await shot(mockPage, 'scheduled-tab-detail')
 
-  await nightly.getByRole('button', { name: 'Show all 12' }).click()
+  await detail.getByRole('button', { name: 'Show all 12' }).click()
   await expect(runs).toHaveCount(12)
 
+  // A schedule that never ran says so.
+  await section.getByTestId('sidebar-schedule-row-once').click()
+  await expect(detail.getByTestId('schedule-runs-empty')).toBeVisible()
+
+  // Archived marks only itself; a tab click leaves it again.
+  await navItem('archived').click()
+  await expect(navItem('archived')).toHaveAttribute('aria-current', 'page')
+  await expect(navItem('scheduled')).not.toHaveAttribute('aria-current')
+  await expect(mockPage.getByTestId('archived-view')).toBeVisible()
+  await shot(mockPage, 'scheduled-tab-archived')
+  await navItem('scheduled').click()
+  await expect(navItem('scheduled')).toHaveAttribute('aria-current', 'page')
+  await expect(navItem('archived')).not.toHaveAttribute('aria-current')
+
+  // A run opens its session.
+  await section.getByTestId('sidebar-schedule-row-nightly').click()
   await runs.nth(1).getByRole('button').click()
-  await expect(mockPage.getByTestId('scheduled-row')).toHaveCount(0)
-  await expect(
-    mockPage.getByTestId('vertical-nav-scheduled').first()
-  ).not.toHaveAttribute('aria-current', 'page')
+  await expect(mockPage.getByTestId('schedule-detail')).toHaveCount(0)
 })

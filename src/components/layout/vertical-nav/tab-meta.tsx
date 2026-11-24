@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import {
   BotMessageSquare,
+  CalendarClock,
   Clock,
   FolderOpen,
   ListTodo,
@@ -25,6 +26,7 @@ export const TAB_META: Record<SidebarTab, { label: string; icon: ReactNode }> =
     agents: { label: 'Agents', icon: <BotMessageSquare /> },
     todo: { label: 'To-Do', icon: <ListTodo /> },
     graphs: { label: 'Graphs', icon: <Workflow /> },
+    scheduled: { label: 'Scheduled', icon: <CalendarClock /> },
   }
 
 /**

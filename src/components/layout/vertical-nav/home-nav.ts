@@ -3,13 +3,13 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 
-/** Whether the Home view shows: Home, and no Archived, graph or Scheduled
+/** Whether the Home view shows: Home, and no Archived, graph or schedule
  *  page over it. The vertical navigation marks its Home item with it. */
 export function useIsHomeNavActive(): boolean {
   const archivedOpen = useUIStore(state => state.archivedViewOpen)
   const graphOpen = useUIStore(state => state.activeGraphId !== null)
-  const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
-  return useIsHomeActive() && !archivedOpen && !graphOpen && !scheduledOpen
+  const scheduleOpen = useUIStore(state => state.activeScheduleId !== null)
+  return useIsHomeActive() && !archivedOpen && !graphOpen && !scheduleOpen
 }
 
 /**
@@ -22,6 +22,6 @@ export function openHome(): void {
   useProjectsStore.getState().selectProject(null)
   useChatStore.getState().clearActiveWorktree()
   useUIStore.getState().setArchivedViewOpen(false)
-  useUIStore.getState().setScheduledViewOpen(false)
+  useUIStore.getState().setActiveScheduleId(null)
   useUIStore.getState().setActiveGraphId(null)
 }

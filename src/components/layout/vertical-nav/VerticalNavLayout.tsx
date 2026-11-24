@@ -86,8 +86,13 @@ export function VerticalNavLayout({
   }, [])
 
   const handleSelectTab = useCallback((tab: SidebarTab) => {
-    const { setSidebarTab, leftSidebarVisible, setLeftSidebarVisible } =
-      useUIStore.getState()
+    const ui = useUIStore.getState()
+    const { setSidebarTab, leftSidebarVisible, setLeftSidebarVisible } = ui
+    // The Archived page is a nav item of its own: picking a tab leaves it.
+    // Filtered to a project, it belongs to the Projects tab and stays.
+    if (ui.archivedViewOpen && ui.archivedViewProjectId === null) {
+      ui.setArchivedViewOpen(false)
+    }
     setSidebarTab(tab)
     if (!leftSidebarVisible) setLeftSidebarVisible(true)
     setPanelOnHome(true)

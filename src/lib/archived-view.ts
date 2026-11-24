@@ -15,7 +15,7 @@ export function openArchivedView(projectId: string | null = null): void {
   useChatStore.getState().clearActiveWorktree()
   const ui = useUIStore.getState()
   ui.setActiveGraphId(null)
-  ui.setScheduledViewOpen(false)
+  ui.setActiveScheduleId(null)
   ui.setArchivedViewProjectId(projectId)
   ui.setArchivedViewOpen(true)
 }

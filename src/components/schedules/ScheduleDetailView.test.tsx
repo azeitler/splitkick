@@ -6,10 +6,15 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from '@/test/test-utils'
+import { useUIStore } from '@/store/ui-store'
 import type { AllSessionsResponse, Schedule } from '@/types/chat'
-import { ScheduledList, lastRunText, nextRunText } from './ScheduledView'
+import {
+  ScheduleDetailView,
+  lastRunText,
+  nextRunText,
+  settingsText,
+} from './ScheduleDetailView'
 
 const mocks = vi.hoisted(() => ({
   schedules: [] as Schedule[],
@@ -40,7 +45,8 @@ vi.mock('@/lib/navigate-to-session', () => ({
 }))
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-const inOneHour = Math.floor(Date.now() / 1000) + 3600
+const nowSec = Math.floor(Date.now() / 1000)
+const inOneHour = nowSec + 3600
 
 function schedule(overrides: Partial<Schedule>): Schedule {
   return {
@@ -51,19 +57,24 @@ function schedule(overrides: Partial<Schedule>): Schedule {
     prompt: 'check the build',
     reason: '',
     fire_at_unix: inOneHour,
-    created_at_unix: 0,
+    created_at_unix: nowSec - 86_400,
     ...overrides,
   }
 }
 
-describe('ScheduledList', () => {
+function show(scheduleId = 'sch-1') {
+  return render(<ScheduleDetailView scheduleId={scheduleId} />)
+}
+
+describe('ScheduleDetailView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useUIStore.setState({ activeScheduleId: 'sch-1' })
     mocks.sessions = {
       entries: [
         {
           project_id: 'p1',
-          project_name: 'Splitkick',
+          project_name: 'Acme',
           worktree_id: 'w1',
           worktree_name: 'main',
           worktree_path: '/tmp/w1',
@@ -76,13 +87,19 @@ describe('ScheduledList', () => {
     }
   })
 
-  it('lists the runs of a schedule and opens the session of one', async () => {
+  it('shows the settings at the top and the runs below', async () => {
     mocks.schedules = [
       schedule({
-        id: 'with-runs',
+        name: 'Nightly',
+        target: 'new_session',
+        recurrence: { cron: '0 9 * * *', tz },
+        last_run_unix: nowSec - 7200,
+        last_outcome: 'queued',
+        last_session_id: 's-last',
+        template: { backend: 'claude', model: 'opus', executionMode: 'yolo' },
         history: [
           {
-            fired_at_unix: Math.floor(Date.now() / 1000) - 3600,
+            fired_at_unix: nowSec - 7200,
             outcome: 'queued',
             session_id: 's-last',
             end: 'completed',
@@ -90,16 +107,25 @@ describe('ScheduledList', () => {
         ],
       }),
     ]
-    render(<ScheduledList />)
+    show()
 
-    const toggle = screen.getByRole('button', { name: /1 run/ })
-    expect(toggle).toHaveTextContent('last: Completed')
-    await userEvent.click(toggle)
-    const [run] = screen.getAllByTestId('schedule-run')
-    expect(run).toHaveTextContent('Nightly run 3 · Splitkick › main')
-    await userEvent.click(
-      within(run as HTMLElement).getByRole('button', { name: /Nightly run 3/ })
+    expect(screen.getByRole('heading', { name: 'Nightly' })).toBeInTheDocument()
+    expect(screen.getByText('User')).toBeInTheDocument()
+    expect(screen.getByText('Yolo')).toBeInTheDocument()
+    expect(screen.getByTestId('schedule-detail-prompt')).toHaveTextContent(
+      'check the build'
     )
+    expect(
+      screen.getByText('Acme › main › a new session each run')
+    ).toBeInTheDocument()
+    expect(screen.getByText('daily at 09:00')).toBeInTheDocument()
+    expect(screen.getByText(/^2h ago \(.+\) · Completed$/)).toBeInTheDocument()
+    expect(screen.getByText('claude · opus · yolo')).toBeInTheDocument()
+
+    const [run] = screen.getAllByTestId('schedule-run')
+    expect(run).toHaveTextContent('Nightly run 3 · Acme › main')
+    expect(run).toHaveTextContent('Completed')
+    await userEvent.click(screen.getByRole('button', { name: /Nightly run 3/ }))
     expect(mocks.navigateToSession).toHaveBeenCalledWith({
       projectId: 'p1',
       worktreeId: 'w1',
@@ -107,105 +133,71 @@ describe('ScheduledList', () => {
     })
   })
 
-  it('shows name, target, rule, next run, last result and origin', async () => {
-    mocks.schedules = [
-      schedule({
-        id: 'rep',
-        name: 'Nightly',
-        target: 'new_session',
-        recurrence: { cron: '0 9 * * *', tz },
-        last_run_unix: Math.floor(Date.now() / 1000) - 7200,
-        last_outcome: 'queued',
-        last_session_id: 's-last',
-        template: { executionMode: 'yolo' },
-      }),
-      schedule({ id: 'agent', origin: 'agent', prompt: 'wake up' }),
-    ]
-    render(<ScheduledList />)
-
-    const [rep, agent] = screen.getAllByTestId('scheduled-row')
-    const repRow = within(rep as HTMLElement)
-    expect(repRow.getByText('Nightly')).toBeInTheDocument()
-    expect(repRow.getByText('User')).toBeInTheDocument()
-    expect(repRow.getByText('Yolo')).toBeInTheDocument()
+  it('links the session a schedule runs in and says when it has no runs', async () => {
+    mocks.schedules = [schedule({})]
+    show()
+    expect(screen.getByTestId('schedule-runs-empty')).toHaveTextContent(
+      'No runs yet.'
+    )
     expect(
-      repRow.getByText('Splitkick › main › a new session each run')
+      screen.getByText("The session's settings when it runs")
     ).toBeInTheDocument()
-    expect(repRow.getByText('daily at 09:00')).toBeInTheDocument()
-    expect(repRow.getByText(/^2h ago \(.+\) · queued$/)).toBeInTheDocument()
-
-    await userEvent.click(repRow.getByRole('button', { name: 'Nightly run 3' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Release check' }))
     expect(mocks.navigateToSession).toHaveBeenCalledWith({
       projectId: 'p1',
       worktreeId: 'w1',
-      sessionId: 's-last',
+      sessionId: 's1',
     })
-
-    const agentRow = within(agent as HTMLElement)
-    expect(agentRow.getByText('Agent')).toBeInTheDocument()
-    expect(
-      agentRow.getByText('Splitkick › main › Release check')
-    ).toBeInTheDocument()
-    expect(agentRow.getByText('Once')).toBeInTheDocument()
   })
 
   // An agent schedule follows the agent; the session it was made in is not
   // where the next run goes.
   it('names the agent a schedule runs for', () => {
     mocks.schedules = [
-      schedule({ id: 'x', target: 'agent', agent_id: 'a1', prompt: 'summary' }),
-      schedule({ id: 'y', target: 'agent', agent_id: 'gone', prompt: 'old' }),
+      schedule({ id: 'x', target: 'agent', agent_id: 'a1' }),
+      schedule({ id: 'y', target: 'agent', agent_id: 'gone' }),
     ]
-    render(<ScheduledList />)
-    const [first, second] = screen.getAllByTestId('scheduled-row')
+    const { unmount } = show('x')
     expect(
-      within(first as HTMLElement).getByText(
-        'Agent Assistant, in its current session'
-      )
+      screen.getByText('Agent Assistant, in its current session')
     ).toBeInTheDocument()
-    expect(
-      within(second as HTMLElement).getByText('An agent that was removed')
-    ).toBeInTheDocument()
+    unmount()
+    show('y')
+    expect(screen.getByText('An agent that was removed')).toBeInTheDocument()
   })
 
-  it('pauses, resumes, runs now and deletes', async () => {
-    mocks.schedules = [
-      schedule({ id: 'on' }),
-      schedule({ id: 'off', enabled: false, last_error: 'gone' }),
-    ]
-    render(<ScheduledList />)
-    const [on, off] = screen.getAllByTestId('scheduled-row')
-
-    await userEvent.click(
-      within(on as HTMLElement).getByRole('button', { name: 'Pause' })
-    )
+  it('pauses, runs now and deletes, then closes', async () => {
+    mocks.schedules = [schedule({ id: 'on' })]
+    show('on')
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }))
     expect(mocks.setScheduleEnabled).toHaveBeenCalledWith('on', false)
 
-    const offRow = within(off as HTMLElement)
-    expect(offRow.getByText('Paused', { selector: 'dd' })).toBeInTheDocument()
-    expect(offRow.getByText('gone')).toBeInTheDocument()
-    await userEvent.click(offRow.getByRole('button', { name: 'Resume' }))
-    expect(mocks.setScheduleEnabled).toHaveBeenCalledWith('off', true)
-
-    await userEvent.click(
-      within(on as HTMLElement).getByRole('button', { name: 'Run now' })
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Run now' }))
     expect(mocks.runScheduleNow).toHaveBeenCalledWith('on')
 
-    await userEvent.click(
-      within(on as HTMLElement).getByRole('button', { name: 'Delete' })
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
     await confirmDialog()
     await waitFor(() => expect(mocks.deleteSchedule).toHaveBeenCalledWith('on'))
+    await waitFor(() =>
+      expect(useUIStore.getState().activeScheduleId).toBeNull()
+    )
+  })
+
+  it('resumes a paused schedule and shows its error', async () => {
+    mocks.schedules = [
+      schedule({ id: 'off', enabled: false, last_error: 'gone' }),
+    ]
+    show('off')
+    expect(screen.getByText('Paused', { selector: 'dd' })).toBeInTheDocument()
+    expect(screen.getByText('gone')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(mocks.setScheduleEnabled).toHaveBeenCalledWith('off', true)
   })
 
   it('keeps the schedule when the delete confirmation is cancelled', async () => {
     mocks.schedules = [schedule({ id: 'on' })]
-    render(<ScheduledList />)
-    const [on] = screen.getAllByTestId('scheduled-row')
-    await userEvent.click(
-      within(on as HTMLElement).getByRole('button', { name: 'Delete' })
-    )
+    show('on')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
     await cancelDialog()
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -215,7 +207,7 @@ describe('ScheduledList', () => {
 
   it('edits a schedule through the dialog', async () => {
     mocks.schedules = [schedule({ id: 'e1' })]
-    render(<ScheduledList />)
+    show('e1')
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(await screen.findByText('Edit schedule')).toBeInTheDocument()
 
@@ -232,14 +224,16 @@ describe('ScheduledList', () => {
     )
   })
 
-  it('explains how to schedule when the list is empty', () => {
+  it('says so when the schedule is gone', () => {
     mocks.schedules = []
-    render(<ScheduledList />)
-    expect(screen.getByText('Nothing is scheduled.')).toBeInTheDocument()
+    show('done')
+    expect(screen.getByTestId('schedule-detail-missing')).toHaveTextContent(
+      'no longer exists'
+    )
   })
 })
 
-describe('row texts', () => {
+describe('detail texts', () => {
   it('says Paused instead of a next time', () => {
     expect(nextRunText(schedule({ enabled: false }))).toBe('Paused')
     expect(nextRunText(schedule({}), (inOneHour - 3600) * 1000)).toMatch(
@@ -249,5 +243,20 @@ describe('row texts', () => {
 
   it('has no last result before the first run', () => {
     expect(lastRunText(schedule({}))).toBeNull()
+  })
+
+  it('shows the stored outcome for a schedule without history', () => {
+    expect(
+      lastRunText(
+        schedule({ last_run_unix: nowSec - 60, last_outcome: 'skipped' })
+      )
+    ).toMatch(/ · skipped$/)
+  })
+
+  it('lists the captured run settings, or none', () => {
+    expect(settingsText(schedule({}))).toBeNull()
+    expect(
+      settingsText(schedule({ template: { model: 'opus', pendingImages: [] } }))
+    ).toBe('opus')
   })
 })

@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { statusConfig } from '@/components/chat/session-card-utils'
 import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
@@ -118,7 +117,8 @@ export const runStateConfig: Record<
   },
 }
 
-function RunStateDot({ state }: { state: ScheduleRunState }) {
+/** The status dot of a run state. */
+export function RunStateDot({ state }: { state: ScheduleRunState }) {
   const { label, indicator } = runStateConfig[state]
   return (
     <StatusIndicator
@@ -131,15 +131,27 @@ function RunStateDot({ state }: { state: ScheduleRunState }) {
   )
 }
 
-/** Expanded schedules, kept while the app runs (not saved). */
-const expandedSchedules = new Set<string>()
+/** A schedule's runs, newest first, each with its session and state. */
+export function scheduleRunRows(
+  schedule: Schedule,
+  places: Map<string, SessionPlace>
+): { run: ScheduleRun; place?: SessionPlace; state: ScheduleRunState }[] {
+  return [...(schedule.history ?? [])].reverse().map(run => {
+    const place = run.session_id ? places.get(run.session_id) : undefined
+    return {
+      run,
+      place,
+      state: scheduleRunState(run, schedule, place?.session),
+    }
+  })
+}
 
 /**
- * The runs a schedule started (#38 follow-up): collapsed, a count and the
- * last run's state; expanded, the newest runs with their session and state.
- * A click opens the run's session.
+ * The runs a schedule started (#38 follow-up), newest first: the last
+ * `VISIBLE_RUNS`, then all on request. Each shows when it ran, its session
+ * and place, and its state; a click opens the session.
  */
-export function ScheduleRuns({
+export function ScheduleRunList({
   schedule,
   places,
   now,
@@ -150,132 +162,93 @@ export function ScheduleRuns({
   now: number
   onOpenSession: (place: SessionPlace) => void
 }) {
-  const [expanded, setExpanded] = useState(() =>
-    expandedSchedules.has(schedule.id)
-  )
   const [showAll, setShowAll] = useState(false)
-
   const runs = useMemo(
-    () =>
-      [...(schedule.history ?? [])].reverse().map(run => {
-        const place = run.session_id ? places.get(run.session_id) : undefined
-        return {
-          run,
-          place,
-          state: scheduleRunState(run, schedule, place?.session),
-        }
-      }),
+    () => scheduleRunRows(schedule, places),
     [schedule, places]
   )
 
-  const last = runs[0]
-  if (!last) return null
-
-  const toggle = () => {
-    const next = !expanded
-    if (next) expandedSchedules.add(schedule.id)
-    else expandedSchedules.delete(schedule.id)
-    setExpanded(next)
-  }
-  const visible = showAll ? runs : runs.slice(0, VISIBLE_RUNS)
-
-  return (
-    <div className="flex flex-col gap-1 text-xs">
-      <button
-        type="button"
-        className="flex w-fit items-center gap-1.5 rounded text-muted-foreground hover:text-foreground"
-        aria-expanded={expanded}
-        onClick={toggle}
+  if (runs.length === 0) {
+    return (
+      <p
+        className="px-1.5 py-1 text-sm text-muted-foreground"
+        data-testid="schedule-runs-empty"
       >
-        <ChevronRight
-          className={cn(
-            'size-3.5 transition-transform',
-            expanded && 'rotate-90'
-          )}
-          aria-hidden="true"
-        />
-        <span>
-          {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </span>
-        {!expanded && (
+        No runs yet.
+      </p>
+    )
+  }
+
+  const visible = showAll ? runs : runs.slice(0, VISIBLE_RUNS)
+  return (
+    <ul className="flex flex-col text-sm" data-testid="schedule-runs">
+      {visible.map(({ run, place, state }, index) => {
+        const when = `${formatRelativeTime(run.fired_at_unix, now)} (${formatMessageTimestamp(run.fired_at_unix, now)})`
+        const content = (
           <>
-            <span aria-hidden="true">·</span>
-            <RunStateDot state={last.state} />
-            <span>last: {runStateConfig[last.state].label}</span>
+            <RunStateDot state={state} />
+            <span className="min-w-0 truncate">
+              {run.session_id
+                ? (place?.session.name ?? 'Unknown session')
+                : 'No session'}
+              {place && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {place.projectName} › {place.worktreeName}
+                </span>
+              )}
+            </span>
+            <span
+              className={cn(
+                'shrink-0',
+                state === 'failed'
+                  ? 'text-destructive'
+                  : 'text-muted-foreground'
+              )}
+            >
+              {runStateConfig[state].label}
+            </span>
+            <span className="shrink-0 text-muted-foreground">{when}</span>
           </>
-        )}
-      </button>
-      {expanded && (
-        <ul className="flex flex-col" data-testid="schedule-runs">
-          {visible.map(({ run, place, state }, index) => {
-            const when = `${formatRelativeTime(run.fired_at_unix, now)} (${formatMessageTimestamp(run.fired_at_unix, now)})`
-            const content = (
-              <>
-                <RunStateDot state={state} />
-                <span className="min-w-0 truncate">
-                  {run.session_id
-                    ? (place?.session.name ?? 'Unknown session')
-                    : 'No session'}
-                  {place && (
-                    <span className="text-muted-foreground">
-                      {' '}
-                      · {place.projectName} › {place.worktreeName}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={cn(
-                    'shrink-0',
-                    state === 'failed'
-                      ? 'text-destructive'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {runStateConfig[state].label}
-                </span>
-                <span className="shrink-0 text-muted-foreground">{when}</span>
-              </>
-            )
-            const rowClass =
-              'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 rounded px-1.5 py-1 text-left'
-            return (
-              <li
-                key={`${run.fired_at_unix}-${index}`}
-                data-testid="schedule-run"
-                title={run.error}
-              >
-                {place ? (
-                  <button
-                    type="button"
-                    className={cn(rowClass, 'hover:bg-accent/50')}
-                    onClick={() => onOpenSession(place)}
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <div className={rowClass}>{content}</div>
-                )}
-                {run.error && (
-                  <div className="truncate pl-5 text-destructive">
-                    {run.error}
-                  </div>
-                )}
-              </li>
-            )
-          })}
-          {runs.length > VISIBLE_RUNS && (
-            <li>
+        )
+        const rowClass =
+          'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 rounded-md px-2 py-1.5 text-left'
+        return (
+          <li
+            key={`${run.fired_at_unix}-${index}`}
+            data-testid="schedule-run"
+            title={run.error}
+          >
+            {place ? (
               <button
                 type="button"
-                className="px-1.5 py-1 text-primary underline-offset-2 hover:underline"
-                onClick={() => setShowAll(value => !value)}
+                className={cn(rowClass, 'hover:bg-accent/50')}
+                onClick={() => onOpenSession(place)}
               >
-                {showAll ? 'Show fewer' : `Show all ${runs.length}`}
+                {content}
               </button>
-            </li>
-          )}
-        </ul>
+            ) : (
+              <div className={rowClass}>{content}</div>
+            )}
+            {run.error && (
+              <div className="truncate pb-1 pl-7 text-xs text-destructive">
+                {run.error}
+              </div>
+            )}
+          </li>
+        )
+      })}
+      {runs.length > VISIBLE_RUNS && (
+        <li>
+          <button
+            type="button"
+            className="px-2 py-1.5 text-primary underline-offset-2 hover:underline"
+            onClick={() => setShowAll(value => !value)}
+          >
+            {showAll ? 'Show fewer' : `Show all ${runs.length}`}
+          </button>
+        </li>
       )}
-    </div>
+    </ul>
   )
 }

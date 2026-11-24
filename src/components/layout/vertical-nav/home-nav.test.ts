@@ -11,7 +11,7 @@ describe('home navigation', () => {
     useChatStore.getState().clearActiveWorktree()
     useUIStore.setState({
       archivedViewOpen: false,
-      scheduledViewOpen: false,
+      activeScheduleId: null,
       activeGraphId: null,
     })
   })
@@ -19,14 +19,14 @@ describe('home navigation', () => {
   it('opens Home: clears the project, the worktree and the pages over it', () => {
     useProjectsStore.getState().selectProject('project-1')
     useChatStore.getState().setActiveWorktree('worktree-1', '/tmp/wt')
-    useUIStore.setState({ archivedViewOpen: true, scheduledViewOpen: true })
+    useUIStore.setState({ archivedViewOpen: true, activeScheduleId: 'sch-1' })
 
     openHome()
 
     expect(useProjectsStore.getState().selectedProjectId).toBeNull()
     expect(useChatStore.getState().activeWorktreeId).toBeNull()
     expect(useUIStore.getState().archivedViewOpen).toBe(false)
-    expect(useUIStore.getState().scheduledViewOpen).toBe(false)
+    expect(useUIStore.getState().activeScheduleId).toBeNull()
   })
 
   it('is active only while nothing else is selected or open', () => {
@@ -37,6 +37,9 @@ describe('home navigation', () => {
 
     useProjectsStore.getState().selectProject(null)
     useUIStore.setState({ archivedViewOpen: true })
+    expect(renderHook(() => useIsHomeNavActive()).result.current).toBe(false)
+
+    useUIStore.setState({ archivedViewOpen: false, activeScheduleId: 'sch-1' })
     expect(renderHook(() => useIsHomeNavActive()).result.current).toBe(false)
   })
 })

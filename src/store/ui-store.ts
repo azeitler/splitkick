@@ -262,9 +262,9 @@ interface UIState {
   /** Project the Archived view (or dialog) filters to when it opens; null =
    *  all projects. Set by `openArchivedView`; not persisted. */
   archivedViewProjectId: string | null
-  /** Whether the main area shows the Scheduled view (#38). Like the
-   *  Archived view; not persisted. */
-  scheduledViewOpen: boolean
+  /** Schedule whose detail the main area shows (#38), picked in the
+   *  sidebar's Scheduled tab. Like a graph; not persisted. */
+  activeScheduleId: string | null
   /** Graph shown in the main area (graph layer, #79). Like the Archived view
    *  it needs no project and no worktree selected; not persisted. */
   activeGraphId: string | null
@@ -438,7 +438,7 @@ interface UIState {
   markSidebarReveal: (rowId: string) => void
   setArchivedViewOpen: (open: boolean) => void
   setArchivedViewProjectId: (projectId: string | null) => void
-  setScheduledViewOpen: (open: boolean) => void
+  setActiveScheduleId: (scheduleId: string | null) => void
   setActiveGraphId: (graphId: string | null) => void
   setGraphFocusNodeId: (nodeId: string | null) => void
   /** Open Settings → Agents on one agent (or the first when null). */
@@ -583,7 +583,7 @@ export const useUIStore = create<UIState>()(
       pendingSidebarRevealId: null,
       archivedViewOpen: false,
       archivedViewProjectId: null,
-      scheduledViewOpen: false,
+      activeScheduleId: null,
       activeGraphId: null,
       graphFocusNodeId: null,
       editingRoleId: null,
@@ -1294,14 +1294,14 @@ export const useUIStore = create<UIState>()(
           'setArchivedViewProjectId'
         ),
 
-      setScheduledViewOpen: open =>
+      setActiveScheduleId: scheduleId =>
         set(
           state =>
-            state.scheduledViewOpen === open
+            state.activeScheduleId === scheduleId
               ? state
-              : { scheduledViewOpen: open },
+              : { activeScheduleId: scheduleId },
           undefined,
-          'setScheduledViewOpen'
+          'setActiveScheduleId'
         ),
 
       setActiveGraphId: graphId =>

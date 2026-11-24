@@ -16,6 +16,7 @@ import { SidebarStarredSection } from './SidebarStarredSection'
 import { SidebarAgentsSection } from './SidebarAgentsSection'
 import { SidebarTodoSection } from './SidebarTodoSection'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
+import { SidebarScheduledSection } from './SidebarScheduledSection'
 import { SidebarRecentSessions } from './SidebarRecentSessions'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
@@ -35,11 +36,12 @@ const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
   agents: <SidebarAgentsSection />,
   todo: <SidebarTodoSection />,
   graphs: <SidebarGraphsSection />,
+  scheduled: <SidebarScheduledSection />,
 }
 
 /**
  * The panel next to the vertical navigation: the list of the selected tab.
- * Home, the tabs, Scheduled and Archived are items of the navigation.
+ * Home, the tabs and Archived are items of the navigation.
  */
 export function ProjectsSidebar() {
   const {
