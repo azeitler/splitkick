@@ -9,6 +9,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`@` mentions sessions, projects, worktrees, agents and connections.**
+  The `@` picker in the chat input now has groups next to Files. Items of the
+  current project and recent ones come first; a typed name moves the best
+  matching group to the top. A mention inserts a markdown link
+  (`splitkick://session/<id>`, and the new `splitkick://agent/<id>` and
+  `splitkick://connection/<id>`) that the agent resolves with the Splitkick
+  MCP tools, and that opens the object when you click it in chat.
+
 - **Scheduled is a sidebar tab, and each schedule shows its runs.** The
   Scheduled tab lists every schedule with its next time and the state of its
   last run. Click one to see its settings and actions (pause, edit, run now,

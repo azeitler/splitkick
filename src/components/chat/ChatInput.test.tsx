@@ -1,6 +1,6 @@
 import { createRef } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
+import { act, fireEvent, render, screen, waitFor } from '@/test/test-utils'
 import { ChatInput } from './ChatInput'
 import { invoke } from '@/lib/transport'
 import type * as EnvironmentModule from '@/lib/environment'
@@ -13,11 +13,13 @@ import {
 
 const processAttachmentFile = vi.fn()
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>
-const { mobileState, nativeState, slashPopoverMock } = vi.hoisted(() => ({
-  mobileState: { value: false },
-  nativeState: { value: false },
-  slashPopoverMock: vi.fn(() => null),
-}))
+const { mobileState, nativeState, slashPopoverMock, fileMentionPopoverMock } =
+  vi.hoisted(() => ({
+    mobileState: { value: false },
+    nativeState: { value: false },
+    slashPopoverMock: vi.fn(() => null),
+    fileMentionPopoverMock: vi.fn((_props: Record<string, unknown>) => null),
+  }))
 
 type StoreListener = (
   state: { inputDrafts: Record<string, string> },
@@ -50,7 +52,7 @@ vi.mock('./attachment-processing', () => ({
 }))
 
 vi.mock('./FileMentionPopover', () => ({
-  FileMentionPopover: () => null,
+  FileMentionPopover: fileMentionPopoverMock,
 }))
 
 vi.mock('./SlashPopover', () => ({
@@ -281,6 +283,37 @@ describe('ChatInput attachments', () => {
 
     expect(textarea).toHaveClass('placeholder:text-sm')
     expect(textarea).toHaveClass('text-base')
+  })
+
+  it('replaces @query with a splitkick link when an object is mentioned', () => {
+    const textarea = renderInput()
+
+    fireEvent.change(textarea, { target: { value: 'Ask @' } })
+    fireEvent.change(textarea, { target: { value: 'Ask @rel' } })
+    const props = fileMentionPopoverMock.mock.lastCall?.[0] as {
+      open: boolean
+      searchQuery: string
+      onSelectObject: (item: unknown) => void
+    }
+    expect(props.open).toBe(true)
+    expect(props.searchQuery).toBe('rel')
+
+    act(() =>
+      props.onSelectObject({
+        kind: 'agent',
+        id: 'a1',
+        name: 'Release manager',
+        detail: 'Global agent',
+        likely: true,
+        recency: 0,
+      })
+    )
+
+    expect(textarea.value).toBe('Ask [Release manager](splitkick://agent/a1) ')
+    expect(storeState.setInputDraft).toHaveBeenLastCalledWith(
+      'session-1',
+      'Ask [Release manager](splitkick://agent/a1) '
+    )
   })
 
   it('updates the session draft store immediately so disk saves can be debounced', () => {

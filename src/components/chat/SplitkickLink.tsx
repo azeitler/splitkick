@@ -1,6 +1,5 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Folder, GitBranch, MessageSquare } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -12,8 +11,7 @@ import {
   type SplitkickLinkRef,
   type SplitkickLinkTarget,
 } from '@/lib/splitkick-links'
-
-const ICONS = { session: MessageSquare, worktree: GitBranch, project: Folder }
+import { SPLITKICK_LINK_ICONS } from './splitkick-link-icons'
 
 /** Text of the rendered link children, to see if the author wrote any. */
 function childText(children: ReactNode): string {
@@ -48,7 +46,7 @@ export function SplitkickLink({
     staleTime: 60_000,
   })
 
-  const Icon = ICONS[linkRef.kind]
+  const Icon = SPLITKICK_LINK_ICONS[linkRef.kind]
   const text = childText(children).trim()
   const label = text && text !== href ? children : (target?.name ?? href)
   const badge = isPending
@@ -58,12 +56,18 @@ export function SplitkickLink({
       : target.archived
         ? 'archived'
         : null
-  const path = target
-    ? [target.projectName, target.kind !== 'project' && target.worktreeName]
-        .concat(target.kind === 'session' ? target.name : [])
-        .filter(Boolean)
-        .join(' › ')
-    : `Unknown ${linkRef.kind} in this instance`
+  const path = !target
+    ? `Unknown ${linkRef.kind} in this instance`
+    : target.kind === 'connection'
+      ? (target.url ?? target.name)
+      : [target.projectName, target.kind !== 'project' && target.worktreeName]
+          .concat(
+            target.kind === 'session' || target.kind === 'agent'
+              ? target.name
+              : []
+          )
+          .filter(Boolean)
+          .join(' › ')
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()

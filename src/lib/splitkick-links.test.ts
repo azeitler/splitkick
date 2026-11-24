@@ -7,6 +7,7 @@ import {
   splitkickMarkdownLink,
   type SplitkickLinkTarget,
 } from './splitkick-links'
+import { activateConnection } from './connection-windows'
 import {
   navigateToProject,
   navigateToSession,
@@ -17,6 +18,13 @@ vi.mock('./navigate-to-session', () => ({
   navigateToSession: vi.fn(),
   navigateToWorktree: vi.fn(),
   navigateToProject: vi.fn(),
+}))
+const connections = vi.hoisted(() => ({ list: [] as { id: string }[] }))
+vi.mock('./remote-connections', () => ({
+  getRemoteConnections: () => connections.list,
+}))
+vi.mock('./connection-windows', () => ({
+  activateConnection: vi.fn(() => Promise.resolve()),
 }))
 vi.mock('sonner', () => ({
   toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -52,6 +60,17 @@ describe('parseSplitkickLink', () => {
     expect(parseSplitkickLink('SPLITKICK://Project/p1/')).toEqual({
       kind: 'project',
       id: 'p1',
+    })
+  })
+
+  it('reads agent and connection links', () => {
+    expect(parseSplitkickLink('splitkick://agent/a1')).toEqual({
+      kind: 'agent',
+      id: 'a1',
+    })
+    expect(parseSplitkickLink('splitkick://connection/c1')).toEqual({
+      kind: 'connection',
+      id: 'c1',
     })
   })
 
@@ -120,5 +139,51 @@ describe('openSplitkickLink', () => {
     expect(toast.error).toHaveBeenCalled()
 
     expect(navigateToSession).not.toHaveBeenCalled()
+  })
+
+  it("opens an agent's current session", () => {
+    openSplitkickLink(
+      { kind: 'agent', id: 'a1' },
+      target({
+        kind: 'agent',
+        id: 'a1',
+        name: 'Release manager',
+        sessionId: 's9',
+      })
+    )
+    expect(navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'wt1',
+      sessionId: 's9',
+    })
+  })
+
+  it('says an agent without a session has nothing to open', () => {
+    openSplitkickLink(
+      { kind: 'agent', id: 'a1' },
+      target({ kind: 'agent', id: 'a1', sessionId: null })
+    )
+    expect(navigateToSession).not.toHaveBeenCalled()
+    expect(toast.info).toHaveBeenCalled()
+  })
+
+  it('opens a connection this client knows, and explains one it does not', () => {
+    const connection = target({
+      kind: 'connection',
+      id: 'c1',
+      name: 'Mac 2',
+      projectId: '',
+      projectName: '',
+      worktreeId: null,
+      url: 'https://box.tail1234.ts.net',
+    })
+    connections.list = [{ id: 'c1' }]
+    openSplitkickLink({ kind: 'connection', id: 'c1' }, connection)
+    expect(activateConnection).toHaveBeenCalledWith('c1')
+
+    connections.list = []
+    openSplitkickLink({ kind: 'connection', id: 'c1' }, connection)
+    expect(activateConnection).toHaveBeenCalledTimes(1)
+    expect(toast.info).toHaveBeenCalled()
   })
 })

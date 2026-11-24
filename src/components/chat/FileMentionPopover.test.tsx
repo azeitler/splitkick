@@ -8,6 +8,11 @@ import {
 import type { WorktreeFile } from '@/types/chat'
 import type * as FilesService from '@/services/files'
 import type * as ProjectsService from '@/services/projects'
+import {
+  buildMentionObjects,
+  createMentionFuse,
+  type MentionObject,
+} from './mention-objects'
 
 const filesByRoot: Record<string, WorktreeFile[]> = {
   '/tmp/current-worktree': [
@@ -98,6 +103,131 @@ vi.mock('@/services/projects', async () => {
       ],
     }),
   }
+})
+
+vi.mock('./hooks/useMentionObjects', () => ({
+  useMentionObjects: () => {
+    const groups = buildMentionObjects({
+      entries: [
+        {
+          project_id: 'current',
+          project_name: 'Jean',
+          worktree_id: 'w1',
+          worktree_name: 'fuzzy-tiger',
+          worktree_path: '/tmp/current-worktree',
+          sessions: [
+            {
+              id: 's1',
+              name: 'Release checklist',
+              updated_at: 10,
+            } as never,
+          ],
+        },
+      ],
+      projects: [],
+      agents: [
+        {
+          id: 'a1',
+          name: 'Release manager',
+          scope: 'global',
+          projectId: null,
+          projectName: null,
+          roleId: null,
+          worktreeId: 'w1',
+          worktreePath: null,
+          sessionId: 's1',
+          sessionName: null,
+          pastSessionIds: [],
+          createdAt: 0,
+        },
+      ],
+      connections: [{ id: 'c1', name: 'Mac 2', url: 'https://box.example' }],
+      currentProjectId: 'current',
+      currentSessionId: null,
+    })
+    return Object.fromEntries(
+      Object.entries(groups).map(([id, items]) => [
+        id,
+        { items, fuse: createMentionFuse(items) },
+      ])
+    )
+  },
+}))
+
+describe('FileMentionPopover object mentions', () => {
+  beforeAll(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn()
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+    )
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  function renderPicker(searchQuery: string) {
+    const onSelectObject = vi.fn<(item: MentionObject) => void>()
+    const handleRef = createRef<FileMentionPopoverHandle | null>()
+    render(
+      <FileMentionPopover
+        worktreePath="/tmp/current-worktree"
+        currentProjectId="current"
+        open
+        onOpenChange={vi.fn()}
+        onSelectFile={vi.fn()}
+        onSelectObject={onSelectObject}
+        searchQuery={searchQuery}
+        anchorPosition={{ top: 0, left: 0 }}
+        handleRef={handleRef}
+      />
+    )
+    return { onSelectObject, handleRef }
+  }
+
+  function headings() {
+    return Array.from(document.querySelectorAll('[cmdk-group-heading]')).map(
+      el => el.textContent
+    )
+  }
+
+  it('shows Files first while browsing, then the object groups', () => {
+    renderPicker('')
+    expect(headings()).toEqual([
+      'Files',
+      'Sessions',
+      'Worktrees',
+      'Agents',
+      'Connections',
+    ])
+    expect(screen.getByText('Mentions')).toBeInTheDocument()
+    expect(screen.getByText('box.example')).toBeInTheDocument()
+  })
+
+  it('puts the best matching group first and selects it with Enter', () => {
+    const { onSelectObject, handleRef } = renderPicker('release')
+    expect(headings()[0]).toBe('Sessions')
+
+    act(() => handleRef.current?.selectCurrent())
+    expect(onSelectObject).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'session', id: 's1' })
+    )
+  })
+
+  it('moves the keyboard selection across groups', () => {
+    const { onSelectObject, handleRef } = renderPicker('release')
+    act(() => handleRef.current?.moveDown())
+    act(() => handleRef.current?.selectCurrent())
+    expect(onSelectObject).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'agent', id: 'a1' })
+    )
+  })
+
+  it('keeps a path query on files', () => {
+    renderPicker('src/App')
+    expect(headings()[0]).toBe('Files')
+  })
 })
 
 describe('FileMentionPopover linked project scopes', () => {

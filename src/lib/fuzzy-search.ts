@@ -10,17 +10,32 @@ export function fuzzySearchFiles(
   query: string,
   limit = 15
 ): WorktreeFile[] {
-  if (!query) return files.slice(0, limit)
+  return fuzzySearchFilesScored(files, query, limit).map(r => r.item)
+}
+
+/**
+ * {@link fuzzySearchFiles} with the Fuse score of each hit (0 = exact,
+ * 1 = no match). The mention picker compares it with the other groups.
+ */
+export function fuzzySearchFilesScored(
+  files: WorktreeFile[],
+  query: string,
+  limit = 15
+): { item: WorktreeFile; score: number }[] {
+  if (!query) return files.slice(0, limit).map(item => ({ item, score: 0 }))
 
   const fuse = new Fuse(files, {
     keys: ['relative_path'],
     threshold: 0.4,
     ignoreLocation: true,
+    includeScore: true,
     // Score filename portion higher by using a custom getFn
     // that also indexes the basename separately
   })
 
-  return fuse.search(query, { limit }).map(r => r.item)
+  return fuse
+    .search(query, { limit })
+    .map(r => ({ item: r.item, score: r.score ?? 0 }))
 }
 
 /**

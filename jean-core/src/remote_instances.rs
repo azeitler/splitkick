@@ -271,6 +271,17 @@ pub fn list_remote_connections(app: &AppHandle) -> Result<Vec<RemoteConnectionVi
     list_in(&dir, &token_store(&dir))
 }
 
+/// One stored connection by id, for `splitkick://connection/<id>` links.
+/// Reads no token, so it never touches the Keychain.
+pub fn find_remote_connection(
+    app: &AppHandle,
+    id: &str,
+) -> Result<Option<RemoteConnection>, String> {
+    Ok(read_connections(&data_dir(app)?)?
+        .into_iter()
+        .find(|connection| connection.id == id))
+}
+
 /// Add or update one connection. Never returns the token.
 pub fn save_remote_connection(
     app: &AppHandle,

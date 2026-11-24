@@ -184,7 +184,7 @@ fn view(app: &AppHandle, data: &ProjectsData, agent: &Agent) -> AgentView {
 }
 
 /// One agent's view, by id.
-pub(super) fn view_of(app: &AppHandle, agent_id: &str) -> Result<AgentView, String> {
+pub fn view_of(app: &AppHandle, agent_id: &str) -> Result<AgentView, String> {
     let data = load_projects_data(app)?;
     store::load(app)?
         .iter()

@@ -45,6 +45,37 @@ describe('Splitkick links in chat', () => {
     })
   })
 
+  it('renders agent and connection links with their names', async () => {
+    vi.mocked(invoke).mockImplementation(async (_cmd, args) =>
+      (args as { kind: string }).kind === 'agent'
+        ? { ...LIVE, kind: 'agent', id: 'a1', name: 'Release manager' }
+        : {
+            ...LIVE,
+            kind: 'connection',
+            id: 'c1',
+            name: 'Mac 2',
+            projectId: '',
+            projectName: '',
+            worktreeId: null,
+            worktreeName: null,
+            url: 'https://box.tail1234.ts.net',
+          }
+    )
+    render(
+      <Markdown>
+        {'Ask <splitkick://agent/a1> on <splitkick://connection/c1>.'}
+      </Markdown>
+    )
+
+    expect(
+      await screen.findByRole('link', { name: /Release manager/ })
+    ).toHaveAttribute('href', 'splitkick://agent/a1')
+    expect(await screen.findByRole('link', { name: /Mac 2/ })).toHaveAttribute(
+      'href',
+      'splitkick://connection/c1'
+    )
+  })
+
   it('shows the target name when the link text is the raw link', async () => {
     vi.mocked(invoke).mockResolvedValue(LIVE)
     render(<Markdown>{'<splitkick://session/s1>'}</Markdown>)

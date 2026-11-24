@@ -25,6 +25,7 @@ import {
   FileMentionPopover,
   type FileMentionPopoverHandle,
 } from './FileMentionPopover'
+import { mentionMarkdown, type MentionObject } from './mention-objects'
 import { queryClient } from '@/lib/query-client'
 import { fileQueryKeys } from '@/services/files'
 import {
@@ -1048,6 +1049,41 @@ export const ChatInput = memo(function ChatInput({
     [activeSessionId, atTriggerIndex, inputRef, resizeTextarea]
   )
 
+  // Handle a session/project/worktree/agent/connection from the @ popover:
+  // replace @query with a markdown link the model can resolve.
+  const handleObjectSelect = useCallback(
+    (item: MentionObject) => {
+      const triggerIndex = atTriggerIndex
+      if (triggerIndex !== null && inputRef.current) {
+        const currentValue = valueRef.current
+        const cursorPos = inputRef.current.selectionStart ?? currentValue.length
+        const link = mentionMarkdown(item)
+        const newValue = `${currentValue.slice(0, triggerIndex)}${link} ${currentValue.slice(cursorPos)}`
+
+        // PERFORMANCE: Update DOM directly, no React render
+        inputRef.current.value = newValue
+        valueRef.current = newValue
+        if (activeSessionId) {
+          useChatStore.getState().setInputDraft(activeSessionId, newValue)
+        }
+        onHasValueChangeRef.current?.(true)
+        setShowHint(false)
+        resizeTextarea()
+
+        requestAnimationFrame(() => {
+          const newCursorPos = triggerIndex + link.length + 1
+          inputRef.current?.setSelectionRange(newCursorPos, newCursorPos)
+        })
+      }
+
+      setFileMentionOpen(false)
+      setAtTriggerIndex(null)
+      setFileMentionQuery('')
+      inputRef.current?.focus()
+    },
+    [activeSessionId, atTriggerIndex, inputRef, resizeTextarea]
+  )
+
   const contextMentionToken = useCallback((item: ContextMentionItem) => {
     switch (item.type) {
       case 'issue':
@@ -1323,6 +1359,8 @@ export const ChatInput = memo(function ChatInput({
         open={fileMentionOpen}
         onOpenChange={setFileMentionOpen}
         onSelectFile={handleFileSelect}
+        onSelectObject={handleObjectSelect}
+        currentSessionId={activeSessionId ?? null}
         searchQuery={fileMentionQuery}
         anchorPosition={fileMentionAnchor}
         containerWidth={fileMentionAnchor?.containerWidth}

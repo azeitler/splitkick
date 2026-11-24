@@ -173,6 +173,12 @@ const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "Take them from the list and search tools.\n",
     "- Sessions come with a link (splitkick://session/<id>). To point the user to a session, ",
     "write a markdown link with its name: [Session name](link).\n",
+    "- A splitkick:// link in a message names an object. Resolve it by kind:\n",
+    "  - splitkick://session/<id>: read_session_messages with sessionId <id>.\n",
+    "  - splitkick://worktree/<id>: get_worktree with worktreeId <id>.\n",
+    "  - splitkick://project/<id>: get_project_context with projectId <id>.\n",
+    "  - splitkick://agent/<id>: send_to_agent with agent <id>; list_agents shows its session.\n",
+    "  - splitkick://connection/<id>: remote_tool with instance <id>.\n",
     "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes.\n",
     "- For another machine (\"on my other Mac\"), call list_instances, then remote_tool with that instance."
 );
@@ -6416,6 +6422,18 @@ mod tests {
         assert!(instructions.contains("search_sessions"));
         assert!(instructions.contains("wait for a yes"));
         assert!(instructions.contains("[Session name](link)"));
+        for line in [
+            "splitkick://session/<id>: read_session_messages",
+            "splitkick://worktree/<id>: get_worktree",
+            "splitkick://project/<id>: get_project_context",
+            "splitkick://agent/<id>: send_to_agent",
+            "splitkick://connection/<id>: remote_tool",
+        ] {
+            assert!(
+                instructions.contains(line),
+                "missing link kind line: {line}"
+            );
+        }
         assert!(instructions.contains("rename_session"));
         assert!(instructions.contains("set_session_label"));
     }
