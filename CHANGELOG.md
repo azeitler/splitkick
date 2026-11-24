@@ -51,6 +51,13 @@ Built on Jean 0.1.73.
   the compact view folded the reply into a closed activity row. The reply
   now shows in full after the question, live and after a reload.
   Closes #154
+- **A message to a busy session is queued, not lost.** The Splitkick MCP
+  tool `send_chat_message` answered "started" for a session with a run in
+  progress, but the session refused the second send and the message was
+  gone. Now the message goes into the session's queued prompts and runs when
+  the current run ends, also when no window shows that session. The tool
+  returns `{"status": "queued", "position": n}`.
+  Closes #156
 
 ## [1.6.0] - 2026-11-23
 

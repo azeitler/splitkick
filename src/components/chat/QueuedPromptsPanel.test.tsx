@@ -65,6 +65,30 @@ describe('QueuedPromptsPanel', () => {
     expect(screen.getByText('Third prompt')).toBeInTheDocument()
   })
 
+  // #156: the MCP send_chat_message tool queues a message for a busy
+  // session in the backend. That message has the backend's shape (no
+  // thinkingLevel when the session never saved one) and must show here.
+  it('shows a prompt the MCP send_chat_message tool queued for a busy session', () => {
+    const fromMcp = {
+      id: 'mcp-1',
+      message: 'also check the docs',
+      provider: null,
+      backend: 'claude',
+      model: 'claude-opus-4-8',
+      executionMode: 'yolo',
+      queuedAt: 1_764_000_000_000,
+      pendingImages: [],
+      pendingFiles: [],
+      pendingSkills: [],
+      pendingTextFiles: [],
+    } as unknown as QueuedMessage
+
+    renderPanel({ messages: [fromMcp] })
+
+    expect(screen.getByText('Queued prompts')).toBeInTheDocument()
+    expect(screen.getByText('also check the docs')).toBeInTheDocument()
+  })
+
   it('renders nothing when the queue is empty', () => {
     renderPanel({ messages: [] })
 

@@ -506,7 +506,7 @@ fn tool_registry_session() -> Value {
         {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars, the To-Do mark (todoAt) and the linked issue/PR, plus a link to put in a markdown link. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
         {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Each result has a link for a markdown link to the session. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]},"serves":{"type":"array","items":{"type":"string"},"description":"Graph refs the new session serves: <graphId>#<nodeId> or <graphId>."},"roleId":{"type":"string","description":"Start the session with this saved role, a session preset (its persona and graph permission apply). Needs graph permission manage."},"agentId":{"type":"string","description":"Deprecated name of roleId."}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. If the session waits for the user's answer to a question, the new turn skips that question and the result has skippedPendingQuestion: true. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
+        {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately. An idle session begins processing it and the result has status \"started\". A busy session (a run is in progress) gets it in its queue (the app's Queued prompts list): it runs as a new turn when the current run ends, and the result has status \"queued\" and position (1 = next). Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. If the session waits for the user's answer to a question, the new turn skips that question and the result has skippedPendingQuestion: true. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"unarchive_session","description":"Restore an archived chat session so it can run again. Also unarchives the parent worktree when it is archived. Call this before send_chat_message if a previous attempt failed because the session was archived.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"move_session","description":"Move a Splitkick session to another active worktree, in the same or another project, while preserving its session id, complete message/run history, attachments and settings. Claude resumes its own conversation in the new folder; other backends get the Splitkick history replayed on the next turn. A session with queued messages is refused. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
@@ -1338,6 +1338,30 @@ async fn run_tool(
             // Validate archive status before fire-and-forget so agents get an
             // immediate error instead of a silent log-only failure after "started".
             ensure_mcp_session_can_run(app, &session_id, &worktree_id)?;
+            let model = optional_str(&args, "model");
+            let execution_mode = optional_str(&args, "executionMode");
+            // A busy session rejects a direct send, so the message goes into
+            // its queue and runs as its next turn (#156).
+            if crate::chat::session_busy_for_new_message(&session_id) {
+                let position = queue_chat_message(
+                    app,
+                    &session_id,
+                    worktree_id,
+                    worktree_path,
+                    &message,
+                    model,
+                    execution_mode,
+                )
+                .await
+                .map_err(ToolError::internal)?;
+                crate::chat::session_links::record_started_by(app, &session_id, source, true);
+                return Ok(json!({
+                    "sessionId": session_id,
+                    "status": "queued",
+                    "position": position,
+                    "note": "The session is busy. The message is in its queue and runs as a new turn when the current run ends.",
+                }));
+            }
             // A new turn skips a question the session still waits on. Tell the
             // calling agent, so it does not assume the user answered it.
             let skipped_pending_question = dispatch_command(
@@ -1356,27 +1380,51 @@ async fn run_tool(
             .unwrap_or(false);
             crate::chat::session_links::record_started_by(app, &session_id, source, true);
             let mut payload = serde_json::Map::new();
+            let session_id_clone = session_id.clone();
+            let worktree_id_clone = worktree_id.clone();
+            let worktree_path_clone = worktree_path.clone();
             payload.insert("sessionId".to_string(), Value::String(session_id.clone()));
             payload.insert("worktreeId".to_string(), Value::String(worktree_id));
             payload.insert("worktreePath".to_string(), Value::String(worktree_path));
-            payload.insert("message".to_string(), Value::String(message));
-            if let Some(m) = args.get("model").and_then(|v| v.as_str()) {
-                payload.insert("model".to_string(), Value::String(m.to_string()));
+            payload.insert("message".to_string(), Value::String(message.clone()));
+            if let Some(m) = &model {
+                payload.insert("model".to_string(), Value::String(m.clone()));
             }
-            if let Some(em) = args.get("executionMode").and_then(|v| v.as_str()) {
-                payload.insert("executionMode".to_string(), Value::String(em.to_string()));
+            if let Some(em) = &execution_mode {
+                payload.insert("executionMode".to_string(), Value::String(em.clone()));
             }
             let app_clone = app.clone();
             let payload_clone = Value::Object(payload);
             let source_clone = source.to_string();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) =
-                    dispatch_command(&app_clone, "send_chat_message", payload_clone).await
-                {
-                    log::warn!(
-                        "Splitkick MCP send_chat_message (source={source_clone}) failed: {e}"
-                    );
+                let Err(e) = dispatch_command(&app_clone, "send_chat_message", payload_clone).await
+                else {
+                    return;
+                };
+                // A run started between the busy check and this send: queue
+                // the message instead of dropping it (#156).
+                if e.contains("already has an active request") {
+                    let queued = queue_chat_message(
+                        &app_clone,
+                        &session_id_clone,
+                        worktree_id_clone,
+                        worktree_path_clone,
+                        &message,
+                        model,
+                        execution_mode,
+                    )
+                    .await;
+                    match queued {
+                        Ok(position) => log::info!(
+                            "Splitkick MCP send_chat_message (source={source_clone}) lost the send race; queued session={session_id_clone} position={position}"
+                        ),
+                        Err(qe) => log::error!(
+                            "Splitkick MCP send_chat_message (source={source_clone}) lost the send race and could not queue: {qe}"
+                        ),
+                    }
+                    return;
                 }
+                log::warn!("Splitkick MCP send_chat_message (source={source_clone}) failed: {e}");
             });
             let mut result = json!({ "sessionId": session_id, "status": "started" });
             if skipped_pending_question {
@@ -2438,6 +2486,44 @@ async fn run_tool(
         }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
     }
+}
+
+/// Put a `send_chat_message` prompt into the session's queue, the one the
+/// app shows as "Queued prompts" and the backend drain runs when the
+/// current run ends (#156). `model` / `executionMode` override the
+/// session's saved selections for this turn. Returns the message's 1-based
+/// position in the queue.
+async fn queue_chat_message(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: String,
+    worktree_path: String,
+    message: &str,
+    model: Option<String>,
+    execution_mode: Option<String>,
+) -> Result<usize, String> {
+    let metadata = crate::chat::storage::load_metadata(app, session_id)?
+        .ok_or_else(|| format!("Session {session_id} has no metadata"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let mut queued = crate::chat::schedules::queued_prompt(&metadata, message, now);
+    if let Some(model) = model {
+        queued["model"] = Value::String(model);
+    }
+    if let Some(mode) = execution_mode {
+        queued["executionMode"] = Value::String(mode);
+    }
+    let queue = crate::chat::enqueue_message(
+        app.clone(),
+        worktree_id,
+        worktree_path,
+        session_id.to_string(),
+        queued,
+    )
+    .await?;
+    Ok(queue.len())
 }
 
 /// The agent `key` names: an id, or a name looked up in `project_id` first and
@@ -7950,6 +8036,121 @@ mod tests {
         assert_eq!(queued["message"], "cut 1.5.23");
         assert!(queued["id"].is_string());
         assert!(queued["pendingImages"].is_array());
+    }
+
+    /// #156: a message to a busy session is queued (and says so), stays in
+    /// the persisted queue while the run goes on, and the backend drain takes
+    /// it once the run ends — also with no window open on the session.
+    #[cfg(unix)]
+    #[test]
+    fn send_chat_message_to_a_busy_session_queues_and_drains_after_the_run() {
+        use std::os::unix::fs::PermissionsExt;
+        let (temp, app) = tool_fixture();
+        // Own session id: the process registry is global across tests.
+        let sid = "busy-s156";
+        crate::chat::storage::with_sessions_mut(&app, "", "tool-wt", |stored| {
+            let mut session = crate::chat::types::Session::new(
+                "busy worker".to_string(),
+                1,
+                crate::chat::types::Backend::Claude,
+            );
+            session.id = sid.to_string();
+            stored.sessions.push(session);
+            Ok(())
+        })
+        .unwrap();
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            sid.to_string(),
+            "tool-wt".to_string(),
+            "busy worker".to_string(),
+            1,
+        );
+        metadata.selected_model = Some("claude-sonnet-4-6".to_string());
+        crate::chat::storage::save_metadata(&app, &metadata).unwrap();
+        let queue = || {
+            crate::chat::storage::load_metadata(&app, sid)
+                .unwrap()
+                .unwrap()
+                .queued_messages
+        };
+
+        // The queue drain is spawned on the current runtime: it must outlive
+        // each call, with a big stack (send_chat_message's future, debug build).
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_stack_size(32 * 1024 * 1024)
+            .enable_all()
+            .build()
+            .unwrap();
+        let send = |args: Value| {
+            std::thread::scope(|scope| {
+                std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn_scoped(scope, || {
+                        rt.block_on(run_tool(&app, "send_chat_message", args, "tool-s1"))
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap()
+            })
+            .unwrap()
+        };
+
+        // A run is in progress (pid that does not exist; nothing is killed).
+        assert!(crate::chat::registry::register_process(
+            sid.to_string(),
+            999_999
+        ));
+        let first = send(json!({ "sessionId": sid, "message": "also check the docs" }));
+        let second = send(json!({
+            "sessionId": sid,
+            "message": "then commit",
+            "model": "claude-opus-4-8",
+            "executionMode": "yolo",
+        }));
+        assert_eq!(first["status"], "queued");
+        assert_eq!(first["position"], 1);
+        assert_eq!(second["status"], "queued");
+        assert_eq!(second["position"], 2);
+
+        // Persisted in the queue the app shows, with the turn's overrides.
+        let queued = queue();
+        assert_eq!(queued.len(), 2);
+        assert_eq!(queued[0]["message"], "also check the docs");
+        assert_eq!(queued[0]["model"], "claude-sonnet-4-6");
+        assert!(queued[0]["id"].is_string());
+        assert_eq!(queued[1]["model"], "claude-opus-4-8");
+        assert_eq!(queued[1]["executionMode"], "yolo");
+
+        // While the run goes on, the drain leaves the queue alone.
+        let _runtime = rt.enter();
+        let drain = || {
+            crate::chat::trigger_backend_queue_drain(
+                app.clone(),
+                "tool-wt".to_string(),
+                temp.path().join("tool-wt").to_string_lossy().to_string(),
+                sid.to_string(),
+            )
+        };
+        drain();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(queue().len(), 2);
+
+        // The run ends. The drain takes the queued messages. The worktree
+        // is made unreadable so each send stops before a CLI is started.
+        crate::chat::registry::unregister_process(sid);
+        let wt = temp.path().join("tool-wt");
+        std::fs::set_permissions(&wt, std::fs::Permissions::from_mode(0o000)).unwrap();
+        drain();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !queue().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        std::fs::set_permissions(&wt, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            queue().is_empty(),
+            "the drain takes the queue after the run"
+        );
     }
 
     #[test]

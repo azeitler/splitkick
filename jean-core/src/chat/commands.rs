@@ -198,6 +198,15 @@ pub(crate) fn has_active_send(session_id: &str) -> bool {
     ACTIVE_SENDS.lock().unwrap().contains_key(session_id)
 }
 
+/// A run is in flight, so a direct send would be rejected with "Session
+/// already has an active request": a new message must go into the queue
+/// (#156). Not busy while a Claude question or plan is parked in the live
+/// run: a direct send skips that dialog and runs next (#141).
+pub fn session_busy_for_new_message(session_id: &str) -> bool {
+    (has_active_send(session_id) || super::registry::is_session_actively_managed(session_id))
+        && super::claude_dialog::parked_kind_for_session(session_id).is_none()
+}
+
 /// Sessions with a `send_chat_message` call in flight. Their run is already
 /// `Running` in metadata while the CLI is not spawned or registered yet.
 fn active_send_session_ids() -> Vec<String> {
