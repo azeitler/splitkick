@@ -2566,7 +2566,7 @@ ${resolveInstructions}`
                             }
                             onMouseEnter={() => setSelectedOption(option.id)}
                             className={cn(
-                              'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
+                              'w-full flex items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors',
                               'focus:outline-none',
                               isDisabled
                                 ? 'opacity-40 cursor-not-allowed'
@@ -2575,10 +2575,10 @@ ${resolveInstructions}`
                             )}
                           >
                             <div className="flex items-center gap-3">
-                              <Icon className="h-4 w-4 text-muted-foreground" />
+                              <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                               <span>{option.label}</span>
                             </div>
-                            <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            <kbd className="shrink-0 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                               {option.key}
                             </kbd>
                           </button>

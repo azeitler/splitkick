@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Long Magic menu items stay left-aligned.** With a larger font or zoom,
+  "Fork Session (same Worktree)" and "Fork Session (new Worktree)" wrap to
+  two lines. The wrapped text was centred; now it starts at the left like
+  the other items, and the icon and shortcut key keep their size.
+
 ## [1.6.2] - 2026-11-24
 
 Built on Jean 0.1.73.
