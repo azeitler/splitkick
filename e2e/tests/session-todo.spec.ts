@@ -107,9 +107,9 @@ test.describe('Session To-Do list', () => {
     })
 
     await ensureSidebarOpen(mockPage)
-    // The To-Do tab counts the marked sessions in its label.
-    const todoTab = mockPage.getByTestId('sidebar-tab-todo')
-    await expect(todoTab).toHaveAttribute('aria-label', 'To-Do 3')
+    // The To-Do item counts the marked sessions in its label.
+    const todoTab = mockPage.getByTestId('vertical-nav-todo').first()
+    await expect(todoTab).toHaveAttribute('aria-label', /^To-Do, 3/)
     await todoTab.click()
     const section = sidebar(mockPage).getByTestId('sidebar-todo-section')
     await expect(section).toBeVisible()

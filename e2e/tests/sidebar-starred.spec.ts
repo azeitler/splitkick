@@ -3,6 +3,7 @@ import {
   test,
   expect,
   ensureSidebarOpen,
+  openSidebarTab,
   sidebar,
 } from '../fixtures/tauri-mock'
 import {
@@ -93,11 +94,7 @@ function starredSection(page: Page): Locator {
 
 async function openStarredTab(page: Page): Promise<void> {
   await ensureSidebarOpen(page)
-  await page.getByTestId('sidebar-tab-starred').click()
-  await expect(page.getByTestId('sidebar-tab-starred')).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
+  await openSidebarTab(page, 'starred')
 }
 
 async function starOrder(page: Page): Promise<string[]> {
@@ -158,13 +155,12 @@ test.describe('Sidebar Starred tab', () => {
         `[data-shortcut-row-id="${target.session.id}"]`
       )
     ).toHaveAttribute('aria-current', 'page')
-    await expect(mockPage.getByTestId('sidebar-tab-starred')).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    await expect(
+      mockPage.getByTestId('vertical-nav-starred').first()
+    ).toHaveAttribute('aria-current', 'page')
 
     // Switching to Projects shows the row the tree revealed meanwhile.
-    await mockPage.getByTestId('sidebar-tab-projects').click()
+    await openSidebarTab(mockPage, 'projects')
     const rowId = `session:${target.session.id}`
     await expect
       .poll(
@@ -179,7 +175,8 @@ test.describe('Sidebar Starred tab', () => {
             if (!row || !scroll) return 'missing'
             const r = row.getBoundingClientRect()
             const s = scroll.getBoundingClientRect()
-            return r.top >= s.top && r.bottom <= s.bottom
+            // 1px slack: `scrollIntoView` rounds scrollTop to whole pixels.
+            return r.top >= s.top - 1 && r.bottom <= s.bottom + 1
               ? 'visible'
               : 'outside'
           }, rowId),

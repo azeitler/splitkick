@@ -282,8 +282,9 @@ Kimi Code-specific notes:
 MainWindow (Top-level orchestrator)
 ├── DevModeBanner (dev-only overlay)
 ├── TitleBar (Window controls + toolbar)
-├── LeftSideBar (Collapsible, pixel-resizable)
-│   └── ProjectsSidebar
+├── VerticalNavLayout (desktop: nav + collapsible, pixel-resizable panel)
+│   ├── VerticalNav (Home, tabs, Scheduled, Archived)
+│   └── ProjectsSidebar (panel of the selected tab)
 │       └── ProjectTree → WorktreeList per project
 ├── MainWindowContent (Primary content area)
 │   ├── ChatWindow (when worktree selected — always shows chat view)
@@ -311,7 +312,7 @@ MainWindow (Top-level orchestrator)
 
 ### Sidebar Sticky Stack
 
-The sidebar (`ProjectsSidebar.tsx`) has the Home row on top, then a tab bar (`SidebarTabs.tsx`): Projects, Recent, Starred, To-Do, Graphs. The tab is `sidebarTab` in the UI store, persisted as `sidebar_tab` (an unknown stored value falls back to Projects, `isSidebarTab`). The Projects panel stays mounted (only `invisible`) under the other tabs, so its scroll position survives and a jump from another tab can reveal its row there. A Starred click keeps the Starred tab and only reveals the row behind it; the command palette switches to Projects (`showProjectsTab`). `useSidebarReveal` scrolls only once the target row has stopped moving, because groups above it (a project's Starred group, a session list) can still be loading.
+The sidebar is the vertical navigation (`VerticalNav.tsx`: Home, Projects, Recent, Starred, To-Do, Agents, Graphs, Scheduled, Archived) and a panel (`ProjectsSidebar.tsx`) with the list of the selected tab, in the app and in web access alike. The tab is `sidebarTab` in the UI store, persisted as `sidebar_tab` (an unknown stored value falls back to Projects, `isSidebarTab`). The Projects panel stays mounted (only `invisible`) under the other tabs, so its scroll position survives and a jump from another tab can reveal its row there. A Starred click keeps the Starred tab and only reveals the row behind it; the command palette switches to Projects (`showProjectsTab`). `useSidebarReveal` scrolls only once the target row has stopped moving, because groups above it (a project's Starred group, a session list) can still be loading.
 
 The Projects tab scrolls one folder and project tree with a sticky stack (#45). The tree root has no header rows: it lists the folders, then the root projects (folders first in every level, the order `move_item` keeps). New project, New folder and Expand / Collapse all sit in `ProjectsPanelToolbar` above the scroller. The parts that bite:
 

@@ -18,7 +18,7 @@ so no window has to be open.
 - Frontend: `src/services/schedules.ts`, `src/lib/schedule-compose.ts`,
   `src/components/chat/ScheduleDialog.tsx`, `useComposerSchedule.tsx`,
   `ScheduledBanner.tsx`, `src/components/schedules/ScheduledView.tsx`,
-  `src/components/projects/SidebarScheduledRow.tsx`.
+  the Scheduled item in `src/components/layout/vertical-nav/VerticalNav.tsx`.
 
 ## Model (`Schedule`, snake_case, Pattern A)
 

@@ -11,10 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { TitleBar } from '@/components/titlebar/TitleBar'
-import { WindowToolbar } from '@/components/toolbar/WindowToolbar'
 import { ToolbarSlotsProvider } from '@/components/toolbar/toolbar-slots'
-import { SidebarHeader } from '@/components/sidebar/SidebarHeader'
-import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDebugSessionListener } from '@/hooks/useDebugSessionListener'
@@ -22,7 +19,6 @@ import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeDown } from '@/hooks/useSwipeDown'
 import { useVisualViewportShell } from '@/hooks/useVisualViewportShell'
 import { DevModeBanner } from './DevModeBanner'
-import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
@@ -33,11 +29,6 @@ import { WindowResizeHandles } from './WindowResizeHandles'
 import { VerticalNavLayout } from './vertical-nav/VerticalNavLayout'
 
 // Lazy-loaded heavy modals (code splitting)
-const LeftSideBar = lazy(() =>
-  import('./LeftSideBar').then(mod => ({
-    default: mod.LeftSideBar,
-  }))
-)
 const ContextPanel = lazy(() =>
   import('./ContextPanel').then(mod => ({
     default: mod.ContextPanel,
@@ -264,9 +255,6 @@ import { isLinux, isWindows } from '@/lib/platform'
 import { ImportFromJeanDialog } from '@/components/onboarding/ImportFromJeanDialog'
 import { isPlainProject } from '@/types/projects'
 
-// Left sidebar resize constraints (pixels)
-const MIN_SIDEBAR_WIDTH = 150
-const MAX_SIDEBAR_WIDTH = 500
 // File browser sidebar resize constraints (pixels)
 const MIN_FILE_BROWSER_WIDTH = 180
 const MAX_FILE_BROWSER_WIDTH = 520
@@ -288,9 +276,6 @@ export function MainWindow() {
   const isMaximized = useWindowMaximized()
   const { offset: toasterOffset, mobileOffset: toasterMobileOffset } =
     useToasterOffset()
-  const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
-  const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
   // The left context panel (Files | Network | Graph, #98). Home hides it
   // without touching the persisted visibility preference.
   const fileBrowserVisible = useContextPanelShown()
@@ -352,9 +337,6 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
-  // The desktop app uses the vertical navigation. Web access and phones show
-  // the sidebar with the tab strip.
-  const verticalNav = isNativeApp() && !isMobile
   useVisualViewportShell(!isNativeApp())
   const zenMode = useUIStore(state => state.zenMode)
   // A phone has no title bar: each screen carries its own heading (the tab's
@@ -421,8 +403,6 @@ export function MainWindow() {
   // is restored so the first render path stays light.
   useSessionPrefetch(isInitialized ? projects : undefined)
 
-  // Ref for the sidebar element to update width directly during drag
-  const sidebarRef = useRef<HTMLDivElement>(null)
   const fileBrowserRef = useRef<HTMLDivElement>(null)
 
   // Set up global event listeners (keyboard shortcuts, etc.)
@@ -504,42 +484,6 @@ export function MainWindow() {
   useCreateWorktreeKeybinding()
 
   useWindowTitle(windowTitle)
-
-  // Handle custom resize for left sidebar (pixel-based)
-  // Uses direct DOM manipulation during drag for smooth performance,
-  // commits to Zustand only on mouseup
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      const startX = e.clientX
-      const startWidth = leftSidebarSize
-      let currentWidth = startWidth
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        // Dragging right increases width (sidebar is on left)
-        const delta = moveEvent.clientX - startX
-        currentWidth = Math.min(
-          MAX_SIDEBAR_WIDTH,
-          Math.max(MIN_SIDEBAR_WIDTH, startWidth + delta)
-        )
-        // Update DOM directly for smooth resize (no React re-render)
-        if (sidebarRef.current) {
-          sidebarRef.current.style.width = `${currentWidth}px`
-        }
-      }
-
-      const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        // Commit final width to Zustand state
-        setLeftSidebarSize(currentWidth)
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    },
-    [leftSidebarSize, setLeftSidebarSize]
-  )
 
   const handleFileBrowserResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -766,61 +710,16 @@ export function MainWindow() {
           </div>
         </>
       ) : (
-        // Desktop: unified toolbar. The sidebar runs to the top edge (header,
-        // list, footer); the toolbar sits above the main column and belongs
-        // to the view on screen (see components/toolbar/toolbar-slots.tsx).
+        // Desktop (app and web access): the vertical navigation. The toolbar
+        // sits above the main column and belongs to the view on screen (see
+        // components/toolbar/toolbar-slots.tsx).
         <ToolbarSlotsProvider>
-          {verticalNav ? (
-            <VerticalNavLayout
-              windowTitle={windowTitle}
-              isInitialized={isInitialized}
-            >
-              {contentRow}
-            </VerticalNavLayout>
-          ) : (
-            <div className="flex flex-1 overflow-hidden">
-              {leftSidebarVisible && isInitialized && (
-                <SidebarWidthProvider value={leftSidebarSize}>
-                  <div
-                    ref={sidebarRef}
-                    data-testid="sidebar-column"
-                    className="flex h-full flex-col overflow-hidden bg-sidebar"
-                    style={{ width: leftSidebarSize }}
-                  >
-                    <SidebarHeader />
-                    <div className="min-h-0 flex-1">
-                      <Suspense fallback={null}>
-                        <LeftSideBar />
-                      </Suspense>
-                    </div>
-                    <SidebarFooter />
-                  </div>
-                </SidebarWidthProvider>
-              )}
-
-              {leftSidebarVisible && isInitialized && (
-                <div
-                  role="separator"
-                  tabIndex={-1}
-                  aria-orientation="vertical"
-                  aria-label="Resize left sidebar"
-                  className="relative h-full w-px bg-border"
-                  onMouseDown={handleResizeStart}
-                >
-                  {/* Invisible wider hit area for easier clicking */}
-                  <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-                </div>
-              )}
-
-              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <WindowToolbar fallbackTitle={windowTitle} />
-                <DevModeBanner />
-                <div className="flex min-h-0 flex-1 overflow-hidden">
-                  {contentRow}
-                </div>
-              </div>
-            </div>
-          )}
+          <VerticalNavLayout
+            windowTitle={windowTitle}
+            isInitialized={isInitialized}
+          >
+            {contentRow}
+          </VerticalNavLayout>
         </ToolbarSlotsProvider>
       )}
 

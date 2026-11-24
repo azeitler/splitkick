@@ -9,16 +9,13 @@ import {
 } from 'react'
 import { WindowToolbar } from '@/components/toolbar/WindowToolbar'
 import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
-import {
-  openHome,
-  useIsHomeRowActive,
-} from '@/components/projects/SidebarHomeRow'
 import { isNativeApp } from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
 import type { SidebarTab } from '@/types/ui-state'
 import { DevModeBanner } from '../DevModeBanner'
 import { SidebarWidthProvider } from '../SidebarWidthContext'
 import { HomeFooter } from './HomeFooter'
+import { openHome, useIsHomeNavActive } from './home-nav'
 import {
   NAV_WIDTH_COLLAPSED,
   NAV_WIDTH_EXPANDED,
@@ -43,12 +40,13 @@ interface VerticalNavLayoutProps {
 }
 
 /**
- * The desktop app's layout, with the vertical navigation. Web access and
- * phones keep the sidebar with the tab strip. Draft and spec: docs/mockups/vertical-nav/.
+ * The desktop layout, with the vertical navigation: the app and web access
+ * in a desktop-size browser. Phones have their own tabs (MobileTabShell).
+ * Draft and spec: docs/mockups/vertical-nav/.
  *
- * - Other tabs: one sidebar column (an empty title strip for the window
- *   controls, nav + panel, today's footer), the main column with the sidebar
- *   toggle in front of back/forward.
+ * - Other tabs: one sidebar column (in the app an empty title strip for the
+ *   window controls, nav + panel, today's footer), the main column with the
+ *   sidebar toggle in front of back/forward.
  * - Home: no panel and no sidebar column. The toolbar spans the window, the
  *   nav sits below it, and the footer row holds the compact sidebar footer
  *   and the Home footer. The nav shows also with the sidebar hidden.
@@ -66,7 +64,7 @@ export function VerticalNavLayout({
   const zenMode = useUIStore(state => state.zenMode)
   const panelSize = useUIStore(state => state.leftSidebarSize)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
-  const homeView = useIsHomeRowActive()
+  const homeView = useIsHomeNavActive()
 
   // A tab picked on Home shows its panel next to the Home view. Reset when
   // Home closes, so the next visit to Home shows Home again.
@@ -122,7 +120,7 @@ export function VerticalNavLayout({
     document.addEventListener('mouseup', handleMouseUp)
   }, [])
 
-  const drag = isNativeApp() ? { 'data-tauri-drag-region': true } : {}
+  const native = isNativeApp()
   const panelWidth =
     panelSize + (collapsed ? NAV_WIDTH_EXPANDED - NAV_WIDTH_COLLAPSED : 0)
 
@@ -140,12 +138,14 @@ export function VerticalNavLayout({
             className="flex h-full flex-col overflow-hidden bg-sidebar"
             style={{ width: panelSize + NAV_WIDTH_EXPANDED }}
           >
-            {/* Only the window controls live here. */}
-            <div
-              {...drag}
-              data-testid="vertical-nav-titlebar"
-              className="h-[var(--titlebar-height)] shrink-0 border-b border-border/60"
-            />
+            {/* Only the window controls live here; a browser has none. */}
+            {native && (
+              <div
+                data-tauri-drag-region
+                data-testid="vertical-nav-titlebar"
+                className="h-[var(--titlebar-height)] shrink-0 border-b border-border/60"
+              />
+            )}
             <div className="flex min-h-0 flex-1">
               <VerticalNav
                 home={false}
@@ -154,7 +154,7 @@ export function VerticalNavLayout({
               />
               <div className="min-w-0 flex-1" data-testid="vertical-nav-panel">
                 <Suspense fallback={null}>
-                  <ProjectsSidebar hideNav />
+                  <ProjectsSidebar />
                 </Suspense>
               </div>
             </div>

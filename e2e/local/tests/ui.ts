@@ -32,15 +32,16 @@ export async function openApp(
   await expect(page.getByText('Go to…').first()).toBeVisible()
 }
 
-/** Select a sidebar tab (Projects, Recent, Starred, To-Do, Graphs). "Go
- *  to…" switches back to Projects, so call this before using another tab. */
+/** Select a sidebar tab (Projects, Recent, Starred, To-Do, Graphs) in the
+ *  vertical navigation. "Go to…" switches back to Projects, so call this
+ *  before using another tab. */
 export async function showSidebarTab(
   page: Page,
   tab: 'projects' | 'recent' | 'starred' | 'todo' | 'graphs'
 ): Promise<void> {
-  const button = page.getByTestId(`sidebar-tab-${tab}`)
+  const button = page.getByTestId(`vertical-nav-${tab}`).first()
   await button.click()
-  await expect(button).toHaveAttribute('aria-selected', 'true')
+  await expect(button).toHaveAttribute('aria-current', 'page')
 }
 
 /** Open a session by name through the "Go to…" search. */

@@ -7,6 +7,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { VerticalNavLayout } from './VerticalNavLayout'
 import type * as VerticalNavModule from './VerticalNav'
+import type * as EnvironmentModule from '@/lib/environment'
 
 // The layout is under test, not its parts.
 vi.mock('./VerticalNav', async importOriginal => ({
@@ -34,16 +35,17 @@ vi.mock('@/components/sidebar/SidebarFooter', () => ({
     <div data-testid="sidebar-footer" data-compact={String(!!compact)} />
   ),
 }))
+const env = vi.hoisted(() => ({ native: true }))
+vi.mock('@/lib/environment', async importOriginal => ({
+  ...(await importOriginal<typeof EnvironmentModule>()),
+  isNativeApp: () => env.native,
+}))
 vi.mock('@/components/projects/ProjectsSidebar', async () => {
   const { useSidebarWidth } = await import('../SidebarWidthContext')
   return {
     // Shows the width the tab contents get, so the test can read it.
-    ProjectsSidebar: ({ hideNav }: { hideNav?: boolean }) => (
-      <div
-        data-testid="projects-sidebar"
-        data-hide-nav={String(!!hideNav)}
-        data-width={useSidebarWidth()}
-      />
+    ProjectsSidebar: () => (
+      <div data-testid="projects-sidebar" data-width={useSidebarWidth()} />
     ),
   }
 })
@@ -79,6 +81,7 @@ const openProject = () =>
 
 describe('VerticalNavLayout', () => {
   beforeEach(() => {
+    env.native = true
     useProjectsStore.setState({ selectedProjectId: null })
     useChatStore.setState({ activeWorktreeId: null })
     useUIStore.setState({
@@ -116,10 +119,7 @@ describe('VerticalNavLayout', () => {
   it('other tabs: sidebar column with nav, panel and full footer; sidebar button in the toolbar', async () => {
     renderLayout()
     openProject()
-    expect(await screen.findByTestId('projects-sidebar')).toHaveAttribute(
-      'data-hide-nav',
-      'true'
-    )
+    expect(await screen.findByTestId('projects-sidebar')).toBeInTheDocument()
     expect(screen.getByTestId('sidebar-column')).toContainElement(
       screen.getByTestId('vertical-nav')
     )
@@ -132,6 +132,17 @@ describe('VerticalNavLayout', () => {
     const toolbar = screen.getByTestId('window-toolbar')
     expect(toolbar).toHaveAttribute('data-sidebar-toggle', 'true')
     expect(toolbar).toHaveAttribute('data-traffic-light-inset', 'false')
+  })
+
+  it('web access: the same layout, without the window-controls strip', async () => {
+    env.native = false
+    renderLayout()
+    openProject()
+    expect(await screen.findByTestId('projects-sidebar')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-column')).toContainElement(
+      screen.getByTestId('vertical-nav')
+    )
+    expect(screen.queryByTestId('vertical-nav-titlebar')).toBeNull()
   })
 
   it('a tab picked on Home shows its panel; Home shows Home again', async () => {

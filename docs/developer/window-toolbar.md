@@ -5,15 +5,15 @@ the top edge, and a 52pt toolbar sits above the main column. Design and
 decisions: `docs/superpowers/specs/2026-10-14-unified-toolbar-design.md`.
 
 ```
-SidebarHeader (traffic lights, toggle) │ WindowToolbar (‹ › title chips … actions search)
-ProjectsSidebar                        │ side panel   │ view content
-SidebarFooter (settings, usage, …)     │              │
+title strip (traffic lights, app only)  │ WindowToolbar (toggle ‹ › title chips … actions search)
+VerticalNav │ ProjectsSidebar (panel)   │ side panel   │ view content
+SidebarFooter (settings, usage, …)      │              │
 ```
 
 - `src/components/toolbar/WindowToolbar.tsx`: the bar. Owns Back/Forward, the
   file browser toggle (opens the side panel on Files, see `context-panel.md`), the sidebar toggle and traffic-light inset when the
   sidebar is hidden, the zen variant, Linux window controls, drag regions.
-- `src/components/sidebar/SidebarHeader.tsx`, `SidebarFooter.tsx`: app-level
+- `src/components/sidebar/SidebarFooter.tsx`: app-level
   items (Settings, Connections, Usage, Updates, Unread, ⋯ GitHub/Sponsor/
   release notes).
 - `src/components/titlebar/TitleBar.tsx`: phone bar only (zen).
@@ -52,15 +52,18 @@ return hasToolbar ? (
 
 ## Vertical navigation
 
-The desktop app's layout is
-`components/layout/vertical-nav/VerticalNavLayout.tsx`. There is no setting:
-`MainWindow` picks it with `isNativeApp()` and `useIsMobile()`. Web access
-and phones render the sidebar with the tab strip.
+The desktop layout, in the app and in web access, is
+`components/layout/vertical-nav/VerticalNavLayout.tsx`. There is no setting
+and no other desktop layout: `MainWindow` uses it whenever `useIsMobile()` is
+false. Phones have their own tabs (`docs/developer/mobile-layout.md`). In a
+browser the sidebar column has no title strip (no window controls).
 
-- The layout reuses today's pieces through opt-in props, all off by default:
-  `ProjectsSidebar hideNav` (no Home row, no tab strip), `SidebarFooter
-  compact` (Home), `WindowToolbar trafficLightInset / sidebarToggle`.
-- Home (`useIsHomeRowActive`) shows no panel: the toolbar spans the window,
+- `ProjectsSidebar` is only the panel: the list of the selected tab. Home,
+  the tabs, Scheduled and Archived are nav items (`TAB_META` and the counts in
+  `vertical-nav/tab-meta.tsx`, `openHome` in `vertical-nav/home-nav.ts`).
+  Opt-in props: `SidebarFooter compact` (Home), `WindowToolbar
+  trafficLightInset / sidebarToggle`.
+- Home (`useIsHomeNavActive`) shows no panel: the toolbar spans the window,
   the nav sits below it, the footer row holds the compact sidebar footer and
   `HomeFooter`. A tab picked on Home shows its panel next to Home (local
   state, reset when Home closes).

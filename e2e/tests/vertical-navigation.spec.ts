@@ -185,20 +185,30 @@ function withData(openProject: boolean, navCollapsed = false) {
 test.describe('Web access', () => {
   withData(true)
 
-  test('keeps the sidebar with the tab strip and its rows', async ({
+  test('uses the vertical navigation too, without the window-controls strip', async ({
     mockPage,
   }) => {
     await expect(mockPage.getByText('Acme Web').first()).toBeVisible()
-    if (!(await mockPage.getByTestId('sidebar-tabs').isVisible())) {
-      await toolbar(mockPage).getByTestId('toggle-left-sidebar').click()
+    const column = mockPage.getByTestId('sidebar-column')
+    await expect(column.getByTestId('vertical-nav')).toBeVisible()
+    await expect(column.getByTestId('projects-sidebar')).toBeVisible()
+    // No classic sidebar, and no title strip: a browser has no window controls.
+    for (const id of [
+      'sidebar-tabs',
+      'sidebar-home-row',
+      'sidebar-header',
+      'sidebar-scheduled-row',
+      'sidebar-archived-row',
+      'vertical-nav-titlebar',
+    ]) {
+      await expect(mockPage.getByTestId(id)).toHaveCount(0)
     }
-    await expect(mockPage.getByTestId('sidebar-tabs')).toBeVisible()
-    await expect(mockPage.getByTestId('sidebar-home-row')).toBeVisible()
-    await expect(mockPage.getByTestId('vertical-nav')).toHaveCount(0)
-    await expect(mockPage.getByTestId('vertical-nav-layout')).toHaveCount(0)
-    // The tab-strip sidebar keeps its rows, and the project its Archived row.
-    await expect(mockPage.getByTestId('sidebar-scheduled-row')).toBeVisible()
-    await expect(mockPage.getByTestId('sidebar-archived-row')).toBeVisible()
+    await expect(
+      toolbar(mockPage).getByTestId('toggle-left-sidebar')
+    ).toBeVisible()
+    await shot(mockPage, 'sidebar-web-access')
+
+    // A project keeps its Archived row; it opens the filtered Archived view.
     const projectArchived = mockPage.getByTestId(
       `project-archived-row-${projects[0].id}`
     )
@@ -206,9 +216,6 @@ test.describe('Web access', () => {
     await expect(
       mockPage.getByTestId(`project-archived-row-${projects[1].id}`)
     ).toHaveCount(0)
-    await shot(mockPage, 'sidebar-web-access')
-
-    // It opens the Archived view filtered to the project.
     await projectArchived.click()
     await expect(mockPage.getByTestId('archived-view')).toBeVisible()
     await expect(
@@ -218,9 +225,9 @@ test.describe('Web access', () => {
     ).toHaveValue(projects[0].id)
     await expect(mockPage.getByTestId('archived-row')).toHaveCount(3)
     await expect(projectArchived).toHaveAttribute('aria-current', 'page')
-    await expect(
-      mockPage.getByTestId('sidebar-archived-row')
-    ).not.toHaveAttribute('aria-current')
+    await expect(navItem(mockPage, 'archived')).not.toHaveAttribute(
+      'aria-current'
+    )
     await shot(mockPage, 'project-archived-row')
   })
 })

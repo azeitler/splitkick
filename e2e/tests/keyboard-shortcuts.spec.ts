@@ -13,15 +13,14 @@ test.describe('Keyboard shortcuts', () => {
   })
 
   test('Cmd+B toggles sidebar panel', async ({ mockPage }) => {
-    // The Home row is the sidebar's first row, so it tells whether it is open.
     await ensureSidebarOpen(mockPage)
-    const home = mockPage.getByTestId('sidebar-home-row')
+    const panel = mockPage.getByTestId('projects-sidebar')
 
     await mockPage.keyboard.press(`${MOD}+b`)
-    await expect(home).not.toBeVisible({ timeout: 2000 })
+    await expect(panel).not.toBeVisible({ timeout: 2000 })
 
     await mockPage.keyboard.press(`${MOD}+b`)
-    await expect(home).toBeVisible({ timeout: 2000 })
+    await expect(panel).toBeVisible({ timeout: 2000 })
   })
 
   test('Escape closes command palette', async ({ mockPage }) => {

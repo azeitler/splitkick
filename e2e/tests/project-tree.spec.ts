@@ -218,9 +218,12 @@ test.describe('Projects tree', () => {
     ).toBeVisible()
     await mockPage.keyboard.press('Escape')
 
-    // The classic tab strip shows the same open-folder icon.
+    // Web access has the vertical navigation too, with the same icon.
     await expect(
-      mockPage.locator('#sidebar-tab-projects svg.lucide-folder-open')
+      mockPage
+        .getByTestId('vertical-nav-projects')
+        .first()
+        .locator('svg.lucide-folder-open')
     ).toHaveCount(1)
     await shot(mockPage, 'project-tree-web')
   })

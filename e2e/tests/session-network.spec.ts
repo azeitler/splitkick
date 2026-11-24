@@ -1,5 +1,10 @@
 import type { Locator, Page } from '@playwright/test'
-import { test, expect, sidebar } from '../fixtures/tauri-mock'
+import {
+  test,
+  expect,
+  ensureSidebarOpen,
+  sidebar,
+} from '../fixtures/tauri-mock'
 import {
   createProject,
   createSession,
@@ -167,6 +172,8 @@ test.describe('Session network (#77)', () => {
   }) => {
     // Ctrl+B does not open the sidebar in this harness on every platform.
     await setUIStore(mockPage, 'setLeftSidebarVisible', true)
+    // On Home the panel opens from the navigation.
+    await ensureSidebarOpen(mockPage)
     const panel = sidebar(mockPage)
 
     const rootRow = panel.locator(`[data-sidebar-row-id="session:${root.id}"]`)

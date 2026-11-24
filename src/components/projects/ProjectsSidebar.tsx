@@ -9,19 +9,14 @@ import {
 import { useProjects, useCreateFolder } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { ProjectsPanelToolbar } from './ProjectsPanelToolbar'
 import { SidebarTabEmpty } from './SidebarTabEmpty'
-import { SidebarArchivedRow } from './SidebarArchivedRow'
-import { SidebarScheduledRow } from './SidebarScheduledRow'
-import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
 import { SidebarAgentsSection } from './SidebarAgentsSection'
 import { SidebarTodoSection } from './SidebarTodoSection'
 import { SidebarGraphsSection } from './SidebarGraphsSection'
 import { SidebarRecentSessions } from './SidebarRecentSessions'
-import { SidebarTabs } from './SidebarTabs'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import { useSidebarReveal } from './useSidebarReveal'
@@ -29,6 +24,7 @@ import { useSidebarStickyStack } from './useSidebarStickyStack'
 import { Button } from '@/components/ui/button'
 import { FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TAB_META } from '@/components/layout/vertical-nav/tab-meta'
 import { isVisibleProject } from '@/types/projects'
 import type { SidebarTab } from '@/types/ui-state'
 
@@ -41,13 +37,11 @@ const TAB_CONTENT: Record<Exclude<SidebarTab, 'projects'>, ReactNode> = {
   graphs: <SidebarGraphsSection />,
 }
 
-interface ProjectsSidebarProps {
-  /** Leave out the Home row, the tab strip and the Scheduled and Archived
-   *  rows: the vertical navigation shows them. */
-  hideNav?: boolean
-}
-
-export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
+/**
+ * The panel next to the vertical navigation: the list of the selected tab.
+ * Home, the tabs, Scheduled and Archived are items of the navigation.
+ */
+export function ProjectsSidebar() {
   const {
     data: projectsData,
     isLoading,
@@ -61,7 +55,6 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
   )
   const createFolder = useCreateFolder()
   const sidebarTab = useUIStore(state => state.sidebarTab)
-  const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
   const { installedBackends, isUnknown: backendsUnknown } =
@@ -80,20 +73,11 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
   }, [createFolder])
 
   const handleNewProject = useCallback(() => {
-    // The dialog would open behind the mobile projects drawer.
-    if (isMobile) {
-      useUIStore.getState().setLeftSidebarVisible(false)
-    }
     useProjectsStore.getState().setAddProjectDialogOpen(true)
-  }, [isMobile])
+  }, [])
 
   return (
     <div className="flex h-full flex-col" data-testid="projects-sidebar">
-      {/* Home sits above the tabs: it is a place, not a list, and stays one
-          click away whatever tab is open. */}
-      {!hideNav && <SidebarHomeRow />}
-      {!hideNav && <SidebarTabs />}
-
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and
           the tree does not shift sideways when the list starts to overflow.
@@ -102,9 +86,9 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
           switch, and a jump from Recent or To-Do reveals its row there. */}
       <div className="relative min-h-0 flex-1">
         <div
-          role="tabpanel"
+          role="region"
           id="sidebar-panel-projects"
-          aria-labelledby="sidebar-tab-projects"
+          aria-label={TAB_META.projects.label}
           aria-hidden={sidebarTab !== 'projects'}
           className={cn(
             'absolute inset-0 flex flex-col',
@@ -156,18 +140,14 @@ export function ProjectsSidebar({ hideNav = false }: ProjectsSidebarProps) {
             ) : (
               <ProjectTree projects={projects} />
             )}
-            {/* The vertical navigation has its own Scheduled and Archived
-                items. */}
-            {!hideNav && <SidebarScheduledRow />}
-            {!hideNav && <SidebarArchivedRow />}
           </div>
         </div>
 
         {sidebarTab !== 'projects' && (
           <div
-            role="tabpanel"
+            role="region"
             id={`sidebar-panel-${sidebarTab}`}
-            aria-labelledby={`sidebar-tab-${sidebarTab}`}
+            aria-label={TAB_META[sidebarTab].label}
             className="absolute inset-0 overflow-y-auto overflow-x-hidden pb-[calc(var(--safe-area-bottom)+1.25rem)] [scrollbar-gutter:stable]"
           >
             {TAB_CONTENT[sidebarTab]}

@@ -14,8 +14,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   project and New folder are in the "+" menu above the tree, next to Expand
   all / Collapse all. Drag and drop works as before: reorder at the root, drop
   a project on a folder, drag it out above the folder row or to the root zone.
-- **Projects has an open-folder icon** in the vertical navigation and in the
-  tab strip.
+- **Projects has an open-folder icon** in the vertical navigation.
+- **Web access uses the vertical navigation too.** In a desktop-size browser,
+  Home, the tabs, Scheduled and Archived are in the navigation left of the
+  panel, as in the app. The old sidebar with the Home row and the tab strip is
+  gone. Phones keep their own tabs.
 
 ### Fixed
 

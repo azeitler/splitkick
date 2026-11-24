@@ -7,7 +7,7 @@ import { useUIStore } from '@/store/ui-store'
 import type { Agent } from '@/types/agents'
 import type { Session } from '@/types/chat'
 import { VerticalNav, formatBadgeCount } from './VerticalNav'
-import type * as SidebarTabsModule from '@/components/projects/SidebarTabs'
+import type * as TabMetaModule from './tab-meta'
 
 const mocks = vi.hoisted(() => ({
   counts: {} as Record<string, number>,
@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   graphs: [] as { id: string; openRequests: number }[],
 }))
 
-vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
-  ...(await importOriginal<typeof SidebarTabsModule>()),
+vi.mock('./tab-meta', async importOriginal => ({
+  ...(await importOriginal<typeof TabMetaModule>()),
   useSidebarTabCounts: () => mocks.counts,
 }))
 vi.mock('@/services/agents', () => ({
@@ -286,6 +286,12 @@ describe('VerticalNav', () => {
     expect(ui.archivedViewProjectId).toBeNull()
     expect(item('archived')).toHaveAttribute('aria-current', 'page')
     expect(item('scheduled')).not.toHaveAttribute('aria-current')
+  })
+
+  it('leaves Archived unmarked while the page is filtered to a project', () => {
+    useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: 'p1' })
+    renderNav()
+    expect(item('archived')).not.toHaveAttribute('aria-current')
   })
 
   it('counts active schedules and archived items', async () => {

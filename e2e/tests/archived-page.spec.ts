@@ -28,7 +28,7 @@ test.describe('Archived page', () => {
 
   test.beforeEach(async ({ mockPage }) => {
     await ensureSidebarOpen(mockPage)
-    await mockPage.getByTestId('sidebar-archived-row').click()
+    await mockPage.getByTestId('vertical-nav-archived').first().click()
     await expect(mockPage.getByTestId('archived-view')).toBeVisible()
   })
 

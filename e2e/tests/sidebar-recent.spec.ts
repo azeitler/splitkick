@@ -2,6 +2,7 @@ import {
   test,
   expect,
   ensureSidebarOpen,
+  openSidebarTab,
   sidebar,
 } from '../fixtures/tauri-mock'
 import {
@@ -83,9 +84,9 @@ test.describe('Sidebar Recent tab', () => {
     const panel = sidebar(mockPage)
 
     await expect(
-      panel.getByRole('tab', { name: 'Projects', selected: true })
-    ).toBeVisible()
-    await panel.getByRole('tab', { name: 'Recent' }).click()
+      mockPage.getByTestId('vertical-nav-projects').first()
+    ).toHaveAttribute('aria-current', 'page')
+    await openSidebarTab(mockPage, 'recent')
 
     const recent = panel.getByTestId('sidebar-recent-sessions')
     const rows = recent.getByRole('button')
@@ -104,7 +105,7 @@ test.describe('Sidebar Recent tab', () => {
     }
 
     // Back to Projects: the tree is there again.
-    await panel.getByRole('tab', { name: 'Projects' }).click()
+    await openSidebarTab(mockPage, 'projects')
     await expect(recent).toHaveCount(0)
     await expect(panel.getByText('jean', { exact: true })).toBeVisible()
 

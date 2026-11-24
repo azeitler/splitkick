@@ -4,6 +4,7 @@ import {
   expect,
   MOD,
   ensureSidebarOpen,
+  openSidebarTab,
   sidebar,
 } from '../fixtures/tauri-mock'
 import {
@@ -95,7 +96,9 @@ async function expectRowInView(page: Page, rowId: string) {
           if (!row || !scroll) return 'missing'
           const r = row.getBoundingClientRect()
           const s = scroll.getBoundingClientRect()
-          if (r.top < s.top || r.bottom > s.bottom) return 'outside'
+          // 1px slack: `scrollIntoView` rounds scrollTop to whole pixels,
+          // so a row aligned to the bottom edge can end a fraction below it.
+          if (r.top < s.top - 1 || r.bottom > s.bottom + 1) return 'outside'
           const hit = document.elementFromPoint(
             r.left + r.width / 2,
             r.top + r.height / 2
@@ -117,7 +120,7 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
     const panel = sidebar(mockPage)
     await expect(panel.getByText('project-01', { exact: true })).toBeVisible()
 
-    await panel.getByRole('tab', { name: 'Recent' }).click()
+    await openSidebarTab(mockPage, 'recent')
     await panel
       .getByTestId('sidebar-recent-sessions')
       .getByText(`Work in ${target.project.name}`)
@@ -125,12 +128,12 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
 
     // Recent stays the active tab.
     await expect(
-      panel.getByRole('tab', { name: 'Recent', selected: true })
-    ).toBeVisible()
+      mockPage.getByTestId('vertical-nav-recent').first()
+    ).toHaveAttribute('aria-current', 'page')
     // Give the hidden tree time to expand and scroll before the switch.
     await mockPage.waitForTimeout(1000)
 
-    await panel.getByRole('tab', { name: 'Projects' }).click()
+    await openSidebarTab(mockPage, 'projects')
     await expectRowInView(mockPage, `session:${target.session.id}`)
     await shot(panel, 'issue60-recent-then-projects')
   })
@@ -141,7 +144,7 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
     await ensureSidebarOpen(mockPage)
     const panel = sidebar(mockPage)
     await expect(panel.getByText('project-01', { exact: true })).toBeVisible()
-    await panel.getByRole('tab', { name: 'Recent' }).click()
+    await openSidebarTab(mockPage, 'recent')
 
     await mockPage.keyboard.press(`${MOD}+k`)
     const input = mockPage.locator('[cmdk-input]')
@@ -151,8 +154,8 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
     await expect(input).not.toBeVisible()
 
     await expect(
-      panel.getByRole('tab', { name: 'Projects', selected: true })
-    ).toBeVisible()
+      mockPage.getByTestId('vertical-nav-projects').first()
+    ).toHaveAttribute('aria-current', 'page')
     await expectRowInView(mockPage, `project:${target.project.id}`)
     await shot(panel, 'issue60-cmdk-project')
   })
@@ -167,7 +170,7 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
     await panel.getByTestId('sidebar-projects-scroll').evaluate(el => {
       el.scrollTop = el.scrollHeight
     })
-    await panel.getByRole('tab', { name: 'Recent' }).click()
+    await openSidebarTab(mockPage, 'recent')
 
     await mockPage.keyboard.press(`${MOD}+k`)
     const input = mockPage.locator('[cmdk-input]')

@@ -959,24 +959,25 @@ test('sidebar: collapse persists, counts, selected row', async ({ page }) => {
   ).toHaveCount(1)
 
   // The Graphs tab counts the requests that wait for the user.
-  const graphsTab = page.getByTestId('sidebar-tab-graphs')
-  await expect(page.getByTestId('sidebar-tab-count-graphs')).toHaveText('1')
+  const graphsTab = page.getByTestId('vertical-nav-graphs').first()
+  await expect(
+    page.getByTestId('vertical-nav-count-graphs').first()
+  ).toHaveText('1')
 
   // The selected tab persists across a reload, and so does Projects.
   await new Promise(done => setTimeout(done, 1000)) // debounced UI-state save
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await expect(graphsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(graphsTab).toHaveAttribute('aria-current', 'page')
   await expect(row).toBeVisible()
   await showSidebarTab(page, 'projects')
   await expect(row).toHaveCount(0)
   await new Promise(done => setTimeout(done, 1000))
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()
-  await expect(page.getByTestId('sidebar-tab-projects')).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
+  await expect(
+    page.getByTestId('vertical-nav-projects').first()
+  ).toHaveAttribute('aria-current', 'page')
 })
 
 // ---------------------------------------------------------------------------
@@ -999,7 +1000,7 @@ test('navigation: Home, back/forward, project, worktree, Archived, reload', asyn
   // Home clears it.
   await openGraph(page, g.id, title)
   await settle()
-  await page.getByTestId('sidebar-home-row').click()
+  await page.getByTestId('vertical-nav-home').first().click()
   await expect(view).toHaveCount(0)
   await expect(row).not.toHaveAttribute('aria-current', 'page')
   await settle()
@@ -1038,14 +1039,14 @@ test('navigation: Home, back/forward, project, worktree, Archived, reload', asyn
   // Archived clears it.
   await openGraph(page, g.id, title)
   await showSidebarTab(page, 'projects')
-  await page.getByTestId('sidebar-archived-row').click()
+  await page.getByTestId('vertical-nav-archived').first().click()
   await expect(view).toHaveCount(0)
   await showSidebarTab(page, 'graphs')
   await expect(row).not.toHaveAttribute('aria-current', 'page')
 
   // Reload while a graph is open: the open graph is not persisted (design:
   // `activeGraphId` is not in the UI state), so the app comes back without it.
-  await page.getByTestId('sidebar-home-row').click()
+  await page.getByTestId('vertical-nav-home').first().click()
   await openGraph(page, g.id, title)
   await page.reload()
   await expect(page.getByText('Go to…').first()).toBeVisible()

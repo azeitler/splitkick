@@ -144,9 +144,9 @@ test('New graph dialog creates a folder graph and an in-repo graph', async ({
   await openWithSidebar(page)
   const section = page.getByTestId('sidebar-graphs-section')
   await expect(section).toBeVisible()
-  await expect(page.getByTestId('sidebar-tab-graphs')).toHaveAttribute(
-    'aria-selected',
-    'true'
+  await expect(page.getByTestId('vertical-nav-graphs').first()).toHaveAttribute(
+    'aria-current',
+    'page'
   )
 
   // 1. In a folder outside any repo (web access: the server's folder browser).

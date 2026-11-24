@@ -44,20 +44,18 @@ test.describe('Window toolbar', () => {
     ).toBeVisible()
   })
 
-  test('takes the sidebar toggle when the sidebar hides', async ({
+  test('keeps the sidebar toggle in the toolbar, shown or hidden', async ({
     mockPage,
   }) => {
     const toolbar = mockPage.getByTestId('window-toolbar')
     await ensureSidebarOpen(mockPage)
-    await expect(
-      mockPage.getByTestId('sidebar-header').getByTestId('toggle-left-sidebar')
-    ).toBeVisible()
-    await expect(toolbar.getByTestId('toggle-left-sidebar')).toHaveCount(0)
+    const toggle = toolbar.getByTestId('toggle-left-sidebar')
+    await expect(toggle).toHaveAccessibleName('Hide sidebar')
 
     await mockPage.keyboard.press(`${MOD}+b`)
 
     await expect(mockPage.getByTestId('sidebar-column')).toHaveCount(0)
-    await expect(toolbar.getByTestId('toggle-left-sidebar')).toBeVisible()
+    await expect(toggle).toHaveAccessibleName('Show sidebar')
   })
 
   test('keeps app items in the sidebar footer', async ({ mockPage }) => {

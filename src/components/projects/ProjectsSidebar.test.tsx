@@ -30,8 +30,6 @@ vi.mock('@/hooks/useInstalledBackends', () => ({
   }),
 }))
 
-vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
-
 // The children have their own tests; here only their place matters.
 vi.mock('./ProjectTree', () => ({
   ProjectTree: ({ projects }: { projects: Project[] }) => (
@@ -51,21 +49,15 @@ vi.mock('./SidebarRecentSessions', () => ({
   SidebarRecentSessions: () => <div data-testid="sidebar-recent-sessions" />,
 }))
 
-function renderSidebar(hideNav = false) {
+function renderSidebar() {
   return render(
     <SidebarWidthProvider value={250}>
-      <ProjectsSidebar hideNav={hideNav} />
+      <ProjectsSidebar />
     </SidebarWidthProvider>
   )
 }
 
-function follows(a: HTMLElement, b: HTMLElement) {
-  return Boolean(
-    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
-  )
-}
-
-describe('ProjectsSidebar layout', () => {
+describe('ProjectsSidebar', () => {
   beforeEach(() => {
     mocks.projects = [{ id: 'p1', name: 'acme' } as Project]
     mocks.createFolder.mockClear()
@@ -74,58 +66,41 @@ describe('ProjectsSidebar layout', () => {
     useChatStore.getState().clearActiveWorktree()
   })
 
-  it('puts Home first, then the tabs, the tree and Archived', () => {
+  it('shows only the panel: no Home row, tab strip, Scheduled or Archived', () => {
     renderSidebar()
 
-    const order = [
+    expect(screen.getByTestId('project-tree')).toBeInTheDocument()
+    for (const id of [
       'sidebar-home-row',
       'sidebar-tabs',
-      'project-tree',
+      'sidebar-scheduled-row',
       'sidebar-archived-row',
-    ].map(id => screen.getByTestId(id))
-
-    for (let i = 1; i < order.length; i++) {
-      expect(
-        follows(order[i - 1] as HTMLElement, order[i] as HTMLElement)
-      ).toBe(true)
+    ]) {
+      expect(screen.queryByTestId(id)).toBeNull()
     }
-    // Home is outside every tab panel, so it shows whatever tab is open.
-    expect(
-      screen.getByTestId('sidebar-home-row').closest('[role="tabpanel"]')
-    ).toBeNull()
-  })
-
-  it('no longer pins Starred, To-Do or Graphs in the Projects tab', () => {
-    renderSidebar()
-
-    expect(screen.queryByTestId('sidebar-pinned-sections')).toBeNull()
-    expect(screen.queryByTestId('sidebar-starred-section')).toBeNull()
-    expect(screen.queryByTestId('sidebar-todo-section')).toBeNull()
-    expect(screen.queryByTestId('sidebar-graphs-section')).toBeNull()
-    const scroll = screen.getByTestId('sidebar-projects-scroll')
-    expect(scroll).toContainElement(screen.getByTestId('project-tree'))
-    expect(scroll).toContainElement(screen.getByTestId('sidebar-archived-row'))
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByRole('region', { name: 'Projects' })).toContainElement(
+      screen.getByTestId('project-tree')
+    )
   })
 
   it.each([
-    ['recent', 'sidebar-recent-sessions'],
-    ['starred', 'sidebar-starred-section'],
-    ['todo', 'sidebar-todo-section'],
-    ['graphs', 'sidebar-graphs-section'],
+    ['recent', 'sidebar-recent-sessions', 'Recent'],
+    ['starred', 'sidebar-starred-section', 'Starred'],
+    ['todo', 'sidebar-todo-section', 'To-Do'],
+    ['graphs', 'sidebar-graphs-section', 'Graphs'],
   ] as const)(
     'shows the %s tab in its own panel and keeps the tree mounted',
-    (tab, testId) => {
+    (tab, testId, label) => {
       useUIStore.setState({ sidebarTab: tab })
       renderSidebar()
 
-      const panel = screen.getByTestId(testId).closest('[role="tabpanel"]')
+      const panel = screen.getByTestId(testId).closest('[role="region"]')
       expect(panel).toHaveAttribute('id', `sidebar-panel-${tab}`)
-      expect(panel).toHaveAttribute('aria-labelledby', `sidebar-tab-${tab}`)
-      expect(screen.getByTestId('project-tree')).toBeInTheDocument()
+      expect(panel).toHaveAttribute('aria-label', label)
       expect(
-        screen.getByTestId('project-tree').closest('[role="tabpanel"]')
+        screen.getByTestId('project-tree').closest('#sidebar-panel-projects')
       ).toHaveAttribute('aria-hidden', 'true')
-      expect(screen.getByTestId('sidebar-home-row')).toBeVisible()
     }
   )
 
@@ -156,7 +131,7 @@ describe('ProjectsSidebar layout', () => {
 
   it('creates a folder from the toolbar menu above the scroller', async () => {
     const user = userEvent.setup()
-    renderSidebar(true)
+    renderSidebar()
 
     // Above the scroller, so it never scrolls away with the tree.
     expect(
@@ -172,43 +147,5 @@ describe('ProjectsSidebar layout', () => {
       await screen.findByRole('menuitem', { name: 'New folder' })
     )
     expect(mocks.createFolder).toHaveBeenCalledWith({ name: 'New Folder' })
-  })
-
-  it('has no footer New or Archived buttons', () => {
-    renderSidebar()
-
-    expect(
-      screen.queryByRole('button', { name: /^New$/ })
-    ).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Archived/ })).toHaveLength(1)
-  })
-
-  it('opens the Archived view from its row', async () => {
-    renderSidebar()
-
-    await userEvent.click(screen.getByTestId('sidebar-archived-row'))
-
-    expect(useUIStore.getState().archivedViewOpen).toBe(true)
-    expect(screen.getByTestId('sidebar-archived-row')).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
-    expect(screen.getByTestId('sidebar-home-row')).not.toHaveAttribute(
-      'aria-current'
-    )
-  })
-
-  it('keeps the Scheduled and Archived rows in the classic sidebar', () => {
-    renderSidebar()
-    expect(screen.getByTestId('sidebar-scheduled-row')).toBeInTheDocument()
-    expect(screen.getByTestId('sidebar-archived-row')).toBeInTheDocument()
-  })
-
-  it('leaves Scheduled and Archived to the vertical navigation', () => {
-    renderSidebar(true)
-    expect(screen.getByTestId('project-tree')).toBeInTheDocument()
-    expect(screen.queryByTestId('sidebar-scheduled-row')).toBeNull()
-    expect(screen.queryByTestId('sidebar-archived-row')).toBeNull()
-    expect(screen.queryByTestId('sidebar-home-row')).toBeNull()
   })
 })

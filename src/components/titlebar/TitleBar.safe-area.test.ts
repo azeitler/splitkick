@@ -6,7 +6,9 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const titleBar = read('src/components/titlebar/TitleBar.tsx')
 const mainWindow = read('src/components/layout/MainWindow.tsx')
 const toolbar = read('src/components/toolbar/WindowToolbar.tsx')
-const sidebarHeader = read('src/components/sidebar/SidebarHeader.tsx')
+const navLayout = read(
+  'src/components/layout/vertical-nav/VerticalNavLayout.tsx'
+)
 const css = read('src/App.css')
 
 describe('title bar height and safe area', () => {
@@ -38,11 +40,11 @@ describe('title bar height and safe area', () => {
 })
 
 describe('the desktop window chrome', () => {
-  it('sizes the toolbar and the sidebar header from the same variable', () => {
+  it('sizes the toolbar and the sidebar title strip from the same variable', () => {
     // The two sit side by side; the traffic lights are centred in both
     // (trafficLightPosition in tauri.conf.json).
     expect(toolbar).toContain('h-[var(--titlebar-height)]')
-    expect(sidebarHeader).toContain('h-[var(--titlebar-height)]')
+    expect(navLayout).toContain('h-[var(--titlebar-height)]')
   })
 
   it('uses AppKit-sized toolbar buttons with a hover bezel', () => {

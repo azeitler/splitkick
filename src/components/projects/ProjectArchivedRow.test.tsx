@@ -5,7 +5,6 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { ProjectArchivedRow } from './ProjectArchivedRow'
-import { SidebarArchivedRow } from './SidebarArchivedRow'
 
 const mocks = vi.hoisted(() => ({
   worktrees: [] as { id: string; project_id: string }[],
@@ -67,17 +66,9 @@ describe('ProjectArchivedRow', () => {
     )
   })
 
-  it('leaves the global Archived row unmarked while filtered to a project', () => {
+  it('marks itself while the Archived view is filtered to its project', () => {
     useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: 'p1' })
-    render(
-      <>
-        <SidebarArchivedRow />
-        <ProjectArchivedRow projectId="p1" />
-      </>
-    )
-    expect(screen.getByTestId('sidebar-archived-row')).not.toHaveAttribute(
-      'aria-current'
-    )
+    render(<ProjectArchivedRow projectId="p1" />)
     expect(screen.getByTestId(rowId('p1'))).toHaveAttribute(
       'aria-current',
       'page'

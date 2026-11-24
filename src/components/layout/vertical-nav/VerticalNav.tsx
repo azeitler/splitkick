@@ -11,10 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  TAB_META,
-  useSidebarTabCounts,
-} from '@/components/projects/SidebarTabs'
+import { TAB_META, useSidebarTabCounts } from './tab-meta'
 import { useArchivedCount } from '@/components/archive/useArchivedCount'
 import { openArchivedView } from '@/lib/archived-view'
 import { openScheduledView } from '@/lib/scheduled-view'
@@ -36,8 +33,7 @@ export const NAV_WIDTH_EXPANDED = 168
 export const NAV_WIDTH_COLLAPSED = 46
 
 /** The tabs in nav order, in groups with a divider between them: the
- *  session lists (To-Do ends them), then Agents and Graphs. The tab strip
- *  keeps `SIDEBAR_TABS`. */
+ *  session lists (To-Do ends them), then Agents and Graphs. */
 const NAV_TAB_GROUPS: SidebarTab[][] = [
   ['projects', 'recent', 'starred', 'todo'],
   ['agents', 'graphs'],

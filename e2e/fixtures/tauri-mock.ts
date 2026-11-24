@@ -335,15 +335,28 @@ export function sidebar(page: Page): Locator {
 }
 
 /**
- * Open the left sidebar when it is closed. Its first row is always Home, so
- * that row tells whether the sidebar is on screen.
+ * Show the sidebar panel (the vertical navigation's panel). On Home the panel
+ * is closed and a click on the Projects item opens it; with the sidebar
+ * hidden, the toggle shows it.
  */
 export async function ensureSidebarOpen(page: Page): Promise<void> {
-  const home = page.getByTestId('sidebar-home-row')
-  if (!(await home.isVisible().catch(() => false))) {
+  const panel = page.getByTestId('projects-sidebar')
+  if (await panel.isVisible().catch(() => false)) return
+  const projects = page.getByTestId('vertical-nav-projects').first()
+  if (!(await projects.isVisible().catch(() => false))) {
     await page.keyboard.press(`${MOD}+b`)
   }
-  await expect(home).toBeVisible({ timeout: 3000 })
+  if (!(await panel.isVisible().catch(() => false))) {
+    await projects.click()
+  }
+  await expect(panel).toBeVisible({ timeout: 3000 })
+}
+
+/** Pick a sidebar tab in the vertical navigation. */
+export async function openSidebarTab(page: Page, tab: string): Promise<void> {
+  const item = page.getByTestId(`vertical-nav-${tab}`).first()
+  await item.click()
+  await expect(item).toHaveAttribute('aria-current', 'page')
 }
 
 /**

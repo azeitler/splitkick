@@ -117,12 +117,12 @@ describe('the drawer is retired on a phone', () => {
     expect(titleBar).not.toContain('UsagePopover')
   })
 
-  it('keeps the desktop in-flow sidebar', () => {
+  it('keeps the desktop in-flow sidebar (the vertical navigation)', () => {
     // The redesign is below the breakpoint only.
     const mainWindow = read('src/components/layout/MainWindow.tsx')
     const desktop = mainWindow.slice(
       mainWindow.indexOf('<ToolbarSlotsProvider>')
     )
-    expect(desktop).toContain('{leftSidebarVisible && isInitialized && (')
+    expect(desktop).toContain('<VerticalNavLayout')
   })
 })
