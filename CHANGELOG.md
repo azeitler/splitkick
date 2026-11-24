@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-24
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **Every level of the agent tree opens and closes.** In the Agents tab, the
@@ -3457,7 +3461,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.6.0...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.6.1...HEAD
+[1.6.1]: https://github.com/azeitler/jean/compare/splitkick-v1.6.0...splitkick-v1.6.1
 [1.6.0]: https://github.com/azeitler/jean/compare/splitkick-v1.5.24...splitkick-v1.6.0
 [1.5.24]: https://github.com/azeitler/jean/compare/splitkick-v1.5.23...splitkick-v1.5.24
 [1.5.23]: https://github.com/azeitler/jean/compare/splitkick-v1.5.22...splitkick-v1.5.23
