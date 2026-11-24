@@ -134,7 +134,8 @@ describe('SidebarAgentsSection', () => {
       },
     ] as AllSessionsEntry[]
     useProjectsStore.setState({
-      collapsedAgentIds: new Set(),
+      // Agent rows start closed; most tests look inside the sample agents.
+      expandedAgentIds: new Set(['a1', 'a2']),
       collapsedAgentNodeKeys: new Set(),
       expandedAgentPreviousIds: new Set(),
       starredSessions: [],
@@ -450,7 +451,7 @@ describe('SidebarAgentsSection', () => {
       expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
       // c1, c2, g1 + old2, old1, old0
       expect(screen.getByTestId('sidebar-agent-toggle')).toHaveTextContent('6')
-      expect(getCurrentUIState().collapsed_agent_ids).toEqual(['a1'])
+      expect(getCurrentUIState().expanded_agent_ids).toEqual(['a2'])
     })
 
     it('nests the children of a child and closes that level on its own', async () => {
@@ -508,13 +509,13 @@ describe('SidebarAgentsSection', () => {
         screen.getByRole('button', { name: 'Collapse all' })
       )
       let state = useProjectsStore.getState()
-      expect([...state.collapsedAgentIds]).toEqual(['a1'])
+      expect(state.expandedAgentIds.size).toBe(0)
       expect([...state.collapsedAgentNodeKeys]).toEqual(['a1:c1'])
       expect(screen.queryByText('child one')).toBeNull()
 
       await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
       state = useProjectsStore.getState()
-      expect(state.collapsedAgentIds.size).toBe(0)
+      expect([...state.expandedAgentIds]).toEqual(['a1'])
       expect([...state.expandedAgentPreviousIds]).toEqual(['a1'])
       expect(screen.getByText('grandchild')).toBeInTheDocument()
       expect(screen.getByText('first run')).toBeInTheDocument()
@@ -540,6 +541,68 @@ describe('SidebarAgentsSection', () => {
       render(<SidebarAgentsSection />)
       screen.getByText('Release manager').closest('button')?.focus()
       await userEvent.keyboard('{ArrowLeft}')
+      expect(screen.getByText('child one')).toBeInTheDocument()
+    })
+  })
+
+  describe('default', () => {
+    beforeEach(() => {
+      useProjectsStore.setState({ expandedAgentIds: new Set() })
+    })
+
+    it('starts every agent closed, with the count of its hidden sessions', () => {
+      addSessions(
+        {
+          ...session('c1', 'child one'),
+          started_by_session_id: 's1',
+        } as Session,
+        session('old1', 'first run')
+      )
+      mocks.agents = [
+        agent({ pastSessionIds: ['old1'] }),
+        agent({
+          id: 'a3',
+          name: 'New agent',
+          sessionId: null,
+          sessionName: null,
+          pastSessionIds: ['old1'],
+        }),
+      ]
+      render(<SidebarAgentsSection />)
+      expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
+      expect(screen.queryByText('child one')).toBeNull()
+      // c1 + old1 behind the closed agent row.
+      expect(screen.getByTestId('sidebar-agent')).toHaveTextContent('2')
+      expect(
+        screen.getByRole('button', {
+          name: /Show the sessions of Release manager/,
+        })
+      ).toHaveAttribute('aria-expanded', 'false')
+      expect(
+        screen.getByRole('button', { name: 'Expand all' })
+      ).toBeInTheDocument()
+    })
+
+    it('remembers an agent the user opens', async () => {
+      addSessions({
+        ...session('c1', 'child one'),
+        started_by_session_id: 's1',
+      } as Session)
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
+      expect(screen.getByText('child one')).toBeInTheDocument()
+      expect(getCurrentUIState().expanded_agent_ids).toEqual(['a1'])
+    })
+
+    it('opens an agent restored as expanded', () => {
+      addSessions({
+        ...session('c1', 'child one'),
+        started_by_session_id: 's1',
+      } as Session)
+      useProjectsStore.setState({ expandedAgentIds: new Set(['a1']) })
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
       expect(screen.getByText('child one')).toBeInTheDocument()
     })
   })

@@ -326,10 +326,34 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
-  it('restores the agent tree after a reload, also from an old state file', async () => {
+  it('persists the agents the user opened', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().toggleAgentExpanded('agent-1')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ expanded_agent_ids: ['agent-1'] })
+      )
+    })
+  })
+
+  it('restores the agent tree after a reload', async () => {
     mockUseUIState.mockReturnValue({
       data: buildUiState({
-        collapsed_agent_ids: ['agent-2'],
+        expanded_agent_ids: ['agent-2'],
         collapsed_agent_node_keys: ['agent-1:session-1'],
         expanded_agent_previous_ids: ['agent-1'],
       }),
@@ -347,15 +371,19 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
 
     await waitFor(() => {
       const state = useProjectsStore.getState()
-      expect(state.collapsedAgentIds.has('agent-2')).toBe(true)
+      expect(state.expandedAgentIds.has('agent-2')).toBe(true)
       expect(state.collapsedAgentNodeKeys.has('agent-1:session-1')).toBe(true)
       expect(state.expandedAgentPreviousIds.has('agent-1')).toBe(true)
     })
   })
 
-  it('loads an old state file without collapsed agent nodes', async () => {
+  it('loads a 1.6.x state file with every agent closed', async () => {
+    // 1.6.x saved the collapsed agents; every other agent was open. Agent
+    // rows now start closed, so the old set opens nothing.
     mockUseUIState.mockReturnValue({
-      data: buildUiState({ collapsed_agent_ids: ['agent-2'] }),
+      data: buildUiState({
+        collapsed_agent_ids: ['agent-2'],
+      } as Partial<UIState>),
       isSuccess: true,
     })
     const queryClient = new QueryClient({
@@ -369,10 +397,9 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
 
     await waitFor(() => {
-      expect(useProjectsStore.getState().collapsedAgentIds.has('agent-2')).toBe(
-        true
-      )
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
     })
+    expect(useProjectsStore.getState().expandedAgentIds.size).toBe(0)
     expect(useProjectsStore.getState().collapsedAgentNodeKeys.size).toBe(0)
   })
 

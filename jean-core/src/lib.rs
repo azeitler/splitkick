@@ -3138,9 +3138,12 @@ pub struct UIState {
     #[serde(default)]
     pub expanded_graphs_project_ids: Vec<String>,
 
-    /// Agent IDs whose row is collapsed in the sidebar's Agents tab
+    /// Agent IDs whose row is open in the sidebar's Agents tab (rows start
+    /// closed). Replaces `collapsed_agent_ids` from 1.6.x on purpose without
+    /// an alias: that set meant the opposite, and old files must not open
+    /// every agent that was open by default.
     #[serde(default)]
-    pub collapsed_agent_ids: Vec<String>,
+    pub expanded_agent_ids: Vec<String>,
 
     /// Collapsed session nodes in the Agents tab tree, `<agentId>:<sessionId>`
     #[serde(default)]
@@ -3485,7 +3488,7 @@ impl Default for UIState {
             expanded_worktree_ids: Vec::new(),
             expanded_pinned_project_ids: Vec::new(),
             expanded_graphs_project_ids: Vec::new(),
-            collapsed_agent_ids: Vec::new(),
+            expanded_agent_ids: Vec::new(),
             collapsed_agent_node_keys: Vec::new(),
             expanded_agent_previous_ids: Vec::new(),
             left_sidebar_size: None,
@@ -5321,6 +5324,17 @@ mod project_canvas_settings_tests {
             serde_json::from_str(r#"{"worktree_sort_mode":"created"}"#).unwrap();
         assert!(legacy.session_sort_mode.is_none());
         assert!(legacy.session_sort_direction.is_none());
+    }
+
+    #[test]
+    fn ui_state_ignores_the_old_collapsed_agent_ids() {
+        // A 1.6.x file names the collapsed agents. Agent rows now start
+        // closed and the file names the open ones; the old set is dropped.
+        let old: UIState = serde_json::from_str(r#"{"collapsed_agent_ids":["agent-1"]}"#).unwrap();
+        assert!(old.expanded_agent_ids.is_empty());
+
+        let new: UIState = serde_json::from_str(r#"{"expanded_agent_ids":["agent-2"]}"#).unwrap();
+        assert_eq!(new.expanded_agent_ids, vec!["agent-2".to_string()]);
     }
 
     #[test]

@@ -158,8 +158,9 @@ Three ways make one, and all end in the same target:
   Every row with children has its own toggle (a chevron while open, the
   count of hidden sessions while closed); Left/Right close and open a
   focused row in the desktop app; the header button collapses or expands
-  everything. Open state persists in UI state: `collapsed_agent_ids` (agent
-  rows, open by default), `collapsed_agent_node_keys`
+  everything. Open state persists in UI state: `expanded_agent_ids` (agent
+  rows, **closed** by default; the 1.6.x `collapsed_agent_ids` is ignored, so
+  an old file opens nothing), `collapsed_agent_node_keys`
   (`<agentId>:<sessionId>`, deeper nodes, open by default) and
   `expanded_agent_previous_ids` (Previous Sessions, closed by default).
 - The nav's Agents count (`useNavCounts`) uses `agentActivity`

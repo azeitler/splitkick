@@ -269,10 +269,12 @@ export function useUIStatePersistence() {
         expandedGraphsProjectIds: new Set(expandedGraphsProjectIds),
       })
     }
-    const collapsedAgentIds = uiState.collapsed_agent_ids ?? []
-    if (collapsedAgentIds.length > 0) {
+    // Agent rows start closed. The old `collapsed_agent_ids` is not read:
+    // an agent that was open by default then must start closed too.
+    const expandedAgentIds = uiState.expanded_agent_ids ?? []
+    if (expandedAgentIds.length > 0) {
       useProjectsStore.setState({
-        collapsedAgentIds: new Set(collapsedAgentIds),
+        expandedAgentIds: new Set(expandedAgentIds),
       })
     }
     const collapsedAgentNodeKeys = uiState.collapsed_agent_node_keys ?? []
@@ -1058,7 +1060,7 @@ export function useUIStatePersistence() {
       useProjectsStore.getState().expandedPinnedProjectIds
     let prevExpandedGraphsProjectIds =
       useProjectsStore.getState().expandedGraphsProjectIds
-    let prevCollapsedAgentIds = useProjectsStore.getState().collapsedAgentIds
+    let prevExpandedAgentIds = useProjectsStore.getState().expandedAgentIds
     let prevCollapsedAgentNodeKeys =
       useProjectsStore.getState().collapsedAgentNodeKeys
     let prevExpandedAgentPreviousIds =
@@ -1144,7 +1146,7 @@ export function useUIStatePersistence() {
       const pinnedProjectIdsChanged =
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds ||
         state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds ||
-        state.collapsedAgentIds !== prevCollapsedAgentIds ||
+        state.expandedAgentIds !== prevExpandedAgentIds ||
         state.collapsedAgentNodeKeys !== prevCollapsedAgentNodeKeys ||
         state.expandedAgentPreviousIds !== prevExpandedAgentPreviousIds
       const selectedProjectChanged =
@@ -1179,7 +1181,7 @@ export function useUIStatePersistence() {
         prevExpandedWorktreeIds = state.expandedWorktreeIds
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
-        prevCollapsedAgentIds = state.collapsedAgentIds
+        prevExpandedAgentIds = state.expandedAgentIds
         prevCollapsedAgentNodeKeys = state.collapsedAgentNodeKeys
         prevExpandedAgentPreviousIds = state.expandedAgentPreviousIds
         prevStarredSessions = state.starredSessions

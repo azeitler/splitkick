@@ -52,9 +52,9 @@ interface ProjectsUIState {
   // Project IDs whose Graphs row (#99) is expanded in the sidebar tree.
   expandedGraphsProjectIds: Set<string>
 
-  // Agent IDs whose row is collapsed in the sidebar's Agents tab. Agents
-  // start expanded, so the set holds the exceptions.
-  collapsedAgentIds: Set<string>
+  // Agent IDs whose row is open in the sidebar's Agents tab. Agents start
+  // closed, so the set holds the ones the user opened.
+  expandedAgentIds: Set<string>
   // Collapsed session nodes inside the Agents tab tree, keyed
   // `<agentId>:<sessionId>`. Child lists start open.
   collapsedAgentNodeKeys: Set<string>
@@ -136,15 +136,15 @@ interface ProjectsUIState {
   // Project Graphs row expansion, per project (#99)
   toggleProjectGraphsExpanded: (projectId: string) => void
   // Agent row expansion in the Agents tab
-  toggleAgentCollapsed: (agentId: string) => void
+  toggleAgentExpanded: (agentId: string) => void
   toggleAgentNodeCollapsed: (nodeKey: string) => void
   toggleAgentPreviousExpanded: (agentId: string) => void
   // Collapse all / Expand all: replace the three sets at once.
-  setAgentTreeCollapsed: (
-    agentIds: string[],
-    nodeKeys: string[],
-    expandedPreviousIds?: string[]
-  ) => void
+  setAgentTree: (tree: {
+    expandedAgentIds: string[]
+    collapsedNodeKeys: string[]
+    expandedPreviousIds: string[]
+  }) => void
 
   // Starred sessions
   starSession: (star: StarredSessionRef) => void
@@ -246,7 +246,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedWorktreeIds: new Set<string>(),
       expandedPinnedProjectIds: new Set<string>(),
       expandedGraphsProjectIds: new Set<string>(),
-      collapsedAgentIds: new Set<string>(),
+      expandedAgentIds: new Set<string>(),
       collapsedAgentNodeKeys: new Set<string>(),
       expandedAgentPreviousIds: new Set<string>(),
       starredSessions: [],
@@ -549,19 +549,19 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'toggleProjectGraphsExpanded'
         ),
 
-      toggleAgentCollapsed: agentId =>
+      toggleAgentExpanded: agentId =>
         set(
           state => {
-            const newSet = new Set(state.collapsedAgentIds)
+            const newSet = new Set(state.expandedAgentIds)
             if (newSet.has(agentId)) {
               newSet.delete(agentId)
             } else {
               newSet.add(agentId)
             }
-            return { collapsedAgentIds: newSet }
+            return { expandedAgentIds: newSet }
           },
           undefined,
-          'toggleAgentCollapsed'
+          'toggleAgentExpanded'
         ),
 
       toggleAgentNodeCollapsed: nodeKey =>
@@ -594,27 +594,30 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'toggleAgentPreviousExpanded'
         ),
 
-      setAgentTreeCollapsed: (agentIds, nodeKeys, expandedPreviousIds = []) =>
+      setAgentTree: ({
+        expandedAgentIds,
+        collapsedNodeKeys,
+        expandedPreviousIds,
+      }) =>
         set(
           state => {
             const same = (current: Set<string>, next: string[]) =>
-              current.size === next.length &&
-              next.every(id => current.has(id))
+              current.size === next.length && next.every(id => current.has(id))
             if (
-              same(state.collapsedAgentIds, agentIds) &&
-              same(state.collapsedAgentNodeKeys, nodeKeys) &&
+              same(state.expandedAgentIds, expandedAgentIds) &&
+              same(state.collapsedAgentNodeKeys, collapsedNodeKeys) &&
               same(state.expandedAgentPreviousIds, expandedPreviousIds)
             ) {
               return state
             }
             return {
-              collapsedAgentIds: new Set(agentIds),
-              collapsedAgentNodeKeys: new Set(nodeKeys),
+              expandedAgentIds: new Set(expandedAgentIds),
+              collapsedAgentNodeKeys: new Set(collapsedNodeKeys),
               expandedAgentPreviousIds: new Set(expandedPreviousIds),
             }
           },
           undefined,
-          'setAgentTreeCollapsed'
+          'setAgentTree'
         ),
 
       // Dashboard collapse actions

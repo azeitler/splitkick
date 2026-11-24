@@ -138,8 +138,9 @@ export interface UIState {
   expanded_pinned_project_ids?: string[]
   /** Project IDs whose Graphs row is expanded in the sidebar (#99) */
   expanded_graphs_project_ids?: string[]
-  /** Agent IDs whose row is collapsed in the sidebar's Agents tab */
-  collapsed_agent_ids?: string[]
+  /** Agent IDs whose row is open in the sidebar's Agents tab (rows start
+   *  closed). Replaces `collapsed_agent_ids` (1.6.x), which is ignored. */
+  expanded_agent_ids?: string[]
   /** Collapsed session nodes in the Agents tab tree, `<agentId>:<sessionId>` */
   collapsed_agent_node_keys?: string[]
   /** Agent IDs whose "Previous Sessions" group is open in the Agents tab */
@@ -275,7 +276,7 @@ export const defaultUIState: UIState = {
   expanded_worktree_ids: [],
   expanded_pinned_project_ids: [],
   expanded_graphs_project_ids: [],
-  collapsed_agent_ids: [],
+  expanded_agent_ids: [],
   collapsed_agent_node_keys: [],
   expanded_agent_previous_ids: [],
   starred_sessions: [],

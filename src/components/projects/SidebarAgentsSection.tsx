@@ -281,17 +281,19 @@ export function SidebarAgentsSection() {
 
   // Collapse all / Expand all. "Expand all" once everything is closed.
   const allCollapsed = useProjectsStore(state =>
-    agents.every(agent => state.collapsedAgentIds.has(agent.id))
+    agents.every(agent => !state.expandedAgentIds.has(agent.id))
   )
   const handleCollapseAll = useCallback(() => {
-    const { setAgentTreeCollapsed } = useProjectsStore.getState()
+    const { setAgentTree } = useProjectsStore.getState()
     if (allCollapsed) {
       // Everything open, the Previous Sessions groups too.
-      setAgentTreeCollapsed(
-        [],
-        [],
-        agents.filter(a => a.pastSessionIds.length > 0).map(a => a.id)
-      )
+      setAgentTree({
+        expandedAgentIds: agents.map(agent => agent.id),
+        collapsedNodeKeys: [],
+        expandedPreviousIds: agents
+          .filter(agent => agent.pastSessionIds.length > 0)
+          .map(agent => agent.id),
+      })
       return
     }
     // The children of the current session are the agent row's own list, so
@@ -303,10 +305,11 @@ export function SidebarAgentsSection() {
           )
         : []
     )
-    setAgentTreeCollapsed(
-      agents.map(agent => agent.id),
-      nodeKeys
-    )
+    setAgentTree({
+      expandedAgentIds: [],
+      collapsedNodeKeys: nodeKeys,
+      expandedPreviousIds: [],
+    })
   }, [agents, allCollapsed, childrenByParent])
 
   if (agents.length === 0) {
@@ -411,9 +414,10 @@ export function SidebarAgentsSection() {
  * left behind, newest first, archived ones last. An agent without a session
  * keeps a plain row with "No session" and Restart.
  *
- * Open state is persisted: `collapsedAgentIds` for agent rows (open by
- * default), `collapsedAgentNodeKeys` for deeper session nodes (open),
- * `expandedAgentPreviousIds` for the Previous Sessions group (closed).
+ * Open state is persisted: `expandedAgentIds` for agent rows (closed by
+ * default; the user opens what they need), `collapsedAgentNodeKeys` for
+ * deeper session nodes (open), `expandedAgentPreviousIds` for the Previous
+ * Sessions group (closed).
  */
 function AgentItem({
   agent,
@@ -436,11 +440,11 @@ function AgentItem({
 }) {
   const isMobile = useIsMobile()
   const keys = !isMobile && isNativeApp()
-  const collapsed = useProjectsStore(state =>
-    state.collapsedAgentIds.has(agent.id)
+  const collapsed = useProjectsStore(
+    state => !state.expandedAgentIds.has(agent.id)
   )
   const handleToggle = useCallback(() => {
-    useProjectsStore.getState().toggleAgentCollapsed(agent.id)
+    useProjectsStore.getState().toggleAgentExpanded(agent.id)
   }, [agent.id])
   const hasSession = agent.sessionId !== null
   const children = current

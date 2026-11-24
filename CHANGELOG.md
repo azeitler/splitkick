@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Agents start collapsed in the Agents tab.** Each agent row shows only
+  itself and the count of the sessions below it; you open the agents you
+  need, and Splitkick remembers which ones. The open/closed state of earlier
+  versions is not carried over, so every agent starts closed once.
 - **The Projects tree has no "Folders" and "Projects" rows.** Its root lists
   the folders, then the projects in no folder, in their saved order. New
   project and New folder are in the "+" menu above the tree, next to Expand
