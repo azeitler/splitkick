@@ -7,6 +7,7 @@ import {
   getParkedClaudeDialog,
   hydrateParkedClaudeDialog,
   isDialogPaused,
+  isRunAwaitingAnswer,
   isPlanAnsweredInTurn,
   skipParkedClaudeDialog,
 } from './claude-dialog-events'
@@ -130,6 +131,60 @@ describe('a dialog with no run behind it is paused (#155)', () => {
     ).toBe(false)
     expect(
       isDialogPaused({ sending: true, parkedToolUseId: null, toolUseId: 'q' })
+    ).toBe(false)
+  })
+})
+
+describe('a live run that waits for an answer shows no running timer', () => {
+  const question = {
+    id: 'q-1',
+    name: 'AskUserQuestion',
+    input: {
+      questions: [
+        {
+          header: 'Color',
+          question: 'Which color?',
+          multiSelect: false,
+          options: [{ label: 'Teal' }],
+        },
+      ],
+    },
+  } satisfies ToolCall
+
+  it('waits while a Claude dialog is parked', () => {
+    expect(
+      isRunAwaitingAnswer({
+        parked: true,
+        toolCalls: [],
+        isAnswered: () => false,
+      })
+    ).toBe(true)
+  })
+
+  it('waits while a streamed question has no answer', () => {
+    expect(
+      isRunAwaitingAnswer({
+        parked: false,
+        toolCalls: [question],
+        isAnswered: () => false,
+      })
+    ).toBe(true)
+  })
+
+  it('runs again once the question is answered', () => {
+    expect(
+      isRunAwaitingAnswer({
+        parked: false,
+        toolCalls: [question],
+        isAnswered: () => true,
+      })
+    ).toBe(false)
+    expect(
+      isRunAwaitingAnswer({
+        parked: false,
+        toolCalls: [{ ...question, output: 'The user answered: Teal' }],
+        isAnswered: () => false,
+      })
     ).toBe(false)
   })
 })

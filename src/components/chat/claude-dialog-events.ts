@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useChatStore, type ParkedClaudeDialog } from '@/store/chat-store'
 import type { Backend, ToolCall } from '@/types/chat'
+import { hasQuestionAnswerOutput, isAskUserQuestion } from '@/types/chat'
 
 /** Payload of `claude:dialog-waiting` (see jean-core/src/chat/claude_dialog.rs). */
 export interface ClaudeDialogWaitingEvent {
@@ -151,5 +152,24 @@ export function useIsDialogPaused(
     (toolUseId: string) =>
       isDialogPaused({ sending, parkedToolUseId, toolUseId }),
     [sending, parkedToolUseId]
+  )
+}
+
+/**
+ * The live run waits for the user: a Claude dialog is parked on it (#136),
+ * or a streamed question (OpenCode, Codex) has no answer yet. Nothing runs
+ * then, so the chat shows no running timer or spinner.
+ */
+export function isRunAwaitingAnswer(state: {
+  parked: boolean
+  toolCalls: readonly ToolCall[]
+  isAnswered: (toolCallId: string) => boolean
+}): boolean {
+  if (state.parked) return true
+  return state.toolCalls.some(
+    tc =>
+      isAskUserQuestion(tc) &&
+      !hasQuestionAnswerOutput(tc.output) &&
+      !state.isAnswered(tc.id)
   )
 }

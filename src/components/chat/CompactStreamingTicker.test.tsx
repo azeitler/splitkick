@@ -273,4 +273,49 @@ describe('CompactStreamingTicker', () => {
     expect(screen.getByText('How should I continue?')).toBeVisible()
     expect(screen.getAllByRole('button', { name: /Answer/ })).toHaveLength(1)
   })
+
+  // The activity row above a waiting question must not spin: the run waits.
+  it('stops the activity spinner while a question waits for an answer', () => {
+    const toolCalls = [
+      { id: 'cmd-1', name: 'Bash', input: { command: 'ls' }, output: 'ok' },
+      {
+        id: 'question-1',
+        name: 'AskUserQuestion',
+        input: {
+          questions: [
+            {
+              header: 'Next',
+              question: 'What next?',
+              multiSelect: false,
+              options: [{ label: 'Ship' }],
+            },
+          ],
+        },
+      },
+    ]
+    const contentBlocks = [
+      { type: 'tool_use' as const, tool_call_id: 'cmd-1' },
+      { type: 'tool_use' as const, tool_call_id: 'question-1' },
+    ]
+    const { container, rerender } = render(
+      <CompactStreamingTicker
+        {...baseProps}
+        contentBlocks={contentBlocks}
+        toolCalls={toolCalls}
+      />
+    )
+    expect(screen.getByText('What next?')).toBeVisible()
+    expect(container.querySelector('.animate-spin')).toBeNull()
+
+    // Answered in the turn: the run works again, and so does the spinner.
+    rerender(
+      <CompactStreamingTicker
+        {...baseProps}
+        isQuestionAnswered={vi.fn(() => true)}
+        contentBlocks={contentBlocks}
+        toolCalls={toolCalls}
+      />
+    )
+    expect(container.querySelector('.animate-spin')).not.toBeNull()
+  })
 })

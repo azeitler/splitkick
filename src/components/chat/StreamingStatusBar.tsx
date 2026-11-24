@@ -12,6 +12,11 @@ interface StreamingStatusBarProps {
   streamingExecutionMode: ExecutionMode
   restoredRunStatus?: RunStatus
   restoredExecutionMode?: string
+  /**
+   * The live run waits for an answer to a question or plan: nothing runs,
+   * so no timer counts.
+   */
+  awaitingAnswer?: boolean
 }
 
 function getModeLabel(mode: string | undefined): string {
@@ -36,17 +41,22 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   streamingExecutionMode,
   restoredRunStatus,
   restoredExecutionMode,
+  awaitingAnswer = false,
 }: StreamingStatusBarProps) {
-  const elapsed = useElapsedTime(isSending ? sendStartedAt : null)
+  const elapsed = useElapsedTime(
+    isSending && !awaitingAnswer ? sendStartedAt : null
+  )
 
   const showRestored = !isSending && restoredRunStatus === 'running'
   const visible = isSending || showRestored
   const activeMode = isSending ? streamingExecutionMode : restoredExecutionMode
 
-  if (!visible) return null
+  if (!visible || awaitingAnswer) return null
 
   return (
-    <div className="mt-1 inline-flex min-h-4 items-center gap-1.5 text-xs text-muted-foreground/40 tabular-nums font-mono select-none">
+    <div
+      data-testid="streaming-status-bar"
+      className="mt-1 inline-flex min-h-4 items-center gap-1.5 text-xs text-muted-foreground/40 tabular-nums font-mono select-none">
       <StatusIndicator
         status="running"
         variant={getSpinnerVariant(activeMode)}

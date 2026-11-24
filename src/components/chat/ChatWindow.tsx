@@ -28,7 +28,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke } from '@/lib/transport'
-import { hydrateParkedClaudeDialog } from './claude-dialog-events'
+import {
+  hydrateParkedClaudeDialog,
+  isRunAwaitingAnswer,
+} from './claude-dialog-events'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
@@ -1010,6 +1013,28 @@ export function ChatWindow({
     deferredSessionId
       ? (state.activeToolCalls[deferredSessionId] ?? EMPTY_TOOL_CALLS)
       : EMPTY_TOOL_CALLS
+  )
+  // The live run waits for an answer to a question or plan: no running timer.
+  const hasParkedDialog = useChatStore(state =>
+    deferredSessionId ? !!state.parkedClaudeDialogs[deferredSessionId] : false
+  )
+  const runAwaitsAnswer = useMemo(
+    () =>
+      isRunAwaitingAnswer({
+        parked: hasParkedDialog,
+        toolCalls: currentToolCalls,
+        isAnswered: id =>
+          !!deferredSessionId && isQuestionAnswered(deferredSessionId, id),
+      }),
+    // answeredQuestionsSize re-runs this when a question is answered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      hasParkedDialog,
+      currentToolCalls,
+      deferredSessionId,
+      isQuestionAnswered,
+      answeredQuestionsSize,
+    ]
   )
   const currentStreamingContentBlocks = useChatStore(state =>
     deferredSessionId
@@ -3593,6 +3618,7 @@ export function ChatWindow({
                                   ))}
                                 <StreamingStatusBar
                                   isSending={isSending}
+                                  awaitingAnswer={runAwaitsAnswer}
                                   sendStartedAt={sendStartedAt}
                                   streamingExecutionMode={
                                     streamingExecutionMode
