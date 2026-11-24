@@ -19,8 +19,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
-- **Archived marks only itself in the navigation.** While the Archived page
-  shows, no tab is marked; picking a tab leaves the page.
+- **Archived is a sidebar tab.** Its panel lists "All projects" and every
+  project that has archived worktrees or sessions, with their counts. Click a
+  project to see its archived items in the main area and restore or delete
+  them there; "Delete All" is in "All projects" only. A project's "Archived"
+  row in the Projects tree opens the tab on that project. Phones keep the
+  Archived dialog.
 - **Agents start collapsed in the Agents tab.** Each agent row shows only
   itself and the count of the sessions below it; you open the agents you
   need, and Splitkick remembers which ones. The open/closed state of earlier

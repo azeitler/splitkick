@@ -116,25 +116,18 @@ describe('VerticalNavLayout', () => {
     expect(screen.getByTestId('home-footer')).toBeInTheDocument()
   })
 
-  it('picking a tab leaves the Archived page, not a project-filtered one', async () => {
-    useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: null })
+  it('picking a tab keeps the Archived page in the main area, like a graph', async () => {
+    useUIStore.setState({
+      sidebarTab: 'archived',
+      archivedViewOpen: true,
+      archivedViewProjectId: null,
+    })
     renderLayout()
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Projects' })[0] as HTMLElement
     )
-    expect(useUIStore.getState().archivedViewOpen).toBe(false)
-    expect(useUIStore.getState().sidebarTab).toBe('projects')
-
-    act(() => {
-      useUIStore.setState({
-        archivedViewOpen: true,
-        archivedViewProjectId: 'p1',
-      })
-    })
-    await userEvent.click(
-      screen.getAllByRole('button', { name: 'Projects' })[0] as HTMLElement
-    )
     expect(useUIStore.getState().archivedViewOpen).toBe(true)
+    expect(useUIStore.getState().sidebarTab).toBe('projects')
   })
 
   it('other tabs: sidebar column with nav, panel and full footer; sidebar button in the toolbar', async () => {

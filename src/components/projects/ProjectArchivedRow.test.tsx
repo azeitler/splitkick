@@ -53,32 +53,17 @@ describe('ProjectArchivedRow', () => {
     expect(screen.getByLabelText('3 archived items')).toHaveTextContent('3')
   })
 
-  it('opens the Archived view filtered to the project', async () => {
+  it('opens the Archived view filtered to the project in the Archived tab', async () => {
+    useUIStore.setState({ sidebarTab: 'projects' })
     render(<ProjectArchivedRow projectId="p2" />)
     await userEvent.click(screen.getByTestId(rowId('p2')))
 
     const ui = useUIStore.getState()
     expect(ui.archivedViewOpen).toBe(true)
     expect(ui.archivedViewProjectId).toBe('p2')
-    expect(screen.getByTestId(rowId('p2'))).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
-  })
-
-  it('marks itself while the Archived view is filtered to its project', () => {
-    useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: 'p1' })
-    render(<ProjectArchivedRow projectId="p1" />)
-    expect(screen.getByTestId(rowId('p1'))).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
-  })
-
-  it('is not marked while the Archived view shows another project', () => {
-    useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: null })
-    render(<ProjectArchivedRow projectId="p1" />)
-    expect(screen.getByTestId(rowId('p1'))).not.toHaveAttribute('aria-current')
+    // The Archived tab marks the project, not this shortcut.
+    expect(ui.sidebarTab).toBe('archived')
+    expect(screen.getByTestId(rowId('p2'))).not.toHaveAttribute('aria-current')
   })
 
   it('asks for the dialog with the project on a phone', async () => {

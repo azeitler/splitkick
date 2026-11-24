@@ -277,29 +277,15 @@ describe('VerticalNav', () => {
     expect(item('projects')).not.toHaveAttribute('aria-current')
   })
 
-  it('opens the Archived page and marks no tab while it shows', async () => {
-    useUIStore.setState({ leftSidebarVisible: false, sidebarTab: 'recent' })
+  it('Archived is a tab: it is marked with its panel, also while the page shows', () => {
+    useUIStore.setState({
+      sidebarTab: 'archived',
+      archivedViewOpen: true,
+      archivedViewProjectId: 'p1',
+    })
     renderNav()
-    expect(item('recent')).toHaveAttribute('aria-current', 'page')
-
-    useUIStore.setState({ archivedViewProjectId: 'p1' })
-    await userEvent.click(item('archived'))
-    const ui = useUIStore.getState()
-    expect(ui.archivedViewOpen).toBe(true)
-    // The nav item shows every project.
-    expect(ui.archivedViewProjectId).toBeNull()
-    // The sidebar comes back, so the nav stays in view.
-    expect(ui.leftSidebarVisible).toBe(true)
     expect(item('archived')).toHaveAttribute('aria-current', 'page')
-    expect(item('recent')).not.toHaveAttribute('aria-current')
-  })
-
-  it('leaves Archived unmarked while the page is filtered to a project', () => {
-    useUIStore.setState({ archivedViewOpen: true, archivedViewProjectId: 'p1' })
-    renderNav()
-    expect(item('archived')).not.toHaveAttribute('aria-current')
-    // The filtered page belongs to the project's row in the Projects tab.
-    expect(item('projects')).toHaveAttribute('aria-current', 'page')
+    expect(item('projects')).not.toHaveAttribute('aria-current')
   })
 
   it('counts active schedules and archived items', async () => {

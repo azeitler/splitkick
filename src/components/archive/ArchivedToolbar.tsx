@@ -30,7 +30,9 @@ interface ArchivedToolbarProps {
   sort: ArchivedSort
   onSortChange: (sort: ArchivedSort) => void
   counts: Record<ArchivedKindFilter, number>
-  projects: { id: string; name: string }[]
+  /** Options of the project filter; absent hides it (the sidebar picked
+   *  the project). */
+  projects?: { id: string; name: string }[]
   backends: Backend[]
 }
 
@@ -82,19 +84,21 @@ export function ArchivedToolbar({
             </Button>
           ))}
         </div>
-        <NativeSelect
-          aria-label="Project"
-          value={filters.projectId}
-          onChange={e => set({ projectId: e.target.value })}
-          className="h-8 max-w-48 text-xs"
-        >
-          <NativeSelectOption value="">All projects</NativeSelectOption>
-          {projects.map(project => (
-            <NativeSelectOption key={project.id} value={project.id}>
-              {project.name}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+        {projects && (
+          <NativeSelect
+            aria-label="Project"
+            value={filters.projectId}
+            onChange={e => set({ projectId: e.target.value })}
+            className="h-8 max-w-48 text-xs"
+          >
+            <NativeSelectOption value="">All projects</NativeSelectOption>
+            {projects.map(project => (
+              <NativeSelectOption key={project.id} value={project.id}>
+                {project.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        )}
         {backends.length > 1 && (
           <NativeSelect
             aria-label="Backend"

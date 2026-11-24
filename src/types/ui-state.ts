@@ -48,6 +48,7 @@ export const SIDEBAR_TABS = [
   'todo',
   'graphs',
   'scheduled',
+  'archived',
 ] as const
 
 /** A tab of the sidebar, below the Home row. */

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, type ReactNode } from 'react'
-import { Archive, ChevronsLeft, ChevronsRight, House } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, House } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -7,7 +7,6 @@ import {
 } from '@/components/ui/tooltip'
 import { TAB_META, useSidebarTabCounts } from './tab-meta'
 import { useArchivedCount } from '@/components/archive/useArchivedCount'
-import { openArchivedView } from '@/lib/archived-view'
 import { cn } from '@/lib/utils'
 import {
   agentActivity,
@@ -27,11 +26,11 @@ export const NAV_WIDTH_COLLAPSED = 46
 
 /** The tabs in nav order, in groups with a divider between them: the
  *  session lists (To-Do ends them), then Agents and Graphs, then Scheduled
- *  (the Archived page follows it). */
+ *  and Archived. */
 const NAV_TAB_GROUPS: SidebarTab[][] = [
   ['projects', 'recent', 'starred', 'todo'],
   ['agents', 'graphs'],
-  ['scheduled'],
+  ['scheduled', 'archived'],
 ]
 
 function NavDivider() {
@@ -72,6 +71,7 @@ function useNavCounts(): {
   const activeSchedules = (schedules ?? []).filter(
     schedule => schedule.enabled !== false
   ).length
+  const archivedCount = useArchivedCount()
   const hasAgents = (agents?.length ?? 0) > 0
   const { data: allSessions } = useAllSessions(hasAgents)
   const storeState = useCanvasStoreState()
@@ -92,6 +92,7 @@ function useNavCounts(): {
       agents: agentCount,
       graphs: graphCount,
       scheduled: activeSchedules,
+      archived: archivedCount,
     },
     texts: {
       agents: [plural(agentCount, 'agent'), agentDetail]
@@ -104,6 +105,7 @@ function useNavCounts(): {
         .filter(Boolean)
         .join(', '),
       scheduled: `${activeSchedules} active`,
+      archived: `${archivedCount} archived`,
     },
     attention: {
       todo: true,
@@ -111,15 +113,6 @@ function useNavCounts(): {
       graphs: graphRequests > 0,
     },
   }
-}
-
-/** The Archived page, below the tabs: it opens in the main area, and no
- *  tab item is active while it shows. The sidebar comes back if it was
- *  hidden, so the nav stays in view. */
-function openArchivedPage(): void {
-  openArchivedView()
-  const { leftSidebarVisible, setLeftSidebarVisible } = useUIStore.getState()
-  if (!leftSidebarVisible) setLeftSidebarVisible(true)
 }
 
 interface NavItemProps {
@@ -217,9 +210,9 @@ interface VerticalNavProps {
 }
 
 /**
- * The vertical navigation: Home, then the sidebar tabs (Scheduled is the
- * last), the Archived page, and a Collapse / Expand item at the bottom. Collapsed shows icons with tooltips
- * and count badges; expanded shows the counts at the end of the row.
+ * The vertical navigation: Home, then the sidebar tabs, and a Collapse /
+ * Expand item at the bottom. Collapsed shows icons with tooltips and count
+ * badges; expanded shows the counts at the end of the row.
  */
 export function VerticalNav({
   home,
@@ -229,12 +222,6 @@ export function VerticalNav({
   const selectedTab = useUIStore(state => state.sidebarTab)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
   const { counts, texts, attention } = useNavCounts()
-  // Filtered to one project, the view belongs to that project's row (in
-  // the Projects tab, which then stays active).
-  const archivedOpen = useUIStore(
-    state => state.archivedViewOpen && state.archivedViewProjectId === null
-  )
-  const archivedCount = useArchivedCount()
 
   const toggleCollapsed = () => {
     const { verticalNavCollapsed, setVerticalNavCollapsed } =
@@ -271,7 +258,7 @@ export function VerticalNav({
                 id={tab}
                 label={label}
                 icon={icon}
-                active={!home && !archivedOpen && selectedTab === tab}
+                active={!home && selectedTab === tab}
                 collapsed={collapsed}
                 onClick={() => onSelectTab(tab)}
                 count={count}
@@ -282,16 +269,6 @@ export function VerticalNav({
           })}
         </Fragment>
       ))}
-      <NavItem
-        id="archived"
-        label="Archived"
-        icon={<Archive />}
-        active={archivedOpen}
-        collapsed={collapsed}
-        onClick={openArchivedPage}
-        count={archivedCount}
-        countText={`${archivedCount} archived`}
-      />
       <div className="flex-1" />
       <NavItem
         id="collapse"

@@ -45,18 +45,22 @@ interface ArchivedModalProps {
   onOpenChange: (open: boolean) => void
 }
 
-/** The Archived view in the main area, opened from the sidebar's Archived row. */
+/**
+ * The Archived view in the main area, opened from a row of the sidebar's
+ * Archived tab: one project's archived items, or all of them.
+ */
 export function ArchivedView() {
   // Like Home: the window toolbar names the view.
   const hasToolbar = useHasWindowToolbar()
-  // A project's Archived row opens the view filtered to that project; a new
-  // target remounts the list, so the filter starts from it.
+  // The sidebar row picks the project; a new target remounts the list, so
+  // the filter starts from it.
   const projectId = useUIStore(state => state.archivedViewProjectId)
+  const projectName = useProjectName(projectId)
   return (
     <>
       {hasToolbar && (
         <ToolbarContent
-          title="Archived"
+          title={projectName ? `Archived · ${projectName}` : 'Archived'}
           subtitle="Worktrees and sessions you archived."
           search={<ToolbarPaletteSearch />}
         />
@@ -84,6 +88,13 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
       onOpenChange={onOpenChange}
     />
   )
+}
+
+/** Name of the project, "Unknown project" for a gone one, null for none. */
+function useProjectName(projectId: string | null): string | null {
+  const { data: projects } = useProjects()
+  if (projectId === null) return null
+  return projects?.find(p => p.id === projectId)?.name || 'Unknown project'
 }
 
 interface CleanupResult {
@@ -141,6 +152,10 @@ function ArchivedItems({
   const isDelete = (preferences?.removal_behavior ?? 'archive') === 'delete'
   const isMobile = useIsMobile()
   const keyboard = isNativeApp() && !isMobile
+  // On the page, a project picked in the sidebar is fixed: no project
+  // filter, and no "Delete All", which would delete every project's items.
+  const projectFixed = variant === 'page' && initialProjectId !== null
+  const projectName = useProjectName(projectFixed ? initialProjectId : null)
 
   const sort = useUIStore(state => state.archivedSort)
   const [filters, setFilters] = useState<ArchivedFilters>(() => ({
@@ -317,14 +332,14 @@ function ArchivedItems({
   const isFiltered =
     filters.query.trim() !== '' ||
     filters.kind !== 'all' ||
-    filters.projectId !== '' ||
+    (filters.projectId !== '' && !projectFixed) ||
     filters.backend !== ''
 
   const title = (
     <>
       <Archive className="h-4 w-4" />
-      Archived Items
-      {!isEmpty && (
+      {projectName ? `Archived Items · ${projectName}` : 'Archived Items'}
+      {!isEmpty && !projectFixed && (
         <Button
           variant="destructive"
           size="sm"
@@ -376,7 +391,7 @@ function ArchivedItems({
         sort={sort}
         onSortChange={useUIStore.getState().setArchivedSort}
         counts={counts}
-        projects={projectOptions}
+        projects={projectFixed ? undefined : projectOptions}
         backends={backendOptions}
       />
       <ArchivedSelectionBar
@@ -396,13 +411,20 @@ function ArchivedItems({
         <div className="py-8 text-center text-sm text-muted-foreground">
           {filters.query.trim()
             ? `No archived items match “${filters.query.trim()}”.`
-            : 'No archived items match these filters.'}
+            : isFiltered
+              ? 'No archived items match these filters.'
+              : 'Nothing archived in this project.'}
           {isFiltered && (
             <div className="mt-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setFilters(DEFAULT_ARCHIVED_FILTERS)}
+                onClick={() =>
+                  setFilters({
+                    ...DEFAULT_ARCHIVED_FILTERS,
+                    projectId: projectFixed ? (initialProjectId ?? '') : '',
+                  })
+                }
               >
                 Clear filters
               </Button>

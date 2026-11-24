@@ -258,16 +258,24 @@ describe('ArchivedView', () => {
     expect(rowNames()).toEqual(['Bug triage'])
   })
 
-  it("starts filtered to the project of a project's Archived row", async () => {
+  it('shows the project picked in the sidebar, with no project filter and no Delete All', async () => {
     useUIStore.setState({ archivedViewProjectId: 'p-app' })
     renderView()
-    expect(screen.getByLabelText('Project')).toHaveValue('p-app')
+    expect(screen.queryByLabelText('Project')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Delete All/ })).toBeNull()
+    expect(screen.getByText('Archived Items · app')).toBeVisible()
     expect(rowNames()).toEqual(['login-fix', 'old-spike', 'Spike notes'])
 
     // Another project's row restarts the list on that project.
     act(() => useUIStore.setState({ archivedViewProjectId: 'p-web' }))
-    expect(screen.getByLabelText('Project')).toHaveValue('p-web')
     expect(rowNames()).toEqual(['Hero image', 'Bug triage'])
+  })
+
+  it('All projects keeps the project filter and Delete All', () => {
+    useUIStore.setState({ archivedViewProjectId: null })
+    renderView()
+    expect(screen.getByLabelText('Project')).toHaveValue('')
+    expect(screen.getByRole('button', { name: /Delete All/ })).toBeVisible()
   })
 
   it('searches names and message text, and says when nothing matches', async () => {
