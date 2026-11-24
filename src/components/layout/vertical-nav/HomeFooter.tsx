@@ -3,7 +3,7 @@ import { flattenAllSessions } from '@/components/home/home-utils'
 import { useAllSessions } from '@/services/chat'
 import { useProjects } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
-import { isVisibleProject } from '@/types/projects'
+import { isFolder, isVisibleProject } from '@/types/projects'
 
 const countTrue = (record: Record<string, boolean>) =>
   Object.values(record).filter(Boolean).length
@@ -59,14 +59,16 @@ export function HomeFooter() {
     ).length
   }, [data?.entries])
   const projectCount = useMemo(
-    () => (projects ?? []).filter(isVisibleProject).length,
+    // Folders are tree entries, not projects.
+    () =>
+      (projects ?? []).filter(p => isVisibleProject(p) && !isFolder(p)).length,
     [projects]
   )
 
   return (
     <div
       data-testid="home-footer"
-      className="flex h-10 min-w-0 flex-1 items-center justify-end gap-0.5 overflow-hidden border-t border-border/60 bg-sidebar px-2"
+      className="flex h-10 min-w-0 flex-1 items-center justify-end gap-0.5 overflow-hidden border-t border-border/60 bg-sidebar px-4"
     >
       <Stat
         testId="home-footer-running"

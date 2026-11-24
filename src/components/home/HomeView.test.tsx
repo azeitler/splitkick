@@ -59,10 +59,10 @@ function session(id: string, name: string, extra: Partial<Session> = {}) {
 
 const projects: Project[] = [{ id: 'p1', name: 'jean' } as unknown as Project]
 
-function renderHome() {
+function renderHome(homeProjects: Project[] = projects) {
   return render(
     <HomeView
-      projects={projects}
+      projects={homeProjects}
       onProjectClick={vi.fn()}
       onAddProject={vi.fn()}
     />
@@ -437,5 +437,163 @@ describe('HomeView', () => {
     expect(
       screen.getByText(/No sessions match .nothing like this./)
     ).toBeInTheDocument()
+  })
+
+  describe('layout', () => {
+    it('steps from one to two to three columns by its own width', () => {
+      renderHome()
+      const view = screen.getByTestId('home-view')
+      const grid = screen.getByTestId('home-grid')
+
+      // Container queries: the view's width decides, not the window's.
+      expect(view).toHaveClass('@container')
+      // Narrow: one column (no template), the page scrolls.
+      expect(grid).toHaveClass('grid')
+      expect(grid.className).not.toMatch(/(^| )grid-cols-/)
+      // `@3xl`: sessions beside projects.
+      expect(grid).toHaveClass(
+        '@3xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]'
+      )
+      // `@6xl`: one equal column per part; an empty part takes none.
+      expect(grid).toHaveClass(
+        '@6xl:grid-cols-none',
+        '@6xl:grid-flow-col',
+        '@6xl:auto-cols-[minmax(0,1fr)]'
+      )
+      expect(screen.getByTestId('home-column-sessions')).toHaveClass(
+        '@6xl:contents'
+      )
+      expect(screen.getByTestId('home-column-needs-you')).toHaveClass(
+        'empty:hidden'
+      )
+    })
+
+    it('puts To-Do and Starred apart from Recent sessions and activity', () => {
+      mocks.sessions = {
+        entries: [
+          {
+            project_id: 'p1',
+            project_name: 'jean',
+            worktree_id: 'w1',
+            worktree_name: 'main',
+            worktree_path: '/tmp/w1',
+            sessions: [session('t1', 'to do', { todo_at: 5 })],
+          },
+        ],
+      }
+      renderHome()
+
+      const headings = (testId: string) =>
+        within(screen.getByTestId(testId))
+          .getAllByRole('heading')
+          .map(heading => heading.textContent)
+      expect(headings('home-column-needs-you')).toEqual(['To-Do (1)'])
+      expect(headings('home-column-recent')).toEqual([
+        'Recent sessions',
+        'Recent activity',
+      ])
+    })
+
+    it('leaves the To-Do and Starred column empty when nothing needs you', () => {
+      renderHome()
+      expect(screen.getByTestId('home-column-needs-you')).toBeEmptyDOMElement()
+    })
+
+    it('pads every scroll area on the right, clear of the scroll bar', () => {
+      renderHome()
+      expect(screen.getByTestId('home-column-sessions')).toHaveClass(
+        '@3xl:pr-3',
+        '@3xl:[scrollbar-gutter:stable]'
+      )
+      expect(screen.getByTestId('home-column-recent')).toHaveClass(
+        '@6xl:pr-3',
+        '@6xl:[scrollbar-gutter:stable]'
+      )
+      // The last column holds the view's right padding.
+      expect(screen.getByTestId('home-column-projects')).toHaveClass(
+        '@3xl:pr-6'
+      )
+    })
+  })
+
+  describe('projects by folder', () => {
+    const folder = (id: string, name: string, order: number) =>
+      ({ id, name, order, is_folder: true }) as unknown as Project
+    const project = (
+      id: string,
+      name: string,
+      order: number,
+      parent_id?: string
+    ) => ({ id, name, order, parent_id }) as unknown as Project
+    const tree = [
+      folder('f-clients', 'Clients', 0),
+      folder('f-internal', 'Internal', 1),
+      project('acme', 'Acme Web', 0, 'f-clients'),
+      project('tools', 'Tools', 0, 'f-internal'),
+      project('mobile', 'Mobile app', 2),
+    ]
+
+    const groupNames = () =>
+      [
+        ...screen
+          .getByTestId('home-projects')
+          .querySelectorAll('[data-testid^="home-project-group-"]'),
+      ].map(group => [
+        group.getAttribute('data-testid'),
+        [...group.querySelectorAll('button[title]')].map(b =>
+          b.getAttribute('title')
+        ),
+      ])
+
+    it('groups the cards under their folders, loose projects last', () => {
+      renderHome(tree)
+      expect(groupNames()).toEqual([
+        ['home-project-group-f-clients', ['Acme Web']],
+        ['home-project-group-f-internal', ['Tools']],
+        ['home-project-group-root', ['Mobile app']],
+      ])
+      expect(
+        screen.getByRole('button', { name: /Not in a folder/ })
+      ).toBeInTheDocument()
+    })
+
+    it('shows no folder headers when there are no folders', () => {
+      renderHome([project('a', 'Acme Web', 0), project('b', 'Tools', 1)])
+      expect(
+        screen.queryByRole('button', { name: /Not in a folder/ })
+      ).toBeNull()
+      expect(screen.getByTitle('Acme Web')).toBeInTheDocument()
+    })
+
+    it('collapses a folder from its header', async () => {
+      renderHome(tree)
+      const header = screen.getByRole('button', { name: /Clients/ })
+      expect(header).toHaveAttribute('aria-expanded', 'true')
+
+      await userEvent.click(header)
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByTitle('Acme Web')).toBeNull()
+      expect(screen.getByTitle('Tools')).toBeInTheDocument()
+    })
+
+    it('filters across folders and drops groups with no match', async () => {
+      const many = [
+        ...tree,
+        project('c', 'Docs site', 3),
+        project('d', 'Design system', 4),
+        project('e', 'Playground', 5),
+      ]
+      renderHome(many)
+      await userEvent.click(screen.getByRole('button', { name: /Clients/ }))
+
+      await userEvent.type(
+        screen.getByPlaceholderText('Filter projects...'),
+        'acme'
+      )
+      // A filter shows a match in a collapsed folder too.
+      expect(groupNames()).toEqual([
+        ['home-project-group-f-clients', ['Acme Web']],
+      ])
+    })
   })
 })

@@ -21,20 +21,24 @@ interface HomeViewProps {
 }
 
 /**
- * The landing view: the sessions you starred and touched last, and your
- * projects — side by side, so everything is visible at once. The activity feed
- * sits closed under the sessions.
+ * The landing view: the sessions that need you, the sessions you touched last,
+ * and your projects grouped by the sidebar folders. The activity feed sits
+ * closed under the recent sessions.
  *
  * Home is the state where no project and no worktree is selected. The sidebar
  * Home row clears both, and the existing UI-state persistence of
  * `active_project_id` brings the same view back after a restart.
  *
  * The columns answer to the view's own width (container queries), not the
- * window's, because the sidebar takes a variable share of the window:
+ * window's, because the navigation takes a variable share of the window:
  * - narrow: one column, the page scrolls;
- * - `@2xl`: sessions beside projects;
- * - `@4xl`: the same two columns, each scrolling on its own under a fixed
- *   header.
+ * - `@3xl`: sessions beside projects, each column scrolling on its own;
+ * - `@6xl`: three columns — To-Do and Starred, then Recent sessions and
+ *   activity, then projects. The first goes away while it is empty, and the
+ *   other two share the width.
+ *
+ * Every section is a column, not a full-width row: Recent sessions has no
+ * length limit, so a row of it above the projects would push them out of view.
  */
 export const HomeView = memo(function HomeView({
   projects,
@@ -49,7 +53,13 @@ export const HomeView = memo(function HomeView({
       className="@container flex min-h-0 flex-1 flex-col font-sans"
       data-testid="home-view"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-8 @4xl:overflow-hidden">
+      {/* Narrow, this is the one scroll area. From `@3xl` the columns scroll,
+          and the right padding moves into the last column so its scroll bar
+          sits at the window edge with the content clear of it. */}
+      <div
+        data-home-scroll
+        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 pb-8 [scrollbar-gutter:stable] @3xl:overflow-hidden @3xl:pr-0 @3xl:pb-0"
+      >
         {hasToolbar ? (
           <ToolbarContent
             title="Home"
@@ -63,15 +73,32 @@ export const HomeView = memo(function HomeView({
           </header>
         )}
 
-        <div className="grid gap-x-6 gap-y-8 @2xl:grid-cols-2 @4xl:min-h-0 @4xl:flex-1 @4xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)] @4xl:grid-rows-[minmax(0,1fr)]">
-          <HomeColumn testId="home-column-sessions">
-            <TodoSessionsSection />
-            <StarredSessionsSection />
-            <RecentSessionsSection />
-            <RecentActivitySection />
+        <div
+          data-testid="home-grid"
+          className="grid gap-x-3 gap-y-8 @3xl:min-h-0 @3xl:flex-1 @3xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)] @3xl:grid-rows-[minmax(0,1fr)] @6xl:grid-flow-col @6xl:grid-cols-none @6xl:auto-cols-[minmax(0,1fr)]"
+        >
+          {/* From `@6xl` this wrapper dissolves and its two parts become
+              columns of their own. */}
+          <HomeColumn
+            testId="home-column-sessions"
+            scrollAt="3xl"
+            className="@6xl:contents"
+          >
+            <HomeColumn
+              testId="home-column-needs-you"
+              scrollAt="6xl"
+              className="empty:hidden"
+            >
+              <TodoSessionsSection />
+              <StarredSessionsSection />
+            </HomeColumn>
+            <HomeColumn testId="home-column-recent" scrollAt="6xl">
+              <RecentSessionsSection />
+              <RecentActivitySection />
+            </HomeColumn>
           </HomeColumn>
 
-          <HomeColumn testId="home-column-projects">
+          <HomeColumn testId="home-column-projects" scrollAt="3xl" last>
             <WelcomeProjectGrid
               projects={projects}
               onProjectClick={onProjectClick}
@@ -84,25 +111,42 @@ export const HomeView = memo(function HomeView({
   )
 })
 
+// Literal class lists, so Tailwind finds them.
+const SCROLL_CLASSES = {
+  '3xl':
+    '@3xl:min-h-0 @3xl:overflow-y-auto @3xl:pr-3 @3xl:pb-8 @3xl:[scrollbar-gutter:stable]',
+  '6xl':
+    '@6xl:min-h-0 @6xl:overflow-y-auto @6xl:pr-3 @6xl:pb-8 @6xl:[scrollbar-gutter:stable]',
+} as const
+
 /**
- * One Home column. In the wide layout it scrolls on its own, so a long session
- * list never pushes the projects out of view. The stable gutter stops the
- * content reflowing when a column starts to overflow.
+ * One Home column. From its breakpoint on it scrolls on its own, so a long
+ * session list never pushes the projects out of view. The right padding keeps
+ * the content clear of the scroll bar, overlay or always shown; the stable
+ * gutter stops the content reflowing when a column starts to overflow.
  */
 function HomeColumn({
   testId,
+  scrollAt,
+  last = false,
   className,
   children,
 }: {
   testId: string
+  scrollAt: keyof typeof SCROLL_CLASSES
+  /** The rightmost column: it carries the view's right padding. */
+  last?: boolean
   className?: string
   children: React.ReactNode
 }) {
   return (
     <div
       data-testid={testId}
+      data-home-scroll
       className={cn(
-        'flex min-w-0 flex-col gap-8 @4xl:min-h-0 @4xl:overflow-y-auto @4xl:[scrollbar-gutter:stable]',
+        'flex min-w-0 flex-col gap-8',
+        SCROLL_CLASSES[scrollAt],
+        last && '@3xl:pr-6',
         className
       )}
     >

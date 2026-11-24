@@ -217,7 +217,8 @@ export function MainWindowContent({
     </Suspense>
   ) : realProjects.length > 0 ? (
     <HomeView
-      projects={realProjects}
+      // With the folders, so Home groups the projects as the tree does.
+      projects={projects}
       onProjectClick={handleProjectClick}
       onAddProject={() => setAddProjectDialogOpen(true)}
     />

@@ -27,6 +27,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Home groups projects by folder and uses up to three columns.** The
+  projects on Home sit under the same folders, in the same order, as in the
+  Projects tree; click a folder to collapse it. Home has one column in a narrow
+  window, two (sessions, projects) in a medium one and three (To-Do and
+  Starred, Recent sessions, projects) in a wide one, measured on the main area.
+  Each column scrolls on its own and keeps its content clear of the scroll bar.
+  The Home footer no longer counts folders as projects.
+
 - **Archived is a sidebar tab.** Its panel lists "All projects" and every
   project that has archived worktrees or sessions, with their counts. Click a
   project to see its archived items in the main area and restore or delete
