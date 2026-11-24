@@ -4,7 +4,6 @@ import {
   monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { confirmCancelRun } from '@/lib/destructive-confirms'
 import { confirmRemoveProject } from '@/lib/destructive-confirms'
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
 import {
@@ -2563,9 +2562,7 @@ export function ProjectCanvasView({
       const isSending =
         useChatStore.getState().sendingSessionIds[sessionId] ?? false
       if (isSending) {
-        void confirmCancelRun(sessionId).then(
-          ok => ok && cancelChatMessage(sessionId, worktreeId)
-        )
+        void cancelChatMessage(sessionId, worktreeId)
       }
     }
 

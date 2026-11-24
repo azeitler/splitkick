@@ -1,6 +1,4 @@
 import { confirmAction } from '@/components/ui/confirm-dialog'
-import { queryClient } from '@/lib/query-client'
-import type { Session } from '@/types/chat'
 import type { RemovalBehavior } from '@/types/preferences'
 
 /**
@@ -26,25 +24,6 @@ export function confirmMergePr(
     title: `Merge PR #${prNumber} of ${quote(worktreeName)}?`,
     description: `This merges the pull request on GitHub, ${cleanup}. You cannot undo the merge.`,
     confirmLabel: 'Merge PR',
-  })
-}
-
-/** Stop the running turn of a session (button, shortcut, palette). */
-export function confirmCancelRun(sessionId: string) {
-  // chatQueryKeys.session(sessionId); inlined so this module stays light.
-  const name = queryClient.getQueryData<Session>([
-    'chat',
-    'session',
-    sessionId,
-  ])?.name
-  return confirmAction({
-    title: name
-      ? `Cancel the run in ${quote(name)}?`
-      : 'Cancel the running turn?',
-    description:
-      'The agent stops at once. Work it has not finished is lost; the output so far stays in the chat.',
-    confirmLabel: 'Cancel Run',
-    cancelLabel: 'Keep Running',
   })
 }
 

@@ -1,5 +1,4 @@
 import { PRODUCT_NAME } from '@/lib/build-info'
-import { confirmCancelRun } from '@/lib/destructive-confirms'
 import { useCallback, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -747,7 +746,6 @@ export function useMessageSending({
       allSending: Object.keys(useChatStore.getState().sendingSessionIds),
     })
     if (!sending) return
-    if (!(await confirmCancelRun(activeSessionId))) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
     console.log('[Cancel] cancelChatMessage result', { cancelled })

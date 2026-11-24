@@ -13,6 +13,9 @@ Built on Jean 0.1.73.
 
 ### Changed
 
+- **Cancelling a run no longer asks first.** The stop button, the cancel
+  shortcut and the canvas stop a running turn at once again; the output so far
+  stays in the chat. The other destructive actions still ask.
 - **Every level of the agent tree opens and closes.** In the Agents tab, the
   sessions an agent's current session started nest to any depth, and each
   row with children has its own toggle; a closed row shows how many

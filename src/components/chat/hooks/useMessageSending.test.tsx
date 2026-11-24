@@ -1,17 +1,10 @@
-import {
-  act,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-} from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/store/chat-store'
 import { useMessageSending } from './useMessageSending'
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog'
 import { queryClient as appQueryClient } from '@/lib/query-client'
-import { confirmDialog } from '@/test/test-utils'
 import {
   cancelChatMessage,
   persistEnqueue,
@@ -740,9 +733,7 @@ describe('useMessageSending Codex auto-steer', () => {
 
 [Image attached: /tmp/img.png - Use the Read tool to view this image]`,
       expect.objectContaining({
-        pendingImages: [
-          expect.objectContaining({ path: '/tmp/img.png' }),
-        ],
+        pendingImages: [expect.objectContaining({ path: '/tmp/img.png' })],
       })
     )
     expect(persistEnqueue).not.toHaveBeenCalled()
@@ -970,7 +961,7 @@ describe('useMessageSending Codex auto-steer', () => {
   })
 })
 
-describe('useMessageSending cancel run confirmation', () => {
+describe('useMessageSending cancel run', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetInstalledBackendsMock()
@@ -984,43 +975,14 @@ describe('useMessageSending cancel run confirmation', () => {
     render(<ConfirmDialogHost />)
   })
 
-  it('does not cancel the run when the confirmation is dismissed', async () => {
+  it('cancels the run at once, without a confirmation', async () => {
     const { result } = renderUseMessageSending()
 
-    let pending: Promise<void> | undefined
-    act(() => {
-      pending = result.current.handleCancel()
-    })
-    expect(
-      await screen.findByRole('alertdialog', {
-        name: 'Cancel the run in “Fix login”?',
-      })
-    ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Keep Running' }))
     await act(async () => {
-      await pending
+      await result.current.handleCancel()
     })
 
-    expect(cancelChatMessage).not.toHaveBeenCalled()
-    expect(useChatStore.getState().sendingSessionIds['session-1']).toBe(true)
-  })
-
-  it('cancels the run after confirmation', async () => {
-    const { result } = renderUseMessageSending()
-
-    let pending: Promise<void> | undefined
-    act(() => {
-      pending = result.current.handleCancel()
-    })
-    await screen.findByRole('alertdialog', {
-      name: 'Cancel the run in “Fix login”?',
-    })
-    expect(cancelChatMessage).not.toHaveBeenCalled()
-    await confirmDialog()
-    await act(async () => {
-      await pending
-    })
-
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
   })
 })
