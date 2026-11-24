@@ -16,6 +16,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   a focused row in the desktop app, and a header button collapses or
   expands everything.
 
+### Fixed
+
+- **The reply after an answered question shows.** When a Claude turn asked
+  a question, got the answer in the same turn and then ran more tools, its
+  final reply was hidden: the chat dropped all text after a question, and
+  the compact view folded the reply into a closed activity row. The reply
+  now shows in full after the question, live and after a reload.
+  Closes #154
+
 ## [1.6.0] - 2026-11-23
 
 Built on Jean 0.1.73.

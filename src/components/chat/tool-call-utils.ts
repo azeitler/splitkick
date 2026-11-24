@@ -11,6 +11,7 @@ import {
   isPlanToolCall,
   isAskUserQuestion,
   getAskUserQuestions,
+  hasQuestionAnswerOutput,
   normalizeQuestionMultipleField,
   normalizeCodexQuestions,
 } from '@/types/chat'
@@ -313,7 +314,7 @@ export function buildTimeline(
   // Track which AskUserQuestion tools we've already processed (to avoid duplicates)
   const renderedAskUserQuestions = new Set<string>()
 
-  // Track if we've seen an AskUserQuestion - text after it is suppressed
+  // Track an unanswered AskUserQuestion - text after it is suppressed
   // (Claude often duplicates questions in text form after calling the tool)
   let seenAskUserQuestion = false
 
@@ -399,8 +400,11 @@ export function buildTimeline(
           introText,
           key: `ask-${toolCall.id}`,
         })
-        // Mark that we've seen AskUserQuestion - suppress text that follows
-        seenAskUserQuestion = true
+        // An unanswered question ends the turn: text after it usually repeats
+        // the question, so suppress it. A question answered in the same turn
+        // (its tool result is the answer, #136) lets the turn go on, and the
+        // text after it is the real reply (#154).
+        seenAskUserQuestion = !hasQuestionAnswerOutput(toolCall.output)
         continue
       }
       if (isPlanToolCall(toolCall)) {

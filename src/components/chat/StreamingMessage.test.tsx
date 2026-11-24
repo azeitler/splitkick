@@ -80,6 +80,43 @@ describe('StreamingMessage', () => {
     })
   })
 
+  it('streams the reply that follows a question answered in the same turn (#154)', () => {
+    render(
+      <StreamingMessage
+        {...baseProps}
+        isQuestionAnswered={vi.fn(() => true)}
+        contentBlocks={[
+          { type: 'tool_use', tool_call_id: 'toolu_q' },
+          { type: 'tool_use', tool_call_id: 'toolu_cmd' },
+          { type: 'text', text: 'All shipped. Here is the summary.' },
+        ]}
+        toolCalls={[
+          {
+            id: 'toolu_q',
+            name: 'AskUserQuestion',
+            input: { questions: [] },
+            output: 'The user answered: "Next?"="Ship".',
+          },
+          {
+            id: 'toolu_cmd',
+            name: 'Bash',
+            input: { command: 'ls' },
+            output: 'ok',
+          },
+        ]}
+        streamingContent="All shipped. Here is the summary."
+      />
+    )
+
+    // The reply sits after the question and the tool, not above them.
+    // getByText fails when the reply is drawn twice.
+    const reply = screen.getByText('All shipped. Here is the summary.')
+    const question = screen.getByText(/Skipped|Answered/)
+    expect(question.compareDocumentPosition(reply)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
   it('renders no text before the first streaming chunk arrives', () => {
     render(<StreamingMessage {...baseProps} />)
 

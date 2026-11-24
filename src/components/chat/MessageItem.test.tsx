@@ -516,6 +516,60 @@ describe('MessageItem', () => {
     expect(screen.getAllByText('1:17m')).toHaveLength(1)
   })
 
+  it('shows the final text after a question answered in the same turn (#154)', () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        durationMs={79_000}
+        isQuestionAnswered={vi.fn(() => true)}
+        getSubmittedAnswers={vi.fn(() => [])}
+        message={{
+          ...baseMessage,
+          content: 'All shipped. Here is the summary.',
+          tool_calls: [
+            {
+              id: 'question-1',
+              name: 'AskUserQuestion',
+              input: {
+                questions: [
+                  {
+                    header: 'Next',
+                    question: 'What next?',
+                    multiSelect: false,
+                    options: [
+                      { label: 'Ship', description: 'Ship it' },
+                      { label: 'Wait', description: 'Wait' },
+                    ],
+                  },
+                ],
+              },
+              output: 'The user answered: Ship',
+            },
+            {
+              id: 'tool-1',
+              name: 'Read',
+              input: { file_path: '/tmp/demo.ts' },
+              output: 'done',
+            },
+          ],
+          content_blocks: [
+            { type: 'tool_use', tool_call_id: 'question-1' },
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'text', text: 'All shipped. Here is the summary.' },
+          ],
+        }}
+      />
+    )
+
+    // getByText fails when the reply is drawn twice.
+    const finalText = screen.getByText('All shipped. Here is the summary.')
+    // The answered question renders collapsed; its status label anchors it.
+    const question = screen.getByText(/Skipped|Answered/)
+    expect(question.compareDocumentPosition(finalText)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
   it('keeps the time line under the last text when nothing follows it', () => {
     render(
       <MessageItem

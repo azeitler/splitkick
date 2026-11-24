@@ -299,6 +299,70 @@ describe('CompactMessageList', () => {
     expect(screen.queryByText('Polling VM.')).not.toBeInTheDocument()
   })
 
+  it('shows the reply after a question answered in the same turn in full (#154)', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'run the sample task'),
+      message(
+        'assistant-1',
+        'assistant',
+        104,
+        'All shipped.\n\nSecond paragraph details.',
+        {
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'Bash',
+              input: { command: 'echo one' },
+              output: 'one',
+            },
+            {
+              id: 'question-1',
+              name: 'AskUserQuestion',
+              input: {
+                questions: [
+                  {
+                    header: 'Next',
+                    question: 'What next?',
+                    multiSelect: false,
+                    options: [{ label: 'Ship' }, { label: 'Wait' }],
+                  },
+                ],
+              },
+              output: 'The user answered: "What next?"="Ship".',
+            },
+            {
+              id: 'tool-2',
+              name: 'Bash',
+              input: { command: 'echo two' },
+              output: 'two',
+            },
+          ],
+          content_blocks: [
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'tool_use', tool_call_id: 'question-1' },
+            { type: 'tool_use', tool_call_id: 'tool-2' },
+            {
+              type: 'text',
+              text: 'All shipped.\n\nSecond paragraph details.',
+            },
+          ],
+        }
+      ),
+    ])
+
+    // The full reply (not only the one-line row title) follows the question.
+    const reply = screen.getByText('Second paragraph details.')
+    const question = screen.getByTestId('question-status-icon')
+    expect(question.compareDocumentPosition(reply)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    // The turn's runtime shows once, at the reply that ends the turn.
+    const runtime = screen.getByText('4s')
+    expect(question.compareDocumentPosition(runtime)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
   it('shows edited files after an externally surfaced recap', () => {
     renderCompact([
       message('user-1', 'user', 100, 'make the change'),

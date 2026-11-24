@@ -139,6 +139,66 @@ function messageContainsQuestion(message: ChatMessage): boolean {
   return Boolean(message.tool_calls?.some(isAskUserQuestion))
 }
 
+const AFTER_QUESTION_SUFFIX = '-after-question'
+
+/**
+ * Splits a message after its last question when that question was answered
+ * in the same turn (#136): the run went on, and the tools and reply after the
+ * answer are a normal turn end (#154). Returns null when the message ends on
+ * its question or the question has no answer yet.
+ */
+function splitAfterAnsweredQuestion(
+  message: ChatMessage
+): { question: ChatMessage; rest: ChatMessage } | null {
+  const blocks = message.content_blocks ?? []
+  const toolById = new Map((message.tool_calls ?? []).map(tc => [tc.id, tc]))
+  let lastQuestionIndex = -1
+  let lastQuestion: ToolCall | undefined
+  blocks.forEach((block, index) => {
+    if (block.type !== 'tool_use') return
+    const tool = toolById.get(block.tool_call_id)
+    if (tool && isAskUserQuestion(tool)) {
+      lastQuestionIndex = index
+      lastQuestion = tool
+    }
+  })
+  if (!lastQuestion || !hasQuestionAnswerOutput(lastQuestion.output)) {
+    return null
+  }
+  const restBlocks = blocks.slice(lastQuestionIndex + 1)
+  if (
+    !restBlocks.some(
+      b => b.type === 'tool_use' || (b.type === 'text' && b.text.trim())
+    )
+  ) {
+    return null
+  }
+
+  const part = (id: string, partBlocks: ContentBlock[]): ChatMessage => {
+    const toolIds = new Set(
+      partBlocks.flatMap(b => (b.type === 'tool_use' ? [b.tool_call_id] : []))
+    )
+    return {
+      ...message,
+      id,
+      content: partBlocks
+        .flatMap(b => (b.type === 'text' ? [b.text] : []))
+        .join(''),
+      content_blocks: partBlocks,
+      // Sub-agent tools follow their parent Task.
+      tool_calls: (message.tool_calls ?? []).filter(
+        tc =>
+          toolIds.has(tc.id) ||
+          Boolean(tc.parent_tool_use_id && toolIds.has(tc.parent_tool_use_id))
+      ),
+    }
+  }
+  return {
+    question: part(message.id, blocks.slice(0, lastQuestionIndex + 1)),
+    rest: part(`${message.id}${AFTER_QUESTION_SUFFIX}`, restBlocks),
+  }
+}
+
 type SteerSegment =
   | { kind: 'blocks'; message: ChatMessage }
   | { kind: 'steered'; texts: string[]; key: string }
@@ -745,7 +805,15 @@ export const CompactMessageList = memo(
 
       const durationFor = useCallback(
         (globalIndex: number, message: ChatMessage): number | null => {
-          if (message !== messages[globalIndex]) return null
+          const original = messages[globalIndex]
+          // The part after an in-turn answered question ends the turn, so it
+          // carries the turn's runtime; other split parts do not.
+          if (
+            message !== original &&
+            message.id !== `${original?.id}${AFTER_QUESTION_SUFFIX}`
+          ) {
+            return null
+          }
           return getAssistantDurationMs(
             messages,
             globalIndex,
@@ -835,7 +903,13 @@ export const CompactMessageList = memo(
 
           if (messageContainsQuestion(message)) {
             flush()
-            items.push({ kind: 'question', message, globalIndex })
+            const split = splitAfterAnsweredQuestion(message)
+            items.push({
+              kind: 'question',
+              message: split?.question ?? message,
+              globalIndex,
+            })
+            if (split) pushBuffered(split.rest, globalIndex)
             return
           }
 

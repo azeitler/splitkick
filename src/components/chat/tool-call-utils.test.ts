@@ -385,6 +385,73 @@ describe('buildTimeline with fragmented text deltas', () => {
     })
   })
 
+  it('keeps the final text after a question answered in the same turn (#154)', () => {
+    const tools: ToolCall[] = [
+      { id: 'cmd-1', name: 'Bash', input: { command: 'ls' }, output: 'ok' },
+      {
+        id: 'question-1',
+        name: 'AskUserQuestion',
+        input: {
+          questions: [
+            {
+              header: 'Next',
+              question: 'What next?',
+              multiSelect: false,
+              options: [{ label: 'Ship' }, { label: 'Wait' }],
+            },
+          ],
+        },
+        output: 'The user answered: Ship',
+      },
+      { id: 'cmd-2', name: 'Bash', input: { command: 'pwd' }, output: 'ok' },
+    ]
+    const blocks: ContentBlock[] = [
+      { type: 'tool_use', tool_call_id: 'cmd-1' },
+      { type: 'tool_use', tool_call_id: 'question-1' },
+      { type: 'tool_use', tool_call_id: 'cmd-2' },
+      { type: 'text', text: 'All shipped. Here is the summary.' },
+    ]
+
+    const timeline = buildTimeline(blocks, tools)
+
+    expect(timeline.map(i => i.type)).toEqual([
+      'standalone',
+      'askUserQuestion',
+      'standalone',
+      'text',
+    ])
+    expect(timeline[3]).toMatchObject({
+      text: 'All shipped. Here is the summary.',
+    })
+  })
+
+  it('still hides the text that follows an unanswered question', () => {
+    const tools: ToolCall[] = [
+      {
+        id: 'question-1',
+        name: 'AskUserQuestion',
+        input: {
+          questions: [
+            {
+              header: 'Next',
+              question: 'What next?',
+              multiSelect: false,
+              options: [{ label: 'Ship' }],
+            },
+          ],
+        },
+      },
+    ]
+    const blocks: ContentBlock[] = [
+      { type: 'tool_use', tool_call_id: 'question-1' },
+      { type: 'text', text: 'What next? Ship or wait?' },
+    ]
+
+    const timeline = buildTimeline(blocks, tools)
+
+    expect(timeline.map(i => i.type)).toEqual(['askUserQuestion'])
+  })
+
   it('renders Claude AskUserQuestion when questions are encoded as JSON string', () => {
     const tools: ToolCall[] = [
       {
