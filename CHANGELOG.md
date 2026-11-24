@@ -7,21 +7,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed
-
-- **An unanswered question pauses the agent.** A Claude question or plan
-  approval waits 10 minutes inside the run (was 25). Then Splitkick ends the
-  run quietly, without a "timed out" answer that made the agent stop with a
-  closing text. The card stays open with "The agent is paused — answering
-  resumes it.", the session keeps waiting for you, and your answer resumes
-  the session as a new message (`Answer to your question "…": …`; a plan
-  approval in build or yolo mode). A run that ends while a question waits
-  because the app quit or crashed uses the same path. Closes #155
-- **No running timer while a question waits.** While a question or plan
-  approval waited inside a live run, the chat kept counting the run time and
-  the compact view kept its spinner. Both now stop while the agent waits for
-  you and go on after the answer.
-
 ## [1.6.1] - 2026-11-24
 
 Built on Jean 0.1.73.
@@ -52,6 +37,18 @@ Built on Jean 0.1.73.
 
 ### Fixed
 
+- **An unanswered question pauses the agent.** A Claude question or plan
+  approval waits 10 minutes inside the run (was 25). Then Splitkick ends the
+  run quietly, without a "timed out" answer that made the agent stop with a
+  closing text. The card stays open with "The agent is paused — answering
+  resumes it.", the session keeps waiting for you, and your answer resumes
+  the session as a new message (`Answer to your question "…": …`; a plan
+  approval in build or yolo mode). A run that ends while a question waits
+  because the app quit or crashed uses the same path. Closes #155
+- **No running timer while a question waits.** While a question or plan
+  approval waited inside a live run, the chat kept counting the run time and
+  the compact view kept its spinner. Both now stop while the agent waits for
+  you and go on after the answer.
 - **The Agents count in the navigation matches the Agents tab.** It counted
   only runs this window had started. It now counts the agents whose current
   session runs, also a run resumed after a restart, and turns blue with
