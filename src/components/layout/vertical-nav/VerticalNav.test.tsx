@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   schedules: [] as { id: string; enabled?: boolean }[],
   archivedCount: 0,
   sessions: [] as Partial<Session>[],
+  graphs: [] as { id: string; openRequests: number }[],
 }))
 
 vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
@@ -39,6 +40,9 @@ vi.mock('@/services/chat', () => ({
       ],
     },
   }),
+}))
+vi.mock('@/services/graphs', () => ({
+  useGraphs: () => ({ data: mocks.graphs }),
 }))
 vi.mock('@/services/schedules', () => ({
   useSchedules: () => ({ data: mocks.schedules }),
@@ -69,6 +73,7 @@ describe('VerticalNav', () => {
     mocks.schedules = []
     mocks.archivedCount = 0
     mocks.sessions = []
+    mocks.graphs = []
     useUIStore.setState({
       sidebarTab: 'projects',
       verticalNavCollapsed: false,
@@ -174,8 +179,9 @@ describe('VerticalNav', () => {
       'text-blue-600'
     )
     expect(screen.queryByTestId('vertical-nav-badge-starred')).toBeNull()
-    // No count, no number.
+    // No agents and no graphs: no number.
     expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
+    expect(screen.queryByTestId('vertical-nav-count-graphs')).toBeNull()
   })
 
   it('collapses to icons with badges, To-Do blue, and persists the choice in the store', async () => {
@@ -186,6 +192,10 @@ describe('VerticalNav', () => {
       { id: 'a3', sessionId: null },
     ]
     mocks.sessions = [agentSession('s1'), agentSession('s2')]
+    mocks.graphs = [
+      { id: 'g1', openRequests: 5 },
+      { id: 'g2', openRequests: 0 },
+    ]
     useChatStore.setState({ sendingSessionIds: { s1: true } })
     renderNav()
 
@@ -208,18 +218,28 @@ describe('VerticalNav', () => {
     expect(item('starred')).toHaveTextContent('3')
     expect(item('starred')).not.toHaveTextContent('Starred')
     expect(item('starred')).toHaveAccessibleName('Starred, 3')
-    expect(item('agents')).toHaveAccessibleName('Agents, 1 running')
+    expect(item('agents')).toHaveAccessibleName('Agents, 3 agents, 1 running')
     expect(item('todo')).toHaveAccessibleName('To-Do, 2 waiting for you')
-    expect(item('graphs')).toHaveAccessibleName('Graphs, 5 requests')
+    expect(item('graphs')).toHaveAccessibleName(
+      'Graphs, 2 graphs, 5 open requests'
+    )
 
     expect(screen.getByTestId('vertical-nav-badge-todo')).toHaveClass(
       'bg-blue-600'
     )
+    // Open requests need the user: blue. The badge counts the graphs.
     expect(screen.getByTestId('vertical-nav-badge-graphs')).toHaveClass(
-      'bg-zinc-500'
+      'bg-blue-600'
     )
+    expect(screen.getByTestId('vertical-nav-badge-graphs')).toHaveTextContent(
+      '2'
+    )
+    // All agents count; none waits, so grey.
     expect(screen.getByTestId('vertical-nav-badge-agents')).toHaveTextContent(
-      '1'
+      '3'
+    )
+    expect(screen.getByTestId('vertical-nav-badge-agents')).toHaveClass(
+      'bg-zinc-500'
     )
     // Digits centred by flex, not by line height.
     expect(screen.getByTestId('vertical-nav-badge-todo')).toHaveClass(
@@ -310,7 +330,7 @@ describe('VerticalNav', () => {
         agentSession('s3'),
       ]
       renderNav()
-      expect(item('agents')).toHaveAccessibleName('Agents, 1 running')
+      expect(item('agents')).toHaveAccessibleName('Agents, 3 agents, 1 running')
       expect(screen.getByTestId('vertical-nav-count-agents')).not.toHaveClass(
         'text-blue-600'
       )
@@ -331,22 +351,31 @@ describe('VerticalNav', () => {
       ]
       renderNav()
       expect(item('agents')).toHaveAccessibleName(
-        'Agents, 1 running, 1 waiting for you'
+        'Agents, 3 agents, 1 running, 1 waiting for you'
       )
       expect(screen.getByTestId('vertical-nav-count-agents')).toHaveTextContent(
-        '2'
+        '3'
       )
       expect(screen.getByTestId('vertical-nav-count-agents')).toHaveClass(
         'text-blue-600'
       )
     })
 
-    it('shows no count when no agent session runs or waits', () => {
+    it('shows the number of agents when none runs or waits', () => {
       mocks.sessions = [
         agentSession('s1', { last_run_status: 'completed' }),
         agentSession('s2'),
         agentSession('s3', { last_run_status: 'cancelled' }),
       ]
+      renderNav()
+      expect(screen.getByTestId('vertical-nav-count-agents')).toHaveTextContent(
+        '3'
+      )
+      expect(item('agents')).toHaveAccessibleName('Agents, 3 agents')
+    })
+
+    it('shows no count without agents', () => {
+      mocks.agents = []
       renderNav()
       expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
       expect(item('agents')).toHaveAccessibleName('Agents')
@@ -360,7 +389,7 @@ describe('VerticalNav', () => {
         }),
       ]
       renderNav()
-      expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
+      expect(item('agents')).toHaveAccessibleName('Agents, 3 agents')
     })
   })
 })

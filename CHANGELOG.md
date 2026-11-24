@@ -9,6 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Agents and Graphs always show their count.** The navigation counts all
+  agents and all graphs, like Starred. Before, Agents counted only the agents
+  that were working and Graphs only open requests, so both were empty most of
+  the time. The count turns blue when something needs you: an agent waits for
+  an answer, or a graph has an open request. The tooltip says both, for
+  example "3 agents, 1 running".
 - **Collapsed navigation badges are centred and show 99+.** The count sits in
   the middle of its circle, and counts above 99 show "99+" instead of being cut
   off. Collapsing and expanding the navigation no longer animates, which made

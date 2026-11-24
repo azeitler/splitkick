@@ -25,6 +25,7 @@ import {
 } from '@/components/agents/agent-rows'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { useAgents } from '@/services/agents'
+import { useGraphs } from '@/services/graphs'
 import { useAllSessions } from '@/services/chat'
 import { useSchedules } from '@/services/schedules'
 import { useUIStore } from '@/store/ui-store'
@@ -52,7 +53,6 @@ function NavDivider() {
 const COUNT_TEXT: Partial<Record<SidebarTab, (count: number) => string>> = {
   starred: count => `${count}`,
   todo: count => `${count} waiting for you`,
-  graphs: count => `${count} ${count === 1 ? 'request' : 'requests'}`,
 }
 
 /** A collapsed badge has room for two digits; larger counts show "99+". */
@@ -60,19 +60,23 @@ export function formatBadgeCount(count: number): string {
   return count > 99 ? '99+' : String(count)
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 /**
- * Counts for the nav: the tab strip's counts (starred, To-Do, graph
- * requests) and the agents that work now: their current session runs, or
- * waits for the user (then the count turns blue). The agent status is the
- * one the Agents tab shows (`agentActivity`).
+ * Counts for the nav: the tab strip's counts (starred, To-Do), and totals for
+ * Agents and Graphs. The total of agents / graphs always shows; what needs
+ * the user turns the count blue and goes into its text: an agent that waits
+ * for an answer, an open graph request. The agent status is the one the
+ * Agents tab shows (`agentActivity`).
  */
 function useNavCounts(): {
   counts: Partial<Record<SidebarTab, number>>
-  agentsText: string | undefined
-  agentsWaiting: boolean
+  texts: Partial<Record<SidebarTab, string>>
+  attention: Partial<Record<SidebarTab, boolean>>
 } {
   const tabCounts = useSidebarTabCounts()
   const { data: agents } = useAgents()
+  const { data: graphs } = useGraphs()
   const hasAgents = (agents?.length ?? 0) > 0
   const { data: allSessions } = useAllSessions(hasAgents)
   const storeState = useCanvasStoreState()
@@ -80,10 +84,31 @@ function useNavCounts(): {
     () => agentActivity(agents ?? [], allSessions?.entries ?? [], storeState),
     [agents, allSessions?.entries, storeState]
   )
+  const agentCount = agents?.length ?? 0
+  const graphCount = graphs?.length ?? 0
+  const graphRequests = (graphs ?? []).reduce(
+    (sum, graph) => sum + graph.openRequests,
+    0
+  )
+  const agentDetail = agentActivityText(activity)
   return {
-    counts: { ...tabCounts, agents: activity.running + activity.waiting },
-    agentsText: agentActivityText(activity),
-    agentsWaiting: activity.waiting > 0,
+    counts: { ...tabCounts, agents: agentCount, graphs: graphCount },
+    texts: {
+      agents: [plural(agentCount, 'agent'), agentDetail]
+        .filter(Boolean)
+        .join(', '),
+      graphs: [
+        plural(graphCount, 'graph'),
+        graphRequests > 0 ? plural(graphRequests, 'open request') : null,
+      ]
+        .filter(Boolean)
+        .join(', '),
+    },
+    attention: {
+      todo: true,
+      agents: activity.waiting > 0,
+      graphs: graphRequests > 0,
+    },
   }
 }
 
@@ -205,7 +230,7 @@ export function VerticalNav({
 }: VerticalNavProps) {
   const selectedTab = useUIStore(state => state.sidebarTab)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
-  const { counts, agentsText, agentsWaiting } = useNavCounts()
+  const { counts, texts, attention } = useNavCounts()
   const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
   // Filtered to one project, the view belongs to that project's row.
   const archivedOpen = useUIStore(
@@ -256,12 +281,8 @@ export function VerticalNav({
                 collapsed={collapsed}
                 onClick={() => onSelectTab(tab)}
                 count={count}
-                countText={
-                  tab === 'agents' ? agentsText : COUNT_TEXT[tab]?.(count)
-                }
-                attention={
-                  tab === 'todo' || (tab === 'agents' && agentsWaiting)
-                }
+                countText={texts[tab] ?? COUNT_TEXT[tab]?.(count)}
+                attention={attention[tab] ?? false}
               />
             )
           })}
