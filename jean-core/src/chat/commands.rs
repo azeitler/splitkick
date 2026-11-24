@@ -1334,6 +1334,7 @@ async fn drain_backend_queue(
                 &session_id,
                 &worktree_id,
                 sent.as_ref().err().map(String::as_str),
+                sent.as_ref().is_ok_and(|m| m.cancelled),
             );
         }
         if let Err(e) = sent {

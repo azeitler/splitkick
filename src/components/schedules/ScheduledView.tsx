@@ -50,6 +50,7 @@ import {
 import { useAgents } from '@/services/agents'
 import { useAllSessions } from '@/services/chat'
 import type { AllSessionsResponse, Schedule } from '@/types/chat'
+import { ScheduleRuns, sessionPlaces, type SessionPlace } from './ScheduleRuns'
 
 /** Where a schedule runs, by name. */
 export interface ScheduleWhere {
@@ -144,6 +145,7 @@ export function ScheduledList({
   const [editing, setEditing] = useState<Schedule | null>(null)
   // "in 2h" / "5m ago" tick without a refetch (#123).
   const now = useNow()
+  const places = useMemo(() => sessionPlaces(sessions), [sessions])
 
   // Active ones first (soonest first, as the backend sends them), then paused.
   const ordered = useMemo(() => {
@@ -195,6 +197,16 @@ export function ScheduledList({
       }
       navigateToSession({ projectId, worktreeId, sessionId })
     },
+    []
+  )
+
+  const openRunSession = useCallback(
+    (place: SessionPlace) =>
+      navigateToSession({
+        projectId: place.projectId,
+        worktreeId: place.worktreeId,
+        sessionId: place.session.id,
+      }),
     []
   )
 
@@ -322,6 +334,12 @@ export function ScheduledList({
                     </>
                   )}
                 </dl>
+                <ScheduleRuns
+                  schedule={schedule}
+                  places={places}
+                  now={now}
+                  onOpenSession={openRunSession}
+                />
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <RowAction

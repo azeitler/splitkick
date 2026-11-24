@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The Scheduled view lists the runs of each schedule.** A schedule that ran
+  shows its run count and the state of its last run; open it to see the last
+  10 runs (or all), each with its time, session, project and state (running,
+  queued, waiting for input, completed, cancelled, failed, skipped). Click a
+  run to open its session. Each schedule keeps its last 50 runs.
+
 ### Changed
 
 - **Agents start collapsed in the Agents tab.** Each agent row shows only

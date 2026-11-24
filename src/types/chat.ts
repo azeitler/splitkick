@@ -437,6 +437,22 @@ export interface Schedule {
   last_session_id?: string
   /** Toolbar snapshot from the composer (`QueuedMessage` fields) */
   template?: Record<string, unknown>
+  /** The last 50 fires, oldest first; missing on schedules that never ran */
+  history?: ScheduleRun[]
+}
+
+/** How a queued scheduled run ended (reported by the queue drain). */
+export type ScheduleRunEnd = 'completed' | 'waiting' | 'cancelled' | 'failed'
+
+/** One time a schedule came due: what happened and where it ran. */
+export interface ScheduleRun {
+  fired_at_unix: number
+  outcome: ScheduleOutcome
+  /** The session the prompt went into; none when skipped or failed */
+  session_id?: string
+  error?: string
+  ended_at_unix?: number
+  end?: ScheduleRunEnd
 }
 
 /**

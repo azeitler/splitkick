@@ -76,6 +76,37 @@ describe('ScheduledList', () => {
     }
   })
 
+  it('lists the runs of a schedule and opens the session of one', async () => {
+    mocks.schedules = [
+      schedule({
+        id: 'with-runs',
+        history: [
+          {
+            fired_at_unix: Math.floor(Date.now() / 1000) - 3600,
+            outcome: 'queued',
+            session_id: 's-last',
+            end: 'completed',
+          },
+        ],
+      }),
+    ]
+    render(<ScheduledList />)
+
+    const toggle = screen.getByRole('button', { name: /1 run/ })
+    expect(toggle).toHaveTextContent('last: Completed')
+    await userEvent.click(toggle)
+    const [run] = screen.getAllByTestId('schedule-run')
+    expect(run).toHaveTextContent('Nightly run 3 · Splitkick › main')
+    await userEvent.click(
+      within(run as HTMLElement).getByRole('button', { name: /Nightly run 3/ })
+    )
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 's-last',
+    })
+  })
+
   it('shows name, target, rule, next run, last result and origin', async () => {
     mocks.schedules = [
       schedule({
@@ -165,9 +196,7 @@ describe('ScheduledList', () => {
       within(on as HTMLElement).getByRole('button', { name: 'Delete' })
     )
     await confirmDialog()
-    await waitFor(() =>
-      expect(mocks.deleteSchedule).toHaveBeenCalledWith('on')
-    )
+    await waitFor(() => expect(mocks.deleteSchedule).toHaveBeenCalledWith('on'))
   })
 
   it('keeps the schedule when the delete confirmation is cancelled', async () => {

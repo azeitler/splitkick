@@ -60,6 +60,50 @@ pub enum RunOutcome {
     StillQueued,
 }
 
+/// How many fires a schedule remembers in `history`.
+pub const HISTORY_LIMIT: usize = 50;
+
+/// How a queued run ended (reported by the queue drain).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RunEnd {
+    Completed,
+    /// Ended at a question or plan that waits for the user
+    Waiting,
+    Cancelled,
+    Failed,
+}
+
+/// One time a schedule came due: what happened and where it ran.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ScheduleRun {
+    pub fired_at_unix: u64,
+    pub outcome: RunOutcome,
+    /// The session the prompt went into (none when skipped or failed)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Set when the queued run ended
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at_unix: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<RunEnd>,
+}
+
+impl ScheduleRun {
+    fn new(fired_at_unix: u64, outcome: RunOutcome, session_id: Option<String>) -> Self {
+        Self {
+            fired_at_unix,
+            outcome,
+            session_id,
+            error: None,
+            ended_at_unix: None,
+            end: None,
+        }
+    }
+}
+
 /// Why a repeat did not queue a new copy (#144).
 pub const STILL_QUEUED_REASON: &str = "The previous run is still queued";
 
@@ -201,6 +245,9 @@ pub struct Schedule {
     /// session's saved settings at fire time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<Value>,
+    /// The last `HISTORY_LIMIT` fires, oldest first
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<ScheduleRun>,
 }
 
 /// Optional parts of a new user schedule.
@@ -240,6 +287,7 @@ impl Schedule {
             last_error: None,
             last_session_id: None,
             template: None,
+            history: Vec::new(),
         }
     }
 
@@ -254,6 +302,13 @@ impl Schedule {
     }
 
     /// The shape the frontend already renders for a pending wakeup.
+    /// Remember one fire; the oldest ones go past `HISTORY_LIMIT`.
+    fn record_run(&mut self, run: ScheduleRun) {
+        self.history.push(run);
+        let excess = self.history.len().saturating_sub(HISTORY_LIMIT);
+        self.history.drain(..excess);
+    }
+
     pub fn to_wakeup(&self) -> ScheduledWakeup {
         ScheduledWakeup {
             fire_at_unix: self.fire_at_unix,
@@ -691,7 +746,7 @@ pub async fn run_now(app: &AppHandle, schedule_id: &str) -> Result<String, Strin
     let result = fire(app, &schedule).await;
     let now = now_unix();
     update(app, |list| {
-        apply_fire_result(list, &schedule, &result);
+        apply_fire_result(list, &schedule, &result, now);
         if let Some(stored) = list.iter_mut().find(|s| s.id == schedule.id) {
             stored.last_run_unix = Some(now);
             if let Ok(Fired::Queued(_)) = result {
@@ -891,6 +946,7 @@ pub fn scheduled_run_finished(
     session_id: &str,
     worktree_id: &str,
     error: Option<&str>,
+    cancelled: bool,
 ) {
     let schedule = SCHEDULES
         .lock()
@@ -898,18 +954,32 @@ pub fn scheduled_run_finished(
         .iter()
         .find(|s| s.id == schedule_id)
         .cloned();
-    if let Some(error) = error {
-        let _ = update(app, |list| {
-            let found = list.iter_mut().find(|s| s.id == schedule_id);
-            let changed = found.is_some();
-            if let Some(s) = found {
+    let waiting = storage::load_metadata(app, session_id)
+        .ok()
+        .flatten()
+        .is_some_and(|m| m.waiting_for_input);
+    let end = if error.is_some() {
+        RunEnd::Failed
+    } else if cancelled {
+        RunEnd::Cancelled
+    } else if waiting {
+        RunEnd::Waiting
+    } else {
+        RunEnd::Completed
+    };
+    let _ = update(app, |list| {
+        let found = list.iter_mut().find(|s| s.id == schedule_id);
+        let changed = found.is_some();
+        if let Some(s) = found {
+            if let Some(error) = error {
                 s.last_outcome = Some(RunOutcome::Failed);
                 s.last_error = Some(error.to_string());
             }
-            (changed, ())
-        });
-        emit_changed(app);
-    }
+            end_run(s, session_id, end, error, now_unix());
+        }
+        (changed, ())
+    });
+    emit_changed(app);
 
     let Some(notifier) = RUN_NOTIFIER.get() else {
         return;
@@ -926,10 +996,6 @@ pub fn scheduled_run_finished(
     else {
         return;
     };
-    let waiting = storage::load_metadata(app, session_id)
-        .ok()
-        .flatten()
-        .is_some_and(|m| m.waiting_for_input);
     let title = if error.is_some() {
         "Scheduled run failed"
     } else if waiting {
@@ -947,6 +1013,20 @@ pub fn scheduled_run_finished(
         worktree_id: worktree_id.to_string(),
         session_id: session_id.to_string(),
     });
+}
+
+/// Mark the newest open run of `session_id` as ended.
+fn end_run(schedule: &mut Schedule, session_id: &str, end: RunEnd, error: Option<&str>, now: u64) {
+    let open = schedule.history.iter_mut().rev().find(|r| {
+        r.outcome == RunOutcome::Queued
+            && r.end.is_none()
+            && r.session_id.as_deref() == Some(session_id)
+    });
+    if let Some(run) = open {
+        run.end = Some(end);
+        run.ended_at_unix = Some(now);
+        run.error = error.map(str::to_string);
+    }
 }
 
 /// The `desktop_notifications_enabled` preference (default on), read from
@@ -1091,6 +1171,9 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
                         RunOutcome::Skipped
                     });
                     next_schedule.last_error = None;
+                    if !run {
+                        next_schedule.record_run(ScheduleRun::new(now, RunOutcome::Skipped, None));
+                    }
                     kept.push(next_schedule);
                 }
                 Err(e) => log::warn!("schedules: dropping schedule {}: {e}", schedule.id),
@@ -1102,6 +1185,7 @@ fn take_due(list: &mut Vec<Schedule>, now: u64, skip_missed: bool) -> Vec<(Sched
             skipped.last_run_unix = Some(now);
             skipped.last_outcome = Some(RunOutcome::Skipped);
             skipped.last_error = None;
+            skipped.record_run(ScheduleRun::new(now, RunOutcome::Skipped, None));
             kept.push(skipped);
         }
         schedule.last_run_unix = Some(now);
@@ -1240,13 +1324,19 @@ fn new_session_name(schedule: &Schedule) -> String {
 /// the schedule and keeps it in the list, also a one-off, so the user sees
 /// why it did not run and can fix or delete it.
 fn record_fire(app: &AppHandle, schedule: &Schedule, result: Result<Fired, String>) {
+    let now = schedule.last_run_unix.unwrap_or_else(now_unix);
     let _ = update(app, |list| {
-        apply_fire_result(list, schedule, &result);
+        apply_fire_result(list, schedule, &result, now);
         (true, ())
     });
 }
 
-fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result<Fired, String>) {
+fn apply_fire_result(
+    list: &mut Vec<Schedule>,
+    fired: &Schedule,
+    result: &Result<Fired, String>,
+    now: u64,
+) {
     let index = match list.iter().position(|s| s.id == fired.id) {
         Some(index) => index,
         // A one-off that ran is done; one that failed comes back paused. A
@@ -1262,16 +1352,29 @@ fn apply_fire_result(list: &mut Vec<Schedule>, fired: &Schedule, result: &Result
     match result {
         Ok(Fired::Queued(session_id)) => {
             schedule.last_session_id = Some(session_id.clone());
+            schedule.record_run(ScheduleRun::new(
+                now,
+                RunOutcome::Queued,
+                Some(session_id.clone()),
+            ));
         }
-        Ok(Fired::StillQueued(_)) => {
+        Ok(Fired::StillQueued(session_id)) => {
             schedule.last_outcome = Some(RunOutcome::StillQueued);
             schedule.last_error = None;
+            schedule.record_run(ScheduleRun::new(
+                now,
+                RunOutcome::StillQueued,
+                Some(session_id.clone()),
+            ));
         }
         Err(e) => {
             log::warn!("schedules: schedule {} failed: {e}", schedule.id);
             schedule.last_outcome = Some(RunOutcome::Failed);
             schedule.last_error = Some(e.clone());
             schedule.enabled = false;
+            let mut run = ScheduleRun::new(now, RunOutcome::Failed, None);
+            run.error = Some(e.clone());
+            schedule.record_run(run);
         }
     }
 }
@@ -2014,6 +2117,7 @@ mod tests {
             &mut list,
             &one_off,
             &Err("The session no longer exists".into()),
+            50,
         );
 
         assert_eq!(list.len(), 1);
@@ -2034,6 +2138,7 @@ mod tests {
             &mut list,
             &fired,
             &Err("The session no longer exists".into()),
+            50,
         );
 
         assert!(list.is_empty());
@@ -2048,6 +2153,7 @@ mod tests {
             &mut list,
             &fired,
             &Err("The worktree no longer exists".into()),
+            50,
         );
 
         assert_eq!(list.len(), 1);
@@ -2082,7 +2188,12 @@ mod tests {
     fn a_repeating_run_records_its_session() {
         let mut list = vec![repeating("rep", 10_000)];
         let fired = list[0].clone();
-        apply_fire_result(&mut list, &fired, &Ok(Fired::Queued("new-session".into())));
+        apply_fire_result(
+            &mut list,
+            &fired,
+            &Ok(Fired::Queued("new-session".into())),
+            50,
+        );
         assert_eq!(list[0].last_session_id.as_deref(), Some("new-session"));
         assert!(list[0].enabled);
     }
@@ -2117,7 +2228,7 @@ mod tests {
         let mut list = vec![repeating("rep", 10_000)];
         list[0].last_session_id = Some("s".into());
         let fired = list[0].clone();
-        apply_fire_result(&mut list, &fired, &Ok(Fired::StillQueued("s".into())));
+        apply_fire_result(&mut list, &fired, &Ok(Fired::StillQueued("s".into())), 50);
         assert_eq!(list[0].last_outcome, Some(RunOutcome::StillQueued));
         assert_eq!(list[0].last_error, None);
         assert!(list[0].enabled);
@@ -2340,7 +2451,14 @@ mod tests {
         session(&app, "send-fail");
         let daily = create_simple(&app, "send-fail", "d", None, Some(daily_9_berlin())).unwrap();
 
-        scheduled_run_finished(&app, &daily.id, "send-fail", "w1", Some("model retired"));
+        scheduled_run_finished(
+            &app,
+            &daily.id,
+            "send-fail",
+            "w1",
+            Some("model retired"),
+            false,
+        );
 
         let stored = of_session("send-fail").pop().unwrap();
         assert!(stored.enabled);
@@ -2396,5 +2514,109 @@ mod tests {
 
         set_enabled(&app, &schedule.id, false).unwrap();
         assert!(next_wakeup_for_session("paused-mark-1").is_none());
+    }
+
+    #[test]
+    fn each_fire_is_recorded_in_the_history() {
+        let mut list = vec![repeating("hist", 10_000)];
+        let fired = list[0].clone();
+        apply_fire_result(&mut list, &fired, &Ok(Fired::Queued("s1".into())), 100);
+        apply_fire_result(&mut list, &fired, &Ok(Fired::StillQueued("s1".into())), 200);
+        apply_fire_result(&mut list, &fired, &Err("gone".into()), 300);
+
+        let history = &list[0].history;
+        assert_eq!(history.len(), 3);
+        assert_eq!(
+            history[0],
+            ScheduleRun::new(100, RunOutcome::Queued, Some("s1".into()))
+        );
+        assert_eq!(history[1].outcome, RunOutcome::StillQueued);
+        assert_eq!(history[2].outcome, RunOutcome::Failed);
+        assert_eq!(history[2].error.as_deref(), Some("gone"));
+        assert_eq!(history[2].session_id, None);
+    }
+
+    #[test]
+    fn a_skipped_fire_is_recorded_in_the_history() {
+        let now = unix("2026-10-26T12:00:00Z");
+        let mut list = vec![repeating("daily", unix("2026-10-23T07:00:00Z"))];
+        take_due(&mut list, now, true);
+        assert_eq!(
+            list[0].history,
+            vec![ScheduleRun::new(now, RunOutcome::Skipped, None)]
+        );
+    }
+
+    #[test]
+    fn the_history_is_bounded() {
+        let mut schedule = repeating("bounded", 10_000);
+        for at in 0..(HISTORY_LIMIT as u64 + 7) {
+            schedule.record_run(ScheduleRun::new(at, RunOutcome::Queued, None));
+        }
+        assert_eq!(schedule.history.len(), HISTORY_LIMIT);
+        assert_eq!(schedule.history[0].fired_at_unix, 7);
+        assert_eq!(
+            schedule.history.last().unwrap().fired_at_unix,
+            HISTORY_LIMIT as u64 + 6
+        );
+    }
+
+    #[test]
+    fn a_file_without_history_loads() {
+        let json = serde_json::json!([{
+            "id": "old",
+            "origin": "user",
+            "session_id": "s",
+            "worktree_id": "w",
+            "prompt": "p",
+            "fire_at_unix": 1,
+            "created_at_unix": 1,
+            "last_outcome": "queued"
+        }]);
+        let list: Vec<Schedule> = serde_json::from_value(json).unwrap();
+        assert!(list[0].history.is_empty());
+        // An empty history is not written, so the file stays as it was.
+        assert!(serde_json::to_value(&list[0])
+            .unwrap()
+            .get("history")
+            .is_none());
+    }
+
+    #[test]
+    fn the_end_of_a_run_is_recorded_on_its_fire() {
+        let (_temp, app) = app();
+        session(&app, "end-1");
+        let daily = create_simple(&app, "end-1", "d", None, Some(daily_9_berlin())).unwrap();
+        update(&app, |list| {
+            let s = list.iter_mut().find(|s| s.id == daily.id).unwrap();
+            s.record_run(ScheduleRun::new(
+                10,
+                RunOutcome::Queued,
+                Some("end-1".into()),
+            ));
+            s.record_run(ScheduleRun::new(
+                20,
+                RunOutcome::Queued,
+                Some("end-1".into()),
+            ));
+            (true, ())
+        })
+        .unwrap();
+
+        scheduled_run_finished(&app, &daily.id, "end-1", "w1", None, false);
+        let stored = of_session("end-1").pop().unwrap();
+        assert_eq!(stored.history[0].end, None);
+        assert_eq!(stored.history[1].end, Some(RunEnd::Completed));
+        assert!(stored.history[1].ended_at_unix.is_some());
+
+        scheduled_run_finished(&app, &daily.id, "end-1", "w1", None, true);
+        let stored = on_disk(&app, "end-1").pop().unwrap();
+        assert_eq!(stored.history[0].end, Some(RunEnd::Cancelled));
+
+        // A failed send of an older run marks nothing more.
+        scheduled_run_finished(&app, &daily.id, "end-1", "w1", Some("boom"), false);
+        let stored = of_session("end-1").pop().unwrap();
+        assert_eq!(stored.history[1].end, Some(RunEnd::Completed));
+        assert_eq!(stored.last_outcome, Some(RunOutcome::Failed));
     }
 }
