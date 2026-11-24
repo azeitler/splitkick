@@ -5,6 +5,7 @@ import { render } from '@/test/test-utils'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { Agent } from '@/types/agents'
+import type { Session } from '@/types/chat'
 import { VerticalNav } from './VerticalNav'
 import type * as SidebarTabsModule from '@/components/projects/SidebarTabs'
 
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   agents: [] as Partial<Agent>[],
   schedules: [] as { id: string; enabled?: boolean }[],
   archivedCount: 0,
+  sessions: [] as Partial<Session>[],
 }))
 
 vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
@@ -21,6 +23,22 @@ vi.mock('@/components/projects/SidebarTabs', async importOriginal => ({
 }))
 vi.mock('@/services/agents', () => ({
   useAgents: () => ({ data: mocks.agents }),
+}))
+vi.mock('@/services/chat', () => ({
+  useAllSessions: () => ({
+    data: {
+      entries: [
+        {
+          project_id: 'p1',
+          project_name: 'Acme',
+          worktree_id: 'w1',
+          worktree_name: 'main',
+          worktree_path: '/tmp/w1',
+          sessions: mocks.sessions,
+        },
+      ],
+    },
+  }),
 }))
 vi.mock('@/services/schedules', () => ({
   useSchedules: () => ({ data: mocks.schedules }),
@@ -50,6 +68,7 @@ describe('VerticalNav', () => {
     mocks.agents = []
     mocks.schedules = []
     mocks.archivedCount = 0
+    mocks.sessions = []
     useUIStore.setState({
       sidebarTab: 'projects',
       verticalNavCollapsed: false,
@@ -58,8 +77,23 @@ describe('VerticalNav', () => {
       archivedViewProjectId: null,
       scheduledViewOpen: false,
     })
-    useChatStore.setState({ sendingSessionIds: {} })
+    useChatStore.setState({
+      sendingSessionIds: {},
+      waitingForInputSessionIds: {},
+    })
   })
+
+  function agentSession(id: string, extra: Partial<Session> = {}) {
+    return {
+      id,
+      name: id,
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [],
+      ...extra,
+    } as Partial<Session>
+  }
 
   it('shows Home, the tabs, Scheduled and Archived, then Collapse', () => {
     renderNav()
@@ -151,6 +185,7 @@ describe('VerticalNav', () => {
       { id: 'a2', sessionId: 's2' },
       { id: 'a3', sessionId: null },
     ]
+    mocks.sessions = [agentSession('s1'), agentSession('s2')]
     useChatStore.setState({ sendingSessionIds: { s1: true } })
     renderNav()
 
@@ -244,5 +279,78 @@ describe('VerticalNav', () => {
     renderNav()
     expect(screen.queryByTestId('vertical-nav-count-scheduled')).toBeNull()
     expect(screen.queryByTestId('vertical-nav-count-archived')).toBeNull()
+  })
+
+  describe('agents count', () => {
+    beforeEach(() => {
+      mocks.agents = [
+        { id: 'a1', sessionId: 's1' },
+        { id: 'a2', sessionId: 's2' },
+        { id: 'a3', sessionId: 's3' },
+      ]
+    })
+
+    it('counts a run this window did not start (detached or resumed)', () => {
+      mocks.sessions = [
+        agentSession('s1', {
+          last_run_status: 'running',
+          last_run_execution_mode: 'yolo',
+        }),
+        agentSession('s2', { last_run_status: 'completed' }),
+        agentSession('s3'),
+      ]
+      renderNav()
+      expect(item('agents')).toHaveAccessibleName('Agents, 1 running')
+      expect(screen.getByTestId('vertical-nav-count-agents')).not.toHaveClass(
+        'text-blue-600'
+      )
+    })
+
+    it('turns blue and says so when an agent waits for input', () => {
+      mocks.sessions = [
+        agentSession('s1', {
+          last_run_status: 'running',
+          last_run_execution_mode: 'build',
+        }),
+        agentSession('s2', {
+          last_run_status: 'running',
+          waiting_for_input: true,
+          waiting_for_input_type: 'question',
+        }),
+        agentSession('s3'),
+      ]
+      renderNav()
+      expect(item('agents')).toHaveAccessibleName(
+        'Agents, 1 running, 1 waiting for you'
+      )
+      expect(screen.getByTestId('vertical-nav-count-agents')).toHaveTextContent(
+        '2'
+      )
+      expect(screen.getByTestId('vertical-nav-count-agents')).toHaveClass(
+        'text-blue-600'
+      )
+    })
+
+    it('shows no count when no agent session runs or waits', () => {
+      mocks.sessions = [
+        agentSession('s1', { last_run_status: 'completed' }),
+        agentSession('s2'),
+        agentSession('s3', { last_run_status: 'cancelled' }),
+      ]
+      renderNav()
+      expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
+      expect(item('agents')).toHaveAccessibleName('Agents')
+    })
+
+    it('leaves out an archived session', () => {
+      mocks.sessions = [
+        agentSession('s1', {
+          last_run_status: 'running',
+          archived_at: 5,
+        }),
+      ]
+      renderNav()
+      expect(screen.queryByTestId('vertical-nav-count-agents')).toBeNull()
+    })
   })
 })

@@ -331,6 +331,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       data: buildUiState({
         collapsed_agent_ids: ['agent-2'],
         collapsed_agent_node_keys: ['agent-1:session-1'],
+        expanded_agent_previous_ids: ['agent-1'],
       }),
       isSuccess: true,
     })
@@ -348,6 +349,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       const state = useProjectsStore.getState()
       expect(state.collapsedAgentIds.has('agent-2')).toBe(true)
       expect(state.collapsedAgentNodeKeys.has('agent-1:session-1')).toBe(true)
+      expect(state.expandedAgentPreviousIds.has('agent-1')).toBe(true)
     })
   })
 

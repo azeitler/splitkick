@@ -144,21 +144,28 @@ Three ways make one, and all end in the same target:
 ## UI
 
 - Sidebar tab **Agents** (`SidebarAgentsSection`): "Global" first, then one
-  group per project. Each agent row opens and closes. Under it: the current
-  session as the root of a tree of the sessions it started, nested to any
-  depth (`started_by_session_id`, the session-network links, from
-  `list_all_sessions`; archived children and link loops left out), then the
-  past sessions from `pastSessionIds`, newest first. A past session only
-  counts its children ("6d ago · 2 children"). An archived past session
-  opens by restoring it. A deleted one, or one in an archived workspace, is
-  not in `list_all_sessions` and is left out. Every session row with
-  children has its own toggle (a chevron while open, the count of hidden
-  sessions while closed); Left/Right on a focused row close and open it in
-  the desktop app. The header button collapses or expands everything. Open
-  state persists in UI state: `collapsed_agent_ids` for agent rows (open by
-  default) and `collapsed_agent_node_keys` (`<agentId>:<sessionId>`) for
-  session nodes (open by default). The rows under an agent hide the agent
-  badge (`showAgentBadge={false}`), which would repeat its name.
+  group per project. The agent row **is** the current session's row
+  (`SessionShortcutRows` with `label` = agent name): status dot, the full
+  session context menu (with `SessionAgentMenuItems`), a click opens the
+  session; only the chevron (the row's action slot) opens and closes. Under
+  it: the sessions the current session started, nested to any depth
+  (`started_by_session_id`, the session-network links, from
+  `list_all_sessions`; archived children and link loops left out), then a
+  "Previous Sessions" group (closed by default) with `pastSessionIds`,
+  newest first, archived ones last (they open by restoring them). A
+  previous session only counts its children ("6d ago · 2 children"). An
+  agent without a session keeps a plain row with "No session" and Restart.
+  Every row with children has its own toggle (a chevron while open, the
+  count of hidden sessions while closed); Left/Right close and open a
+  focused row in the desktop app; the header button collapses or expands
+  everything. Open state persists in UI state: `collapsed_agent_ids` (agent
+  rows, open by default), `collapsed_agent_node_keys`
+  (`<agentId>:<sessionId>`, deeper nodes, open by default) and
+  `expanded_agent_previous_ids` (Previous Sessions, closed by default).
+- The nav's Agents count (`useNavCounts`) uses `agentActivity`
+  (`agent-rows.ts`): the status `computeSessionCardData` gives each current
+  session, the same the Agents tab shows. Running statuses count; a waiting
+  one counts too and turns the count blue.
 - `AgentDialog` (mounted in `MainWindow`, opened through
   `ui-store.agentDialog`): new agent, make a session an agent, rename.
 - Session context menu (`SessionAgentMenuItems`): Make Agent…, or Rename

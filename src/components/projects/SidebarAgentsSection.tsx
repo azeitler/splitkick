@@ -9,6 +9,7 @@ import { confirmRemoveAgent } from '@/lib/destructive-confirms'
 import {
   Archive,
   BotMessageSquare,
+  History,
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -234,7 +235,10 @@ export function SidebarAgentsSection() {
         ? foundSessions.get(agent.sessionId)
         : undefined
       if (!found || found.session.archived_at) continue
-      map.set(found.session.id, toShortcut(found, 'current'))
+      map.set(found.session.id, {
+        ...toShortcut(found, ''),
+        label: agent.name,
+      })
     }
     return map
   }, [agents, foundSessions, toShortcut])
@@ -282,12 +286,21 @@ export function SidebarAgentsSection() {
   const handleCollapseAll = useCallback(() => {
     const { setAgentTreeCollapsed } = useProjectsStore.getState()
     if (allCollapsed) {
-      setAgentTreeCollapsed([], [])
+      // Everything open, the Previous Sessions groups too.
+      setAgentTreeCollapsed(
+        [],
+        [],
+        agents.filter(a => a.pastSessionIds.length > 0).map(a => a.id)
+      )
       return
     }
+    // The children of the current session are the agent row's own list, so
+    // the agent row's state stands for that node; only deeper ones need keys.
     const nodeKeys = agents.flatMap(agent =>
       agent.sessionId
-        ? parentNodeKeys(agent.id, childrenByParent, agent.sessionId)
+        ? parentNodeKeys(agent.id, childrenByParent, agent.sessionId).filter(
+            key => key !== agentNodeKey(agent.id, agent.sessionId ?? '')
+          )
         : []
     )
     setAgentTreeCollapsed(
@@ -390,12 +403,17 @@ export function SidebarAgentsSection() {
 }
 
 /**
- * One agent: a row that opens and closes, then its current session as the
- * root of a tree of the sessions it started (each level opens and closes on
- * its own), then its past sessions. Children of past sessions are only
- * counted on their row ("2 children"); the session network shows them. The
- * open state is persisted: `collapsedAgentIds` for agent rows (agents start
- * open), `collapsedAgentNodeKeys` for session nodes (child lists start open).
+ * One agent. The agent row is its current session's row: the status dot,
+ * the agent's name, the session's context menu (with the agent items); a
+ * click opens the session, only the chevron opens and closes. Under it: the
+ * sessions the current session started, each with its own children, then
+ * "Previous Sessions" (closed by default): the sessions earlier restarts
+ * left behind, newest first, archived ones last. An agent without a session
+ * keeps a plain row with "No session" and Restart.
+ *
+ * Open state is persisted: `collapsedAgentIds` for agent rows (open by
+ * default), `collapsedAgentNodeKeys` for deeper session nodes (open),
+ * `expandedAgentPreviousIds` for the Previous Sessions group (closed).
  */
 function AgentItem({
   agent,
@@ -417,6 +435,7 @@ function AgentItem({
   onOpen: (shortcut: SessionShortcut) => void
 }) {
   const isMobile = useIsMobile()
+  const keys = !isMobile && isNativeApp()
   const collapsed = useProjectsStore(state =>
     state.collapsedAgentIds.has(agent.id)
   )
@@ -424,10 +443,30 @@ function AgentItem({
     useProjectsStore.getState().toggleAgentCollapsed(agent.id)
   }, [agent.id])
   const hasSession = agent.sessionId !== null
-  const count =
-    (current ? 1 + countDescendants(childrenOf, current.sessionId) : 0) +
-    past.length +
-    archived.length
+  const children = current
+    ? (childrenOf.get(current.sessionId) ?? []).filter(
+        child => child.session.id !== current.sessionId
+      )
+    : []
+  const previousCount = past.length + archived.length
+  const hidden =
+    (current ? countDescendants(childrenOf, current.sessionId) : 0) +
+    previousCount
+  const hasChildren = children.length > 0 || previousCount > 0
+
+  const renderAction = useCallback(
+    () =>
+      hasChildren ? (
+        <TreeToggle
+          collapsed={collapsed}
+          hidden={hidden}
+          onToggle={handleToggle}
+          label={`${collapsed ? 'Show' : 'Hide'} the sessions of ${agent.name}`}
+          testId="sidebar-agent-toggle"
+        />
+      ) : null,
+    [agent.name, collapsed, handleToggle, hasChildren, hidden]
+  )
 
   return (
     <div
@@ -439,46 +478,181 @@ function AgentItem({
             : 'sidebar-agent-pending'
       }
     >
-      <div
-        onKeyDown={outlineKeyHandler(
-          !isMobile && isNativeApp(),
-          !collapsed,
-          handleToggle
-        )}
-      >
-        <SidebarSectionRow
-          icon={
-            <BotMessageSquare
-              className="size-3.5 shrink-0"
-              aria-hidden="true"
-            />
+      {current ? (
+        <div
+          onKeyDown={
+            hasChildren
+              ? outlineKeyHandler(keys, !collapsed, handleToggle)
+              : undefined
           }
-          label={agent.name}
-          count={count}
-          expanded={!collapsed}
-          onToggle={handleToggle}
-          actions={hasSession ? undefined : <NoSessionActions agent={agent} />}
-          className="pl-3"
-          testId="sidebar-agent-toggle"
-        />
-      </div>
-      {!collapsed && count > 0 && (
+        >
+          <SessionShortcutRows
+            shortcuts={[current]}
+            variant="sidebar"
+            sidebarRowClassName="py-1.5 pl-2 pr-1"
+            sidebarNested={false}
+            renderAction={renderAction}
+            activeSessionId={activeSessionId}
+            onOpen={onOpen}
+          />
+        </div>
+      ) : (
+        <div onKeyDown={outlineKeyHandler(keys, !collapsed, handleToggle)}>
+          <SidebarSectionRow
+            icon={
+              <BotMessageSquare
+                className="size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            }
+            label={agent.name}
+            count={hidden}
+            expanded={!collapsed}
+            onToggle={handleToggle}
+            actions={
+              hasSession ? undefined : <NoSessionActions agent={agent} />
+            }
+            className="pl-3"
+            testId="sidebar-agent-toggle"
+          />
+        </div>
+      )}
+      {!collapsed && hasChildren && (
         <div
           className={cn('py-0.5', AGENT_SESSION_LIST)}
           data-testid="sidebar-agent-sessions"
         >
-          {current && (
-            <AgentSessionNode
+          {current && children.length > 0 && (
+            <div data-testid="sidebar-agent-children">
+              {children.map(child => (
+                <AgentSessionNode
+                  key={child.session.id}
+                  agentId={agent.id}
+                  shortcut={toShortcut(
+                    child,
+                    formatRelativeTime(child.session.updated_at)
+                  )}
+                  childrenOf={childrenOf}
+                  toShortcut={toShortcut}
+                  ancestors={new Set([current.sessionId, child.session.id])}
+                  activeSessionId={activeSessionId}
+                  onOpen={onOpen}
+                />
+              ))}
+            </div>
+          )}
+          {previousCount > 0 && (
+            <PreviousSessions
               agentId={agent.id}
-              shortcut={current}
-              childrenOf={childrenOf}
-              toShortcut={toShortcut}
-              ancestors={new Set([current.sessionId])}
-              showAgentBadge={false}
+              past={past}
+              archived={archived}
               activeSessionId={activeSessionId}
               onOpen={onOpen}
             />
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The toggle at the right edge of a tree row: a chevron while open, the
+ * count of hidden sessions while closed.
+ */
+function TreeToggle({
+  collapsed,
+  hidden,
+  onToggle,
+  label,
+  testId,
+}: {
+  collapsed: boolean
+  hidden: number
+  onToggle: () => void
+  label: string
+  testId: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-label={label}
+      data-testid={testId}
+      className="flex h-5 shrink-0 items-center rounded px-0.5 text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
+    >
+      {collapsed ? (
+        <CollapsedCountBadge count={hidden} noun="session" className="ml-0" />
+      ) : (
+        <ChevronDown
+          className="size-3 rotate-180 opacity-60"
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  )
+}
+
+/**
+ * "Previous Sessions": the sessions earlier restarts of the agent left
+ * behind, newest first, then the archived ones. Closed by default.
+ */
+function PreviousSessions({
+  agentId,
+  past,
+  archived,
+  activeSessionId,
+  onOpen,
+}: {
+  agentId: string
+  past: SessionShortcut[]
+  archived: ArchivedPast[]
+  activeSessionId: string | null
+  onOpen: (shortcut: SessionShortcut) => void
+}) {
+  const isMobile = useIsMobile()
+  const open = useProjectsStore(state =>
+    state.expandedAgentPreviousIds.has(agentId)
+  )
+  const handleToggle = useCallback(() => {
+    useProjectsStore.getState().toggleAgentPreviousExpanded(agentId)
+  }, [agentId])
+  const count = past.length + archived.length
+
+  return (
+    <div data-testid="sidebar-agent-previous">
+      <div
+        onKeyDown={outlineKeyHandler(
+          !isMobile && isNativeApp(),
+          open,
+          handleToggle
+        )}
+      >
+        <button
+          type="button"
+          onClick={handleToggle}
+          aria-expanded={open}
+          data-testid="sidebar-agent-previous-toggle"
+          className="group ml-1 mr-2 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md py-1 pl-[7px] pr-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <History className="size-3 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">Previous Sessions</span>
+          {open ? (
+            <ChevronDown
+              className="size-3 shrink-0 rotate-180 opacity-60"
+              aria-hidden="true"
+            />
+          ) : (
+            <CollapsedCountBadge count={count} noun="session" />
+          )}
+        </button>
+      </div>
+      {open && (
+        <div
+          className={cn('py-0.5', AGENT_CHILD_LIST)}
+          data-testid="sidebar-agent-previous-list"
+        >
           {past.length > 0 && (
             <SessionShortcutRows
               shortcuts={past}
@@ -545,29 +719,15 @@ function AgentSessionNode({
   const renderAction = useCallback(
     () =>
       children.length === 0 ? null : (
-        <button
-          type="button"
-          onClick={handleToggle}
-          aria-expanded={!collapsed}
-          aria-label={`${collapsed ? 'Show' : 'Hide'} sessions started by ${
+        <TreeToggle
+          collapsed={collapsed}
+          hidden={hidden}
+          onToggle={handleToggle}
+          label={`${collapsed ? 'Show' : 'Hide'} sessions started by ${
             shortcut.session.name || 'Untitled'
           }`}
-          data-testid="sidebar-agent-node-toggle"
-          className="flex h-5 shrink-0 items-center rounded px-0.5 text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground"
-        >
-          {collapsed ? (
-            <CollapsedCountBadge
-              count={hidden}
-              noun="session"
-              className="ml-0"
-            />
-          ) : (
-            <ChevronDown
-              className="size-3 rotate-180 opacity-60"
-              aria-hidden="true"
-            />
-          )}
-        </button>
+          testId="sidebar-agent-node-toggle"
+        />
       ),
     [children.length, collapsed, handleToggle, hidden, shortcut.session.name]
   )

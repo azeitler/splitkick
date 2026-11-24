@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cancelDialog, confirmDialog, render, waitFor } from '@/test/test-utils'
@@ -136,6 +136,7 @@ describe('SidebarAgentsSection', () => {
     useProjectsStore.setState({
       collapsedAgentIds: new Set(),
       collapsedAgentNodeKeys: new Set(),
+      expandedAgentPreviousIds: new Set(),
       starredSessions: [],
       projectCanvasSettings: {},
     })
@@ -172,7 +173,8 @@ describe('SidebarAgentsSection', () => {
       .map(el => el.textContent)
     expect(headers).toEqual(['Global', 'Splitkick'])
 
-    await userEvent.click(screen.getByText('release work'))
+    // The agent row is the current session: its click opens the session.
+    await userEvent.click(screen.getByText('Release manager'))
     expect(mocks.navigateToSession).toHaveBeenCalledWith({
       projectId: 'p1',
       worktreeId: 'w1',
@@ -232,133 +234,98 @@ describe('SidebarAgentsSection', () => {
     expect(mocks.restart).toHaveBeenCalledWith({ agentId: 'a1' })
   })
 
-  it('lists the current session, then past sessions, under the agent', () => {
-    addSessions(session('old1', 'first run'), session('old2', 'second run'))
-    mocks.agents = [agent({ pastSessionIds: ['old2', 'old1', 'deleted'] })]
-    render(<SidebarAgentsSection />)
-    const list = screen.getByTestId('sidebar-agent-sessions')
-    const names = ['release work', 'second run', 'first run']
-    const text = list.textContent ?? ''
-    const positions = names.map(name => text.indexOf(name))
-    expect(positions.every(pos => pos >= 0)).toBe(true)
-    expect([...positions].sort((a, b) => a - b)).toEqual(positions)
-    // A deleted past session is not in the list and leaves no row.
-    expect(screen.queryByText('deleted')).not.toBeInTheDocument()
-  })
-
-  it('collapses an agent and shows the session count instead', async () => {
-    addSessions(session('old1', 'first run'))
-    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
-    render(<SidebarAgentsSection />)
-    await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
-    expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
-    expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('2')
-    expect(getCurrentUIState().collapsed_agent_ids).toEqual(['a1'])
-  })
-
-  it('opens a past session', async () => {
-    addSessions(session('old1', 'first run'))
-    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
-    render(<SidebarAgentsSection />)
-    await userEvent.click(screen.getByText('first run'))
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'p1',
-      worktreeId: 'w1',
-      sessionId: 'old1',
+  describe('agent row', () => {
+    it('is the current session row: agent name, no "current" child row', () => {
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      const row = screen.getByTestId('sidebar-agent')
+      expect(row).toHaveTextContent('Release manager')
+      expect(row).not.toHaveTextContent('current')
+      // The session row is the agent row; no list below it.
+      expect(screen.queryByText('release work')).toBeNull()
+      expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
     })
-  })
 
-  it('restores an archived past session before it opens it', async () => {
-    addSessions({
-      ...session('old1', 'first run'),
-      archived_at: 1,
-    } as Session)
-    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
-    mocks.unarchive.mockResolvedValue({})
-    render(<SidebarAgentsSection />)
-    await userEvent.click(screen.getByTestId('sidebar-agent-archived-session'))
-    expect(mocks.unarchive).toHaveBeenCalledWith({
-      worktreeId: 'w1',
-      worktreePath: '/tmp/w1',
-      sessionId: 'old1',
+    it('has no chevron without children or previous sessions', () => {
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      expect(screen.queryByTestId('sidebar-agent-toggle')).toBeNull()
     })
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'p1',
-      worktreeId: 'w1',
-      sessionId: 'old1',
-    })
-  })
 
-  it('keeps past sessions reachable when the agent has no session', () => {
-    addSessions(session('old1', 'first run'))
-    mocks.agents = [
-      agent({ sessionId: null, sessionName: null, pastSessionIds: ['old1'] }),
-    ]
-    render(<SidebarAgentsSection />)
-    expect(screen.getByTestId('sidebar-agent-no-session')).toHaveTextContent(
-      'No session'
-    )
-    expect(screen.getByText('first run')).toBeInTheDocument()
-  })
-
-  it('lists the sessions the current session started under it, newest first', async () => {
-    addSessions(
-      {
-        ...session('c1', 'older child'),
+    it('opens and closes only through the chevron, not the row', async () => {
+      addSessions({
+        ...session('c1', 'child one'),
         started_by_session_id: 's1',
-        updated_at: 10,
-      } as Session,
-      {
-        ...session('c2', 'newer child'),
-        started_by_session_id: 's1',
-        updated_at: 20,
-      } as Session,
-      {
-        ...session('c3', 'archived child'),
-        started_by_session_id: 's1',
-        archived_at: 5,
-      } as Session
-    )
-    mocks.agents = [agent({})]
-    render(<SidebarAgentsSection />)
-    const children = screen.getByTestId('sidebar-agent-children')
-    const text = children.textContent ?? ''
-    expect(text.indexOf('newer child')).toBeLessThan(
-      text.indexOf('older child')
-    )
-    expect(text).not.toContain('archived child')
+      } as Session)
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
 
-    await userEvent.click(screen.getByText('newer child'))
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'p1',
-      worktreeId: 'w1',
-      sessionId: 'c2',
+      await userEvent.click(screen.getByText('Release manager'))
+      expect(screen.getByText('child one')).toBeInTheDocument()
+      expect(mocks.navigateToSession).toHaveBeenCalledTimes(1)
+
+      await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
+      expect(screen.queryByText('child one')).toBeNull()
+      expect(mocks.navigateToSession).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the status of the current session', () => {
+      const entry = mocks.entries[0]
+      if (entry) {
+        entry.sessions = [
+          {
+            ...session('s1', 'release work'),
+            last_run_status: 'running',
+            last_run_execution_mode: 'yolo',
+          } as Session,
+        ]
+      }
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      const row = screen.getByTestId('sidebar-agent')
+      // The dot of the current session's run, as on every session row.
+      expect(within(row).getByLabelText('Yoloing')).toBeInTheDocument()
+    })
+
+    it('opens the full session menu with the agent items on right-click', async () => {
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      fireEvent.contextMenu(screen.getByText('Release manager'))
+      for (const name of [
+        'Rename Agent…',
+        'Restart Agent',
+        'Remove Agent',
+        'New Schedule…',
+      ]) {
+        expect(
+          await screen.findByRole('menuitem', { name: new RegExp(name) })
+        ).toBeInTheDocument()
+      }
+      // The session part of the menu is there too.
+      expect(
+        screen.getByRole('menuitem', { name: /Archive/ })
+      ).toBeInTheDocument()
+    })
+
+    it('gives child rows the normal session menu, without agent items', async () => {
+      addSessions({
+        ...session('c1', 'child one'),
+        started_by_session_id: 's1',
+      } as Session)
+      mocks.agents = [agent({})]
+      render(<SidebarAgentsSection />)
+      fireEvent.contextMenu(screen.getByText('child one'))
+      expect(
+        await screen.findByRole('menuitem', { name: /Make Agent…/ })
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('menuitem', { name: /Restart Agent/ })
+      ).toBeNull()
     })
   })
 
-  it('counts the children of a past session instead of listing them', () => {
-    addSessions(session('old1', 'first run'), {
-      ...session('c1', 'child of old'),
-      started_by_session_id: 'old1',
-    } as Session)
-    mocks.agents = [agent({ pastSessionIds: ['old1'] })]
-    render(<SidebarAgentsSection />)
-    expect(screen.queryByTestId('sidebar-agent-children')).toBeNull()
-    expect(screen.queryByText('child of old')).toBeNull()
-    expect(screen.getByTestId('sidebar-agent-sessions')).toHaveTextContent(
-      '1 child'
-    )
-  })
-
-  it('does not repeat the agent name as a badge under the agent', () => {
-    mocks.agents = [agent({})]
-    render(<SidebarAgentsSection />)
-    expect(screen.queryByTestId('agent-name-badge')).toBeNull()
-  })
-
-  describe('nested tree', () => {
-    // s1 (current) started c1 and c2; c1 started g1 and g2.
-    function nestedTree() {
+  describe('children and previous sessions', () => {
+    function pastAndChildren() {
       addSessions(
         {
           ...session('c1', 'child one'),
@@ -371,70 +338,128 @@ describe('SidebarAgentsSection', () => {
           updated_at: 10,
         } as Session,
         {
-          ...session('g1', 'grandchild one'),
+          ...session('g1', 'grandchild'),
           started_by_session_id: 'c1',
         } as Session,
+        { ...session('old1', 'first run'), updated_at: 5 } as Session,
+        { ...session('old2', 'second run'), updated_at: 8 } as Session,
         {
-          ...session('g2', 'grandchild two'),
-          started_by_session_id: 'c1',
+          ...session('oldc', 'child of old'),
+          started_by_session_id: 'old2',
+        } as Session,
+        {
+          ...session('old0', 'archived run'),
+          archived_at: 3,
         } as Session
       )
-      mocks.agents = [agent({})]
+      mocks.agents = [
+        agent({ pastSessionIds: ['old2', 'old1', 'old0', 'deleted'] }),
+      ]
     }
 
-    function toggleFor(name: string) {
-      return screen.getByRole('button', {
-        name: new RegExp(`sessions started by ${name}$`),
-      })
-    }
-
-    it('nests the children of children, each level open by default', () => {
-      nestedTree()
+    it('lists the children first, newest first, then a closed Previous Sessions group', () => {
+      pastAndChildren()
       render(<SidebarAgentsSection />)
-      expect(screen.getByText('grandchild one')).toBeInTheDocument()
-      // Toggles only on rows with children: the current session and c1.
-      expect(screen.getAllByTestId('sidebar-agent-node-toggle')).toHaveLength(2)
-      expect(toggleFor('release work')).toHaveAttribute('aria-expanded', 'true')
-      expect(toggleFor('child one')).toHaveAttribute('aria-expanded', 'true')
+      const list = screen.getByTestId('sidebar-agent-sessions')
+      const text = list.textContent ?? ''
+      expect(text.indexOf('child one')).toBeLessThan(text.indexOf('child two'))
+      expect(text.indexOf('child two')).toBeLessThan(
+        text.indexOf('Previous Sessions')
+      )
+      // Closed by default: a count of every previous session, archived too.
+      expect(
+        screen.getByTestId('sidebar-agent-previous-toggle')
+      ).toHaveAttribute('aria-expanded', 'false')
+      expect(
+        screen.getByTestId('sidebar-agent-previous-toggle')
+      ).toHaveTextContent('3')
+      expect(screen.queryByText('first run')).toBeNull()
     })
 
-    it('collapses one level and keeps its parent open, with a count badge', async () => {
-      nestedTree()
+    it('opens Previous Sessions: newest first, archived last, children counted', async () => {
+      pastAndChildren()
       render(<SidebarAgentsSection />)
-      await userEvent.click(toggleFor('child one'))
-      expect(screen.queryByText('grandchild one')).toBeNull()
-      expect(screen.getByText('child two')).toBeInTheDocument()
-      expect(toggleFor('child one')).toHaveTextContent('2')
+      await userEvent.click(screen.getByTestId('sidebar-agent-previous-toggle'))
+      const previous = screen.getByTestId('sidebar-agent-previous-list')
+      const text = previous.textContent ?? ''
+      expect(text.indexOf('second run')).toBeLessThan(text.indexOf('first run'))
+      expect(text.indexOf('first run')).toBeLessThan(
+        text.indexOf('archived run')
+      )
+      expect(previous).toHaveTextContent('1 child')
+      expect(screen.queryByText('child of old')).toBeNull()
+      expect(screen.queryByText('deleted')).toBeNull()
       expect(
-        useProjectsStore.getState().collapsedAgentNodeKeys.has('a1:c1')
+        useProjectsStore.getState().expandedAgentPreviousIds.has('a1')
       ).toBe(true)
+      expect(getCurrentUIState().expanded_agent_previous_ids).toEqual(['a1'])
+    })
+
+    it('opens a previous session', async () => {
+      pastAndChildren()
+      useProjectsStore.setState({ expandedAgentPreviousIds: new Set(['a1']) })
+      render(<SidebarAgentsSection />)
+      await userEvent.click(screen.getByText('first run'))
+      expect(mocks.navigateToSession).toHaveBeenCalledWith({
+        projectId: 'p1',
+        worktreeId: 'w1',
+        sessionId: 'old1',
+      })
+    })
+
+    it('restores an archived previous session before it opens it', async () => {
+      pastAndChildren()
+      useProjectsStore.setState({ expandedAgentPreviousIds: new Set(['a1']) })
+      mocks.unarchive.mockResolvedValue({})
+      render(<SidebarAgentsSection />)
+      await userEvent.click(
+        screen.getByTestId('sidebar-agent-archived-session')
+      )
+      expect(mocks.unarchive).toHaveBeenCalledWith({
+        worktreeId: 'w1',
+        worktreePath: '/tmp/w1',
+        sessionId: 'old0',
+      })
+      expect(mocks.navigateToSession).toHaveBeenCalledWith({
+        projectId: 'p1',
+        worktreeId: 'w1',
+        sessionId: 'old0',
+      })
+    })
+
+    it('counts children, grandchildren and previous sessions on a closed agent', async () => {
+      pastAndChildren()
+      render(<SidebarAgentsSection />)
+      await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
+      expect(screen.queryByTestId('sidebar-agent-sessions')).toBeNull()
+      // c1, c2, g1 + old2, old1, old0
+      expect(screen.getByTestId('sidebar-agent-toggle')).toHaveTextContent('6')
+      expect(getCurrentUIState().collapsed_agent_ids).toEqual(['a1'])
+    })
+
+    it('nests the children of a child and closes that level on its own', async () => {
+      pastAndChildren()
+      render(<SidebarAgentsSection />)
+      expect(screen.getByText('grandchild')).toBeInTheDocument()
+      const toggles = screen.getAllByTestId('sidebar-agent-node-toggle')
+      expect(toggles).toHaveLength(1)
+      await userEvent.click(toggles[0] as HTMLElement)
+      expect(screen.queryByText('grandchild')).toBeNull()
+      expect(screen.getByText('child two')).toBeInTheDocument()
       expect(getCurrentUIState().collapsed_agent_node_keys).toEqual(['a1:c1'])
     })
 
-    it('collapses the current session with every session below it', async () => {
-      nestedTree()
+    it('keeps previous sessions reachable when the agent has no session', async () => {
+      pastAndChildren()
+      mocks.agents = [
+        agent({ sessionId: null, sessionName: null, pastSessionIds: ['old1'] }),
+      ]
       render(<SidebarAgentsSection />)
-      await userEvent.click(toggleFor('release work'))
-      expect(screen.queryByText('child one')).toBeNull()
-      expect(screen.queryByText('grandchild two')).toBeNull()
-      expect(toggleFor('release work')).toHaveTextContent('4')
-    })
-
-    it('counts every session of a collapsed agent, nested ones included', async () => {
-      nestedTree()
-      render(<SidebarAgentsSection />)
-      await userEvent.click(screen.getByTestId('sidebar-agent-toggle'))
-      expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('5')
-    })
-
-    it('shows a node closed when its key was restored', () => {
-      nestedTree()
-      useProjectsStore.setState({
-        collapsedAgentNodeKeys: new Set(['a1:c1']),
-      })
-      render(<SidebarAgentsSection />)
-      expect(screen.getByText('child one')).toBeInTheDocument()
-      expect(screen.queryByText('grandchild one')).toBeNull()
+      expect(screen.getByTestId('sidebar-agent-no-session')).toHaveTextContent(
+        'No session'
+      )
+      await userEvent.click(screen.getByTestId('sidebar-agent-previous-toggle'))
+      expect(screen.getByText('first run')).toBeInTheDocument()
     })
 
     it('does not loop on a session link cycle', () => {
@@ -448,7 +473,6 @@ describe('SidebarAgentsSection', () => {
           started_by_session_id: 'c1',
         } as Session
       )
-      // A broken link: s1 claims c2 as its parent.
       const entry = mocks.entries[0]
       if (entry) {
         entry.sessions = entry.sessions.map(s =>
@@ -458,59 +482,49 @@ describe('SidebarAgentsSection', () => {
       mocks.agents = [agent({})]
       render(<SidebarAgentsSection />)
       expect(screen.getByText('child two')).toBeInTheDocument()
-      expect(screen.getAllByText('release work')).toHaveLength(1)
+      expect(screen.getAllByText('Release manager')).toHaveLength(1)
     })
 
     it('collapses and expands everything from the header', async () => {
-      nestedTree()
-      mocks.agents = [
-        agent({}),
-        agent({
-          id: 'a2',
-          name: 'Assistant',
-          sessionId: null,
-          sessionName: null,
-        }),
-      ]
+      pastAndChildren()
       render(<SidebarAgentsSection />)
       await userEvent.click(
         screen.getByRole('button', { name: 'Collapse all' })
       )
-      const state = useProjectsStore.getState()
-      expect([...state.collapsedAgentIds].sort()).toEqual(['a1', 'a2'])
-      expect([...state.collapsedAgentNodeKeys].sort()).toEqual([
-        'a1:c1',
-        'a1:s1',
-      ])
-      expect(screen.queryByText('release work')).toBeNull()
+      let state = useProjectsStore.getState()
+      expect([...state.collapsedAgentIds]).toEqual(['a1'])
+      expect([...state.collapsedAgentNodeKeys]).toEqual(['a1:c1'])
+      expect(screen.queryByText('child one')).toBeNull()
 
       await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
-      expect(screen.getByText('grandchild one')).toBeInTheDocument()
-      expect(useProjectsStore.getState().collapsedAgentNodeKeys.size).toBe(0)
+      state = useProjectsStore.getState()
+      expect(state.collapsedAgentIds.size).toBe(0)
+      expect([...state.expandedAgentPreviousIds]).toEqual(['a1'])
+      expect(screen.getByText('grandchild')).toBeInTheDocument()
+      expect(screen.getByText('first run')).toBeInTheDocument()
     })
 
-    it('Left and Right close and open a focused row in the desktop app', async () => {
+    it('Left and Right close and open a focused agent row in the desktop app', async () => {
       mocks.native = true
-      nestedTree()
+      pastAndChildren()
       render(<SidebarAgentsSection />)
-      const row = screen.getByText('child one').closest('button')
-      row?.focus()
-      await userEvent.keyboard('{ArrowLeft}')
-      expect(screen.queryByText('grandchild one')).toBeNull()
-      await userEvent.keyboard('{ArrowRight}')
-      expect(screen.getByText('grandchild one')).toBeInTheDocument()
-
-      screen.getByTestId('sidebar-agent-toggle').focus()
+      screen.getByText('Release manager').closest('button')?.focus()
       await userEvent.keyboard('{ArrowLeft}')
       expect(screen.queryByText('child one')).toBeNull()
+      await userEvent.keyboard('{ArrowRight}')
+      expect(screen.getByText('child one')).toBeInTheDocument()
+
+      screen.getByTestId('sidebar-agent-previous-toggle').focus()
+      await userEvent.keyboard('{ArrowRight}')
+      expect(screen.getByText('first run')).toBeInTheDocument()
     })
 
     it('ignores Left and Right outside the desktop app', async () => {
-      nestedTree()
+      pastAndChildren()
       render(<SidebarAgentsSection />)
-      screen.getByText('child one').closest('button')?.focus()
+      screen.getByText('Release manager').closest('button')?.focus()
       await userEvent.keyboard('{ArrowLeft}')
-      expect(screen.getByText('grandchild one')).toBeInTheDocument()
+      expect(screen.getByText('child one')).toBeInTheDocument()
     })
   })
 })

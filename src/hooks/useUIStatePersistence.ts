@@ -287,6 +287,12 @@ export function useUIStatePersistence() {
         collapsedAgentNodeKeys: new Set(collapsedAgentNodeKeys),
       })
     }
+    const expandedAgentPreviousIds = uiState.expanded_agent_previous_ids ?? []
+    if (expandedAgentPreviousIds.length > 0) {
+      useProjectsStore.setState({
+        expandedAgentPreviousIds: new Set(expandedAgentPreviousIds),
+      })
+    }
 
     // Restore left sidebar size (must be at least 150px to be valid)
     if (uiState.left_sidebar_size != null && uiState.left_sidebar_size >= 150) {
@@ -1065,6 +1071,8 @@ export function useUIStatePersistence() {
     let prevCollapsedAgentIds = useProjectsStore.getState().collapsedAgentIds
     let prevCollapsedAgentNodeKeys =
       useProjectsStore.getState().collapsedAgentNodeKeys
+    let prevExpandedAgentPreviousIds =
+      useProjectsStore.getState().expandedAgentPreviousIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1149,7 +1157,8 @@ export function useUIStatePersistence() {
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds ||
         state.expandedGraphsProjectIds !== prevExpandedGraphsProjectIds ||
         state.collapsedAgentIds !== prevCollapsedAgentIds ||
-        state.collapsedAgentNodeKeys !== prevCollapsedAgentNodeKeys
+        state.collapsedAgentNodeKeys !== prevCollapsedAgentNodeKeys ||
+        state.expandedAgentPreviousIds !== prevExpandedAgentPreviousIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1184,6 +1193,7 @@ export function useUIStatePersistence() {
         prevExpandedGraphsProjectIds = state.expandedGraphsProjectIds
         prevCollapsedAgentIds = state.collapsedAgentIds
         prevCollapsedAgentNodeKeys = state.collapsedAgentNodeKeys
+        prevExpandedAgentPreviousIds = state.expandedAgentPreviousIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevTodoSectionCollapsed = state.todoSectionCollapsed

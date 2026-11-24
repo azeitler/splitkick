@@ -50,6 +50,9 @@ export interface SessionShortcut {
   activityAt?: number
   /** Extra text: its own line in `stacked`, after the context in `inline`. */
   detail?: ReactNode
+  /** Shown instead of the session name (the agent row shows the agent's
+   *  name). Rename still edits the session name. */
+  label?: string
 }
 
 interface SessionShortcutRowsProps {
@@ -297,7 +300,10 @@ export function SessionShortcutRows({
         const markGlyphs = (
           <>
             {showAgentBadge && (
-              <AgentBadge sessionId={session.id} sessionName={session.name} />
+              <AgentBadge
+                sessionId={session.id}
+                sessionName={shortcut.label ?? session.name}
+              />
             )}
             <RoleBadge roleId={session.role_id} sessionName={session.name} />
             <SessionNetworkGlyph
@@ -394,7 +400,7 @@ export function SessionShortcutRows({
                     isSidebar && 'min-w-0 flex-1 text-xs'
                   )}
                 >
-                  {session.name}
+                  {shortcut.label ?? session.name}
                 </span>
                 {markGlyphs}
                 {contextText}
@@ -432,7 +438,11 @@ export function SessionShortcutRows({
                       : undefined
                   }
                   onContextMenuCapture={closeOpenSessionContextMenus}
-                  title={`${session.name} — ${shortcut.context}`}
+                  title={
+                    shortcut.context
+                      ? `${shortcut.label ?? session.name} — ${shortcut.context}`
+                      : (shortcut.label ?? session.name)
+                  }
                   aria-current={isActive ? 'page' : undefined}
                   className={rowClassName}
                 >

@@ -142,6 +142,8 @@ export interface UIState {
   collapsed_agent_ids?: string[]
   /** Collapsed session nodes in the Agents tab tree, `<agentId>:<sessionId>` */
   collapsed_agent_node_keys?: string[]
+  /** Agent IDs whose "Previous Sessions" group is open in the Agents tab */
+  expanded_agent_previous_ids?: string[]
   /** Starred sessions across every project, in star order */
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
@@ -279,6 +281,7 @@ export const defaultUIState: UIState = {
   expanded_graphs_project_ids: [],
   collapsed_agent_ids: [],
   collapsed_agent_node_keys: [],
+  expanded_agent_previous_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
   todo_sessions_collapsed: false,

@@ -3146,6 +3146,10 @@ pub struct UIState {
     #[serde(default)]
     pub collapsed_agent_node_keys: Vec<String>,
 
+    /// Agent IDs whose "Previous Sessions" group is open in the Agents tab
+    #[serde(default)]
+    pub expanded_agent_previous_ids: Vec<String>,
+
     /// Left sidebar width in pixels, defaults to 250
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
@@ -3491,6 +3495,7 @@ impl Default for UIState {
             expanded_graphs_project_ids: Vec::new(),
             collapsed_agent_ids: Vec::new(),
             collapsed_agent_node_keys: Vec::new(),
+            expanded_agent_previous_ids: Vec::new(),
             left_sidebar_size: None,
             left_sidebar_visible: None,
             file_browser_size: None,

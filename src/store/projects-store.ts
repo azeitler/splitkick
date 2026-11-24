@@ -58,6 +58,8 @@ interface ProjectsUIState {
   // Collapsed session nodes inside the Agents tab tree, keyed
   // `<agentId>:<sessionId>`. Child lists start open.
   collapsedAgentNodeKeys: Set<string>
+  // Agent IDs whose "Previous Sessions" group is open. It starts closed.
+  expandedAgentPreviousIds: Set<string>
 
   // Starred sessions, across every project, in star order
   starredSessions: StarredSessionRef[]
@@ -139,8 +141,13 @@ interface ProjectsUIState {
   // Agent row expansion in the Agents tab
   toggleAgentCollapsed: (agentId: string) => void
   toggleAgentNodeCollapsed: (nodeKey: string) => void
-  // Collapse all / Expand all: replace both sets at once.
-  setAgentTreeCollapsed: (agentIds: string[], nodeKeys: string[]) => void
+  toggleAgentPreviousExpanded: (agentId: string) => void
+  // Collapse all / Expand all: replace the three sets at once.
+  setAgentTreeCollapsed: (
+    agentIds: string[],
+    nodeKeys: string[],
+    expandedPreviousIds?: string[]
+  ) => void
 
   // Starred sessions
   starSession: (star: StarredSessionRef) => void
@@ -248,6 +255,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedGraphsProjectIds: new Set<string>(),
       collapsedAgentIds: new Set<string>(),
       collapsedAgentNodeKeys: new Set<string>(),
+      expandedAgentPreviousIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
       todoSectionCollapsed: false,
@@ -618,20 +626,38 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'toggleAgentNodeCollapsed'
         ),
 
-      setAgentTreeCollapsed: (agentIds, nodeKeys) =>
+      toggleAgentPreviousExpanded: agentId =>
         set(
           state => {
+            const newSet = new Set(state.expandedAgentPreviousIds)
+            if (newSet.has(agentId)) {
+              newSet.delete(agentId)
+            } else {
+              newSet.add(agentId)
+            }
+            return { expandedAgentPreviousIds: newSet }
+          },
+          undefined,
+          'toggleAgentPreviousExpanded'
+        ),
+
+      setAgentTreeCollapsed: (agentIds, nodeKeys, expandedPreviousIds = []) =>
+        set(
+          state => {
+            const same = (current: Set<string>, next: string[]) =>
+              current.size === next.length &&
+              next.every(id => current.has(id))
             if (
-              agentIds.length === 0 &&
-              nodeKeys.length === 0 &&
-              state.collapsedAgentIds.size === 0 &&
-              state.collapsedAgentNodeKeys.size === 0
+              same(state.collapsedAgentIds, agentIds) &&
+              same(state.collapsedAgentNodeKeys, nodeKeys) &&
+              same(state.expandedAgentPreviousIds, expandedPreviousIds)
             ) {
               return state
             }
             return {
               collapsedAgentIds: new Set(agentIds),
               collapsedAgentNodeKeys: new Set(nodeKeys),
+              expandedAgentPreviousIds: new Set(expandedPreviousIds),
             }
           },
           undefined,

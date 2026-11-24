@@ -42,9 +42,20 @@ Built on Jean 0.1.73.
   Splitkick version, publisher and copyright. The dev server serves the
   Splitkick page title, favicon and Home Screen manifest. The branding check
   also covers the user guide.
+- **The agent row is the agent's current session.** A click on the row
+  opens the session, and only the chevron opens and closes the tree. The row
+  shows the session's status, and its context menu is the full session menu
+  with the agent items (Rename Agent…, Agent Role, New Schedule…, Restart
+  Agent, Remove Agent). Under it come the sessions it started, then a
+  "Previous Sessions" group (closed by default) with the sessions earlier
+  restarts left behind.
 
 ### Fixed
 
+- **The Agents count in the navigation matches the Agents tab.** It counted
+  only runs this window had started. It now counts the agents whose current
+  session runs, also a run resumed after a restart, and turns blue with
+  "waiting for you" when one waits for input.
 - **The reply after an answered question shows.** When a Claude turn asked
   a question, got the answer in the same turn and then ran more tools, its
   final reply was hidden: the chat dropped all text after a question, and

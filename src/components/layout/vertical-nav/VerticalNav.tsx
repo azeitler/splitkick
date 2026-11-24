@@ -19,9 +19,14 @@ import { useArchivedCount } from '@/components/archive/useArchivedCount'
 import { openArchivedView } from '@/lib/archived-view'
 import { openScheduledView } from '@/lib/scheduled-view'
 import { cn } from '@/lib/utils'
+import {
+  agentActivity,
+  agentActivityText,
+} from '@/components/agents/agent-rows'
+import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { useAgents } from '@/services/agents'
+import { useAllSessions } from '@/services/chat'
 import { useSchedules } from '@/services/schedules'
-import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { SidebarTab } from '@/types/ui-state'
 
@@ -46,27 +51,35 @@ function NavDivider() {
 /** Tabs that show a count, and what the count means. */
 const COUNT_TEXT: Partial<Record<SidebarTab, (count: number) => string>> = {
   starred: count => `${count}`,
-  agents: count => `${count} running`,
   todo: count => `${count} waiting for you`,
   graphs: count => `${count} ${count === 1 ? 'request' : 'requests'}`,
 }
 
 /**
  * Counts for the nav: the tab strip's counts (starred, To-Do, graph
- * requests) and the agents that run now — agents whose session is sending.
+ * requests) and the agents that work now: their current session runs, or
+ * waits for the user (then the count turns blue). The agent status is the
+ * one the Agents tab shows (`agentActivity`).
  */
-function useNavCounts(): Partial<Record<SidebarTab, number>> {
+function useNavCounts(): {
+  counts: Partial<Record<SidebarTab, number>>
+  agentsText: string | undefined
+  agentsWaiting: boolean
+} {
   const tabCounts = useSidebarTabCounts()
   const { data: agents } = useAgents()
-  const sending = useChatStore(state => state.sendingSessionIds)
-  const agentsRunning = useMemo(
-    () =>
-      (agents ?? []).filter(
-        agent => agent.sessionId !== null && sending[agent.sessionId]
-      ).length,
-    [agents, sending]
+  const hasAgents = (agents?.length ?? 0) > 0
+  const { data: allSessions } = useAllSessions(hasAgents)
+  const storeState = useCanvasStoreState()
+  const activity = useMemo(
+    () => agentActivity(agents ?? [], allSessions?.entries ?? [], storeState),
+    [agents, allSessions?.entries, storeState]
   )
-  return { ...tabCounts, agents: agentsRunning }
+  return {
+    counts: { ...tabCounts, agents: activity.running + activity.waiting },
+    agentsText: agentActivityText(activity),
+    agentsWaiting: activity.waiting > 0,
+  }
 }
 
 /** Pages in the main area, below the tabs: Scheduled and Archived. Each one
@@ -186,7 +199,7 @@ export function VerticalNav({
 }: VerticalNavProps) {
   const selectedTab = useUIStore(state => state.sidebarTab)
   const collapsed = useUIStore(state => state.verticalNavCollapsed)
-  const counts = useNavCounts()
+  const { counts, agentsText, agentsWaiting } = useNavCounts()
   const scheduledOpen = useUIStore(state => state.scheduledViewOpen)
   // Filtered to one project, the view belongs to that project's row.
   const archivedOpen = useUIStore(
@@ -237,8 +250,12 @@ export function VerticalNav({
                 collapsed={collapsed}
                 onClick={() => onSelectTab(tab)}
                 count={count}
-                countText={COUNT_TEXT[tab]?.(count)}
-                attention={tab === 'todo'}
+                countText={
+                  tab === 'agents' ? agentsText : COUNT_TEXT[tab]?.(count)
+                }
+                attention={
+                  tab === 'todo' || (tab === 'agents' && agentsWaiting)
+                }
               />
             )
           })}
