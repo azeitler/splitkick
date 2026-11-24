@@ -1,5 +1,4 @@
 import { useCallback } from 'react'
-import { invoke } from '@/lib/transport'
 import { useChatStore, type ParkedClaudeDialog } from '@/store/chat-store'
 import type { Backend, ToolCall } from '@/types/chat'
 import { hasQuestionAnswerOutput, isAskUserQuestion } from '@/types/chat'
@@ -46,35 +45,6 @@ export function applyClaudeDialogResolved(
   if (store.parkedClaudeDialogs[sessionId]?.toolUseId !== toolUseId) return
   store.setParkedClaudeDialog(sessionId, null)
   store.setWaitingForInput(sessionId, false)
-}
-
-/**
- * Match the parked dialogs with the host's list. A client that missed
- * `claude:dialog-waiting` (reload, reconnect, a remote window or web access
- * opened later) otherwise shows the waiting run as still running, and one
- * that missed `claude:dialog-resolved` keeps it waiting. The host's list is
- * the truth; a failed call leaves the client as it is.
- */
-export async function refreshParkedClaudeDialogs(
-  listParked: () => Promise<ClaudeDialogWaitingEvent[]> = () =>
-    invoke<ClaudeDialogWaitingEvent[]>('list_parked_claude_dialogs')
-): Promise<void> {
-  let dialogs: ClaudeDialogWaitingEvent[]
-  try {
-    dialogs = await listParked()
-  } catch (err) {
-    console.warn('[claude-dialog] Failed to list parked dialogs:', err)
-    return
-  }
-  if (!Array.isArray(dialogs)) return
-  const live = new Set(dialogs.map(dialog => dialog.toolUseId))
-  const parked = useChatStore.getState().parkedClaudeDialogs
-  for (const [sessionId, dialog] of Object.entries(parked)) {
-    if (!live.has(dialog.toolUseId)) {
-      applyClaudeDialogResolved({ sessionId, toolUseId: dialog.toolUseId })
-    }
-  }
-  for (const dialog of dialogs) applyClaudeDialogWaiting(dialog)
 }
 
 /** The Claude dialog a session's live run is parked on, if any. */

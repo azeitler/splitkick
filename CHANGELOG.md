@@ -22,11 +22,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **A remote no longer shows a waiting yolo run as "Yoloing".** When the
-  agent asked a question while a remote window or web access reloaded,
-  reconnected or was not open yet, that client showed the red running spinner
-  until the question was answered. Clients now ask the host for the questions
-  that wait and show the session as waiting (#159).
+- **A Claude question or plan ends the turn again, and the session waits.**
+  Since 1.6.0 the run stayed alive while a question waited, and only the
+  host's memory knew about it. A window that reloaded or reconnected, a
+  remote window and web access could then show the session as running (the
+  red "Yoloing" spinner in yolo mode), and a question could time out. Now
+  the turn ends at the question, the waiting state is saved with the
+  session, and the answer or approval starts the next turn as a new message
+  that names the question. The turn ends without a kill: Claude records the
+  question as closed, so it no longer reads "the session ended before this
+  call's result was recorded" when it gets the answer (#159, #136).
 - **Dragging the first project in a folder no longer moves it.** A drag that
   started on the first project of a folder and ended near its place moved the
   project to the end of the folder (or out of it). The folder now answers

@@ -3,8 +3,8 @@
 //! Claude Code calls this for every permission decision once Jean passes
 //! `--permission-prompt-tool`. Three shapes matter:
 //!
-//! * `AskUserQuestion` — park on the Jean UI, return the picked answers.
-//! * `ExitPlanMode` / `EnterPlanMode` — park on the plan approval UI.
+//! * `AskUserQuestion` / `ExitPlanMode` — end the turn. The session waits,
+//!   and the answer or approval starts the next turn as a new message.
 //! * everything else — reproduce the execution mode's own verdict, because
 //!   naming a permission-prompt tool takes the decision away from the CLI.
 //!
@@ -91,7 +91,7 @@ fn text_result(payload: Value) -> Value {
 }
 
 pub async fn handle_permission_prompt(
-    app: &AppHandle,
+    _app: &AppHandle,
     arguments: Value,
     source: &str,
 ) -> Result<Value, ToolError> {
@@ -101,35 +101,15 @@ pub async fn handle_permission_prompt(
         .ok_or_else(|| ToolError::invalid_params("permission_prompt: missing 'tool_name'"))?
         .to_string();
     let input = arguments.get("input").cloned().unwrap_or_else(|| json!({}));
-    let tool_use_id = arguments
-        .get("tool_use_id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-
     let execution_mode = crate::chat::registry::current_execution_mode(source);
 
     let outcome = match tool_name.as_str() {
-        "AskUserQuestion" => {
-            if tool_use_id.is_empty() {
-                // Without an id the UI answer cannot be matched back. Deny with
-                // a message the model can act on instead of parking forever.
-                DialogOutcome::Denied {
-                    message: "Splitkick could not match this question to a tool call.".to_string(),
-                }
-            } else {
-                claude_dialog::park(app, source, &tool_use_id, "question").await
-            }
-        }
-        "ExitPlanMode" | "EnterPlanMode" => {
-            if tool_use_id.is_empty() {
-                DialogOutcome::Denied {
-                    message: "Splitkick could not match this plan to a tool call.".to_string(),
-                }
-            } else {
-                claude_dialog::park(app, source, &tool_use_id, "plan").await
-            }
-        }
+        // A question or plan ends the turn: the session waits in its saved
+        // state, and the answer or approval starts the next turn as a new
+        // message. The tailer ends the run at the same call (`claude.rs`).
+        "AskUserQuestion" | "ExitPlanMode" => DialogOutcome::EndTurn,
+        // Entering plan mode needs no approval.
+        "EnterPlanMode" => DialogOutcome::Approved,
         other => {
             // Not a dialog: reproduce the mode's own verdict.
             match execution_mode.as_deref() {
@@ -204,6 +184,30 @@ mod tests {
             "Write",
             &json!({"file_path": other.to_string_lossy()})
         ));
+    }
+
+    /// A question or plan ends the turn at once: nothing waits in memory, so
+    /// the session's saved state is the one place that says it waits.
+    #[test]
+    fn a_question_or_plan_ends_the_turn_at_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        for tool in ["AskUserQuestion", "ExitPlanMode"] {
+            let result = runtime
+                .block_on(handle_permission_prompt(
+                    &app,
+                    json!({"tool_name": tool, "input": {}, "tool_use_id": "toolu_end"}),
+                    "session-end-turn",
+                ))
+                .unwrap();
+            let payload: Value =
+                serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(payload["behavior"], "deny", "{tool}");
+            assert_eq!(payload["interrupt"], true, "{tool}");
+            assert!(!claude_dialog::is_parked("toolu_end"), "{tool}");
+        }
     }
 
     #[test]

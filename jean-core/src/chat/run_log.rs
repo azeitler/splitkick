@@ -926,6 +926,8 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                     }
                 }
             }
+            // The turn ended at this question or plan: it has no answer yet.
+            "user" if super::claude::is_dialog_end_turn_result(&msg) => {}
             "user" => {
                 // User messages contain tool results
                 if let Some(message) = msg.get("message") {
@@ -1744,6 +1746,35 @@ mod tests {
         r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_q","name":"AskUserQuestion","input":{}}]}}"#,
         "\n",
     );
+
+    /// A real run log of CLI 2.1.331: the permission answer ended the turn
+    /// at the question (deny + interrupt), and the CLI wrote its own
+    /// "rejected" tool result and an error result.
+    const END_TURN_RUN_LOG: &str = include_str!("testdata/dialog_end_turn_run_log.jsonl");
+
+    /// The CLI's own result for the ended question is not an answer, and the
+    /// run did not fail: the session waits on the question.
+    #[test]
+    fn a_turn_ended_at_a_question_still_waits_and_has_no_error() {
+        let lines: Vec<String> = END_TURN_RUN_LOG.lines().map(str::to_string).collect();
+        assert_eq!(lines.len(), 4, "tool_use, tool_result, text, result");
+
+        assert_eq!(open_dialog_kind(lines.iter().cloned()), Some("question"));
+
+        let mut run = sample_run();
+        run.backend = Some(Backend::Claude);
+        let message = parse_run_to_message(&lines, &run).unwrap();
+        assert_eq!(message.tool_calls.len(), 1);
+        assert_eq!(message.tool_calls[0].name, "AskUserQuestion");
+        assert_eq!(message.tool_calls[0].output, None);
+        assert_eq!(message.content, "");
+
+        let mut errors = crate::chat::claude::ClaudeRunErrorState::default();
+        for line in &lines {
+            errors.observe(&serde_json::from_str(line).unwrap());
+        }
+        assert_eq!(errors.run_error, None);
+    }
 
     /// #155: only a question or plan with no tool result is still open.
     #[test]
@@ -2815,7 +2846,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                         // A Claude run that ended at an open question or plan
                         // (app quit or crash while it waited) is paused, not
                         // crashed: it waits for the answer, which resumes it (#155).
-                        let paused_on = if !completed && is_claude {
+                        let paused_on = if is_claude {
                             jsonl_open_dialog_kind(app, &session_id, &run.run_id).filter(|kind| {
                                 *kind == "question" || run.execution_mode.as_deref() != Some("yolo")
                             })
@@ -2972,7 +3003,9 @@ fn open_dialog_kind(lines: impl Iterator<Item = String>) -> Option<&'static str>
             continue;
         };
         let line_type = value.get("type").and_then(|t| t.as_str());
-        if !matches!(line_type, Some("assistant" | "user")) {
+        if !matches!(line_type, Some("assistant" | "user"))
+            || super::claude::is_dialog_end_turn_result(&value)
+        {
             continue;
         }
         let blocks = value

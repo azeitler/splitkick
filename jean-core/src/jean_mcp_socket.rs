@@ -407,16 +407,15 @@ mod tests {
         });
     }
 
-    /// The whole dialog chain over the real transport: a `permission_prompt`
-    /// request arrives with the `dialog` role, parks, the UI answers it, and
-    /// the answers come back spliced into `updatedInput` — which is how they
-    /// reach the model, since AskUserQuestion's `call()` just echoes its input.
+    /// The dialog chain over the real transport: a `permission_prompt`
+    /// request for a question arrives with the `dialog` role and is answered
+    /// at once with deny + `interrupt`, which ends the CLI's turn there.
     #[cfg(unix)]
     #[test]
-    fn a_parked_question_is_answered_over_the_local_socket() {
+    fn a_question_ends_the_turn_over_the_local_socket() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-        use crate::chat::claude_dialog::{self, DialogOutcome};
+        use crate::chat::claude_dialog;
 
         let temp = tempfile::tempdir().unwrap();
         let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
@@ -470,39 +469,15 @@ mod tests {
                 serde_json::from_str::<serde_json::Value>(&line).unwrap()
             });
 
-            // Wait for the call to actually park before answering it.
-            for _ in 0..200 {
-                if claude_dialog::is_parked("toolu_socket_dialog") {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-            assert!(
-                claude_dialog::is_parked("toolu_socket_dialog"),
-                "the permission_prompt call should have parked"
-            );
-
-            assert!(claude_dialog::resolve(
-                "toolu_socket_dialog",
-                DialogOutcome::Answered {
-                    answers: serde_json::json!({"Which cache backend?": "Memcached"}),
-                    response: None,
-                },
-            ));
-
             let response = call.await.unwrap();
             let text = response["result"]["content"][0]["text"]
                 .as_str()
                 .unwrap_or_else(|| panic!("no content in {response}"));
             let payload: serde_json::Value = serde_json::from_str(text).unwrap();
 
-            assert_eq!(payload["behavior"], "allow");
-            assert_eq!(
-                payload["updatedInput"]["answers"]["Which cache backend?"],
-                "Memcached"
-            );
-            // The questions must survive: the tool echoes both back to the model.
-            assert!(payload["updatedInput"]["questions"].is_array(), "{payload}");
+            assert_eq!(payload["behavior"], "deny");
+            assert_eq!(payload["interrupt"], true, "{payload}");
+            assert!(!claude_dialog::is_parked("toolu_socket_dialog"));
 
             let _ = handle.shutdown_tx.send(());
         });
@@ -584,37 +559,30 @@ mod tests {
         });
     }
 
-    /// The complete chain, with no stand-ins except the human: the real Claude
-    /// CLI, the real Jean dialog shim, the real socket, `permission_prompt`,
-    /// park, resolve — and the answer reaching the model.
+    /// The complete chain with the real Claude CLI, the real dialog shim and
+    /// the real socket: a question ends the CLI's turn on its own (deny +
+    /// `interrupt`), the run log readers see an open question and no error,
+    /// and the answer reaches the model as the next message.
     ///
     /// Ignored by default: it needs the Claude CLI, network access, and the
     /// shim example built. Run it with
     ///
     /// ```text
     /// cargo build --example dialog_shim
-    /// cargo test --lib real_claude_cli_round_trips_a_question -- --ignored --nocapture
+    /// cargo test --lib real_claude_cli_ends_its_turn_at_a_question -- --ignored --nocapture
     /// ```
-    ///
-    /// Answers with a freeform `response`, which AskUserQuestion renders as
-    /// "The user responded: …" without needing the model-generated question
-    /// text as a key. Answer-key splicing is covered by
-    /// `a_parked_question_is_answered_over_the_local_socket`.
     #[cfg(unix)]
     #[test]
     #[ignore = "needs the Claude CLI, network, and `cargo build --example dialog_shim`"]
-    fn real_claude_cli_round_trips_a_question() {
+    fn real_claude_cli_ends_its_turn_at_a_question() {
         use std::io::Write;
         use std::process::{Command, Stdio};
 
-        use crate::chat::claude_dialog::{self, DialogOutcome};
-
         const SESSION: &str = "real-cli-verify-session";
-        const PARK_SECS: u64 = 45;
 
         let cli = std::env::var("CLAUDE_CLI").unwrap_or_else(|_| {
             format!(
-                "{}/Library/Application Support/com.jean.desktop/claude-cli/claude",
+                "{}/Library/Application Support/app.splitkick.desktop/claude-cli/claude",
                 std::env::var("HOME").unwrap()
             )
         });
@@ -653,41 +621,10 @@ mod tests {
         .unwrap();
         let config_path = config_file.path().to_string_lossy().to_string();
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        runtime.block_on(async {
-            let handle =
-                super::start_socket_server(app.clone(), socket.clone(), "verify-token".into())
-                    .await
-                    .expect("socket server");
-
-            // The human: waits well past the old 120s-capped read and the CLI's
-            // default idle abort would allow for a silent call, then answers.
-            let answered_at = tokio::spawn(async {
-                tokio::time::sleep(std::time::Duration::from_secs(PARK_SECS)).await;
-                let start = std::time::Instant::now();
-                loop {
-                    let n = claude_dialog::resolve_session(
-                        SESSION,
-                        DialogOutcome::Answered {
-                            answers: serde_json::json!({}),
-                            response: Some("Memcached".to_string()),
-                        },
-                    );
-                    if n > 0 {
-                        return Some(n);
-                    }
-                    if start.elapsed() > std::time::Duration::from_secs(180) {
-                        return None;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                }
-            });
-
-            let flags = vec![
+        // One turn of the CLI, as Jean spawns it. Returns the parsed stdout.
+        let cwd = temp.path().to_path_buf();
+        let run_turn = move |prompt: &str, resume: Option<String>| {
+            let mut flags = vec![
                 "--print".to_string(),
                 "--output-format".into(),
                 "stream-json".into(),
@@ -701,57 +638,112 @@ mod tests {
                 "--model".into(),
                 "haiku".into(),
                 "--mcp-config".into(),
-                config_path,
+                config_path.clone(),
                 "--strict-mcp-config".into(),
                 "--permission-prompt-tool".into(),
                 crate::chat::jean_mcp::dialog_permission_prompt_tool(),
             ];
-            let output = tokio::task::spawn_blocking(move || {
-                let mut child = Command::new(&cli)
-                    .args(&flags)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-                    .expect("spawn claude");
-                let prompt = serde_json::json!({"type": "user", "message": {"role": "user",
-                    "content": [{"type": "text", "text":
-                        "Use the AskUserQuestion tool to ask me whether to use Redis or \
-                         Memcached, then tell me what I picked. Do not touch the filesystem."}]}});
-                writeln!(child.stdin.take().unwrap(), "{prompt}").unwrap();
-                child.wait_with_output().expect("claude output")
+            if let Some(id) = resume {
+                flags.extend(["--resume".to_string(), id]);
+            }
+            let mut child = Command::new(&cli)
+                .args(&flags)
+                .current_dir(&cwd)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("spawn claude");
+            let prompt = serde_json::json!({"type": "user", "message": {"role": "user",
+                "content": [{"type": "text", "text": prompt}]}});
+            writeln!(child.stdin.take().unwrap(), "{prompt}").unwrap();
+            let output = child.wait_with_output().expect("claude output");
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .collect::<Vec<_>>()
+        };
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let handle =
+                super::start_socket_server(app.clone(), socket.clone(), "verify-token".into())
+                    .await
+                    .expect("socket server");
+
+            let ask = run_turn.clone();
+            let asked = tokio::task::spawn_blocking(move || {
+                ask(
+                    "Use the AskUserQuestion tool to ask me whether to use Redis or \
+                     Memcached, then tell me what I picked. Do not touch the filesystem.",
+                    None,
+                )
             })
             .await
             .unwrap();
 
-            let resolved = answered_at.await.unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            // The CLI ended the turn on its own, at the question.
+            let question = asked
+                .iter()
+                .filter(|d| d["type"] == "assistant")
+                .flat_map(|d| {
+                    d["message"]["content"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                })
+                .find(|b| b["name"] == "AskUserQuestion")
+                .unwrap_or_else(|| panic!("no question asked:\n{asked:?}"));
+            assert!(
+                asked
+                    .iter()
+                    .any(crate::chat::claude::is_dialog_end_turn_result),
+                "the CLI did not close the question as rejected:\n{asked:?}"
+            );
+            let result = asked
+                .iter()
+                .find(|d| d["type"] == "result")
+                .expect("the CLI wrote no result");
+            assert_eq!(crate::chat::claude::run_error_from_line(result), None);
+            assert!(
+                !asked.iter().any(|d| d["type"] == "assistant"
+                    && d["message"]["content"]
+                        .as_array()
+                        .is_some_and(|c| c.iter().any(|b| b["type"] == "text"))),
+                "the model went on after the question:\n{asked:?}"
+            );
+
+            // The answer resumes the session as a new message.
+            let session_id = result["session_id"].as_str().unwrap().to_string();
+            let text = question["input"]["questions"][0]["question"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let answered = tokio::task::spawn_blocking(move || {
+                run_turn(
+                    &format!("Answer to your question \"{text}\": Memcached"),
+                    Some(session_id),
+                )
+            })
+            .await
+            .unwrap();
             let _ = handle.shutdown_tx.send(());
 
+            let reply = answered
+                .iter()
+                .find(|d| d["type"] == "result")
+                .and_then(|d| d["result"].as_str())
+                .unwrap_or_default()
+                .to_string();
             assert!(
-                output.status.success(),
-                "claude exited {:?}\n{}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr)
+                reply.contains("Memcached"),
+                "the answer never reached the model: {reply}"
             );
-            assert_eq!(resolved, Some(1), "no dialog ever parked for {SESSION}");
-
-            let init_has_tool = stdout
-                .lines()
-                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-                .find(|d| d["type"] == "system" && d["subtype"] == "init")
-                .and_then(|d| d["tools"].as_array().cloned())
-                .map(|t| t.iter().any(|x| x == "AskUserQuestion"))
-                .unwrap_or(false);
-            assert!(
-                init_has_tool,
-                "AskUserQuestion missing from the init tool list"
-            );
-
-            assert!(
-                stdout.contains("The user responded: Memcached"),
-                "the answer never reached the model:\n{stdout}"
-            );
+            println!("reply after the answer: {reply}");
         });
     }
 

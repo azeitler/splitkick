@@ -7483,11 +7483,6 @@ pub async fn answer_claude_dialog(
     }
 }
 
-/// Every Claude dialog a live run is parked on (`sessionId`, `toolUseId`, `kind`).
-pub async fn list_parked_claude_dialogs(_app: AppHandle) -> Result<Vec<Value>, String> {
-    Ok(super::claude_dialog::parked_dialogs())
-}
-
 /// Whether a Claude dialog is currently parked for this tool call.
 ///
 /// The UI uses this to decide between resolving the MCP call and the legacy

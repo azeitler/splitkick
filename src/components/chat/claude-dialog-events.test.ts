@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/store/chat-store'
-import type { Session, ToolCall } from '@/types/chat'
+import type { ToolCall } from '@/types/chat'
 import {
   applyClaudeDialogResolved,
   applyClaudeDialogWaiting,
@@ -9,10 +9,8 @@ import {
   isDialogPaused,
   isRunAwaitingAnswer,
   isPlanAnsweredInTurn,
-  refreshParkedClaudeDialogs,
   skipParkedClaudeDialog,
 } from './claude-dialog-events'
-import { computeSessionCardData, statusConfig } from './session-card-utils'
 
 const SESSION = 'session-dialog'
 
@@ -188,81 +186,5 @@ describe('a live run that waits for an answer shows no running timer', () => {
         isAnswered: () => false,
       })
     ).toBe(false)
-  })
-})
-
-describe('host sync of parked dialogs (remote status stuck on running)', () => {
-  const RUNNING = 'session-yolo'
-  const session: Session = {
-    id: RUNNING,
-    name: 'Example run',
-    order: 0,
-    created_at: 1,
-    updated_at: 1,
-    messages: [],
-    backend: 'claude',
-    selected_execution_mode: 'yolo',
-    last_run_status: 'running',
-    last_run_execution_mode: 'yolo',
-  }
-
-  const cardStatus = () =>
-    computeSessionCardData(session, {
-      ...useChatStore.getState(),
-      getStreamingText: () => ({ content: '', blocks: [] }),
-    }).status
-
-  afterEach(() => {
-    const store = useChatStore.getState()
-    store.setParkedClaudeDialog(RUNNING, null)
-    store.setWaitingForInput(RUNNING, false)
-    store.removeSendingSession(RUNNING)
-    store.clearExecutingMode(RUNNING)
-  })
-
-  it('a client that missed claude:dialog-waiting waits after it syncs with the host', async () => {
-    // A reloaded or reconnected client: the run is sending in yolo mode, the
-    // dialog-waiting event went to the old socket.
-    useChatStore.getState().addSendingSession(RUNNING)
-    useChatStore.getState().setExecutingMode(RUNNING, 'yolo')
-    expect(cardStatus()).toBe('yoloing')
-
-    const list = vi.fn(() =>
-      Promise.resolve([
-        { sessionId: RUNNING, toolUseId: 'toolu_missed', kind: 'question' },
-      ])
-    )
-    await refreshParkedClaudeDialogs(list)
-
-    expect(list).toHaveBeenCalledOnce()
-    expect(getParkedClaudeDialog(RUNNING)?.toolUseId).toBe('toolu_missed')
-    expect(cardStatus()).not.toBe('yoloing')
-    expect(statusConfig[cardStatus()].indicatorStatus).toBe('waiting')
-  })
-
-  it('a client that missed claude:dialog-resolved stops waiting after it syncs', async () => {
-    useChatStore.getState().addSendingSession(RUNNING)
-    useChatStore.getState().setExecutingMode(RUNNING, 'yolo')
-    applyClaudeDialogWaiting({
-      sessionId: RUNNING,
-      toolUseId: 'toolu_answered',
-      kind: 'question',
-    })
-
-    await refreshParkedClaudeDialogs(() => Promise.resolve([]))
-
-    expect(getParkedClaudeDialog(RUNNING)).toBeUndefined()
-    expect(useChatStore.getState().isWaitingForInput(RUNNING)).toBe(false)
-    expect(cardStatus()).toBe('yoloing')
-  })
-
-  it('a failed host call leaves the client state alone', async () => {
-    applyClaudeDialogWaiting({
-      sessionId: RUNNING,
-      toolUseId: 'toolu_keep',
-      kind: 'plan',
-    })
-    await refreshParkedClaudeDialogs(() => Promise.reject(new Error('offline')))
-    expect(getParkedClaudeDialog(RUNNING)?.toolUseId).toBe('toolu_keep')
   })
 })

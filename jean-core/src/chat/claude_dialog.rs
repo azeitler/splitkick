@@ -69,6 +69,10 @@ pub enum DialogOutcome {
     PlanApproved { mode: String },
     /// User declined, or the turn was cancelled out from under the dialog.
     Denied { message: String },
+    /// End the turn at a question or plan: the CLI closes the call as
+    /// rejected, writes that to its transcript and exits. The session then
+    /// waits, and the answer resumes it as a new message.
+    EndTurn,
 }
 
 struct PendingDialog {
@@ -297,6 +301,11 @@ pub fn skip_session(session_id: &str) -> usize {
     )
 }
 
+/// Denial text of [`DialogOutcome::EndTurn`], read only by a CLI without
+/// `interrupt`.
+pub const END_TURN_MESSAGE: &str = "The user has not answered yet. End your turn now and call \
+no more tools. The answer follows in the next user message.";
+
 /// Tool result for a dialog the user skipped by sending a new message.
 pub const SKIPPED_BY_NEW_MESSAGE: &str = "The user skipped this and sent a new message \
 instead. Do not continue the task in this turn: end your turn now with one short sentence \
@@ -310,26 +319,6 @@ pub fn parked_kind_for_session(session_id: &str) -> Option<String> {
         .values()
         .find(|p| p.session_id == session_id)
         .map(|p| p.kind.clone())
-}
-
-/// Every parked dialog, in the `claude:dialog-waiting` payload shape. A client
-/// that missed the event (reload, reconnect, a remote opened later) syncs from
-/// this list, or it shows the waiting run as still running.
-pub fn parked_dialogs() -> Vec<Value> {
-    let mut dialogs: Vec<Value> = PENDING
-        .lock()
-        .unwrap()
-        .iter()
-        .map(|(tool_use_id, p)| {
-            json!({
-                "sessionId": p.session_id,
-                "toolUseId": tool_use_id,
-                "kind": p.kind,
-            })
-        })
-        .collect();
-    dialogs.sort_by(|a, b| a["toolUseId"].as_str().cmp(&b["toolUseId"].as_str()));
-    dialogs
 }
 
 /// Whether a dialog is currently parked for `tool_use_id`.
@@ -373,44 +362,21 @@ pub fn permission_payload(outcome: &DialogOutcome, original_input: &Value) -> Va
         DialogOutcome::Denied { message } => {
             json!({ "behavior": "deny", "message": message })
         }
+        // `interrupt` ends the turn instead of handing the model a denial to
+        // react to (it asks again, or goes on without the answer). The CLI
+        // writes its own "rejected, wait for the user" result; the message is
+        // for a CLI that does not know `interrupt`.
+        DialogOutcome::EndTurn => json!({
+            "behavior": "deny",
+            "message": END_TURN_MESSAGE,
+            "interrupt": true,
+        }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A client that missed `claude:dialog-waiting` syncs from this list.
-    #[test]
-    fn parked_dialogs_lists_waiting_dialogs_until_resolved() {
-        let session = "session-parked-list";
-        let (tx, _rx) = oneshot::channel();
-        PENDING.lock().unwrap().insert(
-            "toolu_parked_list".to_string(),
-            PendingDialog {
-                session_id: session.to_string(),
-                kind: "question".to_string(),
-                responder: tx,
-            },
-        );
-        let mine = || {
-            parked_dialogs()
-                .into_iter()
-                .filter(|d| d["sessionId"] == session)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(
-            mine(),
-            vec![json!({
-                "sessionId": session,
-                "toolUseId": "toolu_parked_list",
-                "kind": "question",
-            })]
-        );
-
-        resolve("toolu_parked_list", DialogOutcome::Approved);
-        assert!(mine().is_empty());
-    }
 
     #[test]
     fn answers_are_spliced_into_the_original_input() {
@@ -450,6 +416,16 @@ mod tests {
             &json!({"questions": []}),
         );
         assert!(blank["updatedInput"].get("response").is_none());
+    }
+
+    /// A question or plan ends the turn: deny with `interrupt`, so the CLI
+    /// closes the call and exits instead of handing the model a denial.
+    #[test]
+    fn ending_the_turn_denies_with_interrupt() {
+        let payload = permission_payload(&DialogOutcome::EndTurn, &json!({"questions": []}));
+        assert_eq!(payload["behavior"], "deny");
+        assert_eq!(payload["interrupt"], true);
+        assert_eq!(payload["message"], END_TURN_MESSAGE);
     }
 
     #[test]

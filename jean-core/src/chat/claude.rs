@@ -541,6 +541,30 @@ pub fn sync_transcript_to_active_account(
     sync_transcript_to_account(claude_session_id, &target, &sources)
 }
 
+/// How long the CLI gets to end its turn at a question or plan on its own
+/// (the permission answer is deny + `interrupt`), before it is killed.
+const DIALOG_EXIT_TIMEOUT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(200)
+} else {
+    std::time::Duration::from_secs(5)
+};
+
+/// The CLI's tool result for a question or plan whose turn Splitkick ended
+/// (`DialogOutcome::EndTurn`): "The user doesn't want to proceed …". It is not
+/// an answer. Readers of a run log skip the line, so the call keeps no output
+/// and the session waits on it, as after a kill at that call.
+pub fn is_dialog_end_turn_result(msg: &serde_json::Value) -> bool {
+    msg.get("type").and_then(|v| v.as_str()) == Some("user")
+        && msg
+            .get("tool_result_meta")
+            .and_then(|v| v.as_array())
+            .is_some_and(|meta| {
+                meta.iter().any(|m| {
+                    m.get("non_execution_kind").and_then(|v| v.as_str()) == Some("user-rejected")
+                })
+            })
+}
+
 /// How long Jean waits for Claude to write a blocking tool call to its own
 /// transcript before it kills the CLI. Normally this takes well under a second.
 const TRANSCRIPT_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1589,12 +1613,6 @@ fn append_permission_prompt_tool_arg(
     args.push(super::jean_mcp::dialog_permission_prompt_tool());
 }
 
-/// Whether the CLI arguments name Jean's dialog permission-prompt tool, so the
-/// CLI parks `AskUserQuestion` / `ExitPlanMode` on it instead of ending the turn.
-fn has_dialog_harness(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--permission-prompt-tool")
-}
-
 /// Execute Claude CLI in detached mode.
 ///
 /// Spawns Claude CLI as a fully detached process that survives Jean quitting.
@@ -1770,9 +1788,8 @@ pub fn execute_claude_detached(
         ));
     }
 
-    // A run with the dialog harness answers its questions and plans in-turn,
-    // so it must not be killed at them (#136).
-    let kill_on_blocking_tool = !has_dialog_harness(&args);
+    // A question or plan ends the turn; the answer starts the next one.
+    let kill_on_blocking_tool = true;
 
     // Tail the output file for real-time updates
     // Use match to ensure unregister_process is always called, even on error
@@ -2334,10 +2351,25 @@ pub fn tail_claude_output(
                                         // hand the call to the UI. This is the only place that
                                         // may do it — see `is_blocking_tool`.
                                         if kill_on_blocking_tool && is_blocking_tool(&name) {
-                                            log::trace!("Detected blocking tool {name}, killing detached process");
+                                            log::trace!(
+                                                "Detected blocking tool {name}, ending the turn"
+                                            );
 
-                                            // Let Claude write the call to its own transcript
-                                            // first, or `--resume` loses the question (#57).
+                                            // The permission answer ends the turn in the CLI
+                                            // (deny + interrupt): it closes the call in its
+                                            // transcript and exits. Give it time to do so.
+                                            let exit_deadline =
+                                                Instant::now() + DIALOG_EXIT_TIMEOUT;
+                                            while is_process_alive(pid)
+                                                && Instant::now() < exit_deadline
+                                            {
+                                                std::thread::sleep(Duration::from_millis(50));
+                                            }
+
+                                            // A CLI that goes on (no dialog harness, or no
+                                            // `interrupt`) is killed. Let it write the call to
+                                            // its transcript first, or `--resume` loses the
+                                            // question (#57).
                                             if !claude_session_id.is_empty()
                                                 && is_process_alive(pid)
                                                 && !wait_for_transcript_entry(
@@ -2355,7 +2387,9 @@ pub fn tail_claude_output(
                                                 );
                                             }
 
-                                            kill_detached_cli(pid);
+                                            if is_process_alive(pid) {
+                                                kill_detached_cli(pid);
+                                            }
                                             // Release a dialog parked just before the kill.
                                             super::claude_dialog::cancel_session(session_id);
 
@@ -2414,6 +2448,7 @@ pub fn tail_claude_output(
                         }
                     }
                 }
+                "user" if is_dialog_end_turn_result(&msg) => {}
                 "user" => {
                     // User messages contain tool results
                     if let Some(message) = msg.get("message") {
@@ -3098,6 +3133,8 @@ pub fn run_error_from_line(msg: &serde_json::Value) -> Option<RunError> {
     if msg.get("type").and_then(|v| v.as_str()) != Some("result")
         || msg.get("is_error").and_then(|v| v.as_bool()) != Some(true)
         || msg.get("api_error_status").and_then(|v| v.as_u64()) == Some(429)
+        // The turn ended at a question or plan (`DialogOutcome::EndTurn`).
+        || msg.get("terminal_reason").and_then(|v| v.as_str()) == Some("aborted_tools")
     {
         return None;
     }
@@ -4203,17 +4240,58 @@ mod tests {
         assert_eq!(questions[1]["options"][1]["label"], "Don't squash");
     }
 
-    /// #136: only a run without the dialog harness may be killed at a
-    /// question or plan; a run with it answers them in-turn.
+    /// A plain denial (the model goes on) keeps its result; only the result
+    /// of a turn the permission answer ended is skipped.
     #[test]
-    fn the_dialog_harness_is_detected_from_the_cli_arguments() {
-        let with = vec![
-            "--print".to_string(),
-            "--permission-prompt-tool".to_string(),
-            "mcp__jean-dialog__permission_prompt".to_string(),
-        ];
-        assert!(has_dialog_harness(&with));
-        assert!(!has_dialog_harness(&["--print".to_string()]));
+    fn only_an_ended_turn_result_is_skipped() {
+        let ended = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_q", "is_error": true, "content": "x"}
+            ]},
+            "tool_result_meta": [{"id": "toolu_q", "non_execution_kind": "user-rejected"}],
+        });
+        assert!(is_dialog_end_turn_result(&ended));
+
+        let denied = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_q", "is_error": true, "content": "x"}
+            ]},
+            "tool_result_meta": [{"id": "toolu_q", "non_execution_kind": "permission-rule"}],
+        });
+        assert!(!is_dialog_end_turn_result(&denied));
+        let plain = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_cmd", "content": "ok"}
+            ]},
+        });
+        assert!(!is_dialog_end_turn_result(&plain));
+    }
+
+    /// The error result of an ended turn is no run error; a real one is.
+    #[test]
+    fn a_turn_ended_at_a_dialog_is_no_run_error() {
+        let ended = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "terminal_reason": "aborted_tools",
+            "errors": ["[ede_diagnostic] result_type=user stop_reason=tool_use"],
+        });
+        assert_eq!(run_error_from_line(&ended), None);
+
+        let failed = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "errors": ["boom"],
+        });
+        assert_eq!(
+            run_error_from_line(&failed).map(|e| e.message),
+            Some("boom".to_string())
+        );
     }
 
     #[test]
@@ -4386,6 +4464,85 @@ mod tests {
             events.lock().unwrap().last().map(String::as_str),
             Some("chat:done")
         );
+    }
+
+    /// A real run log of a turn the permission answer ended at its question.
+    const END_TURN_RUN_LOG: &str = include_str!("testdata/dialog_end_turn_run_log.jsonl");
+
+    /// The CLI ended its turn at the question and is gone when the tailer
+    /// gets there: the turn ends on the open question, with no tool result
+    /// and no error from the CLI's closing lines.
+    #[cfg(unix)]
+    #[test]
+    fn a_turn_the_cli_ended_at_a_question_waits_on_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        app.set_event_sink(move |event, _| {
+            sink.lock().unwrap().push(event.to_string());
+            Ok(())
+        });
+        let output = temp.path().join("run.jsonl");
+        std::fs::write(&output, END_TURN_RUN_LOG).unwrap();
+        let mut cli = std::process::Command::new("true").spawn().unwrap();
+        let pid = cli.id();
+        cli.wait().unwrap();
+
+        let started = std::time::Instant::now();
+        let response = tail_claude_output(
+            &app,
+            "session-end",
+            "worktree-end",
+            &output,
+            pid,
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(!response.cancelled);
+        assert_eq!(response.run_error, None);
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].name, "AskUserQuestion");
+        assert_eq!(response.tool_calls[0].output, None);
+        let events = events.lock().unwrap();
+        assert_eq!(events.last().map(String::as_str), Some("chat:done"));
+        assert!(!events.iter().any(|e| e == "chat:tool_result"));
+    }
+
+    /// A recovered tail reads past the question: the CLI's closing lines
+    /// give the question no output and the run no error.
+    #[cfg(unix)]
+    #[test]
+    fn a_recovered_tail_of_an_ended_turn_keeps_the_question_open() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let output = temp.path().join("run.jsonl");
+        std::fs::write(&output, END_TURN_RUN_LOG).unwrap();
+        let mut cli = std::process::Command::new("true").spawn().unwrap();
+        let pid = cli.id();
+        cli.wait().unwrap();
+
+        let response = tail_claude_output(
+            &app,
+            "session-end-recovered",
+            "worktree-end",
+            &output,
+            pid,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(response.run_error, None);
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].output, None);
     }
 
     /// Issue #73: the run log of the affected turn, lines 418–675 (sanitized:
