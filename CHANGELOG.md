@@ -58,6 +58,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A Claude workflow runs until it finishes.** The Claude CLI stopped every
+  background workflow 10 minutes after the turn that started it, so a long
+  workflow never finished. Now the run stays active until the workflow is
+  done and Claude has answered with its result; Cancel still stops it. The
+  next message after a stopped workflow also no longer ends its run after
+  two seconds while Claude keeps working.
+
 - **A Claude question or plan ends the turn again, and the session waits.**
   Since 1.6.0 the run stayed alive while a question waited, and only the
   host's memory knew about it. A window that reloaded or reconnected, a

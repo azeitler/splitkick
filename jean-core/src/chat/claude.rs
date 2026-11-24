@@ -580,6 +580,16 @@ pub fn is_dialog_end_turn_result(msg: &serde_json::Value) -> bool {
     rejected || denied
 }
 
+/// The `result` line a resumed CLI writes for a background task that the
+/// previous CLI left behind ("didn't finish before the previous session
+/// ended"), before it reads the new prompt. No turn ran (`num_turns: 0`), so it
+/// does not end the run; the real `result` follows after the turn.
+pub fn is_stale_task_result(msg: &serde_json::Value) -> bool {
+    msg.get("type").and_then(|v| v.as_str()) == Some("result")
+        && msg.get("is_error").and_then(|v| v.as_bool()) != Some(true)
+        && msg.get("num_turns").and_then(|v| v.as_u64()) == Some(0)
+}
+
 /// How long Jean waits for Claude to write a blocking tool call to its own
 /// transcript before it kills the CLI. Normally this takes well under a second.
 const TRANSCRIPT_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1511,6 +1521,15 @@ fn build_claude_args(
     env_vars.push((
         "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
         "1".to_string(),
+    ));
+    // The flag above does not cover the Workflow tool: a workflow always runs in
+    // the background. Under `--print` the CLI stops background tasks 10 minutes
+    // after the last turn ("Set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 to wait
+    // indefinitely", CLI 2.1.331), which killed every longer workflow. Wait
+    // until it finishes; the run stays active and Cancel still stops it.
+    env_vars.push((
+        "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS".to_string(),
+        "0".to_string(),
     ));
 
     // Debug env vars
@@ -2571,6 +2590,7 @@ pub fn tail_claude_output(
                         }
                     }
                 }
+                "result" if is_stale_task_result(&msg) => {}
                 "result" => {
                     // Final result - Claude CLI completed
                     if full_content.is_empty() {
@@ -4257,6 +4277,32 @@ mod tests {
             ]},
         });
         assert!(!is_dialog_end_turn_result(&plain));
+    }
+
+    /// A resumed CLI reports the workflow its predecessor left behind with a
+    /// `result` of zero turns. That line must not end the new run.
+    #[test]
+    fn a_zero_turn_result_does_not_end_the_run() {
+        let stale = serde_json::json!({
+            "type": "result", "subtype": "success", "is_error": false,
+            "num_turns": 0, "duration_api_ms": 0, "stop_reason": null,
+        });
+        assert!(is_stale_task_result(&stale));
+
+        let turn = serde_json::json!({
+            "type": "result", "subtype": "success", "is_error": false,
+            "num_turns": 4, "result": "launched",
+        });
+        assert!(!is_stale_task_result(&turn));
+
+        let failed = serde_json::json!({
+            "type": "result", "is_error": true, "num_turns": 0, "result": "API Error: 500",
+        });
+        assert!(!is_stale_task_result(&failed));
+
+        // Older CLIs leave `num_turns` out.
+        let legacy = serde_json::json!({"type": "result", "is_error": false, "result": "done"});
+        assert!(!is_stale_task_result(&legacy));
     }
 
     /// The error result of an ended turn is no run error; a real one is.
