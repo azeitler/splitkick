@@ -47,6 +47,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   The note "The agent is paused" on a question or plan is gone: every
   waiting question is in that state now. A plan approval is a new turn again,
   with the build or yolo model settings.
+- **A plan shows its Approve and YOLO buttons again.** A plan from 1.6.0 or
+  1.6.1 whose wait timed out or paused showed no buttons, though the session
+  still waited for approval; a plan approved inside its own turn showed them
+  again after a restart. Only Claude's own approval now counts as approved
+  (#160).
 - **Dragging the first project in a folder no longer moves it.** A drag that
   started on the first project of a folder and ended near its place moved the
   project to the end of the folder (or out of it). The folder now answers

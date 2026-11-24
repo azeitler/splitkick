@@ -80,8 +80,8 @@ export function ExitPlanModeButton({
   const hasQuestions = toolCalls.some(isAskUserQuestion)
   if (hasQuestions && !isApproved) return null
 
-  // Approved or declined in its own turn (#136): nothing left to approve.
-  if (isPlanAnsweredInTurn(tool, sessionBackend)) return null
+  // Approved in its own turn (#136): nothing left to approve.
+  if (isPlanAnsweredInTurn(tool)) return null
 
   if (
     isApproved ||

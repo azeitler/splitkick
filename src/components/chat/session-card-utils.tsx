@@ -513,7 +513,7 @@ export function computeSessionCardData(
     tc =>
       isPlanToolCall(tc) &&
       !answeredSet?.has(tc.id) &&
-      !isPlanAnsweredInTurn(tc, session.backend)
+      !isPlanAnsweredInTurn(tc)
   )
 
   // Check persisted session state for waiting status
@@ -579,7 +579,7 @@ export function computeSessionCardData(
         )
         // Check for unanswered plan approval
         const hasExitPlan = msg.tool_calls.some(
-          tc => isPlanToolCall(tc) && !isPlanAnsweredInTurn(tc, session.backend)
+          tc => isPlanToolCall(tc) && !isPlanAnsweredInTurn(tc)
         )
         if (hasExitPlan && !msg.plan_approved && !approvedPlanIds.has(msg.id)) {
           hasPendingExitPlan = true

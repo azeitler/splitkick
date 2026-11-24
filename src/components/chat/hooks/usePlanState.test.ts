@@ -53,7 +53,7 @@ describe('usePlanState', () => {
           { id: 'toolu_plan', name: 'ExitPlanMode', input: {}, output },
         ],
       }) as ChatMessage
-    const run = (messages: ChatMessage[], backend: 'claude' | 'opencode') =>
+    const run = (messages: ChatMessage[]) =>
       renderHook(() =>
         usePlanState({
           sessionMessages: messages,
@@ -61,18 +61,19 @@ describe('usePlanState', () => {
           currentStreamingContent: '',
           currentStreamingContentBlocks: [],
           isSending: false,
-          sessionBackend: backend,
         })
       ).result.current
 
     expect(
-      run([planMessage('User has approved your plan.')], 'claude')
-        .hasPendingPlanApproval
+      run([planMessage('User has approved your plan.')]).hasPendingPlanApproval
     ).toBe(false)
-    // Cut off by the legacy kill, or another backend: still waits.
-    expect(run([planMessage()], 'claude').hasPendingPlanApproval).toBe(true)
-    expect(run([planMessage('done')], 'opencode').hasPendingPlanApproval).toBe(
-      true
-    )
+    // The turn ended at the plan, or another backend's output: still waits.
+    expect(run([planMessage()]).hasPendingPlanApproval).toBe(true)
+    expect(run([planMessage('done')]).hasPendingPlanApproval).toBe(true)
+    // A 1.6.x plan call that timed out or paused: never approved, still waits.
+    expect(
+      run([planMessage('Timed out waiting for the user to respond.')])
+        .hasPendingPlanApproval
+    ).toBe(true)
   })
 })

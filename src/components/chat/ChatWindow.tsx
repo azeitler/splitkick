@@ -1437,7 +1437,6 @@ export function ChatWindow({
     currentStreamingContent: streamingContent,
     currentStreamingContentBlocks,
     isSending,
-    sessionBackend: session?.backend,
   })
 
   // State for plan dialog

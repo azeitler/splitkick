@@ -1196,15 +1196,14 @@ export default function useStreamingEvents({
 
       // Check for unanswered blocking tools BEFORE clearing state
       // This determines whether to show "waiting" status in the UI
-      // A Claude plan approved or declined in its own turn has a tool result
-      // and no longer waits (#136).
+      // A Claude plan approved in its own turn no longer waits (#136).
       const hasUnansweredBlockingTool = effectiveToolCalls?.some(
         tc =>
           (isAskUserQuestion(tc) ||
             isPlanToolCall(tc) ||
             tc.name === 'question') &&
           !isQuestionAnswered(sessionId, tc.id) &&
-          !isPlanAnsweredInTurn(tc, sessionBackend)
+          !isPlanAnsweredInTurn(tc)
       )
       const hasPendingPermissionDenials =
         (useChatStore.getState().pendingPermissionDenials[sessionId]?.length ??

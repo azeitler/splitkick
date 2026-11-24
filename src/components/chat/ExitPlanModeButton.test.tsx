@@ -47,10 +47,12 @@ vi.mock('@/services/preferences', () => ({
   }),
 }))
 
+const selectedBackends: Record<string, string> = {}
+
 vi.mock('@/store/chat-store', () => ({
   useChatStore: (
     selector: (state: { selectedBackends: Record<string, string> }) => unknown
-  ) => selector({ selectedBackends: {} }),
+  ) => selector({ selectedBackends }),
 }))
 
 vi.mock('./ApprovalModelSubmenu', async () => {
@@ -216,6 +218,7 @@ function getButton(name: string, index: number) {
 }
 
 beforeEach(() => {
+  delete selectedBackends['session-1']
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation(() => ({
@@ -290,5 +293,48 @@ describe('ExitPlanModeButton', () => {
     await user.click(getButton('', 1))
     await user.click(getMenuItem(/\(use default\)/i, 1))
     expect(onWorktreeBuildApproval).toHaveBeenCalledWith()
+  })
+
+  const claudePlan = (output?: string): ToolCall[] => [
+    {
+      id: 'toolu_plan',
+      name: 'ExitPlanMode',
+      input: { plan: '# Plan' },
+      output,
+    },
+  ]
+
+  it('shows the buttons for a Claude plan whose 1.6.x call timed out or paused', () => {
+    selectedBackends['session-1'] = 'claude'
+    for (const denied of [
+      'Timed out waiting for the user to respond.',
+      'Splitkick paused this run until the user answers.',
+    ]) {
+      const { unmount } = render(
+        <ExitPlanModeButton
+          toolCalls={claudePlan(denied)}
+          isApproved={false}
+          sessionId="session-1"
+        />
+      )
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'YOLO' })).toBeVisible()
+      unmount()
+    }
+  })
+
+  // The store knows no backend for the session, as after a restart.
+  it('hides the buttons for a Claude plan approved in its own turn (1.6.x)', () => {
+    render(
+      <ExitPlanModeButton
+        toolCalls={claudePlan(
+          'User has approved your plan. You can now start coding.'
+        )}
+        isApproved={false}
+        sessionId="session-1"
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'YOLO' })).toBeNull()
   })
 })
