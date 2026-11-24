@@ -198,6 +198,8 @@ interface MagicOptionItem {
   label: string
   icon: typeof GitCommitHorizontal
   key: string
+  /** Tooltip for an item whose label does not say what it does */
+  hint?: string
 }
 
 interface MagicSection {
@@ -289,9 +291,10 @@ export function buildMagicColumns(
         },
         {
           id: 'inject-session',
-          label: 'Inject Session',
+          label: 'Link a Session…',
           icon: MessageSquare,
           key: 'J',
+          hint: 'Add a link to another session to your next message. The agent reads that session through the Splitkick MCP tools when it needs it.',
         },
         {
           id: 'linked-projects',
@@ -2565,6 +2568,7 @@ ${resolveInstructions}`
                               !isDisabled && executeAction(option.id)
                             }
                             onMouseEnter={() => setSelectedOption(option.id)}
+                            title={option.hint}
                             className={cn(
                               'w-full flex items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors',
                               'focus:outline-none',

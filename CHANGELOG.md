@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **"Inject Session" in the Magic menu is now "Link a Session…".** It
+  opens the Sessions list of Load Context and adds a link to the session you
+  pick to your next message; the agent reads that session through the
+  Splitkick MCP tools when it needs it. A tooltip on the item says so. The
+  shortcut stays `J`.
+
 ### Fixed
 
 - **Long Magic menu items stay left-aligned.** With a larger font or zoom,

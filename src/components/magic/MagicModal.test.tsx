@@ -197,12 +197,9 @@ vi.mock('@/services/preferences', () => ({
       default_backend: 'claude',
       selected_model: 'claude-opus-4-8[1m]',
       selected_codex_model: 'gpt-5.5',
-      magic_prompt_models: {
-      },
-      magic_prompt_efforts: {
-      },
-      magic_prompt_modes: {
-      },
+      magic_prompt_models: {},
+      magic_prompt_efforts: {},
+      magic_prompt_modes: {},
       magic_prompts: {
         resolve_conflicts: 'Resolve and finish.',
       },
@@ -606,12 +603,14 @@ describe('MagicModal manual PR link', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the inject session magic command', () => {
+  it('shows the link a session magic command with a tooltip', () => {
     render(<MagicModal />)
 
-    expect(
-      screen.getByRole('button', { name: /inject session/i })
-    ).toBeInTheDocument()
+    const item = screen.getByRole('button', { name: /link a session/i })
+    expect(item).toHaveAttribute(
+      'title',
+      expect.stringContaining('Add a link to another session')
+    )
   })
 
   it('shows the smoke test magic command', () => {

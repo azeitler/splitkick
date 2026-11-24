@@ -159,7 +159,7 @@ export function useMagicCommands({
           break
         case 'load-context':
         case 'inject-session':
-          // Inject Session opens Load Context on the Contexts tab (Sessions list)
+          // Link a Session opens Load Context on the Contexts tab (Sessions list)
           handlers.handleLoadContext()
           break
         case 'linked-projects':
