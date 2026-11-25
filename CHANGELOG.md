@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-11-25
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **"Inject Session" in the Magic menu is now "Link a Session…".** It
@@ -3635,7 +3639,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.6.2...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.6.3...HEAD
+[1.6.3]: https://github.com/azeitler/jean/compare/splitkick-v1.6.2...splitkick-v1.6.3
 [1.6.2]: https://github.com/azeitler/jean/compare/splitkick-v1.6.1...splitkick-v1.6.2
 [1.6.1]: https://github.com/azeitler/jean/compare/splitkick-v1.6.0...splitkick-v1.6.1
 [1.6.0]: https://github.com/azeitler/jean/compare/splitkick-v1.5.24...splitkick-v1.6.0
