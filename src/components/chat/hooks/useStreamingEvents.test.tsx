@@ -1202,6 +1202,41 @@ describe('useStreamingEvents cancellation sanitization', () => {
       expect(store.lastSentAttachments['session-1']).toBeUndefined()
     })
 
+    // "Send now" before the run had output: the queue processor sent the
+    // queued message before the undo of the cancelled turn arrived. The
+    // last-sent text is the queued message then, and it came back into the
+    // input although it was sent.
+    it('leaves a newer running turn alone', async () => {
+      const queryClient = createQueryClient()
+      const wrapper = createWrapper(queryClient)
+      seedDiscardedTurn(queryClient)
+      useChatStore.setState({
+        sendingSessionIds: { 'session-1': true },
+        lastSentMessages: { 'session-1': 'queued follow-up' },
+      })
+      const before = queryClient.getQueryData<{ messages: { id: string }[] }>([
+        'chat',
+        'session',
+        'session-1',
+      ])
+
+      renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+      await emitUndoSend()
+
+      const store = useChatStore.getState()
+      expect(store.inputDrafts['session-1'] ?? '').toBe('')
+      // The newer turn keeps its own state and its message in the chat.
+      expect(store.lastSentMessages['session-1']).toBe('queued follow-up')
+      expect(store.lastSentAttachments['session-1']).toBeDefined()
+      expect(
+        queryClient.getQueryData<{ messages: { id: string }[] }>([
+          'chat',
+          'session',
+          'session-1',
+        ])?.messages
+      ).toEqual(before?.messages)
+    })
+
     it('does not restore while a queued message waits (Skip to Next)', async () => {
       const queryClient = createQueryClient()
       const wrapper = createWrapper(queryClient)

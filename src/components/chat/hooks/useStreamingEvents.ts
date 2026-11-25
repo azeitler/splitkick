@@ -2277,6 +2277,14 @@ export default function useStreamingEvents({
         store.clearLastSentMessage(session_id)
       }
 
+      // A newer turn already runs: "Send now" cancelled the undone one, and
+      // the queue processor sent the queued message before this event came
+      // (the backend finalizes the run first, then reports the undo). The
+      // last-sent text, its attachments and the last user message in the
+      // cache belong to that newer turn. Leave all of them alone; before,
+      // the queued message came back into the input although it was sent.
+      if (store.sendingSessionIds[session_id]) return
+
       // Queued messages mean the user chose "Skip to Next". The queue
       // processor drives the next prompt; keep the input clear.
       if ((store.messageQueues[session_id] ?? []).length > 0) {

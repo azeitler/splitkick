@@ -68,9 +68,9 @@ async function desktopMode(page: Page) {
 }
 
 /** A backend that keeps a queue and one run, like the real one. */
-async function fakeBackend(page: Page) {
+async function fakeBackend(page: Page, noOutput = false) {
   await page.evaluate(
-    ({ sid, wid }) => {
+    ({ sid, wid, noOutput }) => {
       const w = window as any
       const mock = w.__JEAN_E2E_MOCK__
       const emit = (event: string, payload: unknown) =>
@@ -82,6 +82,8 @@ async function fakeBackend(page: Page) {
         queue: [] as { id: string; message: string }[],
         running: false,
         endRun: null as null | ((v: unknown) => void),
+        finalized: null as null | Promise<void>,
+        lastMessage: '',
       }
       const reply = (cancelled: boolean, content: string) => ({
         id: `a-${Date.now()}`,
@@ -95,6 +97,7 @@ async function fakeBackend(page: Page) {
       })
       const startRun = (message: string) => {
         be.running = true
+        be.lastMessage = message
         emit('chat:sending', {
           session_id: sid,
           worktree_id: wid,
@@ -126,14 +129,23 @@ async function fakeBackend(page: Page) {
         queueChanged()
         return true
       })
-      on('dequeue_message', () => {
+      const dequeue = () => {
         if (be.running || be.queue.length === 0) return null
         const message = be.queue.shift()
         queueChanged()
         return message
+      }
+      on('dequeue_message', () => {
+        // The real command waits for the session lock that the cancel holds
+        // while it finalizes the run, so it can win right after that.
+        if (be.finalized) return be.finalized.then(dequeue)
+        return dequeue()
       })
       on('cancel_chat_message', () => {
         if (!be.running) return false
+        const undone = be.lastMessage
+        let finalize = () => {}
+        if (noOutput) be.finalized = new Promise(r => (finalize = r))
         emit('chat:cancelled', {
           session_id: sid,
           worktree_id: wid,
@@ -142,8 +154,24 @@ async function fakeBackend(page: Page) {
           run_id: 'run-1',
         })
         setTimeout(() => {
-          be.endRun?.(reply(true, ''))
           be.running = false
+          if (noOutput) {
+            // A run cancelled before any output: the backend finalizes it,
+            // then drops the turn and says so. A dequeue can win in between.
+            finalize()
+            be.finalized = null
+            setTimeout(() => {
+              emit('chat:undo-send', {
+                session_id: sid,
+                worktree_id: wid,
+                run_id: 'run-1',
+                user_message: undone,
+              })
+              be.endRun?.(reply(true, ''))
+            }, 150)
+            return
+          }
+          be.endRun?.(reply(true, ''))
           // The backend drain: it sends the queue front itself.
           setTimeout(() => {
             const next = be.queue.shift()
@@ -156,18 +184,18 @@ async function fakeBackend(page: Page) {
         return true
       })
     },
-    { sid: session.id, wid: worktree.id }
+    { sid: session.id, wid: worktree.id, noOutput }
   )
 }
 
 const calls = (page: Page) =>
   page.evaluate(() => (window as any).__calls as string[])
 
-async function openSessionAndQueue(page: Page) {
+async function openSessionAndQueue(page: Page, noOutput = false) {
   await activateWorktree(page, 'queue-desktop')
   await page.locator(`[data-session-id="${session.id}"]`).first().click()
   await desktopMode(page)
-  await fakeBackend(page)
+  await fakeBackend(page, noOutput)
 
   const input = page.locator('textarea').first()
   await input.fill(FIRST)
@@ -260,4 +288,23 @@ test('"Send now" works when the store has no worktree for the session', async ({
 
   await expectQueuedMessageSent(page)
   await expect(input).toHaveValue('')
+})
+
+test('"Send now" before the run has output: the queued message is sent, not put back into the input', async ({
+  mockPage: page,
+}) => {
+  const input = await openSessionAndQueue(page, true)
+
+  await clickSendNow(page)
+
+  await expect
+    .poll(() => calls(page), { timeout: 5000 })
+    .toContain('cancel_chat_message')
+  const modal = page.getByTestId('session-chat-modal-swipe')
+  await expect(modal.getByText(QUEUED)).toHaveCount(1)
+  await page.waitForTimeout(1000)
+  // The undone turn is the first message. The queued one was sent: it must
+  // not come back into the input, and it must stay in the chat.
+  await expect(input).toHaveValue('')
+  await expect(modal.getByText(QUEUED)).toHaveCount(1)
 })

@@ -17,6 +17,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A queued message no longer comes back into the input after "Send now".**
+  When "Send now" cancelled a run that had no output yet, the desktop app
+  could send the queued message and then put the same text back into the
+  input, and drop it from the chat, as if it was not sent. The late "undo"
+  of the cancelled turn now leaves a newer running turn alone.
+
 - **"Send now" on a queued message works again in every state.** The play
   button did nothing when this window had the wrong state for the session:
   it believed the session was idle while a run was active, or it had no
