@@ -1844,8 +1844,10 @@ pub async fn dispatch_command(
         "cancel_chat_message" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            crate::chat::cancel_chat_message(app.clone(), session_id, worktree_id).await?;
-            Ok(Value::Null)
+            // The answer matters: false means no run was active (see "Send now").
+            let cancelled =
+                crate::chat::cancel_chat_message(app.clone(), session_id, worktree_id).await?;
+            to_value(cancelled)
         }
         "clear_session_history" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;

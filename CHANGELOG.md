@@ -17,6 +17,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **"Send now" on a queued message works again in every state.** The play
+  button did nothing when this window had the wrong state for the session:
+  it believed the session was idle while a run was active, or it had no
+  worktree stored for the session. Now the button uses the worktree of the
+  chat window, and it always asks the backend to cancel the run; the backend
+  then sends the queued message. Each case that still stops the button
+  writes a warning to the app log. The desktop queue path now has
+  end-to-end tests.
+
 - **Long Magic menu items stay left-aligned.** With a larger font or zoom,
   "Fork Session (same Worktree)" and "Fork Session (new Worktree)" wrap to
   two lines. The wrapped text was centred; now it starts at the left like

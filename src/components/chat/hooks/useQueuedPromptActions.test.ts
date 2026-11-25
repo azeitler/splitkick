@@ -13,6 +13,7 @@ import {
   steerPiTurn,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
+import { logger } from '@/lib/logger'
 import type { QueuedMessage } from '@/types/chat'
 
 vi.mock('@/services/chat', () => ({
@@ -31,7 +32,7 @@ vi.mock('@/lib/transport', () => ({
 }))
 
 vi.mock('@/lib/logger', () => ({
-  logger: { debug: vi.fn(), error: vi.fn() },
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
 
 const createMessage = (
@@ -56,6 +57,7 @@ describe('useQueuedPromptActions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(persistMoveQueuedFront).mockResolvedValue(true)
+    vi.mocked(cancelChatMessage).mockResolvedValue(true)
     vi.mocked(persistUpdateQueued).mockResolvedValue(true)
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
     vi.mocked(steerGrokTurn).mockResolvedValue(undefined)
@@ -158,9 +160,9 @@ describe('useQueuedPromptActions', () => {
       'msg-1',
       'updated prompt'
     )
-    expect(useChatStore.getState().messageQueues['session-1']?.[0]?.message).toBe(
-      'updated prompt'
-    )
+    expect(
+      useChatStore.getState().messageQueues['session-1']?.[0]?.message
+    ).toBe('updated prompt')
   })
 
   it('idle session: promotes the message and force-processes the queue', async () => {
@@ -180,7 +182,87 @@ describe('useQueuedPromptActions', () => {
       useChatStore.getState().messageQueues['session-1']?.map(m => m.id)
     ).toEqual(['msg-2', 'msg-1', 'msg-3'])
     expect(steerCodexTurn).not.toHaveBeenCalled()
-    expect(cancelChatMessage).not.toHaveBeenCalled()
+  })
+
+  // The client can be wrong about "idle": it missed an event, or the run was
+  // started elsewhere. Then "Send now" did nothing at all. The backend
+  // decides: it cancels a run that is active, and answers false when idle.
+  it('idle in this client, running on the backend: the backend cancels the run', async () => {
+    vi.mocked(cancelChatMessage).mockResolvedValue(true)
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    // The backend sends the promoted message once the run is cancelled.
+    expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+  })
+
+  it('idle on the backend too: the queue processor sends the message', async () => {
+    vi.mocked(cancelChatMessage).mockResolvedValue(false)
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+    expect(
+      useChatStore.getState().messageQueues['session-1']?.map(m => m.id)
+    ).toEqual(['msg-2', 'msg-1', 'msg-3'])
+  })
+
+  // The store had no worktree for the session: every queue action returned
+  // without doing anything. The chat window that shows the queue knows it.
+  it('uses the chat window worktree when the store has none for the session', async () => {
+    useChatStore.setState({
+      sessionWorktreeMap: {},
+      worktreePaths: {},
+      sendingSessionIds: { 'session-1': true },
+      selectedBackends: { 'session-1': 'claude' },
+    })
+    const { result } = renderHook(() =>
+      useQueuedPromptActions({
+        worktreeId: 'worktree-1',
+        worktreePath: '/tmp/worktree-1',
+      })
+    )
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(persistMoveQueuedFront).toHaveBeenCalledWith(
+      'worktree-1',
+      '/tmp/worktree-1',
+      'session-1',
+      'msg-2'
+    )
+    expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+
+    act(() => result.current.handleRemoveQueuedMessage('session-1', 'msg-3'))
+    expect(persistRemoveQueued).toHaveBeenCalledWith(
+      'worktree-1',
+      '/tmp/worktree-1',
+      'session-1',
+      'msg-3'
+    )
+  })
+
+  it('without any worktree: does nothing and says so in the log', async () => {
+    useChatStore.setState({ sessionWorktreeMap: {}, worktreePaths: {} })
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(persistMoveQueuedFront).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Send now: no worktree for the session',
+      { sessionId: 'session-1' }
+    )
   })
 
   it('idle session: aborts when another client already dequeued the message', async () => {

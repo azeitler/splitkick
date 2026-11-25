@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import {
   cancelChatMessage,
   persistMoveQueuedFront,
@@ -15,11 +15,29 @@ import { logger } from '@/lib/logger'
 import { invoke } from '@/lib/transport'
 import type { QueuedMessage } from '@/types/chat'
 
-function resolveWorktree(sessionId: string) {
+/** The chat window that shows the queue: it knows its own worktree. */
+export interface QueueWorktreeFallback {
+  worktreeId?: string | null
+  worktreePath?: string | null
+}
+
+/**
+ * The session's worktree from the store. A session that the store has no
+ * entry for (yet) still belongs to the worktree of the chat window that shows
+ * its queue; without that fallback every queue action did nothing, silently.
+ */
+function resolveWorktree(sessionId: string, fallback?: QueueWorktreeFallback) {
   const { sessionWorktreeMap, worktreePaths } = useChatStore.getState()
-  const worktreeId = sessionWorktreeMap[sessionId]
-  const worktreePath = worktreeId ? worktreePaths[worktreeId] : undefined
-  return { worktreeId, worktreePath }
+  const worktreeId = sessionWorktreeMap[sessionId] ?? fallback?.worktreeId
+  const worktreePath =
+    (worktreeId ? worktreePaths[worktreeId] : undefined) ??
+    (worktreeId && worktreeId === fallback?.worktreeId
+      ? fallback.worktreePath
+      : undefined)
+  return {
+    worktreeId: worktreeId ?? undefined,
+    worktreePath: worktreePath ?? undefined,
+  }
 }
 
 /**
@@ -49,12 +67,26 @@ function hasAttachments(msg: QueuedMessage): boolean {
  * - Busy other backends: promote to front, cancel the current run — the
  *   queue processor auto-sends the promoted message once the session is idle.
  */
-export function useQueuedPromptActions() {
+export function useQueuedPromptActions(fallback?: QueueWorktreeFallback) {
+  // A ref keeps the callbacks stable while the window's worktree changes.
+  const fallbackRef = useRef(fallback)
+  const fallbackWorktreeId = fallback?.worktreeId
+  const fallbackWorktreePath = fallback?.worktreePath
+  useEffect(() => {
+    fallbackRef.current = {
+      worktreeId: fallbackWorktreeId,
+      worktreePath: fallbackWorktreePath,
+    }
+  }, [fallbackWorktreeId, fallbackWorktreePath])
+
   const handleRemoveQueuedMessage = useCallback(
     (sessionId: string, messageId: string) => {
       useChatStore.getState().removeQueuedMessage(sessionId, messageId)
       // Persist removal to backend for cross-client sync
-      const { worktreeId, worktreePath } = resolveWorktree(sessionId)
+      const { worktreeId, worktreePath } = resolveWorktree(
+        sessionId,
+        fallbackRef.current
+      )
       if (worktreeId && worktreePath) {
         persistRemoveQueued(worktreeId, worktreePath, sessionId, messageId)
       }
@@ -73,7 +105,10 @@ export function useQueuedPromptActions() {
         .find(m => m.id === messageId)
       if (!msg) return
 
-      const { worktreeId, worktreePath } = resolveWorktree(sessionId)
+      const { worktreeId, worktreePath } = resolveWorktree(
+        sessionId,
+        fallbackRef.current
+      )
       if (!worktreeId || !worktreePath) return
 
       try {
@@ -104,13 +139,25 @@ export function useQueuedPromptActions() {
   const handleSendQueuedNow = useCallback(
     async (sessionId: string, messageId: string) => {
       const store = useChatStore.getState()
-      const { worktreeId, worktreePath } = resolveWorktree(sessionId)
-      if (!worktreeId || !worktreePath) return
+      const { worktreeId, worktreePath } = resolveWorktree(
+        sessionId,
+        fallbackRef.current
+      )
+      if (!worktreeId || !worktreePath) {
+        logger.warn('Send now: no worktree for the session', { sessionId })
+        return
+      }
 
       const msg = store
         .getQueuedMessages(sessionId)
         .find(m => m.id === messageId)
-      if (!msg) return
+      if (!msg) {
+        logger.warn('Send now: message is not in the queue', {
+          sessionId,
+          messageId,
+        })
+        return
+      }
 
       const isSending = !!store.sendingSessionIds[sessionId]
       const isWaiting = !!store.waitingForInputSessionIds[sessionId]
@@ -123,10 +170,20 @@ export function useQueuedPromptActions() {
           sessionId,
           messageId
         )
-        if (moved) {
-          store.moveQueuedMessageFront(sessionId, messageId)
-          store.forceProcessQueue(sessionId)
+        if (!moved) {
+          logger.warn('Send now: the backend queue does not hold the message', {
+            sessionId,
+            messageId,
+          })
+          return
         }
+        store.moveQueuedMessageFront(sessionId, messageId)
+        // This client can be wrong about "idle" (a missed event, a run started
+        // elsewhere). The backend knows: it cancels a run that is active and
+        // then sends the promoted message itself, and it answers false for a
+        // session that really is idle.
+        const cancelled = await cancelChatMessage(sessionId, worktreeId)
+        if (!cancelled) useChatStore.getState().forceProcessQueue(sessionId)
         return
       }
 
@@ -179,7 +236,13 @@ export function useQueuedPromptActions() {
         sessionId,
         messageId
       )
-      if (!moved) return
+      if (!moved) {
+        logger.warn('Send now: the backend queue does not hold the message', {
+          sessionId,
+          messageId,
+        })
+        return
+      }
       useChatStore.getState().moveQueuedMessageFront(sessionId, messageId)
 
       if (useChatStore.getState().sendingSessionIds[sessionId]) {

@@ -2869,7 +2869,10 @@ export function ChatWindow({
     handleRemoveQueuedMessage,
     handleEditQueuedMessage,
     handleSendQueuedNow,
-  } = useQueuedPromptActions()
+  } = useQueuedPromptActions({
+    worktreeId: activeWorktreeId,
+    worktreePath: activeWorktreePath,
+  })
 
   // Pending attachment removal, slash command execution
   const {
