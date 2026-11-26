@@ -164,11 +164,47 @@ export async function fetchAndSeedProjectBootstrap(
 }
 
 /**
+ * Does the user see this project's sessions: is it the selected project (its
+ * canvas) or expanded in the sidebar? Only then is the bootstrap's session
+ * payload worth its size.
+ */
+export function isProjectShown(projectId: string): boolean {
+  const { selectedProjectId, expandedProjectIds } = useProjectsStore.getState()
+  return projectId === selectedProjectId || expandedProjectIds.has(projectId)
+}
+
+/** `list_worktrees` alone, keeping worktrees that are still being created. */
+async function fetchWorktreesOnly(
+  projectId: string,
+  queryClient: ReturnType<typeof useQueryClient>
+): Promise<Worktree[]> {
+  logger.debug('Loading worktrees for project', { projectId })
+  const worktrees = await invoke<Worktree[]>('list_worktrees', { projectId })
+  // Pending creations are client-only until git finishes; keep them when
+  // something else invalidates this query mid-create (issue #528).
+  const previous = queryClient.getQueryData<Worktree[]>(
+    projectsQueryKeys.worktrees(projectId)
+  )
+  const merged = mergeWorktreesPreservingOptimistic(worktrees, previous)
+  logger.info('Worktrees loaded successfully', {
+    count: worktrees.length,
+    pendingPreserved: merged.length - worktrees.length,
+  })
+  return merged
+}
+
+/**
  * Hook to list worktrees for a specific project.
  *
- * Uses `bootstrap_project` so session lists (with message counts) are seeded in
- * the same round-trip. That removes the worktrees → N× get_sessions waterfall
- * when opening a project over WebSocket (sidebar + canvas share this cache key).
+ * For a shown project (selected or expanded) this uses `bootstrap_project`,
+ * so session lists (with message counts) are seeded in the same round-trip.
+ * That removes the worktrees → N× get_sessions waterfall when opening a
+ * project over WebSocket (sidebar + canvas share this cache key).
+ *
+ * The sidebar mounts this for every project. A collapsed project that is not
+ * selected loads its worktree list alone: the session lists of 80 projects
+ * were most of a remote client's startup traffic. Opening it later loads its
+ * sessions per worktree in parallel.
  */
 export function useWorktrees(projectId: string | null) {
   const queryClient = useQueryClient()
@@ -181,6 +217,9 @@ export function useWorktrees(projectId: string | null) {
       }
 
       try {
+        if (!isProjectShown(projectId)) {
+          return await fetchWorktreesOnly(projectId, queryClient)
+        }
         return await fetchAndSeedProjectBootstrap(projectId, queryClient)
       } catch (error) {
         // Older servers / partial deploy: fall back to worktrees-only.
@@ -192,21 +231,7 @@ export function useWorktrees(projectId: string | null) {
           }
         )
         try {
-          logger.debug('Loading worktrees for project', { projectId })
-          const worktrees = await invoke<Worktree[]>('list_worktrees', {
-            projectId,
-          })
-          // Pending creations are client-only until git finishes; keep them when
-          // something else invalidates this query mid-create (issue #528).
-          const previous = queryClient.getQueryData<Worktree[]>(
-            projectsQueryKeys.worktrees(projectId)
-          )
-          const merged = mergeWorktreesPreservingOptimistic(worktrees, previous)
-          logger.info('Worktrees loaded successfully', {
-            count: worktrees.length,
-            pendingPreserved: merged.length - worktrees.length,
-          })
-          return merged
+          return await fetchWorktreesOnly(projectId, queryClient)
         } catch (fallbackError) {
           logger.error('Failed to load worktrees', {
             error: fallbackError,
