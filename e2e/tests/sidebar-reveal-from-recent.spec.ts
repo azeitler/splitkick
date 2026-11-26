@@ -160,6 +160,66 @@ test.describe('Sidebar reveal from the Recent tab (#60)', () => {
     await shot(panel, 'issue60-cmdk-project')
   })
 
+  // The search finds a session that the active tab already lists: the tab
+  // stays, so the row the user looks for stays in view.
+  test('CMD+K to a session that Recent lists keeps the Recent tab', async ({
+    mockPage,
+  }) => {
+    await ensureSidebarOpen(mockPage)
+    const panel = sidebar(mockPage)
+    await expect(panel.getByText('project-01', { exact: true })).toBeVisible()
+    await openSidebarTab(mockPage, 'recent')
+    await expect(
+      panel
+        .getByTestId('sidebar-recent-sessions')
+        .getByText(`Work in ${target.project.name}`)
+    ).toBeVisible()
+
+    await mockPage.keyboard.press(`${MOD}+k`)
+    const input = mockPage.locator('[cmdk-input]')
+    await expect(input).toBeVisible({ timeout: 3000 })
+    await input.fill(`Work in ${target.project.name}`)
+    await mockPage
+      .locator('[cmdk-item]')
+      .filter({ hasText: `Work in ${target.project.name}` })
+      .first()
+      .click()
+    await expect(input).not.toBeVisible()
+
+    // The session opened, and Recent is still the active tab.
+    await expect(mockPage.getByTestId('session-chat-modal-swipe')).toBeVisible()
+    await expect(
+      mockPage.getByTestId('vertical-nav-recent').first()
+    ).toHaveAttribute('aria-current', 'page')
+    await shot(panel, 'cmdk-session-keeps-recent')
+  })
+
+  test('CMD+K to a session that the tab does not list shows Projects', async ({
+    mockPage,
+  }) => {
+    await ensureSidebarOpen(mockPage)
+    const panel = sidebar(mockPage)
+    await expect(panel.getByText('project-01', { exact: true })).toBeVisible()
+    // Nothing is starred, so the Starred tab lists no session.
+    await openSidebarTab(mockPage, 'starred')
+
+    await mockPage.keyboard.press(`${MOD}+k`)
+    const input = mockPage.locator('[cmdk-input]')
+    await expect(input).toBeVisible({ timeout: 3000 })
+    await input.fill(`Work in ${target.project.name}`)
+    await mockPage
+      .locator('[cmdk-item]')
+      .filter({ hasText: `Work in ${target.project.name}` })
+      .first()
+      .click()
+    await expect(input).not.toBeVisible()
+
+    await expect(
+      mockPage.getByTestId('vertical-nav-projects').first()
+    ).toHaveAttribute('aria-current', 'page')
+    await expectRowInView(mockPage, `session:${target.session.id}`)
+  })
+
   // Scrolling up to a project must land it below the stuck section headers.
   test('CMD+K to a project above the view lands it below the headers', async ({
     mockPage,

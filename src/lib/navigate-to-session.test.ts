@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   navigateToProject,
   navigateToSession,
@@ -420,6 +420,69 @@ describe('navigation and the sidebar tab', () => {
     expect(useUIStore.getState().pendingSidebarRevealId).toBe(
       'session:session-1'
     )
+  })
+
+  describe('a tab that lists the session', () => {
+    function mountTab(tab: string, sessionIds: string[]) {
+      const panel = document.createElement('div')
+      panel.id = `sidebar-panel-${tab}`
+      for (const id of sessionIds) {
+        const row = document.createElement('div')
+        row.setAttribute('data-shortcut-row-id', id)
+        panel.appendChild(row)
+      }
+      document.body.appendChild(panel)
+      return panel
+    }
+
+    afterEach(() => {
+      document.body.innerHTML = ''
+    })
+
+    it('keeps the tab, and the tree still follows', () => {
+      mountTab('recent', ['session-1'])
+
+      navigateToSession(target, {
+        showProjectsTab: true,
+        keepTabThatListsSession: true,
+      })
+
+      expect(useUIStore.getState().sidebarTab).toBe('recent')
+      expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+        'session:session-1'
+      )
+    })
+
+    it('shows Projects when the tab does not list the session', () => {
+      mountTab('recent', ['session-2'])
+
+      navigateToSession(target, {
+        showProjectsTab: true,
+        keepTabThatListsSession: true,
+      })
+
+      expect(useUIStore.getState().sidebarTab).toBe('projects')
+    })
+
+    it('ignores a row in another tab panel', () => {
+      // Pinned rows in the hidden Projects tree use the same row attribute.
+      mountTab('projects', ['session-1'])
+
+      navigateToSession(target, {
+        showProjectsTab: true,
+        keepTabThatListsSession: true,
+      })
+
+      expect(useUIStore.getState().sidebarTab).toBe('projects')
+    })
+
+    it('still shows Projects for a caller that does not ask to keep the tab', () => {
+      mountTab('recent', ['session-1'])
+
+      navigateToSession(target, { showProjectsTab: true })
+
+      expect(useUIStore.getState().sidebarTab).toBe('projects')
+    })
   })
 
   it('shows the Projects tab for a project and reveals its row', () => {

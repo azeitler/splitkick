@@ -389,7 +389,8 @@ export function CommandPalette({
           worktreeId: cmd.worktreeId,
           sessionId: cmd.session.id,
         },
-        { showProjectsTab: true }
+        // The tab stays when it lists the session; else Projects shows it.
+        { showProjectsTab: true, keepTabThatListsSession: true }
       )
     },
     [setCommandPaletteOpen]
@@ -414,7 +415,8 @@ export function CommandPalette({
           worktreeId: hit.worktree_id,
           sessionId: hit.session_id,
         },
-        { showProjectsTab: true }
+        // The tab stays when it lists the session; else Projects shows it.
+        { showProjectsTab: true, keepTabThatListsSession: true }
       )
     },
     [setCommandPaletteOpen]

@@ -378,7 +378,7 @@ describe('CommandPalette sessions', () => {
         worktreeId: 'worktree-2',
         sessionId: 'session-recent',
       },
-      { showProjectsTab: true }
+      { showProjectsTab: true, keepTabThatListsSession: true }
     )
   })
 
@@ -551,7 +551,7 @@ describe('CommandPalette search mode', () => {
         worktreeId: 'worktree-2',
         sessionId: 'session-hit',
       },
-      { showProjectsTab: true }
+      { showProjectsTab: true, keepTabThatListsSession: true }
     )
   })
 
@@ -668,7 +668,7 @@ describe('CommandPalette dedicated tabs', () => {
         worktreeId: 'worktree-2',
         sessionId: 'session-recent',
       },
-      { showProjectsTab: true }
+      { showProjectsTab: true, keepTabThatListsSession: true }
     )
   })
 

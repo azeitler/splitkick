@@ -29,6 +29,26 @@ export interface SessionNavigationOptions {
    * it, while the hidden tree follows in the background (#60).
    */
   showProjectsTab?: boolean
+  /**
+   * With `showProjectsTab`: keep the current tab when it lists the session
+   * (Recent, Starred, To-Do, Agents). The row the user looks for is already
+   * in view there, so a switch to Projects only moves them away from it.
+   * Defaults to false.
+   */
+  keepTabThatListsSession?: boolean
+}
+
+/**
+ * Whether the active sidebar tab, other than Projects, shows a row for the
+ * session. Asks the DOM: each tab decides with its own filters and limits
+ * which sessions it lists, and its panel is mounted only while it is active.
+ */
+function activeTabListsSession(sessionId: string): boolean {
+  const { sidebarTab } = useUIStore.getState()
+  if (sidebarTab === 'projects' || typeof document === 'undefined') return false
+  return !!document.querySelector(
+    `#sidebar-panel-${sidebarTab} [data-shortcut-row-id="${CSS.escape(sessionId)}"]`
+  )
 }
 
 /** `data-sidebar-row-id` of a tree row, so a reveal can find it in the DOM. */
@@ -75,6 +95,7 @@ export function navigateToSession(
   {
     revealInSidebar = true,
     showProjectsTab = false,
+    keepTabThatListsSession = false,
   }: SessionNavigationOptions = {}
 ): void {
   const {
@@ -117,7 +138,12 @@ export function navigateToSession(
   if (revealInSidebar) {
     ui.markSidebarReveal(sidebarRowId('session', target.sessionId))
   }
-  if (showProjectsTab) ui.setSidebarTab('projects')
+  if (
+    showProjectsTab &&
+    !(keepTabThatListsSession && activeTabListsSession(target.sessionId))
+  ) {
+    ui.setSidebarTab('projects')
+  }
 }
 
 /**

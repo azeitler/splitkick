@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The search keeps your sidebar tab when it lists the session.** Opening a
+  session from the search (Cmd+K) switched the sidebar to Projects every
+  time. Now Recent, Starred, To-Do and Agents stay when they show that
+  session; the Projects tree still follows in the background. A session the
+  tab does not list, and a project, show Projects as before.
+
 ## [1.6.3] - 2026-11-25
 
 Built on Jean 0.1.73.
