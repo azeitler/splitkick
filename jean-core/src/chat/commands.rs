@@ -6694,6 +6694,19 @@ pub fn has_running_sessions() -> bool {
     !super::registry::get_running_sessions().is_empty()
 }
 
+/// Ids of the sessions with a send in flight on this host: a held send slot
+/// (the CLI may not be registered yet, up to ~10 s after `[SendChat] ENTRY`)
+/// or a registered process / turn. Clients reconcile their `sendingSessionIds`
+/// against this list, so a missed `chat:done` cannot leave a session stuck as
+/// running (#163). Sorted, no duplicates.
+pub fn list_sending_sessions() -> Vec<String> {
+    let mut ids = super::registry::get_actively_managed_sessions();
+    ids.extend(active_send_session_ids());
+    let mut ids: Vec<String> = ids.into_iter().collect();
+    ids.sort();
+    ids
+}
+
 /// Check if any running sessions would NOT survive Jean quitting.
 /// Detached Claude processes and (on Unix) detached Codex app-server turns
 /// keep running after exit and are recovered on next launch; OpenCode and
@@ -12004,6 +12017,16 @@ mod tests {
     #[test]
     fn idle_sessions_should_not_forward_cancel_requests() {
         assert!(!should_forward_cancel_request("idle-session"));
+    }
+
+    #[test]
+    fn list_sending_sessions_counts_send_slot_before_registration() {
+        assert!(!list_sending_sessions().contains(&"sending-list-session".to_string()));
+        let claim =
+            SendClaim::try_acquire("sending-list-session").expect("send claim should acquire");
+        assert!(list_sending_sessions().contains(&"sending-list-session".to_string()));
+        drop(claim);
+        assert!(!list_sending_sessions().contains(&"sending-list-session".to_string()));
     }
 
     #[test]

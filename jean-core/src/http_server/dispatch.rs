@@ -1984,6 +1984,7 @@ pub async fn dispatch_command(
             let result = crate::chat::has_running_sessions();
             to_value(result)
         }
+        "list_sending_sessions" => to_value(crate::chat::list_sending_sessions()),
 
         // =====================================================================
         // Chat - Saved Contexts

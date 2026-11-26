@@ -90,6 +90,7 @@ import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSa
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useServerUpdateCheck } from './hooks/useServerUpdateCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
+import { useSendingReconcile } from './hooks/useSendingReconcile'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
@@ -991,6 +992,9 @@ function App() {
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
+
+  // The host is the source of truth for running sessions (#163)
+  useSendingReconcile()
 
   // Headless background investigation - starts investigations on background
   // worktrees (CMD+Click) without opening the session modal

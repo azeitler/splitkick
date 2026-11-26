@@ -158,6 +158,25 @@ Handles per-session state that's stored in session files (not ui-state.json):
 - Fixed findings
 - Permission denials
 
+### Running sessions: the host is the source of truth
+
+The client marks a session as running in `useChatStore.sendingSessionIds`
+(with the start time in `sendStartedAt`). `chat:sending` sets the mark;
+`chat:done`, `chat:cancelled` and `chat:error` clear it
+(`useStreamingEvents.ts`). The mark drives the "running" state, the timer
+and the choice between a direct send and the queue.
+
+The host decides what runs. A client that misses one of these events must
+not stay wrong, so `useSendingReconcile` (mounted once in `App.tsx`) asks
+the host with `list_sending_sessions` (send slot plus registered processes,
+`jean-core/src/chat/commands.rs`) when the window gets focus or becomes
+visible, when the WebSocket (re)connects, and every 30 s while a session is
+marked as running. It clears a mark the host does not confirm, sets a
+missing one, and refetches that session. The rule is in
+`src/lib/sending-reconcile.ts`: a send or a run end younger than 15 s is not
+touched, because it may not have reached the host (or the client) yet. Each
+correction logs a warning with the session id and the direction (#163).
+
 ## Implementation Examples
 
 ### Basic Zustand Store

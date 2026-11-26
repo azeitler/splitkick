@@ -20,6 +20,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   session; the Projects tree still follows in the background. A session the
   tab does not list, and a project, show Projects as before.
 
+### Fixed
+
+- **A finished session no longer stays "running" in one window.** When a
+  window missed the end of a run, the session kept its running state, the
+  timer kept counting and a new message went into the queue. Each window now
+  asks the host which sessions run when it gets focus, after a reconnect and
+  every 30 s while a session runs, and corrects its state. (#163)
+
 ## [1.6.3] - 2026-11-25
 
 Built on Jean 0.1.73.
