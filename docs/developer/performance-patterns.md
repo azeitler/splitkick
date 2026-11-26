@@ -96,3 +96,24 @@ const isWaiting = useChatStore(state => {
 ```
 
 This still re-evaluates on store updates, but unaffected rows avoid re-rendering because their selected boolean remains equal.
+
+### Remote clients pay per round trip and per byte
+
+A Web Access or remote-window client sees every command as a round trip over
+a link that can be slow, and WebSocket frames are not compressed. The server
+answers most commands in milliseconds; the cost is the traffic. Measured
+numbers and the rig: [remote-load-performance.md](remote-load-performance.md).
+
+- **Scope invalidations.** Do not broadcast a global key (`projects`,
+  `sessions`) for a change to one item, and do not broadcast when nothing
+  changed. Every client refetches every mounted query under the key; one
+  `projects` invalidation was 80 × `bootstrap_project` (590 KB) per client.
+  Use a scoped event (`worktrees:changed`, `worktreeIds`) instead.
+- **Rows load little.** A hook mounted once per sidebar row runs N times. Load
+  the heavy payload only for what the user sees (selected or expanded).
+- **Windowed loads.** Load a session's messages through the `useSession`
+  window (`fetchSessionWindow`), never with no limit: a full load of a long
+  session is megabytes.
+- **Patch, do not refetch, for local facts.** When the client knows the new
+  value (a session was opened), patch the cache and let the server's scoped
+  invalidation confirm it.

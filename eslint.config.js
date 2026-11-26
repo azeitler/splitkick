@@ -104,6 +104,8 @@ export default tseslint.config(
       'scratch/**',
       // Local scratch output, e.g. the local e2e harness reports (git-ignored).
       'tmp/**',
+      // Bun measurement scripts for the remote-load rig, run by hand.
+      'scripts/perf/**',
       'src-tauri/target/**',
       'src-tauri/gen/**',
       'e2e/**',

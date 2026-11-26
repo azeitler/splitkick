@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Remote clients load projects and sessions with far less traffic.** In web
+  access and in a window connected to a remote instance, each git status update
+  and each project click made every client reload the worktrees and session
+  lists of every project, about 600 KB with 80 projects. Now only the project
+  that changed reloads, and a collapsed project in the sidebar loads only its
+  worktree list. Opening a session no longer reloads the list of all sessions,
+  and a finished turn or a reconnect loads only the newest messages instead of
+  the whole history. On a slow link (400 kbit/s), opening a project went from
+  19 s to under 2 s and opening a session from 51 s to 4 s. (#161)
+
 ### Fixed
 
 - **A session that loads slowly says so.** On a slow or lost connection, a
