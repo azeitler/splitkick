@@ -54,8 +54,10 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-/** Back to the tab root: the same two writes as the old Home row. */
+/** Back to the tab root: the same two writes as the old Home row. A session
+ *  open still queued (it had not loaded) is abandoned with it. */
 function returnToTabRoot(): void {
+  useUIStore.getState().dropQueuedSessionOpens()
   useProjectsStore.getState().selectProject(null)
   useChatStore.getState().clearActiveWorktree()
 }
@@ -201,9 +203,11 @@ export function MobileProjectLayer({
       <Suspense
         fallback={
           isPush ? (
-            <div className="flex h-full items-center justify-center p-6">
-              <LoadingState subject="session" onBack={returnToTabRoot} />
-            </div>
+            <LoadingState
+              subject="session"
+              onBack={returnToTabRoot}
+              className="h-full bg-background"
+            />
           ) : (
             <JeanLoadingScreen />
           )

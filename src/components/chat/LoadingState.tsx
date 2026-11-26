@@ -64,7 +64,7 @@ export function LoadingState({
       data-testid="loading-state"
       data-phase={phase}
       className={cn(
-        'pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-lg border bg-background/95 px-5 py-4 text-center shadow-sm',
+        'pointer-events-auto flex flex-col items-center justify-center gap-2 px-6 text-center',
         className
       )}
     >
@@ -84,7 +84,7 @@ export function LoadingState({
       )}
       <div className="text-sm font-medium">{copy.title}</div>
       {copy.detail && (
-        <div className="break-words text-xs text-muted-foreground">
+        <div className="max-w-xs break-words text-xs text-muted-foreground">
           {copy.detail}
         </div>
       )}

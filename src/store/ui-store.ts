@@ -466,6 +466,9 @@ interface UIState {
     shouldOpen: boolean
     sessionId?: string
   }
+  /** Drop every queued session open (the user left before it loaded).
+   *  Worktree-only opens stay. */
+  dropQueuedSessionOpens: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setMobileActiveTab: (tab: MobileTab) => void
   setSidebarTab: (tab: SidebarTab) => void
@@ -1466,6 +1469,22 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'markWorktreeForAutoOpenSession'
+        ),
+
+      dropQueuedSessionOpens: () =>
+        set(
+          state => {
+            const ids = Object.keys(state.pendingAutoOpenSessionIds)
+            if (ids.length === 0) return state
+            const worktreeIds = new Set(state.autoOpenSessionWorktreeIds)
+            for (const id of ids) worktreeIds.delete(id)
+            return {
+              autoOpenSessionWorktreeIds: worktreeIds,
+              pendingAutoOpenSessionIds: {},
+            }
+          },
+          undefined,
+          'dropQueuedSessionOpens'
         ),
 
       consumeAutoOpenSession: worktreeId => {

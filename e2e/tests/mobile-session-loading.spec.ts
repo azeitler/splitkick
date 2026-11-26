@@ -161,11 +161,31 @@ test.describe('Phone: opening a session on a slow connection', () => {
   }) => {
     await stall(mockPage, PROJECT_LOAD)
     await openFromHistory(mockPage, 'Session A')
-    await expect(mockPage.getByTestId('loading-state')).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect(mockPage.getByTestId('loading-state')).toHaveAttribute(
+      'data-phase',
+      'loading',
+      { timeout: 15_000 }
+    )
 
-    // The tab under the loading card stays usable.
+    // The loading page covers the tab: a tap on a History row lands on it.
+    const row = mockPage
+      .getByTestId('mobile-history-sessions')
+      .getByRole('button', { name: /Session B/ })
+    const box = (await row.boundingBox())!
+    const covered = await mockPage.evaluate(
+      ([x, y]) =>
+        !!document
+          .elementFromPoint(x, y)
+          ?.closest('[data-testid="loading-state"]'),
+      [box.x + box.width / 2, box.y + box.height / 2]
+    )
+    expect(covered).toBe(true)
+
+    await mockPage
+      .getByTestId('loading-state')
+      .getByRole('button', { name: 'Back' })
+      .click()
+    await expect(mockPage.getByTestId('mobile-project-layer')).toHaveCount(0)
     await openFromHistory(mockPage, 'Session B')
     await expect(mockPage.getByTestId('session-chat-modal-swipe')).toBeVisible({
       timeout: 15_000,
@@ -183,6 +203,34 @@ test.describe('Phone: opening a session on a slow connection', () => {
     // project, not session A.
     await mockPage.getByTestId('session-modal-back').click()
     await expect(mockPage.getByTestId('mobile-project-layer')).toHaveCount(0)
+    await mockPage.getByRole('tab', { name: 'Home' }).click()
+    await mockPage.getByTestId('mobile-home-segment-projects').click()
+    await mockPage
+      .getByTestId('mobile-home-projects')
+      .getByRole('button', { name: 'Phone Project' })
+      .click()
+    await expect(mockPage.getByTestId('mobile-project-layer')).toHaveAttribute(
+      'data-entry',
+      'modal'
+    )
+    await expect(
+      mockPage.getByTestId(`worktree-expand-${worktreeA.id}`)
+    ).toBeVisible()
+    await expect(mockPage.getByTestId('session-chat-modal-swipe')).toHaveCount(
+      0
+    )
+  })
+
+  test('Back abandons the open: the project opens later without it', async ({
+    mockPage,
+  }) => {
+    await stall(mockPage, PROJECT_LOAD)
+    await openFromHistory(mockPage, 'Session A')
+    const state = mockPage.getByTestId('loading-state')
+    await state.getByRole('button', { name: 'Back' }).click()
+    await expect(mockPage.getByTestId('mobile-project-layer')).toHaveCount(0)
+    await releaseStall(mockPage, { answer: true })
+
     await mockPage.getByRole('tab', { name: 'Home' }).click()
     await mockPage.getByTestId('mobile-home-segment-projects').click()
     await mockPage

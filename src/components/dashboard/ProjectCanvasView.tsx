@@ -3290,18 +3290,17 @@ export function ProjectCanvasView({
         ])
       })
     }
-    // A push leaves the tab under it usable (the layer passes clicks through),
-    // so only the card itself takes taps.
+    // Opaque and full page: the push layer passes taps through to the tab
+    // under it, and a tap there must not start a second open meanwhile.
     return (
-      <div className="pointer-events-none flex h-full items-center justify-center p-6">
-        <LoadingState
-          key={projectId}
-          subject={mobilePresentation === 'push' ? 'session' : 'project'}
-          error={loadError}
-          onRetry={retryLoad}
-          onBack={onDismiss}
-        />
-      </div>
+      <LoadingState
+        key={projectId}
+        subject={mobilePresentation === 'push' ? 'session' : 'project'}
+        error={loadError}
+        onRetry={retryLoad}
+        onBack={onDismiss}
+        className="h-full bg-background"
+      />
     )
   }
 

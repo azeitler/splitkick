@@ -216,6 +216,18 @@ describe('UIStore', () => {
     })
   })
 
+  it('leaving drops queued session opens but keeps worktree opens', () => {
+    const store = useUIStore.getState()
+    store.markWorktreeForAutoOpenSession('worktree-new')
+    store.markWorktreeForAutoOpenSession('worktree-a', 'session-a')
+
+    store.dropQueuedSessionOpens()
+
+    const state = useUIStore.getState()
+    expect([...state.autoOpenSessionWorktreeIds]).toEqual(['worktree-new'])
+    expect(state.pendingAutoOpenSessionIds).toEqual({})
+  })
+
   it('a plain session open keeps the other queued opens', () => {
     const store = useUIStore.getState()
 
