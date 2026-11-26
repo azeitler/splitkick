@@ -721,6 +721,8 @@ body:not(.native-app) kbd {
   }
 }
 
+/* Set by App.tsx in the native desktop app only, while its window has no
+   focus. */
 .window-blurred .animate-wave,
 .window-blurred .animate-blink,
 .window-blurred .animate-border-spin,

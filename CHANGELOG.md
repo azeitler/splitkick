@@ -7,6 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A session that loads slowly says so.** On a slow or lost connection, a
+  session opened in web access showed only a spinner that did not move. The
+  spinner stood still because the web client paused all animations when the
+  browser window lost focus, and a phone does that for the keyboard or an app
+  switch; only the desktop app pauses them now. With reduced motion, an
+  hourglass takes the place of the spinner. The view now says "Loading
+  session…". After a few seconds it says "This is taking longer than usual…"
+  or "Connection lost. Reconnecting…" and offers Retry and Back. A load that
+  fails shows the error and Retry. Retry now also works when the first answer
+  never comes.
+
+- **A late answer no longer opens a session you left.** When you opened a
+  session and then another one before the first had loaded, the first stayed
+  queued and opened later, the next time you opened its project.
+
 ## [1.6.4] - 2026-11-26
 
 Built on Jean 0.1.73.

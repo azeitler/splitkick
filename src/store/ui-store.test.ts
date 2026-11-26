@@ -190,6 +190,44 @@ describe('UIStore', () => {
     expect(notifications).toBe(1)
   })
 
+  it('a superseding session open drops older session opens', () => {
+    const store = useUIStore.getState()
+
+    // Tap A, then B in another worktree, before A's project has loaded.
+    store.markWorktreeForAutoOpenSession('worktree-new')
+    store.markWorktreeForAutoOpenSession('worktree-a', 'session-a', {
+      supersede: true,
+    })
+    store.markWorktreeForAutoOpenSession('worktree-b', 'session-b', {
+      supersede: true,
+    })
+
+    const state = useUIStore.getState()
+    expect([...state.autoOpenSessionWorktreeIds]).toEqual([
+      'worktree-new',
+      'worktree-b',
+    ])
+    expect(state.pendingAutoOpenSessionIds).toEqual({
+      'worktree-b': 'session-b',
+    })
+    // A late load for A finds nothing to open.
+    expect(store.consumeAutoOpenSession('worktree-a')).toEqual({
+      shouldOpen: false,
+    })
+  })
+
+  it('a plain session open keeps the other queued opens', () => {
+    const store = useUIStore.getState()
+
+    store.markWorktreeForAutoOpenSession('worktree-a', 'session-a')
+    store.markWorktreeForAutoOpenSession('worktree-b', 'session-b')
+
+    expect(useUIStore.getState().pendingAutoOpenSessionIds).toEqual({
+      'worktree-a': 'session-a',
+      'worktree-b': 'session-b',
+    })
+  })
+
   it('tracks app update ready / installing lifecycle without no-op churn', () => {
     const {
       setUpdateReadyVersion,

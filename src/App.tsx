@@ -1066,8 +1066,12 @@ function App() {
     }
   }, [])
 
-  // Pause animations when window loses focus to save GPU
+  // Pause animations when the desktop window loses focus to save GPU. Native
+  // app only: a phone browser fires `blur` for the keyboard, overlays and app
+  // switches and may not fire `focus` again, which froze every spinner.
+  // Browsers already stop animations in hidden tabs.
   useEffect(() => {
+    if (!isNativeApp()) return
     const onBlur = () =>
       document.documentElement.classList.add('window-blurred')
     const onFocus = () =>

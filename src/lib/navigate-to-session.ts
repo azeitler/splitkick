@@ -133,8 +133,12 @@ export function navigateToSession(
 
   // Queue auto-open via store so it survives lazy-mount + Suspense + remount.
   // ProjectCanvasView consumes pendingAutoOpenSessionIds in its own effect.
+  // The newest open wins: on a slow connection the user may tap another
+  // session before the first one loaded.
   const ui = useUIStore.getState()
-  ui.markWorktreeForAutoOpenSession(target.worktreeId, target.sessionId)
+  ui.markWorktreeForAutoOpenSession(target.worktreeId, target.sessionId, {
+    supersede: true,
+  })
   if (revealInSidebar) {
     ui.markSidebarReveal(sidebarRowId('session', target.sessionId))
   }

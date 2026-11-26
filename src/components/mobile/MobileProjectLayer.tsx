@@ -7,6 +7,7 @@ import {
   useState,
   type AnimationEvent,
 } from 'react'
+import { LoadingState } from '@/components/chat/LoadingState'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -197,7 +198,17 @@ export function MobileProjectLayer({
           : undefined
       }
     >
-      <Suspense fallback={isPush ? null : <JeanLoadingScreen />}>
+      <Suspense
+        fallback={
+          isPush ? (
+            <div className="flex h-full items-center justify-center p-6">
+              <LoadingState subject="session" onBack={returnToTabRoot} />
+            </div>
+          ) : (
+            <JeanLoadingScreen />
+          )
+        }
+      >
         <ProjectCanvasView
           key={layer.projectId}
           projectId={layer.projectId}

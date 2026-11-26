@@ -450,9 +450,17 @@ interface UIState {
   clearSidebarReveal: (rowId: string) => void
   requestProjectHome: (projectId: string) => void
   clearProjectHomeRequest: (projectId: string) => void
+  /**
+   * Queue a session to open when its project canvas is ready.
+   *
+   * `supersede`: a user navigation. It drops the session opens queued before
+   * it in other worktrees, so a late load for an older tap cannot open that
+   * session over the newer one. Worktree-only opens (no session) stay.
+   */
   markWorktreeForAutoOpenSession: (
     worktreeId: string,
-    sessionId?: string
+    sessionId?: string,
+    options?: { supersede?: boolean }
   ) => void
   consumeAutoOpenSession: (worktreeId: string) => {
     shouldOpen: boolean
@@ -1420,31 +1428,40 @@ export const useUIStore = create<UIState>()(
           'clearProjectHomeRequest'
         ),
 
-      markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>
+      markWorktreeForAutoOpenSession: (worktreeId, sessionId, options) =>
         set(
           state => {
+            const supersededIds =
+              options?.supersede && sessionId
+                ? Object.keys(state.pendingAutoOpenSessionIds).filter(
+                    id => id !== worktreeId
+                  )
+                : []
             const alreadyQueued =
               state.autoOpenSessionWorktreeIds.has(worktreeId)
             const existingSessionId =
               state.pendingAutoOpenSessionIds[worktreeId]
             if (
+              supersededIds.length === 0 &&
               alreadyQueued &&
               (sessionId ? existingSessionId === sessionId : !existingSessionId)
             ) {
               return state
             }
 
+            const worktreeIds = new Set(state.autoOpenSessionWorktreeIds)
+            for (const id of supersededIds) worktreeIds.delete(id)
+            worktreeIds.add(worktreeId)
+            const pending = Object.fromEntries(
+              Object.entries(state.pendingAutoOpenSessionIds).filter(
+                ([id]) => !supersededIds.includes(id)
+              )
+            )
+            if (sessionId) pending[worktreeId] = sessionId
+
             return {
-              autoOpenSessionWorktreeIds: new Set([
-                ...state.autoOpenSessionWorktreeIds,
-                worktreeId,
-              ]),
-              pendingAutoOpenSessionIds: sessionId
-                ? {
-                    ...state.pendingAutoOpenSessionIds,
-                    [worktreeId]: sessionId,
-                  }
-                : state.pendingAutoOpenSessionIds,
+              autoOpenSessionWorktreeIds: worktreeIds,
+              pendingAutoOpenSessionIds: pending,
             }
           },
           undefined,

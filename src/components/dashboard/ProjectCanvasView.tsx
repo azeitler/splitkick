@@ -85,7 +85,8 @@ import {
   resolveProjectShortcutRows,
   type ProjectShortcutRow,
 } from '@/components/chat/pinned-sessions'
-import { Spinner } from '@/components/ui/spinner'
+import { LoadingState } from '@/components/chat/LoadingState'
+import { retryQuery } from '@/components/chat/loading-state'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import {
   useWorktrees,
@@ -1115,8 +1116,11 @@ export function ProjectCanvasView({
   )
 
   // Get worktrees (+ seed session lists in the same backend round-trip)
-  const { data: worktrees = [], isLoading: worktreesLoading } =
-    useWorktrees(projectId)
+  const {
+    data: worktrees = [],
+    isLoading: worktreesLoading,
+    error: worktreesError,
+  } = useWorktrees(projectId)
 
   // Filter worktrees: include ready, pending, and error (exclude deleting)
   const visibleWorktrees = useMemo(() => {
@@ -3271,10 +3275,32 @@ export function ProjectCanvasView({
     (readyWorktrees.length > 0 &&
       readyWorktrees.some(wt => !sessionsByWorktreeId.has(wt.id)))
 
-  if (isLoading && worktreeSections.length === 0) {
+  // A failed load must not spin forever: a worktree whose session list failed
+  // never lands in sessionsByWorktreeId, so isLoading would stay true.
+  const loadError =
+    worktreesError ?? sessionQueries.find(q => q.isError && !q.data)?.error
+  if ((isLoading || loadError) && worktreeSections.length === 0) {
+    const retryLoad = () => {
+      void retryQuery(queryClient, projectsQueryKeys.worktrees(projectId))
+      readyWorktrees.forEach((wt, i) => {
+        if (sessionQueries[i]?.data) return
+        void retryQuery(queryClient, [
+          ...chatQueryKeys.sessions(wt.id),
+          'with-counts',
+        ])
+      })
+    }
+    // A push leaves the tab under it usable (the layer passes clicks through),
+    // so only the card itself takes taps.
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="h-6 w-6" />
+      <div className="pointer-events-none flex h-full items-center justify-center p-6">
+        <LoadingState
+          key={projectId}
+          subject={mobilePresentation === 'push' ? 'session' : 'project'}
+          error={loadError}
+          onRetry={retryLoad}
+          onBack={onDismiss}
+        />
       </div>
     )
   }

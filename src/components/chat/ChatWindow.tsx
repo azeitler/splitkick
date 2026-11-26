@@ -14,6 +14,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { LoadingState } from '@/components/chat/LoadingState'
+import { retryQuery } from '@/components/chat/loading-state'
 import { useFileReferenceEvidence } from '@/lib/file-reference'
 import { ChatSearchBar } from './ChatSearchBar'
 import { Button } from '@/components/ui/button'
@@ -472,7 +474,11 @@ export function ChatWindow({
   const isSessionSwitching = deferredSessionId !== activeSessionId
 
   // Load the active session's messages (uses deferred ID for concurrent rendering)
-  const { data: session, isLoading } = useSession(
+  const {
+    data: session,
+    isLoading,
+    error: sessionError,
+  } = useSession(
     deferredSessionId ?? null,
     activeWorktreeId,
     activeWorktreePath
@@ -3373,9 +3379,26 @@ export function ChatWindow({
                             )}
                             {isLoading ||
                             isSessionsLoading ||
-                            isSessionSwitching ? (
-                              <div className="text-muted-foreground">
-                                Loading...
+                            isSessionSwitching ||
+                            (sessionError && !session) ? (
+                              <div className="flex justify-center py-10">
+                                <LoadingState
+                                  key={deferredSessionId ?? 'none'}
+                                  subject="session"
+                                  error={session ? null : sessionError}
+                                  onRetry={() => {
+                                    if (isSessionsLoading && activeWorktreeId)
+                                      void retryQuery(
+                                        queryClient,
+                                        chatQueryKeys.sessions(activeWorktreeId)
+                                      )
+                                    if (deferredSessionId)
+                                      void retryQuery(
+                                        queryClient,
+                                        chatQueryKeys.session(deferredSessionId)
+                                      )
+                                  }}
+                                />
                               </div>
                             ) : (
                               <>

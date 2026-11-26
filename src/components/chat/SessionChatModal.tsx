@@ -9,6 +9,8 @@ import {
   type MutableRefObject,
   type RefObject,
 } from 'react'
+import { LoadingState } from '@/components/chat/LoadingState'
+import { retryQuery } from '@/components/chat/loading-state'
 import {
   ChevronDown,
   ChevronLeft,
@@ -47,7 +49,9 @@ import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore, type NewSessionModeIntent } from '@/store/ui-store'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
+  chatQueryKeys,
   useSessions,
   useCreateSession,
   reconnectNativeCliSession,
@@ -267,7 +271,8 @@ export function SessionChatModal({
     },
     [isTouch, swipe.containerRef, swipeOpenTerminal.containerRef]
   )
-  const { data: sessionsData } = useSessions(
+  const queryClient = useQueryClient()
+  const { data: sessionsData, error: sessionsError } = useSessions(
     worktreeId || null,
     worktreePath || null
   )
@@ -1644,11 +1649,23 @@ export function SessionChatModal({
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                <p className="text-sm text-muted-foreground">
-                  {sessionsData
-                    ? 'No sessions yet. Create one to start chatting.'
-                    : 'Loading sessions…'}
-                </p>
+                {sessionsData ? (
+                  <p className="text-sm text-muted-foreground">
+                    No sessions yet. Create one to start chatting.
+                  </p>
+                ) : (
+                  <LoadingState
+                    key={worktreeId}
+                    subject="sessions"
+                    error={sessionsError}
+                    onRetry={() =>
+                      void retryQuery(
+                        queryClient,
+                        chatQueryKeys.sessions(worktreeId)
+                      )
+                    }
+                  />
+                )}
                 {sessionsData && (
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
