@@ -61,6 +61,7 @@ describe('MoveSessionDialog', () => {
           return [
             { id: 'w-current', name: 'current', branch: 'feature-x' },
             { id: 'w-main', name: 'shop', branch: 'main' },
+            { id: 'w-dev', name: 'dev', branch: 'dev' },
             { id: 'w-old', name: 'old', branch: 'old', archived_at: 5 },
           ]
         }
@@ -110,10 +111,50 @@ describe('MoveSessionDialog', () => {
     expect(moveButton()).toBeEnabled()
 
     fireEvent.change(projectSelect(), { target: { value: 'p-blog' } })
-
     await screen.findByRole('option', { name: 'blog (main)' })
+    fireEvent.change(projectSelect(), { target: { value: 'p-shop' } })
+
+    await screen.findByRole('option', { name: 'shop (main)' })
     expect(worktreeSelect()).toHaveValue('')
     expect(moveButton()).toBeDisabled()
+  })
+
+  it('preselects the worktree when the project has only one target', async () => {
+    renderDialog()
+    open()
+    await screen.findByRole('option', { name: 'blog' })
+
+    fireEvent.change(projectSelect(), { target: { value: 'p-blog' } })
+
+    await screen.findByRole('option', { name: 'blog (main)' })
+    expect(worktreeSelect()).toHaveValue('w-blog')
+    expect(moveButton()).toBeEnabled()
+
+    fireEvent.click(moveButton())
+    await waitFor(() =>
+      expect(moveSession).toHaveBeenCalledWith('s1', 'w-blog')
+    )
+  })
+
+  it('counts only worktrees the session can move to', async () => {
+    // The current worktree and an archived one are no targets: one is left.
+    invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_projects') return [{ id: 'p-shop', name: 'shop' }]
+      return [
+        { id: 'w-current', name: 'current', branch: 'feature-x' },
+        { id: 'w-main', name: 'shop', branch: 'main' },
+        { id: 'w-old', name: 'old', branch: 'old', archived_at: 5 },
+      ]
+    })
+    renderDialog()
+    open()
+    await screen.findByRole('option', { name: 'shop' })
+
+    fireEvent.change(projectSelect(), { target: { value: 'p-shop' } })
+
+    await screen.findByRole('option', { name: 'shop (main)' })
+    expect(worktreeSelect()).toHaveValue('w-main')
+    expect(moveButton()).toBeEnabled()
   })
 
   it('moves the session and closes', async () => {

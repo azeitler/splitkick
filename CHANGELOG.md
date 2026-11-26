@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Move Session selects the worktree when there is only one.** After you
+  pick a project that has a single worktree the session can move to, that
+  worktree is selected and Move is ready. The current worktree and archived
+  worktrees do not count. With more than one, you still choose.
+
 - **The search keeps your sidebar tab when it lists the session.** Opening a
   session from the search (Cmd+K) switched the sidebar to Projects every
   time. Now Recent, Starred, To-Do and Agents stay when they show that

@@ -23,7 +23,8 @@ function errorMessage(error: unknown): string {
 
 /**
  * Move a session to another worktree, in this or another project (issue #67).
- * Nothing is preselected: the user picks the project, then the worktree.
+ * No project is preselected. The worktree is, when the project has only one
+ * that the session can move to.
  */
 export function MoveSessionDialog() {
   const target = useUIStore(state => state.moveSessionTarget)
@@ -59,6 +60,12 @@ export function MoveSessionDialog() {
       ),
   })
 
+  // A project with one possible target needs no choice: that worktree is
+  // selected. A pick by the user wins; changing the project clears the pick.
+  const onlyWorktreeId =
+    worktrees.data?.length === 1 ? (worktrees.data[0]?.id ?? '') : ''
+  const selectedWorktreeId = worktreeId || onlyWorktreeId
+
   const close = () => {
     setProjectId('')
     setWorktreeId('')
@@ -66,13 +73,13 @@ export function MoveSessionDialog() {
   }
 
   const handleMove = () => {
-    if (!target || !worktreeId || blocker) return
+    if (!target || !selectedWorktreeId || blocker) return
     const worktreeName =
-      worktrees.data?.find(worktree => worktree.id === worktreeId)?.name ??
-      'worktree'
+      worktrees.data?.find(worktree => worktree.id === selectedWorktreeId)
+        ?.name ?? 'worktree'
     const { sessionId } = target
     close()
-    moveSessionWithToast(sessionId, worktreeId, worktreeName)
+    moveSessionWithToast(sessionId, selectedWorktreeId, worktreeName)
   }
 
   const listError = projects.error ?? worktrees.error
@@ -117,7 +124,7 @@ export function MoveSessionDialog() {
             <NativeSelect
               id="move-worktree"
               className="w-full"
-              value={worktreeId}
+              value={selectedWorktreeId}
               disabled={!worktrees.data?.length}
               onChange={event => setWorktreeId(event.target.value)}
             >
@@ -151,7 +158,10 @@ export function MoveSessionDialog() {
           <Button variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button onClick={handleMove} disabled={!worktreeId || !!blocker}>
+          <Button
+            onClick={handleMove}
+            disabled={!selectedWorktreeId || !!blocker}
+          >
             Move
           </Button>
         </DialogFooter>
