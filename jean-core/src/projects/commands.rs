@@ -7449,6 +7449,11 @@ pub async fn clear_worktree_pr(app: AppHandle, worktree_id: String) -> Result<()
 /// Called by the background task manager after polling git/PR status.
 /// This persists the status so it's available immediately on next app launch.
 /// Only updates fields that are provided (Some), preserves existing values for None.
+///
+/// Returns the worktree's project id when a value changed, else `None`.
+/// Callers then refresh only that project: every client sends this for each
+/// status event, and a global `projects` invalidation made every client
+/// refetch every project.
 #[allow(clippy::too_many_arguments)]
 pub async fn update_worktree_cached_status(
     app: AppHandle,
@@ -7466,7 +7471,7 @@ pub async fn update_worktree_cached_status(
     base_branch_behind_count: Option<u32>,
     worktree_ahead_count: Option<u32>,
     unpushed_count: Option<u32>,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     log::trace!("Updating cached status for worktree {worktree_id}");
 
     /// Set `field` to `value` when provided. Returns whether it changed.
@@ -7481,15 +7486,17 @@ pub async fn update_worktree_cached_status(
     }
 
     let mut found = false;
+    let mut project_id = String::new();
     // Every connected client calls this for each status event, mostly with
     // values the server already persisted. Skip the rewrite of projects.json
     // when nothing changed, so a burst of events does not serialize every
     // client behind PROJECTS_LOCK.
-    update_projects_data(&app, |data| {
+    let changed = update_projects_data(&app, |data| {
         let Some(worktree) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) else {
             return false;
         };
         found = true;
+        project_id = worktree.project_id.clone();
 
         let mut changed = false;
         if let Some(b) = branch {
@@ -7546,7 +7553,7 @@ pub async fn update_worktree_cached_status(
     if !found {
         return Err(format!("Worktree not found: {worktree_id}"));
     }
-    Ok(())
+    Ok(changed.then_some(project_id))
 }
 
 /// Get detailed git diff for a worktree
@@ -16336,5 +16343,80 @@ mod plain_project_tests {
         let plain = block_on(set_project_is_git(app.clone(), project.id.clone(), false)).unwrap();
         assert!(plain.is_plain());
         assert!(plain.git_detected);
+    }
+}
+
+#[cfg(test)]
+mod cached_status_tests {
+    use super::*;
+
+    /// Status events repeat values the server already saved. The command must
+    /// report "unchanged" then, and name the one project on a change, so
+    /// dispatch refreshes that project instead of every project.
+    #[tokio::test]
+    async fn update_worktree_cached_status_reports_only_real_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().join("data"), temp.path().join("res")).unwrap();
+        let worktree: Worktree = serde_json::from_value(serde_json::json!({
+            "id": "wt-1",
+            "project_id": "p1",
+            "name": "feature",
+            "path": temp.path().join("wt"),
+            "branch": "feature",
+            "created_at": 0,
+        }))
+        .unwrap();
+        crate::projects::storage::save_projects_data(
+            &app,
+            &crate::projects::types::ProjectsData {
+                projects: vec![],
+                worktrees: vec![worktree],
+            },
+        )
+        .unwrap();
+
+        let update = |behind: u32| {
+            update_worktree_cached_status(
+                app.clone(),
+                "wt-1".to_string(),
+                Some("feature".to_string()),
+                None,
+                None,
+                Some(behind),
+                Some(0),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+
+        let p1 = Some("p1".to_string());
+        assert_eq!(update(2).await.unwrap(), p1, "new value is a change");
+        assert_eq!(update(2).await.unwrap(), None, "same value is no change");
+        assert_eq!(update(3).await.unwrap(), p1, "next value is a change");
+        assert!(update_worktree_cached_status(
+            app.clone(),
+            "missing".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .is_err());
     }
 }

@@ -864,7 +864,7 @@ pub async fn dispatch_command(
             let worktree_ahead_count: Option<u32> =
                 field_opt(&args, "worktreeAheadCount", "worktree_ahead_count")?;
             let unpushed_count: Option<u32> = field_opt(&args, "unpushedCount", "unpushed_count")?;
-            crate::projects::update_worktree_cached_status(
+            let changed_project = crate::projects::update_worktree_cached_status(
                 app.clone(),
                 worktree_id,
                 branch,
@@ -882,7 +882,18 @@ pub async fn dispatch_command(
                 unpushed_count,
             )
             .await?;
-            emit_cache_invalidation(app, &["projects"]);
+            // Most calls repeat what the server already saved. On a change,
+            // refresh only this project's worktree list: a `projects`
+            // invalidation made every client refetch every project. Live
+            // values reach all clients through `git:status-update` anyway.
+            if let Some(project_id) = changed_project {
+                if let Err(e) = app.emit_all(
+                    "worktrees:changed",
+                    &serde_json::json!({ "project_id": project_id }),
+                ) {
+                    log::error!("Failed to emit worktrees:changed: {e}");
+                }
+            }
             Ok(Value::Null)
         }
         "list_worktree_files" => {
