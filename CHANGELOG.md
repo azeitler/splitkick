@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-11-26
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **Move Session selects the worktree when there is only one.** After you
@@ -3880,7 +3884,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.3...HEAD
+[unreleased]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.4...HEAD
+[1.6.4]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.3...splitkick-v1.6.4
 [1.6.3]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.2...splitkick-v1.6.3
 [1.6.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.1...splitkick-v1.6.2
 [1.6.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.0...splitkick-v1.6.1
