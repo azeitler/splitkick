@@ -1132,7 +1132,13 @@ export default function useStreamingEvents({
       if (isCurrentlyViewing || isUserInitiated) {
         if (isUserInitiated) removeUserInitiatedSession(sessionId)
         invoke('set_session_last_opened', { sessionId })
-          .then(() => window.dispatchEvent(new CustomEvent('session-opened')))
+          .then(() =>
+            window.dispatchEvent(
+              new CustomEvent('session-opened', {
+                detail: { sessionIds: [sessionId] },
+              })
+            )
+          )
           .catch(() => undefined)
       }
 
@@ -1814,7 +1820,13 @@ export default function useStreamingEvents({
       if (isCurrentlyViewing || isUserInitiatedErr) {
         if (isUserInitiatedErr) rusErr(session_id)
         invoke('set_session_last_opened', { sessionId: session_id })
-          .then(() => window.dispatchEvent(new CustomEvent('session-opened')))
+          .then(() =>
+            window.dispatchEvent(
+              new CustomEvent('session-opened', {
+                detail: { sessionIds: [session_id] },
+              })
+            )
+          )
           .catch(() => undefined)
       }
 
@@ -2010,7 +2022,13 @@ export default function useStreamingEvents({
         if (isCurrentlyViewing || isUserInitiatedCan) {
           if (isUserInitiatedCan) rusCan(session_id)
           invoke('set_session_last_opened', { sessionId: session_id })
-            .then(() => window.dispatchEvent(new CustomEvent('session-opened')))
+            .then(() =>
+              window.dispatchEvent(
+                new CustomEvent('session-opened', {
+                  detail: { sessionIds: [session_id] },
+                })
+              )
+            )
             .catch(() => undefined)
         }
 
