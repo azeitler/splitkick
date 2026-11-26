@@ -26,7 +26,7 @@ import { QuitConfirmationDialog } from '@/components/layout/QuitConfirmationDial
 import { setServerPlatform } from '@/lib/platform'
 import { useFirstStartIdle } from '@/lib/first-start-gate'
 import { projectsQueryKeys } from '@/services/projects'
-import { chatQueryKeys } from '@/services/chat'
+import { chatQueryKeys, fetchSessionWindow } from '@/services/chat'
 import { mergeWorktreesPreservingOptimistic } from '@/lib/worktree-list-cache'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import {
@@ -1652,11 +1652,14 @@ function App() {
             }
             if (worktreePath) {
               try {
-                sessionSnapshot = await invoke<Session>('get_session', {
-                  sessionId: session.session_id,
-                  worktreeId: session.worktree_id,
-                  worktreePath,
-                })
+                // The snapshot only needs the running turn; a full load of
+                // a long session took seconds on every reconnect.
+                sessionSnapshot = await fetchSessionWindow(
+                  queryClient,
+                  session.session_id,
+                  session.worktree_id,
+                  worktreePath
+                )
                 queryClient.setQueryData(
                   chatQueryKeys.session(session.session_id),
                   sessionSnapshot

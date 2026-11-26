@@ -23,6 +23,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import {
   canReconnectSession,
+  chatQueryKeys,
+  fetchSessionWindow,
   formatAnswersAsNaturalLanguage,
   mergeFetchedSession,
   prefetchSessions,
@@ -466,6 +468,60 @@ describe('reconnectNativeCliSession', () => {
         .getState()
         .terminals['wt-1']?.some(terminal => terminal.id === 'old-terminal')
     ).toBe(false)
+  })
+})
+
+describe('fetchSessionWindow', () => {
+  const msg = (id: string, role: 'user' | 'assistant') =>
+    ({
+      id,
+      session_id: 's',
+      role,
+      content: id,
+      timestamp: 1,
+      tool_calls: [],
+    }) as Session['messages'][number]
+
+  // A turn end and a reconnect refresh the session outside useSession. They
+  // loaded every run (1.1 MB for a 300-run session); they must load the same
+  // window as useSession and keep the older pages the user scrolled to.
+  it('loads the newest runs only and keeps the older loaded pages', async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(chatQueryKeys.session('s'), {
+      id: 's',
+      messages: [
+        msg('u-old', 'user'),
+        msg('a-old', 'assistant'),
+        msg('u-1', 'user'),
+      ],
+      loaded_run_start_index: 0,
+    } as Session)
+    vi.mocked(invoke).mockResolvedValueOnce({
+      id: 's',
+      messages: [msg('u-1', 'user'), msg('a-1', 'assistant')],
+      loaded_run_start_index: 1,
+    } as Session)
+
+    const session = await fetchSessionWindow(
+      queryClient,
+      's',
+      'wt-1',
+      '/tmp/wt'
+    )
+
+    expect(invoke).toHaveBeenCalledWith('get_session', {
+      sessionId: 's',
+      worktreeId: 'wt-1',
+      worktreePath: '/tmp/wt',
+      limit: 25,
+    })
+    expect(session.messages.map(m => m.id)).toEqual([
+      'u-old',
+      'a-old',
+      'u-1',
+      'a-1',
+    ])
+    expect(session.loaded_run_start_index).toBe(0)
   })
 })
 

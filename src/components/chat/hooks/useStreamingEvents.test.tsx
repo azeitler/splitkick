@@ -1396,6 +1396,8 @@ describe('useStreamingEvents cancellation sanitization', () => {
         sessionId: 'session-1',
         worktreeId: 'worktree-1',
         worktreePath: '/tmp/worktree',
+        // The window, not every run: a full load of a long session is MBs.
+        limit: 25,
       })
     )
 
@@ -1482,6 +1484,8 @@ describe('useStreamingEvents cancellation sanitization', () => {
         sessionId: 'session-1',
         worktreeId: 'worktree-1',
         worktreePath: '/tmp/worktree',
+        // The window, not every run: a full load of a long session is MBs.
+        limit: 25,
       })
     )
 

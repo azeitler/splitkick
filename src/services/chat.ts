@@ -864,6 +864,34 @@ export function mergeFetchedSession(
 }
 
 /**
+ * Load the window `useSession` loads (the newest INITIAL_RUN_LIMIT runs) and
+ * merge it with the cached copy, so older pages the user loaded stay.
+ *
+ * For refreshes outside the query (a turn ended, a run resumed on
+ * reconnect). A full `get_session` read every run: 1.1 MB and seconds for a
+ * 300-run session, for each refresh. The caller writes the result to the
+ * cache.
+ */
+export async function fetchSessionWindow(
+  queryClient: QueryClient,
+  sessionId: string,
+  worktreeId: string,
+  worktreePath: string
+): Promise<Session> {
+  const fresh = await invoke<Session>('get_session', {
+    sessionId,
+    worktreeId,
+    worktreePath,
+    limit: INITIAL_RUN_LIMIT,
+  })
+  return mergeFetchedSession(
+    queryClient.getQueryData<Session>(chatQueryKeys.session(sessionId)),
+    fresh,
+    false
+  )
+}
+
+/**
  * Hook to get a single session with full message history
  */
 export function useSession(

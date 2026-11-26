@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { chatQueryKeys } from '@/services/chat'
+import { chatQueryKeys, fetchSessionWindow } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
@@ -153,14 +153,15 @@ async function hydrateCompletedSessionFromBackend(
   }
 
   try {
-    const session = await invoke<Session>('get_session', {
+    const session = await fetchSessionWindow(
+      queryClient,
       sessionId,
       worktreeId,
-      worktreePath,
-    })
-    // A full load can take seconds on a long session. If a queued message
-    // started the next turn meanwhile, this snapshot predates it and would
-    // drop its user message; the refetch below merges instead.
+      worktreePath
+    )
+    // If a queued message started the next turn meanwhile, this snapshot
+    // predates it and would drop its user message; the refetch below merges
+    // instead.
     if (useChatStore.getState().sendingSessionIds[sessionId]) return null
     queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
     return session
