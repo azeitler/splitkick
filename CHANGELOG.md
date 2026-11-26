@@ -100,16 +100,20 @@ Built on Jean 0.1.73.
   them there; "Delete All" is in "All projects" only. A project's "Archived"
   row in the Projects tree opens the tab on that project. Phones keep the
   Archived dialog.
+
 - **Agents start collapsed in the Agents tab.** Each agent row shows only
   itself and the count of the sessions below it; you open the agents you
   need, and Splitkick remembers which ones. The open/closed state of earlier
   versions is not carried over, so every agent starts closed once.
+
 - **The Projects tree has no "Folders" and "Projects" rows.** Its root lists
   the folders, then the projects in no folder, in their saved order. New
   project and New folder are in the "+" menu above the tree, next to Expand
   all / Collapse all. Drag and drop works as before: reorder at the root, drop
   a project on a folder, drag it out above the folder row or to the root zone.
-- **Projects has an open-folder icon** in the vertical navigation.
+
+- **Projects has an open-folder icon in the vertical navigation.**
+
 - **Web access uses the vertical navigation too.** In a desktop-size browser,
   Home, the tabs, Scheduled and Archived are in the navigation left of the
   panel, as in the app. The old sidebar with the Home row and the tab strip is
@@ -137,11 +141,13 @@ Built on Jean 0.1.73.
   The note "The agent is paused" on a question or plan is gone: every
   waiting question is in that state now. A plan approval is a new turn again,
   with the build or yolo model settings.
+
 - **A plan shows its Approve and YOLO buttons again.** A plan from 1.6.0 or
   1.6.1 whose wait timed out or paused showed no buttons, though the session
   still waited for approval; a plan approved inside its own turn showed them
-  again after a restart. Only Claude's own approval now counts as approved
-  (#160).
+  again after a restart. Only Claude's own approval now counts as approved.
+  (#160)
+
 - **Dragging the first project in a folder no longer moves it.** A drag that
   started on the first project of a folder and ended near its place moved the
   project to the end of the folder (or out of it). The folder now answers
@@ -152,12 +158,14 @@ Built on Jean 0.1.73.
   the chevron (on hover) or the count of hidden sessions follows the agent's
   name, a child session's name and "Previous Sessions", not the right edge of
   the row.
+
 - **Agents and Graphs always show their count.** The navigation counts all
   agents and all graphs, like Starred. Before, Agents counted only the agents
   that were working and Graphs only open requests, so both were empty most of
   the time. The count turns blue when something needs you: an agent waits for
   an answer, or a graph has an open request. The tooltip says both, for
   example "3 agents, 1 running".
+
 - **Collapsed navigation badges are centred and show 99+.** The count sits in
   the middle of its circle, and counts above 99 show "99+" instead of being cut
   off. Collapsing and expanding the navigation no longer animates, which made
@@ -172,17 +180,20 @@ Built on Jean 0.1.73.
 - **Cancelling a run no longer asks first.** The stop button, the cancel
   shortcut and the canvas stop a running turn at once again; the output so far
   stays in the chat. The other destructive actions still ask.
+
 - **Every level of the agent tree opens and closes.** In the Agents tab, the
   sessions an agent's current session started nest to any depth, and each
   row with children has its own toggle; a closed row shows how many
   sessions it hides. Splitkick remembers each row. Left/Right close and open
   a focused row in the desktop app, and a header button collapses or
   expands everything.
+
 - **The development build no longer shows Jean's branding.** The dev build
   (`bun run tauri:dev`) shows the Splitkick icon with a DEV mark and the
   Splitkick version, publisher and copyright. The dev server serves the
   Splitkick page title, favicon and Home Screen manifest. The branding check
   also covers the user guide.
+
 - **The agent row is the agent's current session.** A click on the row
   opens the session, and only the chevron opens and closes the tree. The row
   shows the session's status, and its context menu is the full session menu
@@ -200,33 +211,38 @@ Built on Jean 0.1.73.
   resumes it.", the session keeps waiting for you, and your answer resumes
   the session as a new message (`Answer to your question "…": …`; a plan
   approval in build or yolo mode). A run that ends while a question waits
-  because the app quit or crashed uses the same path. Closes #155
+  because the app quit or crashed uses the same path. (#155)
+
 - **No running timer while a question waits.** While a question or plan
   approval waited inside a live run, the chat kept counting the run time and
   the compact view kept its spinner. Both now stop while the agent waits for
   you and go on after the answer.
+
 - **The Agents count in the navigation matches the Agents tab.** It counted
   only runs this window had started. It now counts the agents whose current
   session runs, also a run resumed after a restart, and turns blue with
   "waiting for you" when one waits for input.
+
 - **The reply after an answered question shows.** When a Claude turn asked
   a question, got the answer in the same turn and then ran more tools, its
   final reply was hidden: the chat dropped all text after a question, and
   the compact view folded the reply into a closed activity row. The reply
   now shows in full after the question, live and after a reload.
-  Closes #154
+  (#154)
+
 - **A turn with a sub-agent and a question keeps its order.** The chat
   drew the main-thread steps after a finished sub-agent inside the
   sub-agent's group, and moved a note into the question card although a step
   stood between them, where the answered card hid it. Each step and note
-  now stays in turn order. Closes #157
+  now stays in turn order. (#157)
+
 - **A message to a busy session is queued, not lost.** The Splitkick MCP
   tool `send_chat_message` answered "started" for a session with a run in
   progress, but the session refused the second send and the message was
   gone. Now the message goes into the session's queued prompts and runs when
   the current run ends, also when no window shows that session. The tool
   returns `{"status": "queued", "position": n}`.
-  Closes #156
+  (#156)
 
 ## [1.6.0] - 2026-11-23
 
@@ -243,19 +259,23 @@ Built on Jean 0.1.73.
   list. The sidebar toggle moves in front of back/forward; Home shows no
   sidebar panel and a footer with session stats. Web access and phones keep
   the tab strip.
+
 - **Archived row per project.** In the sidebar tree, a project with archived
   worktrees or sessions shows an Archived row with a count as its last
   child. It opens the Archived page filtered to that project.
+
 - **Agents open to show their sessions.** In the Agents tab, each agent row
   opens and closes. Under it: the current session with the sessions it
   started, then the sessions earlier restarts left behind (an archived one
   opens by restoring it). The session backup now also copies
   `agents.json` and `schedules.json`.
+
 - **Instance Name in Settings → Web Access.** The name other Splitkick apps
   and devices see. Connection links and QR codes carry it, and another
   Splitkick takes it as the default name when it adds this server
   (`/api/auth` reports it). It is the same setting as the session backup
   device name; empty uses the computer name.
+
 - **Add to 1Password.** When the 1Password CLI (`op`) is installed, Settings →
   Web Access saves the access URLs and the access token as a 1Password login
   item ("Splitkick – <Instance Name>"). A second click updates that item. The
@@ -273,37 +293,45 @@ Built on Jean 0.1.73.
   the Antigravity and Opinionated panes. "Archive Worktree" asks when the
   removal behavior is set to delete. Archive itself does not ask (it can be
   restored), and actions started by agents through MCP stay as they are.
+
 - **⌘K puts an exactly named connection on top.** Type a server
   connection's full name in the command palette and it shows first, under "Go
   to Connection", so Enter switches to it. Partial names keep it in the
   Connections group. The arrow keys now wrap: Up on the first row goes to the
   last one, Down on the last row back to the top.
+
 - **The file browser button moves to the left of the toolbar.** It sits after
   the git status of the worktree or session (or the project badges), behind a
   thin separator, instead of between the view's buttons on the right.
+
 - **The side panel has a header and named tabs.** The header shows the
   active tab, the folder or session it shows, the tab's actions (Refresh on
   Files) and the close button. All tabs show their names: Files, Network,
   Graph, Artifacts. Network counts the linked sessions, Graph the graph nodes
   the session works on, Artifacts the session's artifacts. A narrow panel
   wraps the tabs onto two lines.
+
 - **HTML previews in chat fit their content.** A ```html block no longer
   opens in a fixed 420 px box: the box takes the height the page needs, from
   120 px up to 70 % of the window, and scrolls inside above that. Dragging the
   resize handle still sets your own height; Reload measures again.
+
 - **Server connections show whether a remote uses an access token.** A
   remote with a token has a lock icon; a remote without one has an open lock
   in amber, so an unprotected connection stands out. A tooltip on the lock
   explains it and how to turn on the token.
+
 - **The follow-ups panel remembers its state per session.** Opening it in one
   session no longer opens it in every other session, and each session's open
   state is kept across restarts.
+
 - **The session menu is grouped.** Right-click a session: Rename and Labels;
   then Star, Pin, Add to To-Do, Mark as Complete, Set Status and Mark as
   Paused; then Move Up/Down, Move to, Fork and
   Transfer; then Agent, Graph and Network; the native-CLI items; Copy Link and
   Copy Session ID; and Archive and Delete at the end. Both fork actions are in
   a **Fork** submenu (Same Worktree, New Worktree).
+
 - **The Tailscale URL is labelled and listed last.** In Settings → Web Access,
   the URL served through `tailscale serve` now comes after the other access
   URLs, with a "Tailscale" label and a hint: HTTPS for devices in your tailnet,
@@ -324,6 +352,7 @@ Built on Jean 0.1.73.
   session before the backend wrote the new run removed the queued message
   from the chat until the run ended. A slow reload after the previous turn
   could do the same. The message stays now.
+
 - **Claude questions and plan approvals stay in the same turn.** Splitkick
   stopped a Claude run the moment it asked a question or presented a plan, so
   the model got "the session ended before this call's result was recorded",
@@ -333,27 +362,32 @@ Built on Jean 0.1.73.
   goes on in build or yolo in the same turn. Approve and YOLO now show while
   the plan's run waits. A build/yolo override with another model still starts
   a new turn. Plan mode can also write its plan file again. A new message
-  instead of an answer still skips the question. (Closes #136)
+  instead of an answer still skips the question. (#136)
+
 - **A message that ends with a question ends with its time line.** The time
   and runtime line sat under the last text of a message, so tool calls or a
   question after that text (for example a skipped question) came after it,
   and the message looked cut off. The line now closes the message when
   anything follows the last text, also for a message with no text. (#136)
+
 - **Edit connection on the "Couldn't connect" screen opens one settings
   pane.** A window for an unreachable remote mounted the Server connections
   dialog twice, so each open stacked a second pane on top. The auto-retry now
   also waits while a dialog is open, so it no longer reloads the window under
   an open form.
+
 - **No more "Not in Tauri context" on remote instances.** While the
   connection to a remote instance or web access reconnected (for example after
   sleep, a network change or a suspended browser tab), every action failed at
   once with "Not in Tauri context". Actions now wait for the connection and
   run when it is back; with no backend at all, the error says "No backend
   connection".
+
 - **A skipped question says "Skipped".** When you sent a new message instead
   of answering a question, the question card showed "Answered (details
   unavailable)". It now shows "Skipped", and its details say so. The check
   icon of a skipped question is gray; green stays for real answers.
+
 - **"Check for Updates" answers in the app.** When a manual check finds no
   update, is busy or fails, the answer now shows in an in-app dialog in the
   app's own style, not in a native macOS dialog.
@@ -368,7 +402,8 @@ Built on Jean 0.1.73.
   MagicDNS name and whether Splitkick is served through `tailscale serve`.
   A served HTTPS URL joins the Access URLs; Funnel shows a warning that the
   server is public. When Splitkick is not served, the pane shows the
-  `tailscale serve --bg <port>` command to copy. Closes #151
+  `tailscale serve --bg <port>` command to copy. (#151)
+
 - **QR code of the connection link.** Settings → Web Access has a QR code
   button next to "Copy connection link". It opens a dialog with a QR code of
   the same `splitkick://connect?…` link, so the Splitkick iOS app can scan it
@@ -376,7 +411,7 @@ Built on Jean 0.1.73.
   the click, because it contains the access token. For plain HTTP to a host
   name, the dialog shows a hint to use the `tailscale serve` HTTPS URL
   (iOS blocks plain HTTP to host names). The served Tailscale URL has the
-  button too. Closes #150.
+  button too. (#150)
 
 ### Changed
 
@@ -390,8 +425,10 @@ Built on Jean 0.1.73.
   during the setup dialog or the feature tour showed its "is available" toast
   on top of them, and the toast covered the dialog's buttons. The offer now
   shows once the first start is over. (#148)
+
 - **A node's title follows a rename.** When an agent renamed a graph node while
   its detail was open, the title field kept the old name. (#148)
+
 - **Viewers clear the notch and the home indicator.** On a phone (web access
   and the iOS app) the file viewer, the image viewer, the full-screen diagram
   and chart, and the artifact compare dialog put their buttons and content
@@ -414,13 +451,14 @@ Built on Jean 0.1.73.
   an agent and follows it through a restart: use **New Schedule…** on the
   agent, or Send later… / Repeat… in its session. New MCP tools: `list_agents` and
   `send_to_agent`; `create_schedule` takes `agent`.
+
 - **Debug in new Session.** When a worktree setup script, a worktree creation
   or a run script fails, a **Debug in new Session** button starts a new session
   that gets the command, the working directory, the exit result and the last
   part of the output. The button is on the failed setup-script card, on the
   failure notifications, and in the terminal tab bar of a failed run script.
   When the worktree could not be created, the session opens in the project's
-  base session. Closes #143.
+  base session. (#143)
 
 ### Changed
 
@@ -435,11 +473,13 @@ Built on Jean 0.1.73.
 - **No more "ResizeObserver loop" error toasts.** The browser reports a
   postponed layout update as an error, and the app showed it as "Unexpected
   error". It is not an error, so it no longer shows or goes to the log.
+
 - **Paths with spaces in inline code are links.** A path in backticks such as
   `PV Anlage/Materialliste.md` or `~/Library/Mobile Documents/notes` now
   becomes a link when it exists. A bare file name (`lib.rs`, `Cargo.toml`)
   does too. A command in backticks stays plain code, because it names no path
-  on disk. Closes #145
+  on disk. (#145)
+
 - **A repeating schedule no longer stacks copies of its prompt.** While a
   session waits (for example for an answer to a question), it does not run its
   queue. Before, each fire of a repeat added one more copy. Now a repeat adds no
@@ -448,11 +488,12 @@ Built on Jean 0.1.73.
   "Run now" says the same. One-off schedules do not change. MCP
   `create_schedule` and the custom cron field also warn when a `*/N` step does
   not divide the hour or day: `*/45` runs at minutes 0 and 45, not every 45
-  minutes. Closes #144
+  minutes. (#144)
+
 - **An answered question no longer shows a second time.** While the next turn
   ran, the chat could draw the question you had just answered again, as an open
   form below the answered one. The live view now leaves out a question that a
-  message above already shows. Closes #146
+  message above already shows. (#146)
 
 ## [1.5.22] - 2026-11-19
 
@@ -484,7 +525,7 @@ Built on Jean 0.1.73.
   file viewer. The right-click menu on a path has "Open in Finder" (folder) or
   "Reveal in Finder" (file) and "Copy path". Where Finder is on another
   machine (web access, phone, remote backend), a click on a folder copies its
-  path. Closes #142
+  path. (#142)
 
 ## [1.5.20] - 2026-11-17
 
@@ -495,6 +536,7 @@ Built on Jean 0.1.73.
 - **A found update shows a toast, not a modal.** "Splitkick X is available"
   comes with an Update button, and the toolbar shows "Update available" until
   you install it. Check for Updates still opens the update prompt.
+
 - **Questions take an own answer and a note.** A question from an agent now
   has an "Other…" row with its own text field, for when no option fits, and
   a separate Note field for extra context on any answer. Before, one text
@@ -519,13 +561,14 @@ Built on Jean 0.1.73.
 
 - **Star Splitkick on GitHub.** Help → "Star Splitkick on GitHub…" and a
   "Star on GitHub…" button in the About dialog open the repository in the
-  browser. The sidebar's More menu item is now "Star on GitHub". Refs #130
+  browser. The sidebar's More menu item is now "Star on GitHub". (#130)
+
 - **Image viewer: keyboard zoom and Open in browser pane.** In the image
   viewer, ⌘+ / ⌘− zoom the image and ⌘0 fits it again (Ctrl on Windows and
   Linux); the app zoom stays as it is while the viewer is open. A local image
   also gets "Open in browser pane", which shows the file in the browser pane
   (desktop app, local session only). A trackpad pinch now also zooms the
-  image in the macOS desktop app, at the pinch point. Closes #48
+  image in the macOS desktop app, at the pinch point. (#48)
 
 ### Changed
 
@@ -533,6 +576,7 @@ Built on Jean 0.1.73.
   block now renders as a sandboxed preview (scripts only, no network) as soon
   as it is complete; "Show source" in its header shows the code. Before, the
   code showed and the page needed a click on Preview.
+
 - **Agents know the chat can draw diagrams, charts and HTML.** The chat
   rule now names the fenced blocks the chat renders: ` ```mermaid ` and
   ` ```vega-lite ` as diagrams and charts, ` ```html ` and ` ```svg ` with an
@@ -544,46 +588,52 @@ Built on Jean 0.1.73.
 - **Copy image works for local images on macOS.** The app's content policy
   showed `asset://` images but blocked reading them, so Copy image in the
   image context menu (and in the image viewer) failed for them.
+
 - **HTML previews in the desktop app can no longer reach the app's IPC.**
   The preview frame ran on an app URI scheme, which Tauri treats as a local
   origin: only the secret invoke key stopped a preview script from calling
   app commands. The frame now runs on a loopback origin, and Tauri rejects
-  every command from it. Closes #82.
+  every command from it. (#82)
 
 - **The schedule list no longer sends MCP secrets to clients.** A schedule
   made in the composer stores the MCP config of that moment, with the env of
   each MCP server (tokens too). The schedule list, and the answer to create,
   edit, pause and resume, sent it to every client, also web access. Now
   clients get the schedule without the MCP config; the stored schedule still
-  uses it when it runs. Refs #122.
+  uses it when it runs. (#122)
+
 - **Run now sends a one-off schedule once.** "Run now" a few seconds before
   a one-off was due could send its prompt twice: the scheduler also took it.
   Now Run now takes the one-off out of the list before it runs. Also, a
   repeating schedule that you delete while it runs no longer comes back
-  paused when that run fails. Refs #123.
+  paused when that run fails. (#123)
+
 - **A new MCP schedule no longer deletes an earlier one.** The Splitkick MCP
   tool `create_schedule` replaced the session's earlier agent schedule
   without a word, so an agent that set up two schedules kept only the last.
   Callers without a session lost all but their newest. Now MCP schedules
   never replace another schedule; only a new `ScheduleWakeup` (`/loop`)
-  replaces the session's previous wakeup. Closes #118.
+  replaces the session's previous wakeup. (#118)
+
 - **Agent tool calls no longer move you to another session.** The Splitkick
   MCP tool `import_worktree` told the app to open the imported worktree, so
   the app left the session you worked in. Now it only adds the worktree to
   the sidebar. `create_worktree` now returns when the worktree is saved, so
   `create_session` accepts its id at once (before, the id was unknown for
-  some seconds). Closes #137.
+  some seconds). (#137)
+
 - **Turns that an agent starts get your MCP servers.** A message sent with
   the Splitkick MCP tool `send_chat_message` (and schedules, queued messages
   and auto-fix) started Claude with only Splitkick's own servers, so tools
   such as Playwright were missing for that turn. Splitkick now uses the same
   servers as a message you type: session choice, then project, then global
-  default. Closes #103.
+  default. (#103)
+
 - **MCP servers of the active Claude account load.** Splitkick read the
   MCP servers only from `~/.claude.json`, also when another Claude account
   was active. Now it reads the `.claude.json` of the active account, as
   Claude does. Servers of type `http` and `sse` load like `stdio` servers.
-  Closes #138.
+  (#138)
 
 ## [1.5.17] - 2026-11-15
 
@@ -605,7 +655,7 @@ Built on Jean 0.1.73.
   only when the next question came. Now it changes at once, and a message you
   type instead of an answer also skips it. MCP `send_chat_message` now returns
   `skippedPendingQuestion: true` when the session waited for a question.
-  Closes #141
+  (#141)
 
 ## [1.5.16] - 2026-11-15
 
@@ -627,17 +677,21 @@ Built on Jean 0.1.73.
   where the chat shows it only collapsed, so the text looked cut off. Every
   chat send now carries a short rule: findings and results go into chat text,
   not into tool output.
+
 - **Move to has a submenu.** The session menu's Move to lists the other
   worktrees of the session's project, so a move takes one click. "Other
-  Project…" at the top opens the Move Session dialog as before. Closes #140
+  Project…" at the top opens the Move Session dialog as before. (#140)
+
 - **Opus 5.5 is the default Claude model.** New installs start on Claude
   Opus 5.5 for chat and for the magic prompts that used Opus 4.8 (1M).
   Existing installs that still have the old Opus 4.8 (1M) default move to
   Opus 5.5 once. If you pick Opus 4.8 (1M) again later, it stays.
+
 - **Artifacts also show in the chat reply.** The `add_artifact` MCP tool
   (description and result) now tells the model that the Artifacts tab does not
   replace its answer: it also embeds the image, quotes the key content or links
   the file in the reply.
+
 - **Starred stays selected.** A click on a starred session opens it and keeps
   the Starred tab selected. The tree behind the Projects tab still expands to
   the session, so it shows there when you switch.
@@ -649,10 +703,12 @@ Built on Jean 0.1.73.
   failed with "a webview with label … already exists". The same window could
   also be missed by the Dock, the tray and the menu. A click now brings the
   window to the front.
+
 - **Server connections in a remote window.** The dialog shows only the server
   of that window (version, Edit). It no longer opens other remote windows.
   "Manage all connections" brings the main window to the front with the full
   list open.
+
 - **Pasted Web Access links fill in the token.** When you add a remote, a URL
   with `?token=` loses the token, and the token goes into the Access token
   field.
@@ -668,6 +724,7 @@ Built on Jean 0.1.73.
   Worker (read) and Reviewer (read). A click saves the template as a new
   agent with its persona prompt, ready to edit. The New Session and Start
   session dialogs point to them.
+
 - **MCP tools for sidebar folders.** `create_folder` (`name`, optional
   `parentId`), `move_project` (a project or folder into a folder, or back to
   the top level, at an optional `position`), `rename_folder` and
@@ -675,6 +732,7 @@ Built on Jean 0.1.73.
   folders. They use the sidebar's own commands, so the sidebar updates at
   once, also in Web Access. Deleting a folder that is not empty now names
   what is inside.
+
 - **Agents can label their session.** The new MCP tool `set_session_label`
   sets or clears the label of a session (the calling session when no
   `sessionId` is given). Without a colour, a label name that is already in use
@@ -695,6 +753,7 @@ Built on Jean 0.1.73.
   remembered. A click on a starred session switches to Projects and reveals it
   in the tree. The reveal now waits until the tree stops moving, so the row no
   longer ends up just outside the view.
+
 - **GitHub CLI is optional.** Setup is complete as soon as one AI backend
   is ready. The GitHub CLI step has "Skip, I don't use GitHub", and the
   "Setup incomplete" banner and the startup wizard no longer ask for `gh`.
@@ -702,16 +761,20 @@ Built on Jean 0.1.73.
   "GitHub CLI is not set up" with a Set up action instead of a raw CLI error.
   Push to a linked PR falls back to a plain push, and background PR polling
   stays quiet.
+
 - **Settings → Web Browser.** A new pane holds Browser for agents (was in MCP
   Servers) and Claude in Chrome (was in Claude). Claude in Chrome is off by
   default for new installs, with a hint to use Browser for agents.
+
 - **No server choice in the first-start setup for now.** The onboarding no
   longer asks "Local or Remote" or mentions a Jean server; it goes straight
   to the local setup. Remote connections can still be added later in Server
   connections.
+
 - **Remote install is off for now.** Server connections and the onboarding
   no longer offer "Install via SSH"; a remote is added with its Web Access
   URL. The install code stays and can be turned back on.
+
 - **Find in chat is per session.** Each session keeps its own find bar:
   switching to another session hides it, and coming back shows the same
   search on the same match. Esc or × closes it for that session only.
@@ -722,36 +785,43 @@ Built on Jean 0.1.73.
   session that started this one as a single row, then this session and the
   sessions it started. Sessions started by the same parent no longer show;
   open the parent to see them.
+
 - **Session menu on the Home To-Do list.** A right-click on a row of the
   To-Do list on Home opens the same session menu as in the sidebar: rename,
   labels, star, pin, status, fork, move, archive and delete.
+
 - **AskUserQuestion works on Windows again.** Every question failed at once
   with "Connection closed", and the answer never reached the agent. The
   dialog helper process crashed at its first call on Windows. A failed
   question now shows its error, not "Answer details unavailable after
   reload", and the form stays open: the answer goes to the agent as a new
-  message. Refs #139
+  message. (#139)
+
 - **First start is one linear flow.** Setup moves forward in one dialog and
   ends on its own Done step (it no longer closed itself after the last login
   and skipped Done). "Continue" then opens the feature tour. While setup or the
   tour runs, nothing else opens on top: the update prompt, the MCP intro and
   startup toasts with buttons (zoom tip, CLI and host updates) wait until the
   tour has ended, then come one at a time.
+
 - **Feature tour fits any window.** The list scrolls inside the dialog, Skip,
   Back and Next stay visible (also at 600 px height and on a phone), and a
   step counter shows the progress. Back is new. Keyboard hints show only in
   the desktop app. The setup dialog and its login terminal also fit at small
   heights.
+
 - **GitHub login in setup no longer loops.** When the login finished but the
   status check still failed, setup opened a new `gh auth login` again and
   again and hid the reason. Now it shows the error with Check Again and Log In
   Again. The error also names the cause: `gh` reports an unreachable GitHub as
   "token is invalid", so a saved login that GitHub did not confirm now says
   so (network, proxy or VPN, or a revoked token).
+
 - **"Edit connection" works when a remote is unreachable.** The "Couldn't
   connect" screen replaces the app, including the sidebar where the Server
   connections dialog lives, so its "Edit connection" button did nothing. The
   screen now opens the connection's settings.
+
 - **Notifications show again in the desktop app, and updates can be
   installed (#135).** Since 1.5.9 every toast of the desktop app sat below
   the bottom edge of the window: the app's security policy blocked the
@@ -765,6 +835,7 @@ Built on Jean 0.1.73.
   To get this version from 1.5.9 to 1.5.14: after the download, restart
   with the Updates button in the sidebar footer (or Check for Updates… in
   1.5.13 and 1.5.14), or install the DMG.
+
 - **A host update keeps its button in the toolbar.** Its notification
   says so, and the button stays there also with the sidebar hidden.
 
@@ -799,23 +870,27 @@ Built on Jean 0.1.73.
 
 - **Schedule times keep counting.** "in 2h" and "5m ago" in the Scheduled
   view and the chat banner changed only after a refresh. They now update every
-  minute (#123).
+  minute. (#123)
+
 - **An HTML preview opens in view.** Preview on an HTML or SVG block in the
   last message opened below it, hidden under the input bar. The preview now
-  scrolls into view above the input bar when it opens (#81).
+  scrolls into view above the input bar when it opens. (#81)
+
 - **The schedules file is private.** `schedules.json` keeps the MCP config of
   each schedule, with the servers' tokens; it was readable by every user of
   the Mac. It is now written readable by the owner only, and an older file is
-  tightened at start. Storing no tokens at all is still open (#122).
+  tightened at start. Storing no tokens at all is still open. (#122)
+
 - **No "--" for a missing 5-hour limit.** The floating dock and the burger
   menu showed "--|93%" for accounts without a 5-hour limit (verified Ultra).
-  They now show "93%" (#126).
+  They now show "93%". (#126)
+
 - **Check for Updates always shows its answer.** The answer was a toast,
   which did not appear on two machines, so the check looked dead. It is now a
   dialog: "You are running the latest version (…)", the error with its cause,
   or a note that an update is downloading. When an update is already
   downloaded, it opens the "Update Ready" prompt again with Restart Now,
-  also after you closed it before (#135).
+  also after you closed it before. (#135)
 
 ## [1.5.12] - 2026-11-11
 
@@ -828,6 +903,7 @@ Built on Jean 0.1.73.
   worktree and pinned filter tab with that label. A name that another label
   has is refused. After Create in the worktree label dialog, the dialog goes
   back to the list instead of staying on the create view.
+
 - **The usage badge counts only the limit of the session's model.** A full
   Fable limit showed 100% also in an Opus session, where it does not block
   anything. The badge now counts a model limit only when the open session (or
@@ -847,14 +923,14 @@ Built on Jean 0.1.73.
   tiny request (Haiku, about 600 tokens), then shows the live figures. While
   that runs, the card shows the stored figures with "Updating…". Never for the
   active account, never while a `claude` process of that account runs, and at
-  most once per token (#134).
+  most once per token. (#134)
 
 ### Fixed
 
 - **Check for Updates always answers.** It shows "Checking for updates…"
   at once, then the result; it gives up with an error after 30 seconds; and
   every step of a manual check is written to the app log: the menu click and
-  the window it went to, the event, any early exit, and the result (#135).
+  the window it went to, the event, any early exit, and the result. (#135)
 
 ## [1.5.10] - 2026-11-11
 
@@ -863,7 +939,7 @@ Built on Jean 0.1.73.
 ### Added
 
 - **MCP tool `rename_session`.** An agent can rename a session (its own or
-  another one); a renamed session is never auto-named afterwards (#132).
+  another one); a renamed session is never auto-named afterwards. (#132)
 
 ### Fixed
 
@@ -871,21 +947,24 @@ Built on Jean 0.1.73.
   token expires because only the active account runs, so the usage popover
   showed "Claude access token expired". It now shows the account's last
   usage with its age ("as of 9h ago"), or a grey "Not used recently" note
-  when there is none (#134).
+  when there is none. (#134)
+
 - **A half-typed answer to a question is kept.** Text typed and options
   picked in a question form were lost when you switched to another session
   and back. The form now keeps them until you answer or skip (while the app
   runs).
+
 - **An answered question closes on every device.** A question answered in
   web access (or on the desktop) stayed open and clickable on the other
   client while the next turn ran. Every client now takes the answer as soon
-  as it arrives (#133).
+  as it arrives. (#133)
+
 - **A session name given at create time is kept.** Auto-naming renamed
   sessions that were created with a name (MCP `create_session` with `name`, or
   the app) after their first turn, for example "Customer Coordinator" became
   "Customer coordinator charter setup". Now only a session with its placeholder
   name ("Session 3") is auto-named, and a rename while auto-naming runs is
-  kept (#132).
+  kept. (#132)
 
 ## [1.5.9] - 2026-11-10
 
@@ -893,7 +972,7 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **The phone app starts fast and opens without the Mac** (#72). Web Access
+- **The phone app starts fast and opens without the Mac.** Web Access
   on HTTPS (for example `tailscale serve`) now keeps the app on the device
   with a service worker. After iOS ended the Home Screen app in the
   background, the app frame shows at once, also on a slow link, and when the
@@ -901,27 +980,30 @@ Built on Jean 0.1.73.
   error page. Sessions still need the server. After an update, the
   "Splitkick was updated" toast's Reload installs the new version. The API,
   the socket and previews are never cached. Settings → Web Access → This
-  device shows whether the app cache is on and has Reset app cache.
-- **An app skeleton while Splitkick starts** (#72). Web Access shows the
+  device shows whether the app cache is on and has Reset app cache. (#72)
+
+- **An app skeleton while Splitkick starts.** Web Access shows the
   outline of the app (phone: title, session rows, tab bar; desktop browser:
   title bar, sidebar, content) with a spinning notch in the middle, in place
   of the "Loading Splitkick…" text. It paints at once, before the app code
   runs, and stays while the Mac cannot be reached. Views that load inside
-  the app show the same notch. The desktop app starts as before.
-- **Reload log for Web Access** (#72). Settings → Web Access → This device
+  the app show the same notch. The desktop app starts as before. (#72)
+
+- **Reload log for Web Access.** Settings → Web Access → This device
   counts how often the page started again after it ended in the background
   (on an iPhone: iOS ended the app), with the last starts and Copy log. A
   phone now lists Web Access in its Settings, with only this section; the
-  server switches stay on the desktop.
+  server switches stay on the desktop. (#72)
 
 ### Changed
 
-- **Each Web Access device keeps its own view** (#72). A phone or browser
+- **Each Web Access device keeps its own view.** A phone or browser
   reopens its own project, session and phone tab after a reload or after iOS
   ended the app, not the last view of the desktop. It also no longer moves
   the desktop's view: the open project, worktree, phone tab and zen mode in
   the shared UI state stay the desktop's. A phone never opens the
-  full-screen chat route on start.
+  full-screen chat route on start. (#72)
+
 - **The Home Screen app is named Splitkick.** Remove the icon and add it
   again to see the new name.
 
@@ -933,18 +1015,20 @@ Built on Jean 0.1.73.
 
 - **The menu bar figure shows the active Claude account.** It showed the
   highest figure of all accounts, so an account not in use could show 98%.
-  The menu still lists every account (#127).
+  The menu still lists every account. (#127)
+
 - **The usage popover shows model limits such as Fable.** Each account card
   has a row per model limit (for example "Fable 100%"), with its reset time,
   in place of the old Sonnet row. The sidebar badge counts it too, so a full
-  Fable limit shows as 100% (#126).
+  Fable limit shows as 100%. (#126)
+
 - **Make active switches the Claude account for every session.** Old and
   open sessions use the active account on their next send, too; a session
   no longer stays on the account of its first run. Splitkick copies the
   Claude transcript into the active account's folder first, so the
   conversation continues. The model chip shows the account, the limit
   banner names it ("Account A: …"), the sidebar badge and MCP `get_usage` follow
-  the active account (#131).
+  the active account. (#131)
 
 ## [1.5.7] - 2026-11-10
 
@@ -952,19 +1036,20 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **Menu bar icon with your Claude usage** (macOS; on Windows in the tray).
+- **Menu bar icon with your Claude usage.** On Windows it is in the tray.
   It shows the usage of every Claude account (session, weekly and model
   limits, with the time to reset), lets you switch the account (Use
   account), refresh, open the window or quit. Turn it on or off in Settings
-  → General → Show in menu bar (#127).
+  → General → Show in menu bar. (#127)
+
 - **Schedules run after you close the window.** While an enabled schedule
   exists, closing the last window keeps Splitkick running; the menu bar icon
   is the way back. Cmd+Q and Quit in the menu still quit. Settings → General
   → Open at login starts Splitkick when you log in, so a 07:00 schedule also
   runs after a restart. The schedule dialogs now say that runs need
-  Splitkick to be running (#119).
+  Splitkick to be running. (#119)
 
-- **Mark sessions as To-Do** (#125). Use the session menu, the To-Do button in
+- **Mark sessions as To-Do.** Use the session menu, the To-Do button in
   the chat header, the phone menu, or Cmd/Ctrl+Shift+L in the desktop app. A
   To-Do section in the sidebar and on Home lists the marked sessions of every
   project, newest first, with the time of the mark. The check on a row clears
@@ -972,12 +1057,14 @@ Built on Jean 0.1.73.
   agents see it: `list_all_sessions` returns `todoAt`, and the new MCP tool
   `set_session_todo` sets or clears it. A move keeps the mark, a fork does not
   copy it, and an archived session leaves the list until you unarchive it.
+  (#125)
 
 ### Changed
 
 - **Starred and Graphs stay at the top of the sidebar.** Both sections are
   pinned above the list that scrolls, and scroll on their own when they use
   more than 40% of the height. Folders is now the first header that sticks.
+
 - **The graph view formats text as the chat does.** Node descriptions, review
   requests and evidence show as Markdown: images, file links, movie links,
   code blocks and diagrams resolve, with relative paths from the graph's
@@ -989,10 +1076,11 @@ Built on Jean 0.1.73.
 - **Memory problems can now be traced afterwards.** The memory log line adds
   the main process peak, the memory of CLI child processes, and chat messages
   held per page. A warning names the largest processes and is also kept in
-  `memory-warnings.log`. Slow session loads and searches are logged (#128).
+  `memory-warnings.log`. Slow session loads and searches are logged. (#128)
+
 - **Message search uses far less memory.** Search reads run logs line by line
   instead of holding each whole log twice (833 MB → 89 MB for one search over
-  6.6 GB of sessions, 2.2 GB → 489 MB for ten at once) (#128).
+  6.6 GB of sessions, 2.2 GB → 489 MB for ten at once). (#128)
 
 ## [1.5.6] - 2026-11-09
 
@@ -1003,27 +1091,30 @@ Built on Jean 0.1.73.
 - **A clearer usage popover.** Each Claude account is a card, the active one
   has a strong border and a solid Active tag, and the buttons have outlines.
   Each limit shows the time until it resets and the date, for example "Resets
-  in 2h (Mon, Nov 9, 3:44 PM)" (#90).
+  in 2h (Mon, Nov 9, 3:44 PM)". (#90)
+
 - **The usage badge follows the open session.** It shows the backend and
   Claude account of the open session; with no open session, the default
   backend and the active account. It used the highest figure across all
   accounts and backends, so something not in use could turn it red. A backend
   icon shows the source, and "+1" or "+2" tells how many other signed-in
-  backends the popover also shows (#90).
+  backends the popover also shows. (#90)
 
 ### Fixed
 
 - **A schedule into a deleted session pauses.** Archiving a session that
   never sent a message deletes it. A schedule into that session now pauses
   with "The session no longer exists" instead of vanishing (one-off) or
-  failing at every run (repeat) (#115).
+  failing at every run (repeat). (#115)
+
 - **Paused schedules look paused.** The chat banner shows "paused" instead
   of the next run, and a session whose schedules are all paused is no longer
   marked Scheduled. The banner's last run has its full date, as in the
-  Scheduled view (#116).
+  Scheduled view. (#116)
+
 - **A skipped one-off stays visible.** With Missed runs set to Skip, a
   missed _Send later_ stays in the Scheduled view, paused, with the last
-  result "skipped" (#117).
+  result "skipped". (#117)
 
 ## [1.5.5] - 2026-11-08
 
@@ -1039,12 +1130,13 @@ Built on Jean 0.1.73.
   session, _Repeat_ in a new session in the worktree for each run; both can
   be changed. A schedule in Yolo mode asks for a confirm first, because it
   runs with nobody watching. A schedule whose session or worktree is gone
-  pauses and keeps the reason (#38).
+  pauses and keeps the reason. (#38)
+
 - **Scheduled view.** The Scheduled row above Archived in the sidebar opens
   a list of every schedule in every project, yours and the agents': name,
   where it runs, the rule, the next run (in 2h, full date in brackets) and
   the last result (time ago, outcome and a link to the session it ran in).
-  Pause, resume, edit, run now and delete each one there (#38).
+  Pause, resume, edit, run now and delete each one there. (#38)
 
 - **Settings explain how to set up more Claude accounts.** Settings → Claude
   → Accounts lists the steps: add a folder, log in on its row, make it
@@ -1056,16 +1148,18 @@ Built on Jean 0.1.73.
   Claude account, each account row in the usage popover (and in Settings →
   Usage) that is not active has a Make active button. New sessions use the
   active account; open sessions keep theirs. (#90)
+
 - **Agents can schedule prompts.** New Splitkick MCP tools
   `create_schedule` (once at a time, or repeating by a cron pattern, into a
   session or a new session per run), `list_schedules` and `cancel_schedule`.
   An agent's schedule never runs in a higher mode than the agent's own
-  session, and creating or cancelling is rate-limited (#38).
+  session, and creating or cancelling is rate-limited. (#38)
+
 - **Scheduled runs notify also with no window.** A scheduled run that
   finishes, fails or waits for input while Splitkick has no window shows a
   native notification; a click opens the session. With a window, also a
   hidden one, the usual session notification shows. A send that fails is
-  shown as the last result in the Scheduled view (#38).
+  shown as the last result in the Scheduled view. (#38)
 
 ### Fixed
 
@@ -1075,7 +1169,8 @@ Built on Jean 0.1.73.
   (text/html)"), a JSON parse error, a missing platform entry such as
   `darwin-x86_64`, or the network, TLS or proxy error. The Check for Updates
   toast and the host-requested update show it; the background check writes it
-  only to the log (#113).
+  only to the log. (#113)
+
 - **A Claude login failure is an error, not a reply.** "Failed to
   authenticate …" and the other synthetic Claude API errors that end a run
   are no longer stored as the assistant's answer. The run ends in the error
@@ -1084,19 +1179,21 @@ Built on Jean 0.1.73.
   API key"), and Log in opens the login for the session's Claude account. A
   transient error the run recovers from (e.g. "Connection lost
   mid-response") still shows in the reply. Session naming and context
-  summaries show the Claude error instead of the raw CLI output (#112).
+  summaries show the Claude error instead of the raw CLI output. (#112)
+
 - **iOS web access: Send works with the keyboard open, the header is sharp,
   Queue is the main button.** A tap on Send, Queue or Cancel no longer takes
   focus from the prompt, so the keyboard stays open and the composer does not
   jump down under the finger, which made iOS drop the tap. A solid bar under
   the status bar stops iOS 26 from blurring the top of the session header.
   While a turn runs, Queue (or Steer) has the primary style and Cancel is
-  secondary, on desktop too: it is what Enter does (#114).
+  secondary, on desktop too: it is what Enter does. (#114)
+
 - **Scheduling into a session that never sent a message works.** Send later
   and Repeat failed with "Session not found" in a new session, and a Repeat
   into a new session per run could not queue its prompt. The schedule now
-  finds the session in its worktree and creates its data on the first run
-  (#38).
+  finds the session in its worktree and creates its data on the first run.
+  (#38)
 
 ## [1.5.4] - 2026-11-07
 
@@ -1112,15 +1209,16 @@ Built on Jean 0.1.73.
   next to the session tabs, or use "New Session from Agent…" in the worktree
   menu or the canvas row menu, to open it with the first agent chosen. The
   session gets the agent's persona, permission, backend, model and default
-  serves in one step, and shows the agent badge on its tab and canvas row
-  (#109).
+  serves in one step, and shows the agent badge on its tab and canvas row.
+  (#109)
+
 - **Crash files and Help → Show Crash Reports.** A Rust panic now writes
   `crash-YYYYMMDD-HHMMSS-<pid>.log` (message, file:line, thread, version,
   process role, backtrace) to the log folder and to the app log, also from
   background modes such as the MCP stdio server. The last 20 are kept. Help →
   Show Crash Reports opens the newest one; Settings → General → Show Logs
   opens the folder on every platform. Release builds keep symbol names, so
-  macOS crash reports are readable too (#110).
+  macOS crash reports are readable too. (#110)
 
 ### Fixed
 
@@ -1129,14 +1227,17 @@ Built on Jean 0.1.73.
   wry catches that exception, but it cannot do so in a `panic = "abort"`
   build, so the app aborted (1.5.2 and 1.5.3, often after the liveness
   watchdog ended a hung content process). Release builds now unwind, so the
-  exception is caught and a panic in a background task no longer ends the app
-  (#110).
+  exception is caught and a panic in a background task no longer ends the app.
+  (#110)
+
 - **Background MCP processes aborted after their Claude CLI went away.** The
   `--jean-mcp-stdio` child failed to write its reply, and then the failure
   message itself panicked on the closed stderr. These were the "Splitkick
-  quit unexpectedly" reports from 1.4.1 to 1.5.1 (#110).
+  quit unexpectedly" reports from 1.4.1 to 1.5.1. (#110)
+
 - **The app log no longer loses earlier runs.** The log was deleted each time
-  it reached 40 KB. It now rotates at 5 MB and keeps 5 old files (#110).
+  it reached 40 KB. It now rotates at 5 MB and keeps 5 old files. (#110)
+
 - **A pending question now holds the queue.** When a turn ended with
   AskUserQuestion, a queued message could still run, and the question was
   never answered. The app hears of the turn end before the backend records
@@ -1144,7 +1245,7 @@ Built on Jean 0.1.73.
   state, and the queue sent the next message. The backend now keeps queued
   messages while a question waits or a turn is not finalized yet. They run
   after you answer or dismiss the question, or when you choose "Send now". A
-  queued message still skips a plan approval (#111).
+  queued message still skips a plan approval. (#111)
 
 ## [1.5.3] - 2026-11-06
 
@@ -1154,7 +1255,8 @@ Built on Jean 0.1.73.
 
 - **Rename in the worktree right-click menu.** Rename was only on
   double-click and in the command palette. The menu item opens the same
-  inline name field, also for the base worktree (#106).
+  inline name field, also for the base worktree. (#106)
+
 - **Artifacts: the files and links a session produced, in the left panel.**
   Agents register their outputs (a report, a screenshot, an HTML page, a
   preview URL) with the new `add_artifact` MCP tool. The left panel gets a
@@ -1164,14 +1266,15 @@ Built on Jean 0.1.73.
   browser. The external button opens it outside Splitkick; remove one or clear
   all. Registering the same target again updates it. The list stays with the
   session through fork, move and transfer, and shows in Web Access and on the
-  phone (#107).
+  phone. (#107)
+
 - **Artifact versions: history and diff.** When an agent registers an artifact
   again after changing it, Splitkick keeps a copy of the file as a new version
   (with an optional note on what changed). The Artifacts tab shows the version
   count; open the history to open any older version or compare two: a line
   diff for text, HTML, SVG and Markdown, two images side by side, the sizes for
   other files. Unchanged content adds no version. The copies stay with the
-  session through fork, move and transfer (#108).
+  session through fork, move and transfer. (#108)
 
 ## [1.5.2] - 2026-11-06
 
@@ -1179,7 +1282,7 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **Browser for agents: Playwright, also in your own Chrome** (#104).
+- **Browser for agents: Playwright, also in your own Chrome.**
   Settings → MCP Servers → Browser for agents chooses the browser your agents
   drive: Off, Agent Browser, Playwright (its own browser) or Playwright with
   your Chrome (the Playwright extension, with a clear warning that agents then
@@ -1189,20 +1292,23 @@ Built on Jean 0.1.73.
   Take over replaces yours (a backup is kept). The extension's connection token
   lives in the macOS Keychain and reaches Playwright MCP only through its
   environment, never through a config file or a command line. Test connection
-  checks the setup. Web Access shows the setting read-only.
-- **Check for Updates… in the sidebar's more menu** (#100). Windows and Linux
+  checks the setup. Web Access shows the setting read-only. (#104)
+
+- **Check for Updates… in the sidebar's more menu.** Windows and Linux
   have no menu bar, so the sidebar footer's more menu (…) now has the same
   update check as the macOS menu bar item, in the desktop app on every OS.
-  It is hidden in Web Access and on a phone.
-- **Each project shows its graphs in the sidebar** (#99). Under the project,
+  It is hidden in Web Access and on a phone. (#100)
+
+- **Each project shows its graphs in the sidebar.** Under the project,
   beside Pinned and Starred, a collapsible **Graphs** row lists the graphs
   stored in the project, then the graphs from another project or the
   instance that one of its sessions serves ("from …"). Rows show the open
   requests and unseen changes, open the graph on click and stay highlighted
   while it is open. The row is hidden when the project has no such graphs,
   and its open state is kept per project. The project view (also on a phone)
-  lists the same graphs under Pinned.
-- **The window comes back after macOS suspends Splitkick** (#97). When WebKit's
+  lists the same graphs under Pinned. (#99)
+
+- **The window comes back after macOS suspends Splitkick.** When WebKit's
   content process dies (memory pressure), Splitkick reloads the window itself
   instead of relying on Tauri's default, which could give up silently. After a
   wake, a resume from suspend, on window focus and once a minute, Splitkick
@@ -1210,18 +1316,19 @@ Built on Jean 0.1.73.
   (on macOS by ending the hung content process). A window that answers is never
   reloaded. You land on the same project, worktree and session, a toast says
   "Splitkick recovered from a display crash" with Copy details, and running
-  sessions, terminals and run environments keep running.
-- **Memory log and Help → Copy Memory Report** (#97). Every 5 minutes (first
+  sessions, terminals and run environments keep running. (#97)
+
+- **Memory log and Help → Copy Memory Report.** Every 5 minutes (first
   one a minute after start) the log gets one line with the memory of the main
   process and of each WebKit content process, the child process count, and
   the sizes of in-memory structures that could leak (cached sessions, run-log
   tailers, CLI runs, terminals, event listeners, WebSocket clients and replay
   buffers, each page's query cache and DOM size). Above 4 GB the line is a
-  warning. Help → Copy Memory Report copies the same numbers.
+  warning. Help → Copy Memory Report copies the same numbers. (#97)
 
 ### Changed
 
-- **Files, session network and graph share one side panel** (#98). The file
+- **Files, session network and graph share one side panel.** The file
   tree area left of the chat now has tabs: **Files**, **Network** and
   **Graph**. Network shows which session started which, for the session on
   screen, and updates live; click a row to open that session. Graph shows
@@ -1233,23 +1340,27 @@ Built on Jean 0.1.73.
   tab. Tabs without a session stay visible but disabled, with the reason.
   The phone drawer has the same tabs, so the graph card now works on a
   phone. The session network dialog and the graph panel on the right are
-  gone.
+  gone. (#98)
 
 ### Fixed
 
-- **MCP tokens no longer show in `ps`** (#102). Claude runs get their MCP
+- **MCP tokens no longer show in `ps`.** Claude runs get their MCP
   config (with the Splitkick MCP token and the env of your MCP servers) as a
   private file that is deleted when the run ends, not as inline JSON on the
   command line. Detached runs pass env values through the environment instead
   of the launcher's shell command, and the Grok MCP servers file is owner-only.
-- **A session's graph permission change now sticks** (#101). Marking a session
+  (#102)
+
+- **A session's graph permission change now sticks.** Marking a session
   opened (which the UI does often), a cancel, run recovery on page load and a
   session resume each wrote back a copy of the session metadata read a moment
   before, so a permission change in that moment was lost. These writes now
-  change the file under its lock and keep all other fields.
-- **A page load no longer marks a starting run as crashed** (#97). A reload or
+  change the file under its lock and keep all other fields. (#101)
+
+- **A page load no longer marks a starting run as crashed.** A reload or
   another Web Access client opened in the first moments of a run, before its
   CLI was registered, turned the run "crashed" although it went on running.
+  (#97)
 
 ## [1.5.1] - 2026-11-06
 
@@ -1257,7 +1368,7 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **Several Claude accounts, proof of concept** (#90). Settings → Claude →
+- **Several Claude accounts, proof of concept.** Settings → Claude →
   Accounts lists the root install (`~/.claude`, which can now get a label such
   as "Personal") and more accounts, each with its own Claude config folder
   (e.g. `~/.claude-work`). One account is active: every new Claude run, magic
@@ -1268,8 +1379,9 @@ Built on Jean 0.1.73.
   sessions stay on the root install. Usage shows the limits of every account
   with its label and email, and the MCP `get_usage` tool returns them as
   `claude_accounts`. MCP servers, plugins and skills are separate per folder.
-  No per-session or per-project choice yet.
-- **Sessions read and change their graph links; managers link others** (#88).
+  No per-session or per-project choice yet. (#90)
+
+- **Sessions read and change their graph links; managers link others.**
   "Link to Graph…" in the session context menu (sidebar, canvas tabs,
   Starred/Pinned rows; long press on mobile) and in the command palette opens
   a picker for every session: it shows the current links and adds or removes a
@@ -1281,8 +1393,9 @@ Built on Jean 0.1.73.
   a no-op) and returns the resulting list. With another session's `sessionId`
   it needs graph permission `manage` and a `reason`; the change goes into the
   graph's change log ("Changes since you last looked"), where it can be
-  reverted.
-- **Session network: see which session started which** (#77). A dialog shows
+  reverted. (#88)
+
+- **Session network: see which session started which.** A dialog shows
   the tree around a session: its root and every session started from there,
   across worktrees and projects. Each row shows the name, project › worktree,
   backend and live status; archived sessions show greyed out. Click a row to
@@ -1290,34 +1403,40 @@ Built on Jean 0.1.73.
   "Started session" inserts, or from "Show Session Network" in the session
   context menu. A small network icon marks linked sessions in the sidebar, the
   canvas tabs and the Starred/Pinned rows. Sessions on other devices are not
-  shown; a root whose parent is not here says so.
-- **Open the session graph panel from anywhere** (#84). The "Graph" button now
+  shown; a root whose parent is not here says so. (#77)
+
+- **Open the session graph panel from anywhere.** The "Graph" button now
   also shows in the full chat view, the command palette has "Toggle Graph
   Panel", and `Mod+Shift+G` toggles it (configurable in Settings →
   Keybindings). For a session that does not serve a graph node yet, the command
   explains how to link it instead of opening an empty panel. The panel stays
-  desktop-only.
-- **Project preset: Coding or Non-coding** (#95). Project Settings → General
+  desktop-only. (#84)
+
+- **Project preset: Coding or Non-coding.** Project Settings → General
   has a new "Project Preset" select. Non-coding projects get the global
   system prompt without the GitHub issue search rule. Automatic is the
-  default: git projects are Coding, plain projects are Non-coding.
+  default: git projects are Coding, plain projects are Non-coding. (#95)
+
 - **Mention in chat for images.** Right-click an image in the chat thread and
   pick "Mention in chat" to attach it to the composer of the same session,
   like a pasted image.
-- **Agents can use your other Splitkick instances** (#94). Two new MCP tools:
+
+- **Agents can use your other Splitkick instances.** Two new MCP tools:
   `list_instances` shows the connected instances (reachable, version) and
   `remote_tool` runs one MCP tool on one of them, for example "send a message
   to project X on my other Mac". Each instance answers a token-protected
   `POST /api/mcp/call`. One hop only; graph writes are refused across
   instances. Remote connections now live in the backend, their tokens in the
   macOS Keychain; the old browser-storage list moves there once at the first
-  start.
-- **Plain projects without git** (#93). Adding a folder without git now
+  start. (#94)
+
+- **Plain projects without git.** Adding a folder without git now
   offers "Add without git": a plain project with only its base session, for
   documents, notes and shared folders. Worktrees, git status, diffs, commits,
   pull requests and GitHub/Linear features are hidden for it; MCP git tools
   return a clear error and `list_projects` shows the kind. When the folder
-  gets a `.git` later, Splitkick offers to switch it to a git project.
+  gets a `.git` later, Splitkick offers to switch it to a git project. (#93)
+
 - **Failed sessions are marked.** When a run fails, the session gets a red
   alert icon in the sidebar and the chat shows what went wrong, with a way
   to go on: **Resume** and **Resume with message** after an API error
@@ -1325,6 +1444,7 @@ Built on Jean 0.1.73.
   when the message was not sent, and **Log in** when the login expired.
   Before, an API error looked like a normal finished run. The icon and the
   banner go away when the next run starts.
+
 - **Windows installer: choose "only for me" or "all users".** The installer
   now asks where to install: `%LOCALAPPDATA%\Splitkick` (the default) or
   `C:\Program Files\Splitkick`. Updates keep the location of the existing
@@ -1334,14 +1454,15 @@ Built on Jean 0.1.73.
 
 ### Changed
 
-- **MCP `create_session` reuses the worktree's empty "Session 1"** (#83). A
+- **MCP `create_session` reuses the worktree's empty "Session 1".** A
   worktree created over MCP no longer ends up with an unused "Session 1" next
   to the agent's session. When the default session is the only non-archived
   session, was never sent or started, has nothing pending and was not claimed
   by an earlier `create_session`, the call takes it over (name, backend, model,
   agent, `serves`, started-by) and returns its id. Otherwise it adds a new
-  session as before. Worktrees created in the UI keep their "Session 1".
-- **Graph detail panels show a simple view first** (#88). The node panel and
+  session as before. Worktrees created in the UI keep their "Session 1". (#83)
+
+- **Graph detail panels show a simple view first.** The node panel and
   the session graph panel open with only what you need: title, state, what
   the node waits for (with links), open requests, description and sessions;
   the session panel shows one card with the node and what comes next, or the
@@ -1350,8 +1471,9 @@ Built on Jean 0.1.73.
   session panel) and "Show details" (id, properties, attachments, history,
   permission, links); both choices are remembered. States show as Idea, Planned, Done and Dropped; the
   file and the MCP tools keep proposed, committed, done and dropped. "Change
-  link…" in the session panel opens "Link to Graph…".
-- **Archived page: last archived first** (#96). Sessions and worktrees show
+  link…" in the session panel opens "Link to Graph…". (#88)
+
+- **Archived page: last archived first.** Sessions and worktrees show
   in one list, newest first, in sections Today, Yesterday, This week, This
   month and Older. Sort by name or project instead (remembered). Each row
   shows project › worktree, backend, message count, the last prompt, why it
@@ -1359,14 +1481,16 @@ Built on Jean 0.1.73.
   time as "2h ago (full date)". Filter by sessions/worktrees, project and
   backend; the search also finds message text. Select several rows to
   restore, copy links or delete them at once. "Restore & open" per row; on
-  the desktop app the arrows, Space, Enter and Delete work too.
+  the desktop app the arrows, Space, Enter and Delete work too. (#96)
+
 - **Custom magic prompts are marked.** Settings → Magic Prompts shows a
   "Custom" badge on each prompt that differs from its default. This also
   marks a saved copy of an older default, which no longer gets updates.
-- **Safer "Initialize Git"** (#93). It writes a `.gitignore` (OS junk, temp
+
+- **Safer "Initialize Git".** It writes a `.gitignore` (OS junk, temp
   files, an optional section for large binaries), shows how many files the
   first commit adds, can make an empty first commit instead, and warns when
-  the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive.
+  the folder is in iCloud Drive, Dropbox, OneDrive or Google Drive. (#93)
 
 ### Fixed
 
@@ -1374,12 +1498,16 @@ Built on Jean 0.1.73.
   global prompt no longer asks the agent to report empty searches or
   disabled issues, and no longer points to a `## Recap` when automatic
   recaps are off.
+
 - **Closing the in-app browser pauses its video and audio.** The page stays
   loaded in the background, so before this a video kept playing unseen.
-- **The open session is highlighted in Starred and Pinned too** (#92). Its
+
+- **The open session is highlighted in Starred and Pinned too.** Its
   rows there now get the same selection style as its row in the project tree.
+  (#92)
+
 - **Actions that open on the host are disabled in remote windows and Web
-  Access** (#89). A phone or a remote window could click "Reveal in Finder",
+  Access.** A phone or a remote window could click "Reveal in Finder",
   "Open in Terminal" and similar items, and a window opened on the host Mac,
   where nobody looked. These items now show disabled with "Host only" unless
   the user sits at the host (local app, or Web Access on `localhost`). Native
@@ -1389,11 +1517,12 @@ Built on Jean 0.1.73.
   Show Logs. File paths in the embedded terminal are no longer links in Web
   Access; Settings → Show Logs in a remote window opens this app's logs; in
   the Open In modal, Enter no longer runs an option that is not available.
-  The full table is in `docs/developer/remote-capabilities.md`.
-- **Project icons in `docs/public/`** (#91). The project icon detection now also
+  The full table is in `docs/developer/remote-capabilities.md`. (#89)
+
+- **Project icons in `docs/public/`.** The project icon detection now also
   finds `favicon.svg`, `favicon.ico`, `favicon.png` and
   `apple-touch-icon.png` in `docs/public/`, where VitePress sites keep them.
-  It checks the project root first, then `public/`, then `docs/public/`.
+  It checks the project root first, then `public/`, then `docs/public/`. (#91)
 
 ## [1.5.0] - 2026-11-04
 
@@ -1401,35 +1530,38 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **Splitkick for Windows** (#71). Every release now carries a Windows
+- **Splitkick for Windows.** Every release now carries a Windows
   installer, `Splitkick-x64-setup.exe` (x64, Windows 10 or 11; also runs on
   Windows on ARM). It installs for the current user without admin rights and
   updates itself through the in-app update check, like the macOS app. The
   installer is not code-signed yet, so SmartScreen warns on the first start:
   choose "More info", then "Run anyway". One publish job now creates the
   release for both platforms and writes one update feed (`latest.json`) for
-  both; a failed Windows build no longer holds back the macOS release.
+  both; a failed Windows build no longer holds back the macOS release. (#71)
 
-- **Windows test builds in the local Parallels VM** (#71).
+- **Windows test builds in the local Parallels VM.**
   `scripts/windows-vm/run.sh` shares the checkout into the "Windows 11" VM,
   installs the build tools once (`setup`, winget), and runs the preflight
   checks (`gate`), an x64 or ARM64 NSIS build (`build`), a start-up check
   (`smoke`) and screenshots (`shot`) from the Mac. First result: the x64 build
-  installs per user and starts on Windows 11.
-- **Windows in the CI checks** (#71). Every push now also runs the preflight
-  checks and builds the Windows installer on `windows-latest`.
-- **OpenCode on Windows ARM64** (#71). Splitkick installs the
+  installs per user and starts on Windows 11. (#71)
+
+- **Windows in the CI checks.** Every push now also runs the preflight
+  checks and builds the Windows installer on `windows-latest`. (#71)
+
+- **OpenCode on Windows ARM64.** Splitkick installs the
   `opencode-windows-arm64.zip` release on Windows on ARM instead of failing
-  with "Unsupported platform".
+  with "Unsupported platform". (#71)
 
 ### Fixed
 
-- **The Windows build compiles again** (#71). The Tauri 2.12 update moved
+- **The Windows build compiles again.** The Tauri 2.12 update moved
   WebView2 to `webview2-com` 0.39 while the app still asked for 0.38, so the
   WebView2 crash recovery did not compile. macOS-only helpers no longer fail
   `clippy -D warnings` on Windows, and `check:branding` accepts Windows path
-  separators.
-- **npm-based CLIs install on Windows again** (#71). Command Code, Grok, PI,
+  separators. (#71)
+
+- **npm-based CLIs install on Windows again.** Command Code, Grok, PI,
   Kimi and agent-browser called plain `npm`, which Windows never finds
   (`npm.cmd`), so every install or update failed with "requires Node.js and
   npm" although Node was installed. Ports the upstream fixes that the 1.0.1
@@ -1438,10 +1570,11 @@ Built on Jean 0.1.73.
   (coollabsio/jean#680). Command Code is no longer mistaken for the Windows
   command interpreter: its binary is called `cmd`, and the PATH lookup found
   `C:\Windows\System32\cmd.exe`, so Splitkick tried to update a Command Code
-  that was not installed and showed the `cmd.exe` banner as its version.
-- **Windows paths in graphs** (#71). A graph created inside a project gets a
+  that was not installed and showed the `cmd.exe` banner as its version. (#71)
+
+- **Windows paths in graphs.** A graph created inside a project gets a
   path with Windows separators instead of a `\` and `/` mix, and "Nothing to
-  commit" shows the repo path with `/`, as git does.
+  commit" shows the repo path with `/`, as git does. (#71)
 
 ## [1.4.1] - 2026-11-03
 
@@ -1463,23 +1596,26 @@ Built on Jean 0.1.73.
 
 ### Added
 
-- **Graphs: a roadmap above your sessions** (#78, #79). A graph is a YAML file
+- **Graphs: a roadmap above your sessions.** A graph is a YAML file
   that you put inside a project's repo, in another repo, or in a folder outside
   any repo. The new **Graphs** section in the sidebar lists them. A graph has an
   outline grouped by `part-of`, a dependencies view, a node detail panel, and a
   review tab with the changes since you last looked (revert per change) and the
   requests agents send you (accept "done", send back, answer a decision).
   Sessions point up to the nodes they serve; active, blocked and progress are
-  computed, never stored. "Commit graph" commits only the graph file.
+  computed, never stored. "Commit graph" commits only the graph file. (#78, #79)
+
 - **Agents.** Settings → Agents holds profiles: persona prompt, graph permission
   (read, write, manage) and a default model. Start a session from an agent; its
   persona and the nodes it serves go into the system prompt of every backend.
   A renamed session shows its agent as a badge.
-- **Graph MCP tools:** `list_graphs`, `read_graph`, `create_node`, `update_node`,
+
+- **Graph MCP tools.** `list_graphs`, `read_graph`, `create_node`, `update_node`,
   `set_node_state`, `send_request`, `set_serves`; `create_session` takes
   `serves` and `agentId`. Every change needs a why and is logged per machine.
-- **Graph panel in a session** that serves a node or a graph: its node, what
-  comes before and after, siblings, permission and `serves`.
+
+- **Graph panel in a session that serves a node or a graph.** It shows its
+  node, what comes before and after, siblings, permission and `serves`.
 
 ## [1.3.0] - 2026-11-03
 
@@ -1493,6 +1629,7 @@ Built on Jean 0.1.73.
   diagram can show its source, open full screen with zoom and pan, and copy
   its source, SVG or PNG. Invalid code shows the source with the error.
   Mermaid loads only when a diagram is shown. (#74)
+
 - **Data charts in chat.** A ` ```vega-lite ` code block (a Vega-Lite
   JSON spec with inline data) shows as a chart: bar, line, area, scatter and
   the other Vega-Lite marks. The chart follows the light or dark theme. Its
@@ -1500,6 +1637,7 @@ Built on Jean 0.1.73.
   SVG or a PNG. An invalid spec shows the source and the error. Charts never
   load data from the network, and the chart code loads only when a chart
   appears. (#75)
+
 - **Preview HTML and SVG artifacts.** `.html` and `.svg` files that agents
   write open rendered in the file viewer (from tool calls, the file browser,
   file links and attached file pills), with **Source**, **Reload** and
@@ -1522,14 +1660,17 @@ Built on Jean 0.1.73.
   instance that used the same data folder deleted the running app's socket on
   start; it now leaves a socket alone while another instance answers on it.
   A socket restart inside the app no longer deletes the new socket either.
+
 - **Dev and test builds no longer check for updates.** Only the released app
   (`app.splitkick.desktop`) looks for, downloads and installs updates. Before,
   a dev or test build offered the latest release and could install it over
   itself; a build from upstream's base config even asked upstream's feed.
+
 - **A build with its own identifier gets its own data folder.** Only the
   development build had one; a test build such as `app.splitkick.desktop.rel76`
   opened the installed app's data folder, its sessions and its MCP socket. Now
   every `app.splitkick.desktop…` identifier uses the folder of the same name.
+
 - **A chat no longer freezes on a text block while the window is hidden.**
   When the Splitkick window was behind another window (for example Chrome
   during Playwright runs), a text block was put after the tool calls that
@@ -1588,6 +1729,7 @@ Built on Jean 0.1.73.
   starts two sealed Splitkick servers on this Mac (own home folder, data,
   ports) and checks session transfer, remote connections, session links,
   follow-ups, MCP sends and parent/child sessions in the real UI. (#65)
+
 - **You can move a session to another project or worktree.** Use "Move to…" in
   the session menu (sidebar, tabs, canvas) or "Move Session to…" in ⌘K. The
   session keeps its history. Claude continues its conversation; other backends
@@ -1598,6 +1740,7 @@ Built on Jean 0.1.73.
 
 - **Session transfer works in Web Access.** The target must allow the page's
   address (`JEAN_ALLOWED_ORIGINS`); the error says so. (#65)
+
 - **The follow-up list opens beside the chat when there is room.** Its button
   moved to the far right of the bar under the input (also in zen mode). In a
   wide window the list opens in the free space to the right of the chat; when
@@ -1623,7 +1766,8 @@ Built on Jean 0.1.73.
   other editors. (#43)
 
 - **Settings show only the editors, terminals and git clients you have
-  installed** (macOS). The app you chose stays in the list. (#43)
+  installed (macOS).** The app you chose stays in the list. (#43)
+
 - **See and cancel scheduled prompts in the chat.** A banner above the
   messages shows each pending scheduled prompt of the session, when it runs
   (for example "in 2h", with date and time), and an X to cancel it. All
@@ -1631,6 +1775,7 @@ Built on Jean 0.1.73.
   have more than one. Claude's own wakeup keeps its rule: one per session,
   the newest replaces the older. Wakeups saved by an earlier version move to
   the new list at the next start. (#38)
+
 - **Repeating schedules.** A schedule can repeat: every hour, daily at a
   time, on weekdays, weekly, or by a cron pattern. The time is read in the
   schedule's own time zone, so "daily at 09:00" stays at 09:00 when the
@@ -1639,6 +1784,7 @@ Built on Jean 0.1.73.
   decides what happens to a schedule that came due while Splitkick or the
   computer was off: run it once at the next start (the default), or skip it.
   A repeating schedule never runs once per missed time. (#38)
+
 - **Full Disk Access as an opt-in setting on macOS.** Settings → General has
   a "Full Disk Access (macOS)" section with the status for this session, an
   Open System Settings button and Relaunch now (macOS applies the grant only
@@ -1649,6 +1795,7 @@ Built on Jean 0.1.73.
   and Safari history, and a prompt injection could read private data. Not
   granting it is the recommended default; Splitkick works fine without it.
   Onboarding does not ask for it. (#31)
+
 - **Transfer a session to another machine.** Right-click a session, or use
   the command palette, and choose **Transfer to Remote Splitkick…**: pick a
   saved connection, a project and a worktree there, and the session is copied
@@ -1657,6 +1804,7 @@ Built on Jean 0.1.73.
   session here does not change. Push and pull the branch yourself; issue and
   PR context and checkpoints do not go along. Both instances need this
   version. (#35)
+
 - **Chat links to sessions, worktrees and projects.** A link such as
   `[Fix redirects](splitkick://session/<id>)` in a chat shows the target's
   name and opens it on click: a session in the session modal, a worktree or a
@@ -1664,6 +1812,7 @@ Built on Jean 0.1.73.
   "archived" or "not found". Agents get the link from `list_all_sessions`,
   `search_sessions` and `get_current_context`, and **Copy Link** in the
   session, worktree and project menus copies one. (#44)
+
 - **Follow-up list: notes for later turns, next to the send button.** While
   the agent works, write down what to ask next. The list button sits in front
   of Send and shows how many notes are open; the list opens above the composer
@@ -1674,6 +1823,7 @@ Built on Jean 0.1.73.
   message (the selected text or the whole message), or let the agent add them
   through the `add_follow_up` MCP tool. Each session keeps its own list; it
   stays after a restart and shows in web access. (#46)
+
 - **Sessions show which session started them.** When an agent starts a session
   through the Splitkick MCP, its chat shows "Started session ‘…’ View →" where
   it did so, and a later message into another session shows "Sent to session
@@ -1698,6 +1848,7 @@ Built on Jean 0.1.73.
   requested." in place of its question, so a draft shown in an option preview
   was lost. Splitkick now waits until the turn is on disk before it stops the
   CLI. (#57)
+
 - **Sessions no longer stay on "loading" in the iPhone Home Screen app.**
   When the phone came back from the background, the app's connection check
   could go into a dead connection and wait forever, so the app never
@@ -1729,24 +1880,27 @@ Built on Jean 0.1.73.
   worktree has uncommitted changes. When the worktree has moved past the merged
   PR, the link follows the current branch instead of archiving. A merged PR
   archives a worktree only once, also after an unarchive and a restart. (#50)
+
 - **The Projects tree follows navigation from the Recent tab.** A session you
   open from Recent is now expanded and scrolled into view in the Projects tree,
   so it shows as soon as you switch to Projects; Recent stays the active tab.
   A project or session picked in ⌘K while Recent shows now switches the
   sidebar to Projects and reveals it there. A project revealed above the view
   now lands below the stuck section headers, not under them. (#60)
+
 - **A session started by chat keeps the mode it runs in.** A message sent
   through the Splitkick MCP tool with an execution mode (for example yolo) ran
   in that mode, but the toolbar still showed plan, and the next answer or
   approval from the app ran in plan. The mode now becomes the session's mode,
   and open windows switch the toolbar to it. The model given with such a
   message still applies to that one turn only. (#61)
+
 - **A scheduled wakeup runs with no window open.** When Claude's
   `ScheduleWakeup` came due, the backend only told the window to send the
   prompt; with no window open, or on a headless host with no client, the
   prompt was lost. The backend now puts the prompt in the session's queue and
   sends it. It uses the session's saved model and mode, not Sonnet and yolo
-  as before when the window had not loaded the session (#38).
+  as before when the window had not loaded the session. (#38)
 
 ## [1.0.15] - 2026-10-27
 
@@ -1776,25 +1930,18 @@ Built on Jean 0.1.73.
   message box. The icon and the banner go away when the next run starts.
   This also works for a run that stopped while Splitkick was closed.
 
-### Fixed
-
-- **A fork's GitHub lists show the fork, not the original.** In a project
-  with an `upstream` remote, the issues, pull requests, CI runs and PR status
-  came from the upstream repository, and a worktree for issue #N loaded the
-  upstream issue #N. Splitkick now asks GitHub for the repository of the
-  `origin` remote. A default repository chosen with `gh repo set-default` is
-  still used as before. (#56)
-
 ### Changed
 
 - **The connection rows react to the mouse.** In the server connections
   dialog a row now lights up on hover, darkens while you click it, and shows
   a focus ring for the keyboard. The connection this window drives has a
   light background. Before, the rows gave no feedback at all. (#53)
+
 - **Notifications name the session.** A banner now reads, for example,
   “Session “Fix the relaunch helper” finished”, with the project and worktree
   below, instead of a generic “Session finished”. Long names are shortened.
   The same goes for failed sessions and sessions that need your input. (#54)
+
 - **A new sidebar layout.** The Projects | Recent switch is now at the top.
   The Projects tab shows Home and Starred (both stay in place), then Folders
   and Projects, then Archived. Folders and Projects work like Starred: click
@@ -1807,6 +1954,15 @@ Built on Jean 0.1.73.
   for its workspaces. A folder inside a folder is now indented one step, not
   two. Archived opens the archived items in the main area,
   like Home. The "+ New" and "Archived" buttons at the bottom are gone. (#55)
+
+### Fixed
+
+- **A fork's GitHub lists show the fork, not the original.** In a project
+  with an `upstream` remote, the issues, pull requests, CI runs and PR status
+  came from the upstream repository, and a worktree for issue #N loaded the
+  upstream issue #N. Splitkick now asks GitHub for the repository of the
+  `origin` remote. A default repository chosen with `gh repo set-default` is
+  still used as before. (#56)
 
 ## [1.0.13] - 2026-10-23
 
@@ -1833,7 +1989,7 @@ Built on Jean 0.1.73.
   answered its ping; it now reads the client's answer first. After a real
   drop, the window now reloads by itself as soon as the server answers
   again, and the error screen shows only when the server stays away for
-  about 20 seconds. ([#52](https://github.com/azeitler/splitkick/issues/52))
+  about 20 seconds. (#52)
 
 ## [1.0.11] - 2026-10-22
 
@@ -1860,7 +2016,7 @@ Built on Jean 0.1.73.
   commands do not wait for them. When the session list cannot load, the
   Recent tab says so and offers Retry. A view no longer waits forever for a
   lost answer, and a stalled background `git fetch` stops after 30 seconds.
-  ([#51](https://github.com/azeitler/splitkick/issues/51))
+  (#51)
 
 ## [1.0.9] - 2026-10-21
 
@@ -1886,6 +2042,7 @@ Built on Jean 0.1.73.
   the folder before it sends and says what to do: restart Splitkick (needed
   after an update) or allow it in Privacy & Security. The prompt goes back
   into the input.
+
 - **Updates no longer cut off iCloud folders.** Splitkick installed an
   update as soon as it was downloaded, while the old version kept running.
   macOS then denied the running app its folders in iCloud Drive until you
@@ -1915,11 +2072,13 @@ Built on Jean 0.1.73.
   error flashed and vanished, and the prompt went back to the input with no
   reason. The error now stays above the input until you dismiss it or send
   again, also after a restart.
+
 - **A newer default Claude model sticks.** Settings only knew Claude models
   up to Opus 5, and on every start a model it did not list went back to
   Opus 4.8. Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 5.5 are in the model
   lists now, and a saved Claude model id is kept even when it is newer than
   the list.
+
 - **The phone no longer opens the file browser on its own.** The phone and
   the desktop host share one saved layout, so a file panel open on the host
   opened the file drawer on every phone load, and closing the drawer on the
@@ -1962,6 +2121,7 @@ Built on Jean 0.1.73.
 
 - **Phone: a worktree lists its sessions.** A chevron on each worktree row in
   a project opens its sessions under the row; tap one to open it.
+
 - **Phone: pin and star a session.** The gear menu in the composer has Pin
   to Project and Star for the open session. Before, both needed a long-press
   that the scrolling tab strip usually swallowed.
@@ -1973,21 +2133,27 @@ Built on Jean 0.1.73.
   in yolo mode there is no panel to approve or dismiss it, and it outranked
   Review, Paused and Idle from the status menu. A new message now clears the
   previous turn's denials. (#49)
+
 - **Uncaught errors reach the app log.** They went to the console only,
   which a release build cannot open, so a crash such as the file viewer's
   edit-mode error left no trace to report. (#42)
+
 - **Files open in view mode.** The file viewer opened every file in the
   editor, which threw an error as soon as you selected text. Click Edit to
   change a file. (#42)
+
 - **Images in the file viewer zoom and pan.** They use the same viewer as
   images in a chat: pinch, scroll or double-click to zoom. This also works
   in a remote window. (#42)
+
 - **Phone: the chat keeps its header when the keyboard opens.** Safari's
   page pan no longer pushes the session header off screen, and there is no
   empty band under the composer, with the keyboard open or after it closes.
+
 - **Session rows on Home, Starred and History show status and labels.** The
   status dot had no size, so it never showed. Labels were missing in web
   access, because only the native app loaded them into the store.
+
 - **Phone: projects sit under their folders, in sidebar order.** Home →
   Projects listed every loose project first and the folders below them,
   ignoring the order you set. Folders now come first, each with a clear
@@ -2002,8 +2168,10 @@ Built on Jean 0.1.73.
 - **Filled buttons are white in the dark theme, not orange.** Orange read as
   an error on Send, Cancel, Update and count badges. Orange stays for focus,
   selection and running states; the title bar update badges turn neutral too.
+
 - **Usage meters go green, amber, red.** Green below 50%, amber from 50%, red
   from 75% — in the title bar ring, the Usage settings and the mobile tab.
+
 - **The sidebar pull badge (↓N) is white.** It was orange, the same as errors.
 
 ### Fixed
@@ -2011,10 +2179,12 @@ Built on Jean 0.1.73.
 - **Sessions sit one step in from their status group in the sidebar.** The
   group labels (Waiting, Review, Idle, …) were indented as far as their
   sessions, so a group read as one more session row. (#39)
+
 - **Paused, Review and Idle apply to a session stuck in Waiting again.** A
   leftover waiting flag with no question or plan behind it counted as an open
   question, and an open question outranks those statuses, so picking them did
   nothing. A real pending question or plan still keeps its priority. (#40)
+
 - **The file viewer shows and logs its own errors.** When the editor fails to
   draw a file, the viewer shows the error with a Reload button and keeps your
   unsaved changes, instead of replacing the code with a raw error box. The
@@ -2038,6 +2208,7 @@ Built on Jean 0.1.73.
 - **Splitkick orange instead of Jean's yellow.** The dark theme's accent
   (Send, focus rings, selection) and the "running" indicators in both themes
   use Splitkick orange. Yellow stays for things that wait for you.
+
 - **Rounded buttons in the chat input.** Send, Cancel and the controls next to
   them (model, effort, mode, attachments) have rounded corners.
 
@@ -2046,6 +2217,7 @@ Built on Jean 0.1.73.
 - **The DMG download is notarized, not only the app inside it.** macOS
   rejected the downloaded 1.0.0 DMG as not notarized, although the app in it
   was.
+
 - **A remote window shows which instance it drives again.** Since the Mac-style
   toolbar, the remote name sat only in the window title, and every view that
   fills the toolbar title hid it, so a remote window looked like the local one.
@@ -2068,6 +2240,7 @@ Built on Jean 0.1.73.
   separate app with its own name, icon, bundle identifier and data folder, so
   it installs and runs next to Jean. Signed and notarized for Apple Silicon,
   with in-app updates from this repository.
+
 - **Import from JeanZ or Jean.** On first start Splitkick imports a copy of
   your projects, sessions, chat history, settings, window layout, remote hosts
   and browser logins. JeanZ's copy wins where both exist; the source is only
@@ -2096,7 +2269,7 @@ Built on Jean 0.1.73.
 
 ### Fixed
 
-- **The Splitkick download is notarized by Apple**, so macOS opens it without
+- **The Splitkick download is notarized by Apple.** macOS opens it without
   a Gatekeeper warning. 1.0.0-rc.1 was signed but not notarized.
 
 ## [1.0.0-rc.1] - 2026-10-15
@@ -2133,23 +2306,29 @@ Built on Jean 0.1.73.
   project or session name, its badges and its actions, plus a search field.
   Settings, connections, usage, updates and the unread bell moved to the
   bottom of the sidebar; GitHub, Sponsor and the version are in its ⋯ menu.
+
 - **macOS grays in the dark theme.** The content area is now #1e1e1e and the
   sidebar a lighter #2b2b2d, as in macOS apps, instead of one near-black for
   everything. Yellow stays the accent. The light theme gets the same split: a
   light gray sidebar (#f5f5f7) next to white content.
+
 - **Mac-style sidebar rows.** The selected project, worktree and session get a
   rounded highlight, and every level indents by the same width. With only one
   worktree in a project, the project and the session are highlighted, not the
   worktree.
+
 - **Mac-style session tabs.** Session tabs are rounded, with the title on the
   left. Hover a tab and its status dot turns into the close button. Hold ⌘ to
   see the ⌘1–⌘9 shortcuts.
+
 - **A full macOS menu bar.** New File, Go, Session and Help menus put most
   shortcuts in the menu bar, and Help has the macOS menu search. The menu shows
   your own keybindings: change a shortcut in Settings and the menu changes too.
+
 - **Dock badge and dock menu.** The dock icon shows the number of unread
   sessions, the same number as the bell in the title bar. Right-click the dock
   icon to open one of the last sessions or to start a new worktree.
+
 - **Notifications open their session.** Click a "Needs your input", "Session
   finished" or "Session failed" notification to go to that session. When a
   session needs your input while Jean is in the background, the dock icon
@@ -2161,16 +2340,19 @@ Built on Jean 0.1.73.
   a one-time notice and stops looking for updates; Splitkick is a separate app
   with its own data folder that imports JeanZ's projects and sessions on first
   start.
+
 - **New installs keep chat history for ever.** On a new install, archived
   items are no longer deleted after 7 days (the default is now "Never"), and
   closing a session or worktree archives it instead of deleting it. An
   existing install keeps its own settings; to keep archives for ever, choose
   "Never" under "Auto-delete archives" in Settings → General.
-- **A plan sent to a new session or worktree archives the original session**,
-  never deletes it, whatever the removal setting says.
+
+- **A plan sent to a new session or worktree archives the original session.**
+  It never deletes it, whatever the removal setting says.
 
 - **Zen mode moves to Ctrl+Cmd+Z on macOS.** Cmd+Shift+Z is Redo again. If you
   set your own zen shortcut, it stays.
+
 - **Cmd+M opens only the Magic Menu.** Window → Minimize no longer shows the
   same shortcut.
 
@@ -2179,23 +2361,31 @@ Built on Jean 0.1.73.
 - **Changed default shortcuts now reach every client.** Keybindings saved on
   this device kept old defaults after an update; they are now updated like the
   server copy.
+
 - **No more lost remote windows.** The Window menu lists every open window. A
   window that comes back hidden, 0x0 or off every screen now opens visible at
   its normal size, centred.
+
 - **The chat input keeps a margin.** In a narrow window the chat input no
   longer touches the left and right edges.
+
 - **The Recent tab in the sidebar is easier to see.** The Projects / Recent
   switch now has a visible track.
+
 - **A failed update check tells you why.** "Check for Updates…" now shows the
   error in its toast, and every failed check, manual or automatic, is written
   to the app log.
+
 - **Overlays on the phone stack in the right order.** A dialog opened from a
   sheet now shows above it: the layer you opened last is always on top.
+
 - **The floating terminal and browser drawers no longer block the page.** The
   chat beside them stays tappable and scrollable.
+
 - **The phone UI no longer freezes after a menu opens a sheet.** Picking
   Effort, Thinking, MCP or Scripts from the settings menu, or an action from the
   toolbar or dock menu, could leave every tap ignored.
+
 - **Jean on the iPhone Home Screen feels like an app.** The status bar blends
   in, a tap shows no grey flash, there is no double-tap zoom delay, and a long
   press on a button no longer selects text or shows the iOS callout. Chat text
@@ -2207,12 +2397,15 @@ Built on Jean 0.1.73.
   returns (for example a drive that was not mounted at start). Automatic
   archive cleanup never deletes such a worktree or its branch. Before, the
   next start deleted all of its sessions.
-- **The startup cleanup moves orphaned session data to a trash folder**
-  (`trash/<date>/` in the data folder) instead of deleting it, skips sessions
-  written in the last 10 minutes, and skips the cleanup when a session index
-  cannot be read.
+
+- **The startup cleanup moves orphaned session data to a trash folder.** It
+  uses `trash/<date>/` in the data folder and does not delete the data. It
+  skips sessions written in the last 10 minutes, and it skips the cleanup
+  when a session index cannot be read.
+
 - **Archiving a session never deletes it by mistake.** A session whose history
   failed to load, and every terminal session, is archived, not deleted.
+
 - **Claude keeps the context of old sessions.** Claude Code deletes its
   transcripts after 30 days; a session whose transcript is gone now gets its
   earlier conversation replayed from Jean's own copy, instead of silently
@@ -2244,14 +2437,17 @@ Built on Jean 0.1.73.
 - **Projects drag only from their row.** Dragging inside an open project (its
   worktrees, sessions, or empty space) no longer moves the whole project. The
   same applies to folders.
+
 - **The app stays fast with many sessions.** Switching sessions or finishing a
   run now refreshes only the affected worktree, not every session list of
   every project. The cross-project session list no longer reads archived
   worktrees. Sidebar rows re-render only when one of their own sessions
   changes, not on every tool event of any session.
+
 - **Session lists load faster.** Jean keeps each session's list entry in memory
   and parses its metadata file again only when the file changes. Before, every
   refresh parsed the full run history of every session.
+
 - **Git status checks no longer rewrite the projects file.** A status sweep
   saves a worktree only when its counts changed, not once per worktree on every
   sweep.
@@ -2313,6 +2509,7 @@ Built on Jean 0.1.73.
   status such as "In review". The new turn now clears the flag everywhere, a
   manual status now wins over a plain "Waiting", and an answered OpenCode
   permission request no longer leaves the flag set on disk.
+
 - **Remote hosts with many projects stay responsive.** When a client
   connected to a host with many projects, the host started hundreds of git
   status threads at once. Each result rewrote the project list under one lock,
@@ -2320,31 +2517,37 @@ Built on Jean 0.1.73.
   out and the connection dropped. The host now runs every remote command off
   the threads that answer the connection, checks git status with 8 workers in
   total, and skips the rewrite when the values did not change.
+
 - **A slow or failed check no longer looks like a fresh install.** When a CLI
   check timed out, Jean showed the backend as "not installed" and opened
   onboarding, showed "Setup incomplete", or could pick a different default
   backend. A failed check now counts as unknown and keeps its last result.
   When the project list cannot load, Jean shows "Couldn't load projects" with
   a Retry button instead of the welcome screen or "No projects found".
+
 - **Plans approved from the plan dialog now close the original session.** The
   plan dialog ignored "Close original session on clear context" when it sent a
   plan to a new session or worktree; the original stayed open.
+
 - **A new worktree no longer disappears seconds after it was created.**
   Background writers, such as the status refresh that a new worktree starts,
   could save an older copy of the project list over the new entry. The git
   worktree stayed on disk, but Jean lost track of it. Writers that run next to
-  worktree creation now read, change and save the list in one locked step
-  (#34).
+  worktree creation now read, change and save the list in one locked step.
+  (#34)
+
 - **A plan sent to a new worktree starts from the session's branch.** It used
   the project's default branch. When the local branch has commits that are not
   pushed yet, the new worktree now starts from the local branch, not from
-  `origin` (#34).
+  `origin`. (#34)
+
 - **A missing base branch is an error.** Jean silently used `main`, `master` or
   the current branch when the requested base branch or the project's default
-  branch did not exist. It now says which branch is missing (#34).
+  branch did not exist. It now says which branch is missing. (#34)
+
 - **Sending a plan to a new worktree no longer hangs silently.** When git was
   fast, Jean could miss the "worktree created" signal and wait two minutes
-  before it showed an error. A name conflict now shows an error at once (#34).
+  before it showed an error. A name conflict now shows an error at once. (#34)
 
 ## [0.1.73-z.19] - 2026-10-05
 
@@ -2365,19 +2568,22 @@ Built on Jean 0.1.73.
   their next refresh failed. Jean now only reads the token and leaves the
   refresh to Claude. When the token has expired, the usage display shows the
   last known values until Claude refreshes it.
-  ([#30](https://github.com/azeitler/jean/issues/30))
+  (#30)
+
 - **A fork opens on the new session.** After _Fork session_ or _Fork from this
   message_, Jean sometimes selected an unrelated session — the first tab — in
   place of the fork. The fork is now selected, and stays selected.
+
 - **An answer to a Claude question is no longer lost.** Sometimes the answer
   went to a turn that had already ended: no new run started, and the session
   stayed on "running". The answer now starts a new run each time.
+
 - **The plan approval menu lists the same models as the model picker.**
   _Other model…_ under Yolo and Build fell back to a built-in list, so every
   backend showed stale models — the Claude, Codex, PI, Command Code, Grok, Kimi
   and Antigravity entries were the ones compiled in, not the ones you can pick
   in the chat toolbar. It now uses the toolbar's list.
-  ([#33](https://github.com/azeitler/jean/issues/33))
+  (#33)
 
 ## [0.1.73-z.18] - 2026-09-28
 
@@ -2446,8 +2652,7 @@ Built on Jean 0.1.73.
   you then had to find the session you had left. Now the session you last
   opened in that project opens at once, just like a session result in the
   palette. When there is none, or it was archived or deleted since, you get
-  the project page as before. Fixes
-  [#22](https://github.com/azeitler/jean/issues/22).
+  the project page as before. (#22)
 
 - **On a phone, Home puts where you left off first, then switches between
   sessions and projects.** Continue — the session you had open last — now
@@ -2461,8 +2666,8 @@ Built on Jean 0.1.73.
   project, the one thing the bar used to add. Zen mode keeps the bar, because
   it holds the only way out of zen.
 
-- **The phone tab bar sits lower, following the rounded screen corners** —
-  inside the home-indicator area, as iOS's own floating tab bar does.
+- **The phone tab bar sits lower, following the rounded screen corners.** It
+  is inside the home-indicator area, as iOS's own floating tab bar does.
 
 ### Fixed
 
@@ -2547,6 +2752,7 @@ Built on Jean 0.1.73.
     1.0.1-z.13 does not offer it as an update, because 0.1.73 counts as an
     older version. Open the DMG from the release page and drag JeanZ to
     Applications. After that, updates arrive in the app again.
+
 - **Clear context asks before it deletes.** Clearing a session removes its
   history and the backend's resume id, and it cannot be undone. JeanZ now
   shows a confirmation first.
@@ -2559,8 +2765,7 @@ Built on Jean 0.1.73.
   showed while it was live, but after a session switch or a restart only its
   first sentence was left. Jean now stops the CLI only after the finished
   tool call is saved. A question whose options are missing now says so and
-  points you to the message box. Fixes
-  [#32](https://github.com/azeitler/jean/issues/32).
+  points you to the message box. (#32)
 
 ## [1.0.1-z.13] - 2026-09-21
 
@@ -2605,6 +2810,7 @@ Built on Jean 1.0.1.
   - The version moved from the title bar to the sidebar footer.
   - New folder is a button next to Add project. Archived opens from the
     command palette and the dock menu.
+
 - **All icons come from one icon set.** Upstream replaced its icons, so some
   icons look a little different.
 
@@ -2731,8 +2937,7 @@ Built on Jean 0.1.73.
 
 - **The projects sidebar is no longer hidden behind the file browser.** With both
   open on a phone, the file browser was drawn on top and dimmed the sidebar, so
-  the main navigation sat behind the panel it should sit in front of. Closes
-  [#28](https://github.com/azeitler/jean/issues/28).
+  the main navigation sat behind the panel it should sit in front of. (#28)
 
 - **Small phone fixes.** Toasts were 271 pixels wide on a 375-pixel screen and
   now use the full width less a margin. Pulling down at the top of the page no
@@ -2772,8 +2977,7 @@ Built on Jean 0.1.73.
   rename is open no longer saves the half-typed name; it drops the edit. And a
   right-click inside the name field now shows the normal Cut / Copy / Paste
   menu instead of the session menu. This applies to the sidebar rows, the
-  Starred and Pinned rows, and the session tabs. Fixes
-  [#29](https://github.com/azeitler/jean/issues/29).
+  Starred and Pinned rows, and the session tabs. (#29)
 
 - **The Claude usage indicator reads the login you are actually using.** On some
   Macs the indicator never showed a number. It alternated between "Claude usage
@@ -2795,7 +2999,7 @@ Built on Jean 0.1.73.
   token and reporting the answer as rate-limiting.
 
   If a Mac already has the stray item, this removes it from the picture
-  ([#30](https://github.com/azeitler/jean/issues/30)). You can also delete it
+  (#30). You can also delete it
   directly; Claude Code's own item is not affected:
 
   ```sh
@@ -2818,8 +3022,7 @@ Built on Jean 0.1.73.
 
   Also fixed on the way: Jean stopped the Claude process on the first,
   still-empty chunk of a question or plan, so the picker or the plan would have
-  come up blank. Jean now waits until the whole tool input has arrived. Fixes
-  [#1](https://github.com/azeitler/jean/issues/1).
+  come up blank. Jean now waits until the whole tool input has arrived. (#1)
 
 - **A URL in backticks is a link now.** An agent that wrote a dev-server
   address as code — `` `http://localhost:5174/#/demo` `` — left you with text
@@ -2830,6 +3033,8 @@ Built on Jean 0.1.73.
   code.
 
 ## [0.1.73-z.10] - 2026-09-14
+
+Built on Jean 0.1.73.
 
 ### Added
 
@@ -2918,7 +3123,7 @@ Built on Jean 0.1.73.
   Opening a remote that is already on screen focuses its window. Each window
   remembers its own size and position, and the macOS menu acts on the focused
   window only. Web Access is unchanged — a browser has one page to work with.
-  ([azeitler#26](https://github.com/azeitler/jean/issues/26))
+  (#26)
 
 - **Chat: the right-click menu of a link offers "Open in Default Browser".**
   It shows for a web link, and for a local HTML file when the file is on this
@@ -2944,7 +3149,7 @@ Built on Jean 0.1.73.
   is more than 60 calls before a single message is read, and the listing left
   out the manual status, labels, pins, stars and the linked issue or PR — the
   very signals the answer depends on.
-  ([#24](https://github.com/azeitler/jean/issues/24))
+  (#24)
   - **`list_all_sessions`** returns every session of every project as one flat
     page: effective status, days idle, the status you set by hand, the session
     label and the worktree labels, pinned and starred, the linked issue and the
@@ -2974,7 +3179,7 @@ Built on Jean 0.1.73.
 - **Project page: a Home-style overview beside the worktrees.** The project
   page now answers, for one project, the questions the Home view answers for
   everything: what you did last, what you can act on, and what is waiting.
-  ([#23](https://github.com/azeitler/jean/issues/23))
+  (#23)
   - Three equal columns on a wide window: **Recent sessions** with **Recent
     activity** under it, then **Worktrees**, then **Open issues**. It is the
     same container-query grid as Home, so the two pages read the same way. The
@@ -3029,20 +3234,23 @@ Built on Jean 0.1.73.
   backend resume id and only replayed history when the backend changed. A Claude
   fork now branches the transcript natively with `--fork-session`; every other
   backend gets the copied history injected on the first turn.
+
 - **Chat: an Antigravity fork no longer continues the original conversation.**
   `antigravity_session_id` was the one resume id the fork did not clear, so the
   fork resumed the source instead of starting its own branch.
+
 - **Chat: a fork no longer carries the original's stale run state.** Copied runs
   kept a checkpoint id pointing at the source worktree, a stale process id, and
   could stay marked as running — which made the fork refuse its first message.
   Attached contexts and linked issues or pull requests now follow the fork
   instead of being left behind.
+
 - **A failed pin or star now says so.** Pinning or starring a session changed
   the screen and nothing else: the write to disk happened 500 ms later, and a
   failure only reached the log. The pin looked correct until the next start,
   when it was gone. This could happen on a disk error, and over Web Access when
   the connection dropped mid-write.
-  ([#25](https://github.com/azeitler/jean/issues/25))
+  (#25)
   - A pin, unpin, star or unstar now waits for its own write. If the write
     fails, the value goes back to what is on disk and an error toast names the
     action, with the reason under it.
@@ -3098,7 +3306,7 @@ Built on Jean 0.1.73.
   and a link to `docs/notes.md` did not open. The project page clears the
   active worktree, so Jean had no folder to put before the relative path. The
   session window now gives its own worktree folder to the images and links in
-  it. ([#19](https://github.com/azeitler/jean/issues/19))
+  it. (#19)
 
 ## [0.1.73-z.6] - 2026-09-10
 
@@ -3109,7 +3317,7 @@ Built on Jean 0.1.73.
 - **Chat: links and HTML files in responses open in the embedded browser.**
   Click a web link or the path of an HTML file in an agent's reply, and Jean
   shows the page in the browser pane of the session.
-  ([#21](https://github.com/azeitler/jean/issues/21))
+  (#21)
   - Web links (`https://...`, `http://localhost:5173`) open in the embedded
     browser. A small ↗ button after the link, or Cmd-click (Ctrl-click on
     Windows and Linux), opens the system browser.
@@ -3124,6 +3332,7 @@ Built on Jean 0.1.73.
     backend's machine.
   - In web access, there is no embedded browser: web links open a new tab and
     HTML files open in the file viewer, as before.
+
 - **Global search: a matching project jumps to the top of Quick.** When you
   type the start of a project name in CMD+K, that project now shows first, in
   its own **Go to Project** group, above sessions and commands. Type a few
@@ -3139,9 +3348,10 @@ Built on Jean 0.1.73.
   - A pinned project is not listed a second time further down.
   - This applies to Quick only. The Sessions, Projects and Search messages tabs
     are unchanged.
+
 - **Chat: image embeds in responses show as images.** When an agent writes
   `![alt](path)`, Jean now shows the image in more cases.
-  ([#19](https://github.com/azeitler/jean/issues/19))
+  (#19)
   - A path with spaces (for example `~/Library/Application Support/...`) shows
     as an image, not as literal text.
   - A relative path opens from the current worktree, the same way links do.
@@ -3154,6 +3364,7 @@ Built on Jean 0.1.73.
   - Image syntax inside code blocks stays as text. Unsafe sources, such as
     `javascript:`, are still blocked.
   - Web access loads project and worktree images too.
+
 - **Files sidebar: HTML files open in the embedded browser.** Double-click an
   HTML file, or select it and press Enter, to show the page in Jean's browser.
   The context menu of an HTML file now starts with **Browse now**.
@@ -3177,10 +3388,12 @@ Built on Jean 0.1.73.
   listed yet — a new session, one an agent created over Jean MCP, or one from
   another Jean app on the same data — was saved but never shown in the Starred
   section or on Home. Starring a session now refreshes the list.
+
 - **New sessions reach every list at once.** Home, the Starred section, the
   command palette and the unread bell now learn about a new session as soon as
   it is created, also when an agent creates it over Jean MCP, and when a base
   session is reopened with its earlier sessions.
+
 - **Session tabs work with a screen reader.** The tab bar's + button is named
   "New session", and the current session tab is marked as current.
 
@@ -3220,6 +3433,7 @@ Built on Jean 0.1.73.
   - The file browser is hidden on Home, where it had nothing to show. Its
     title bar button and its shortcut do nothing there. Your setting is kept,
     so the panel comes back with the next project.
+
 - **Title bar: the Usage button shows how close you are to a plan limit.** It
   was a plain chart icon. It is now a badge with a ring and a percentage: the
   highest session or weekly figure of all signed-in backends (Claude, Codex,
@@ -3232,11 +3446,13 @@ Built on Jean 0.1.73.
   - With no signed-in backend, or before the figures load, the badge shows the
     chart icon.
   - A click still opens the Usage pane in a popover.
+
 - **Sidebar: a pinned session carries a pin on its row.** It sits beside the
   star of a starred session, under the workspace and in the Starred section.
   Rows in the Pinned section carry no pin, since every row there is one.
-- **Sidebar: a session's label comes last on its row,** after the activity
-  timestamp.
+
+- **Sidebar: a session's label comes last on its row.** It sits after the
+  activity timestamp.
 
 ### Fixed
 
@@ -3244,6 +3460,7 @@ Built on Jean 0.1.73.
   when the load failed, and it never tried again. It now shows "Could not load
   activity" with a Retry button. A refresh that fails after the feed has
   loaded keeps the events on screen.
+
 - **Sidebar: a project row click always shows the project page.** For some
   projects the click opened a session instead.
   - With **Restore last session on project switch** on — the default — the
@@ -3252,19 +3469,22 @@ Built on Jean 0.1.73.
     it now skips that restore once. Other project switches still restore.
   - A click on the row of the project you are already in left its open
     session on top. The click now closes that session.
+
 - **Sidebar: a workspace row click shows the session it opens.** The click
   selected a session but left a collapsed row collapsed, so the selected
   session was not visible in the tree. The row now expands. A workspace with
   no sessions stays collapsed, since there is nothing to show.
+
 - **Sidebar: pinned sessions are indented like a workspace's sessions.** They
   sat flush under the Pinned row, with no guide line. They now have the same
   offset and guide line as the sessions under a workspace, also on a narrow
-  sidebar. ([#17](https://github.com/azeitler/jean/issues/17))
+  sidebar. (#17)
+
 - **Sidebar: a Starred or Pinned row opens its session in place.** The click
   also expanded the session's workspace and scrolled the tree to the original
   row, away from the row you clicked. The tree now stays where it is. The
   command palette, the unread bell and Home still reveal the session in the
-  tree. ([#18](https://github.com/azeitler/jean/issues/18))
+  tree. (#18)
 
 ## [0.1.73-z.4] - 2026-09-10
 
@@ -3434,7 +3654,7 @@ this fork's own and never restarts.
   - Screen readers keep the wording: the canvas row and its drag handle read
     "Open main (Base Session)" and "Reorder main (Base Session)".
 
-- **Session context menu: "Set Status" is now "Status."** The verb added
+- **Session context menu: "Set Status" is now "Status".** The verb added
   nothing next to the neighbouring rows.
 
 - **Sidebar: a row fades after two days, not seven.** A finished session six
@@ -3660,83 +3880,83 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.6.3...HEAD
-[1.6.3]: https://github.com/azeitler/jean/compare/splitkick-v1.6.2...splitkick-v1.6.3
-[1.6.2]: https://github.com/azeitler/jean/compare/splitkick-v1.6.1...splitkick-v1.6.2
-[1.6.1]: https://github.com/azeitler/jean/compare/splitkick-v1.6.0...splitkick-v1.6.1
-[1.6.0]: https://github.com/azeitler/jean/compare/splitkick-v1.5.24...splitkick-v1.6.0
-[1.5.24]: https://github.com/azeitler/jean/compare/splitkick-v1.5.23...splitkick-v1.5.24
-[1.5.23]: https://github.com/azeitler/jean/compare/splitkick-v1.5.22...splitkick-v1.5.23
-[1.5.22]: https://github.com/azeitler/jean/compare/splitkick-v1.5.21...splitkick-v1.5.22
-[1.5.21]: https://github.com/azeitler/jean/compare/splitkick-v1.5.20...splitkick-v1.5.21
-[1.5.20]: https://github.com/azeitler/jean/compare/splitkick-v1.5.19...splitkick-v1.5.20
-[1.5.19]: https://github.com/azeitler/jean/compare/splitkick-v1.5.18...splitkick-v1.5.19
-[1.5.18]: https://github.com/azeitler/jean/compare/splitkick-v1.5.17...splitkick-v1.5.18
-[1.5.17]: https://github.com/azeitler/jean/compare/splitkick-v1.5.16...splitkick-v1.5.17
-[1.5.16]: https://github.com/azeitler/jean/compare/splitkick-v1.5.15...splitkick-v1.5.16
-[1.5.15]: https://github.com/azeitler/jean/compare/splitkick-v1.5.14...splitkick-v1.5.15
-[1.5.14]: https://github.com/azeitler/jean/compare/splitkick-v1.5.13...splitkick-v1.5.14
-[1.5.13]: https://github.com/azeitler/jean/compare/splitkick-v1.5.12...splitkick-v1.5.13
-[1.5.12]: https://github.com/azeitler/jean/compare/splitkick-v1.5.11...splitkick-v1.5.12
-[1.5.11]: https://github.com/azeitler/jean/compare/splitkick-v1.5.10...splitkick-v1.5.11
-[1.5.10]: https://github.com/azeitler/jean/compare/splitkick-v1.5.9...splitkick-v1.5.10
-[1.5.9]: https://github.com/azeitler/jean/compare/splitkick-v1.5.8...splitkick-v1.5.9
-[1.5.8]: https://github.com/azeitler/jean/compare/splitkick-v1.5.7...splitkick-v1.5.8
-[1.5.7]: https://github.com/azeitler/jean/compare/splitkick-v1.5.6...splitkick-v1.5.7
-[1.5.6]: https://github.com/azeitler/jean/compare/splitkick-v1.5.5...splitkick-v1.5.6
-[1.5.5]: https://github.com/azeitler/jean/compare/splitkick-v1.5.4...splitkick-v1.5.5
-[1.5.4]: https://github.com/azeitler/jean/compare/splitkick-v1.5.3...splitkick-v1.5.4
-[1.5.3]: https://github.com/azeitler/jean/compare/splitkick-v1.5.2...splitkick-v1.5.3
-[1.5.2]: https://github.com/azeitler/jean/compare/splitkick-v1.5.1...splitkick-v1.5.2
-[1.5.1]: https://github.com/azeitler/jean/compare/splitkick-v1.5.0...splitkick-v1.5.1
-[1.5.0]: https://github.com/azeitler/jean/compare/splitkick-v1.4.1...splitkick-v1.5.0
-[1.4.1]: https://github.com/azeitler/jean/compare/splitkick-v1.4.0...splitkick-v1.4.1
-[1.4.0]: https://github.com/azeitler/jean/compare/splitkick-v1.3.0...splitkick-v1.4.0
-[1.3.0]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...splitkick-v1.3.0
-[1.2.2]: https://github.com/azeitler/jean/compare/splitkick-v1.2.1...splitkick-v1.2.2
-[1.2.1]: https://github.com/azeitler/jean/compare/splitkick-v1.2.0...splitkick-v1.2.1
-[1.2.0]: https://github.com/azeitler/jean/compare/splitkick-v1.1.0...splitkick-v1.2.0
-[1.1.0]: https://github.com/azeitler/jean/compare/splitkick-v1.0.15...splitkick-v1.1.0
-[1.0.15]: https://github.com/azeitler/jean/compare/splitkick-v1.0.14...splitkick-v1.0.15
-[1.0.14]: https://github.com/azeitler/jean/compare/splitkick-v1.0.13...splitkick-v1.0.14
-[1.0.13]: https://github.com/azeitler/jean/compare/splitkick-v1.0.12...splitkick-v1.0.13
-[1.0.12]: https://github.com/azeitler/jean/compare/splitkick-v1.0.11...splitkick-v1.0.12
-[1.0.11]: https://github.com/azeitler/jean/compare/splitkick-v1.0.10...splitkick-v1.0.11
-[1.0.10]: https://github.com/azeitler/jean/compare/splitkick-v1.0.9...splitkick-v1.0.10
-[1.0.9]: https://github.com/azeitler/jean/compare/splitkick-v1.0.8...splitkick-v1.0.9
-[1.0.8]: https://github.com/azeitler/jean/compare/splitkick-v1.0.7...splitkick-v1.0.8
-[1.0.7]: https://github.com/azeitler/jean/compare/splitkick-v1.0.6...splitkick-v1.0.7
-[1.0.6]: https://github.com/azeitler/jean/compare/splitkick-v1.0.5...splitkick-v1.0.6
-[1.0.5]: https://github.com/azeitler/jean/compare/splitkick-v1.0.4...splitkick-v1.0.5
-[1.0.4]: https://github.com/azeitler/jean/compare/splitkick-v1.0.3...splitkick-v1.0.4
-[1.0.3]: https://github.com/azeitler/jean/compare/splitkick-v1.0.2...splitkick-v1.0.3
-[1.0.2]: https://github.com/azeitler/jean/compare/splitkick-v1.0.1...splitkick-v1.0.2
-[1.0.1]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0...splitkick-v1.0.1
-[1.0.0]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0-rc.3...splitkick-v1.0.0
-[1.0.0-rc.3]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0-rc.2...splitkick-v1.0.0-rc.3
-[1.0.0-rc.2]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0-rc.1...splitkick-v1.0.0-rc.2
-[1.0.0-rc.1]: https://github.com/azeitler/jean/compare/v0.1.73-z.26...splitkick-v1.0.0-rc.1
-[0.1.73-z.26]: https://github.com/azeitler/jean/compare/v0.1.73-z.25...v0.1.73-z.26
-[0.1.73-z.25]: https://github.com/azeitler/jean/compare/v0.1.73-z.24...v0.1.73-z.25
-[0.1.73-z.24]: https://github.com/azeitler/jean/compare/v0.1.73-z.23...v0.1.73-z.24
-[0.1.73-z.23]: https://github.com/azeitler/jean/compare/v0.1.73-z.22...v0.1.73-z.23
-[0.1.73-z.22]: https://github.com/azeitler/jean/compare/v0.1.73-z.21...v0.1.73-z.22
-[0.1.73-z.21]: https://github.com/azeitler/jean/compare/v0.1.73-z.20...v0.1.73-z.21
-[0.1.73-z.20]: https://github.com/azeitler/jean/compare/v0.1.73-z.19...v0.1.73-z.20
-[0.1.73-z.19]: https://github.com/azeitler/jean/compare/v0.1.73-z.18...v0.1.73-z.19
-[0.1.73-z.18]: https://github.com/azeitler/jean/compare/v0.1.73-z.17...v0.1.73-z.18
-[0.1.73-z.17]: https://github.com/azeitler/jean/compare/v0.1.73-z.16...v0.1.73-z.17
-[0.1.73-z.16]: https://github.com/azeitler/jean/compare/v0.1.73-z.15...v0.1.73-z.16
-[0.1.73-z.15]: https://github.com/azeitler/jean/compare/v0.1.73-z.14...v0.1.73-z.15
-[0.1.73-z.14]: https://github.com/azeitler/jean/compare/v1.0.1-z.13...v0.1.73-z.14
-[1.0.1-z.13]: https://github.com/azeitler/jean/compare/v1.0.1-z.12...v1.0.1-z.13
-[1.0.1-z.12]: https://github.com/azeitler/jean/compare/v0.1.73-z.11...v1.0.1-z.12
-[0.1.73-z.11]: https://github.com/azeitler/jean/compare/v0.1.73-z.10...v0.1.73-z.11
-[0.1.73-z.10]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...v0.1.73-z.10
-[0.1.73-z.9]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...v0.1.73-z.9
-[0.1.73-z.8]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...v0.1.73-z.8
-[0.1.73-z.7]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...v0.1.73-z.7
-[0.1.73-z.6]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...v0.1.73-z.6
-[0.1.73-z.5]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...v0.1.73-z.5
-[0.1.73-z.4]: https://github.com/azeitler/jean/compare/v0.1.73-z.3...v0.1.73-z.4
-[0.1.73-z.3]: https://github.com/azeitler/jean/compare/v0.1.73-z.2...v0.1.73-z.3
+[unreleased]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.3...HEAD
+[1.6.3]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.2...splitkick-v1.6.3
+[1.6.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.1...splitkick-v1.6.2
+[1.6.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.6.0...splitkick-v1.6.1
+[1.6.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.24...splitkick-v1.6.0
+[1.5.24]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.23...splitkick-v1.5.24
+[1.5.23]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.22...splitkick-v1.5.23
+[1.5.22]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.21...splitkick-v1.5.22
+[1.5.21]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.20...splitkick-v1.5.21
+[1.5.20]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.19...splitkick-v1.5.20
+[1.5.19]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.18...splitkick-v1.5.19
+[1.5.18]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.17...splitkick-v1.5.18
+[1.5.17]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.16...splitkick-v1.5.17
+[1.5.16]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.15...splitkick-v1.5.16
+[1.5.15]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.14...splitkick-v1.5.15
+[1.5.14]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.13...splitkick-v1.5.14
+[1.5.13]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.12...splitkick-v1.5.13
+[1.5.12]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.11...splitkick-v1.5.12
+[1.5.11]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.10...splitkick-v1.5.11
+[1.5.10]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.9...splitkick-v1.5.10
+[1.5.9]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.8...splitkick-v1.5.9
+[1.5.8]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.7...splitkick-v1.5.8
+[1.5.7]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.6...splitkick-v1.5.7
+[1.5.6]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.5...splitkick-v1.5.6
+[1.5.5]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.4...splitkick-v1.5.5
+[1.5.4]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.3...splitkick-v1.5.4
+[1.5.3]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.2...splitkick-v1.5.3
+[1.5.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.1...splitkick-v1.5.2
+[1.5.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.5.0...splitkick-v1.5.1
+[1.5.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.4.1...splitkick-v1.5.0
+[1.4.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.4.0...splitkick-v1.4.1
+[1.4.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.3.0...splitkick-v1.4.0
+[1.3.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.2.2...splitkick-v1.3.0
+[1.2.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.2.1...splitkick-v1.2.2
+[1.2.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.2.0...splitkick-v1.2.1
+[1.2.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.1.0...splitkick-v1.2.0
+[1.1.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.15...splitkick-v1.1.0
+[1.0.15]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.14...splitkick-v1.0.15
+[1.0.14]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.13...splitkick-v1.0.14
+[1.0.13]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.12...splitkick-v1.0.13
+[1.0.12]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.11...splitkick-v1.0.12
+[1.0.11]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.10...splitkick-v1.0.11
+[1.0.10]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.9...splitkick-v1.0.10
+[1.0.9]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.8...splitkick-v1.0.9
+[1.0.8]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.7...splitkick-v1.0.8
+[1.0.7]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.6...splitkick-v1.0.7
+[1.0.6]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.5...splitkick-v1.0.6
+[1.0.5]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.4...splitkick-v1.0.5
+[1.0.4]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.3...splitkick-v1.0.4
+[1.0.3]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.2...splitkick-v1.0.3
+[1.0.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.1...splitkick-v1.0.2
+[1.0.1]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0...splitkick-v1.0.1
+[1.0.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0-rc.3...splitkick-v1.0.0
+[1.0.0-rc.3]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0-rc.2...splitkick-v1.0.0-rc.3
+[1.0.0-rc.2]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0-rc.1...splitkick-v1.0.0-rc.2
+[1.0.0-rc.1]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.26...splitkick-v1.0.0-rc.1
+[0.1.73-z.26]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.25...v0.1.73-z.26
+[0.1.73-z.25]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.24...v0.1.73-z.25
+[0.1.73-z.24]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.23...v0.1.73-z.24
+[0.1.73-z.23]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.22...v0.1.73-z.23
+[0.1.73-z.22]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.21...v0.1.73-z.22
+[0.1.73-z.21]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.20...v0.1.73-z.21
+[0.1.73-z.20]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.19...v0.1.73-z.20
+[0.1.73-z.19]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.18...v0.1.73-z.19
+[0.1.73-z.18]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.17...v0.1.73-z.18
+[0.1.73-z.17]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.16...v0.1.73-z.17
+[0.1.73-z.16]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.15...v0.1.73-z.16
+[0.1.73-z.15]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.14...v0.1.73-z.15
+[0.1.73-z.14]: https://github.com/azeitler/splitkick/compare/v1.0.1-z.13...v0.1.73-z.14
+[1.0.1-z.13]: https://github.com/azeitler/splitkick/compare/v1.0.1-z.12...v1.0.1-z.13
+[1.0.1-z.12]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.11...v1.0.1-z.12
+[0.1.73-z.11]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.10...v0.1.73-z.11
+[0.1.73-z.10]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.9...v0.1.73-z.10
+[0.1.73-z.9]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.8...v0.1.73-z.9
+[0.1.73-z.8]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.7...v0.1.73-z.8
+[0.1.73-z.7]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.6...v0.1.73-z.7
+[0.1.73-z.6]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.5...v0.1.73-z.6
+[0.1.73-z.5]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.4...v0.1.73-z.5
+[0.1.73-z.4]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.3...v0.1.73-z.4
+[0.1.73-z.3]: https://github.com/azeitler/splitkick/compare/v0.1.73-z.2...v0.1.73-z.3
