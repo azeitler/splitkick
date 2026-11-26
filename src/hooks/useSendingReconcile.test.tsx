@@ -7,10 +7,19 @@ import { useSendingReconcile } from './useSendingReconcile'
 
 const host = vi.hoisted(() => ({ ids: [] as string[] }))
 const warn = vi.hoisted(() => vi.fn())
+const listeners = vi.hoisted(
+  () => new Map<string, (event: { payload: unknown }) => void>()
+)
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(async (command: string) =>
     command === 'list_sending_sessions' ? host.ids : null
+  ),
+  listen: vi.fn(
+    async (event: string, handler: (event: { payload: unknown }) => void) => {
+      listeners.set(event, handler)
+      return () => listeners.delete(event)
+    }
   ),
   useWsConnectionStatus: () => true,
 }))
@@ -39,6 +48,26 @@ describe('useSendingReconcile (#163)', () => {
       completedDurations: {},
       waitingForInputSessionIds: {},
     })
+  })
+
+  // A CLI in a terminal tab marks its session as sending through
+  // `terminal:working`. The host has no send for it; the mark must stay.
+  it('leaves a terminal session that works alone', async () => {
+    renderHook(() => useSendingReconcile(), { wrapper })
+    await waitFor(() => expect(listeners.has('terminal:working')).toBe(true))
+    act(() => {
+      listeners.get('terminal:working')?.({ payload: { sessionId: 't1' } })
+      useChatStore.setState({
+        sendingSessionIds: { t1: true },
+        sendStartedAt: { t1: Date.now() - 60_000 },
+      })
+    })
+
+    focus()
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(useChatStore.getState().sendingSessionIds.t1).toBe(true)
+    expect(warn).not.toHaveBeenCalled()
   })
 
   it('clears a stale mark on focus, without a duration, and logs it', async () => {

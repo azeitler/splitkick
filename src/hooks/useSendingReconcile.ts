@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { invoke, listen, useWsConnectionStatus } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { reconcileSendingState } from '@/lib/sending-reconcile'
 import { useChatStore } from '@/store/chat-store'
@@ -48,6 +48,10 @@ export function useSendingReconcile(): void {
   const wsConnected = useWsConnectionStatus()
   const finishedAtRef = useRef<Record<string, number>>({})
   const inFlightRef = useRef(false)
+  // A session that runs a CLI in a terminal tab is marked as sending by
+  // `terminal:working`, with no send on the host. The host's list never holds
+  // it, so the reconcile must leave its mark alone.
+  const terminalSessionIdsRef = useRef(new Set<string>())
   const reconcileRef = useRef<() => Promise<void>>(async () => undefined)
 
   const anySending = useChatStore(
@@ -94,6 +98,7 @@ export function useSendingReconcile(): void {
       })
 
       for (const sessionId of clear) {
+        if (terminalSessionIdsRef.current.has(sessionId)) continue
         logger.warn(
           'Reconcile: host has no run for a session marked as sending, clearing it',
           { sessionId, direction: 'clear' }
@@ -140,6 +145,19 @@ export function useSendingReconcile(): void {
       inFlightRef.current = false
     }
   }
+
+  useEffect(() => {
+    const unlisten = listen<{ sessionId?: string }>(
+      'terminal:working',
+      event => {
+        const sessionId = event.payload?.sessionId
+        if (sessionId) terminalSessionIdsRef.current.add(sessionId)
+      }
+    )
+    return () => {
+      unlisten.then(off => off()).catch(() => undefined)
+    }
+  }, [])
 
   // Focus and visibility.
   useEffect(() => {
