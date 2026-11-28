@@ -603,8 +603,32 @@ async fn version_handler(
 
 /// Maximum number of chat messages loaded per active session at init.
 /// Older messages are fetched on-demand via `load_older_session_messages`
-/// when the user scrolls up in the chat window.
-const INIT_MESSAGE_WINDOW: usize = 50;
+/// when the user scrolls up in the chat window. The same window as the
+/// client's `useSession` (`INITIAL_RUN_LIMIT`).
+const INIT_MESSAGE_WINDOW: usize = 25;
+
+/// The open session of the active worktree, the one chat the first screen
+/// shows. Sending the open session of every worktree of the project made the
+/// preload most of a remote client's startup traffic; the others load when
+/// opened.
+fn focused_active_session_ids(
+    ui_state: Option<&crate::UIState>,
+    worktrees: &[crate::projects::types::Worktree],
+) -> std::collections::HashMap<String, String> {
+    let Some(ui) = ui_state else {
+        return std::collections::HashMap::new();
+    };
+    ui.active_worktree_id
+        .as_ref()
+        .filter(|id| worktrees.iter().any(|wt| &wt.id == *id))
+        .and_then(|id| {
+            ui.active_session_ids
+                .get(id)
+                .map(|session_id| (id.clone(), session_id.clone()))
+        })
+        .into_iter()
+        .collect()
+}
 
 /// Maximum number of buffered WebSocket events replayed per focused running
 /// session at init. Plenty to reconstruct an in-flight turn; full stream
@@ -732,10 +756,7 @@ async fn init_handler(
             .await
             .unwrap_or_default();
 
-        let active_ids = ui_state
-            .as_ref()
-            .map(|ui| ui.active_session_ids.clone())
-            .unwrap_or_default();
+        let active_ids = focused_active_session_ids(ui_state.as_ref(), &worktrees);
 
         let sessions_future = {
             let app = state.app.clone();
@@ -1844,6 +1865,40 @@ mod tests {
         let options = super::list_bind_host_options();
         assert!(options.iter().any(|option| option.host == "127.0.0.1"));
         assert!(options.iter().any(|option| option.host == "0.0.0.0"));
+    }
+
+    #[test]
+    fn init_preloads_only_the_active_worktrees_session() {
+        let worktree = |id: &str| -> crate::projects::types::Worktree {
+            serde_json::from_value(serde_json::json!({
+                "id": id, "project_id": "p1", "name": id, "path": format!("/tmp/{id}"),
+                "branch": id, "created_at": 0,
+            }))
+            .unwrap()
+        };
+        let worktrees = vec![worktree("wt-1"), worktree("wt-2")];
+        let mut ui_state = crate::UIState {
+            active_worktree_id: Some("wt-2".to_string()),
+            ..Default::default()
+        };
+        ui_state
+            .active_session_ids
+            .insert("wt-1".into(), "s-1".into());
+        ui_state
+            .active_session_ids
+            .insert("wt-2".into(), "s-2".into());
+
+        let ids = super::focused_active_session_ids(Some(&ui_state), &worktrees);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids.get("wt-2").map(String::as_str), Some("s-2"));
+
+        // The canvas (no worktree open) or a worktree of another project:
+        // no chat is shown, so nothing is preloaded.
+        ui_state.active_worktree_id = None;
+        assert!(super::focused_active_session_ids(Some(&ui_state), &worktrees).is_empty());
+        ui_state.active_worktree_id = Some("other".to_string());
+        assert!(super::focused_active_session_ids(Some(&ui_state), &worktrees).is_empty());
+        assert!(super::focused_active_session_ids(None, &worktrees).is_empty());
     }
 
     #[test]
