@@ -206,7 +206,7 @@ describe('transport bootstrap', () => {
     await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
     await flushAsync()
     const ws = getWs(0)
-    expect(ws.url).toBe('wss://jean.example.com/ws?token=secret')
+    expect(ws.url).toBe('wss://jean.example.com/ws?token=secret&compress=gzip')
 
     const request = transport.invoke('list_projects')
     await waitFor(() =>
@@ -222,6 +222,46 @@ describe('transport bootstrap', () => {
     const sent = JSON.parse(String(ws.send.mock.calls.at(-1)?.[0]))
     ws.receive({ type: 'response', id: sent.id, data: [] })
     await request
+  })
+
+  // Large responses arrive gzipped as binary frames. Decompression is async,
+  // so a text event received after the frame must still be handled after it.
+  it('decodes gzip frames and keeps the receive order', async () => {
+    const { gzipSync } = await import('node:zlib')
+    const tauriListen = vi.fn().mockResolvedValue(() => {
+      /* noop cleanup */
+    })
+    vi.doMock('@tauri-apps/api/event', () => ({ listen: tauriListen }))
+    const transport = await loadRemoteNativeTransportModule()
+    transport.connectTransport()
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
+    await flushAsync()
+    const ws = getWs(0)
+
+    const order: string[] = []
+    await transport.listen<string>('test:event', () => order.push('event'))
+    const request = transport
+      .invoke<{ rows: number[] }>('list_all_sessions')
+      .then(data => {
+        order.push('response')
+        return data
+      })
+    await waitFor(() => expect(ws.send).toHaveBeenCalled())
+    const sent = JSON.parse(String(ws.send.mock.calls.at(-1)?.[0]))
+
+    const rows = Array.from({ length: 5000 }, (_, i) => i)
+    const zipped = gzipSync(
+      JSON.stringify({ type: 'response', id: sent.id, data: { rows } })
+    )
+    const frame = zipped.buffer.slice(
+      zipped.byteOffset,
+      zipped.byteOffset + zipped.byteLength
+    )
+    ws.onmessage?.({ data: frame } as MessageEvent)
+    ws.receive({ type: 'event', event: 'test:event', payload: 'x' })
+
+    await expect(request).resolves.toEqual({ rows })
+    await waitFor(() => expect(order).toEqual(['response', 'event']))
   })
 
   it('keeps native menu listeners on the local shell for remote connections', async () => {

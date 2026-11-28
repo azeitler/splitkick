@@ -645,6 +645,18 @@ export interface BootstrapEvent {
   seq?: number
 }
 
+/** Can this client decompress the server's gzip binary frames? */
+export function supportsGzipFrames(): boolean {
+  return typeof DecompressionStream !== 'undefined'
+}
+
+/** Decompress one gzip binary frame into its JSON text. */
+export async function gunzipText(data: ArrayBuffer): Promise<string> {
+  const body = new Response(data).body
+  if (!body) return ''
+  return new Response(body.pipeThrough(new DecompressionStream('gzip'))).text()
+}
+
 class WsTransport {
   private ws: WebSocket | null = null
   private pending = new Map<string, PendingRequest>()
@@ -660,6 +672,11 @@ class WsTransport {
    *  observe protocol ping/pong frames, so a 50s gap means the connection is dead. */
   private livenessTimer: ReturnType<typeof setInterval> | null = null
   private _lastInbound = 0
+  /**
+   * Frames still waiting for an earlier gzip frame to decompress. Async
+   * decompression must not let a later event overtake an earlier response.
+   */
+  private inboundChain: Promise<void> | null = null
   private queue: { data: string; resolve: () => void }[] = []
   // Buffer for events that arrive before listeners are registered.
   // Covers the ~16ms gap between WS onopen and React effect listener setup.
@@ -859,9 +876,13 @@ class WsTransport {
     const base = new URL(backendUrl('ws'))
     base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
     base.searchParams.set('token', token)
+    // Ask for gzip binary frames for large responses. Old servers ignore it.
+    if (supportsGzipFrames()) base.searchParams.set('compress', 'gzip')
     const url = base.toString()
 
     this.ws = new WebSocket(url)
+    this.ws.binaryType = 'arraybuffer'
+    this.inboundChain = null
     this.clearConnectWatchdog()
     this.connectWatchdog = setTimeout(() => {
       if (this.ws?.readyState === WebSocket.CONNECTING) {
@@ -900,12 +921,27 @@ class WsTransport {
       if (event.data === '{"type":"heartbeat"}') {
         return
       }
-      try {
-        const msg: WsMessage = JSON.parse(event.data)
-        this.handleMessage(msg)
-      } catch {
-        // Ignore malformed messages
+      const data: unknown = event.data
+      if (typeof data === 'string' && !this.inboundChain) {
+        this.handleText(data)
+        return
       }
+      // A gzip frame, or a frame behind one: keep the receive order.
+      const run = (this.inboundChain ?? Promise.resolve())
+        .then(async () =>
+          this.handleText(
+            typeof data === 'string'
+              ? data
+              : await gunzipText(data as ArrayBuffer)
+          )
+        )
+        .catch(() => {
+          // A corrupt frame is dropped like a malformed one.
+        })
+      this.inboundChain = run
+      void run.then(() => {
+        if (this.inboundChain === run) this.inboundChain = null
+      })
     }
 
     this.ws.onclose = () => {
@@ -1120,6 +1156,15 @@ class WsTransport {
       if (this.listeners.get(event)?.size === 0) {
         this.listeners.delete(event)
       }
+    }
+  }
+
+  private handleText(text: string): void {
+    try {
+      const msg: WsMessage = JSON.parse(text)
+      this.handleMessage(msg)
+    } catch {
+      // Ignore malformed messages
     }
   }
 

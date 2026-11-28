@@ -19,6 +19,48 @@ fn command_must_run_in_ws_order(command: &str) -> bool {
     matches!(command, "terminal_write")
 }
 
+/// Compression a client asked for with `?compress=` on the WebSocket URL.
+///
+/// tungstenite has no permessage-deflate, so large command responses are
+/// gzipped by hand and sent as binary frames. Small frames stay text: they
+/// gain little, and the client handles text without an async step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WsCompression {
+    Off,
+    Gzip,
+}
+
+impl WsCompression {
+    pub fn from_query(value: Option<&str>) -> Self {
+        match value {
+            Some("gzip") => Self::Gzip,
+            _ => Self::Off,
+        }
+    }
+}
+
+/// Responses at or above this size are gzipped for a client that asked.
+/// JSON shrinks 5-10x; a session window (80 KB) or a session list (500 KB)
+/// is most of a remote client's traffic.
+const COMPRESS_MIN_BYTES: usize = 8 * 1024;
+
+/// Turn a serialized response into the frame to send.
+fn encode_response(json: String, compression: WsCompression) -> Message {
+    if compression == WsCompression::Gzip && json.len() >= COMPRESS_MIN_BYTES {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(
+            Vec::with_capacity(json.len() / 4),
+            flate2::Compression::fast(),
+        );
+        if encoder.write_all(json.as_bytes()).is_ok() {
+            if let Ok(bytes) = encoder.finish() {
+                return Message::Binary(bytes.into());
+            }
+        }
+    }
+    Message::Text(json.into())
+}
+
 async fn dispatch_invoke_response(
     app: AppHandle,
     id: String,
@@ -46,7 +88,8 @@ fn spawn_dispatch_response(
     id: String,
     command: String,
     args: Value,
-    tx: mpsc::UnboundedSender<String>,
+    tx: mpsc::UnboundedSender<Message>,
+    compression: WsCompression,
 ) {
     // Every command runs on the blocking pool. Most dispatch targets are
     // `async fn`s that still do synchronous work: git/CLI processes, file I/O,
@@ -57,7 +100,7 @@ fn spawn_dispatch_response(
     tokio::task::spawn_blocking(move || {
         let resp = tauri::async_runtime::block_on(dispatch_invoke_response(app, id, command, args));
         if let Ok(json) = serde_json::to_string(&resp) {
-            let _ = tx.send(json);
+            let _ = tx.send(encode_response(json, compression));
         }
     });
 }
@@ -73,8 +116,9 @@ fn spawn_ordered_dispatch_response(
     id: String,
     command: String,
     args: Value,
-    tx: mpsc::UnboundedSender<String>,
+    tx: mpsc::UnboundedSender<Message>,
     previous: Option<tokio::task::JoinHandle<()>>,
+    compression: WsCompression,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         if let Some(previous) = previous {
@@ -84,7 +128,7 @@ fn spawn_ordered_dispatch_response(
         }
         let resp = dispatch_invoke_response(app, id, command, args).await;
         if let Ok(json) = serde_json::to_string(&resp) {
-            let _ = tx.send(json);
+            let _ = tx.send(encode_response(json, compression));
         }
     })
 }
@@ -96,8 +140,9 @@ fn dispatch_client_invoke(
     id: String,
     command: String,
     args: Value,
-    resp_tx: &mpsc::UnboundedSender<String>,
+    resp_tx: &mpsc::UnboundedSender<Message>,
     ordered_tail: &mut Option<tokio::task::JoinHandle<()>>,
+    compression: WsCompression,
 ) {
     if command_must_run_in_ws_order(&command) {
         *ordered_tail = Some(spawn_ordered_dispatch_response(
@@ -107,21 +152,59 @@ fn dispatch_client_invoke(
             args,
             resp_tx.clone(),
             ordered_tail.take(),
+            compression,
         ));
     } else {
-        spawn_dispatch_response(app.clone(), id, command, args, resp_tx.clone());
+        spawn_dispatch_response(app.clone(), id, command, args, resp_tx.clone(), compression);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::command_must_run_in_ws_order;
+    use super::*;
 
     #[test]
     fn terminal_input_writes_run_in_websocket_order() {
         assert!(command_must_run_in_ws_order("terminal_write"));
         assert!(!command_must_run_in_ws_order("terminal_resize"));
         assert!(!command_must_run_in_ws_order("create_session"));
+    }
+
+    #[test]
+    fn compression_is_opt_in_per_query() {
+        assert_eq!(WsCompression::from_query(Some("gzip")), WsCompression::Gzip);
+        assert_eq!(WsCompression::from_query(None), WsCompression::Off);
+        assert_eq!(WsCompression::from_query(Some("br")), WsCompression::Off);
+    }
+
+    #[test]
+    fn large_responses_are_gzipped_for_clients_that_ask() {
+        use std::io::Read;
+        let large = format!(
+            r#"{{"type":"response","id":"1","data":"{}"}}"#,
+            "x".repeat(20_000)
+        );
+
+        let Message::Binary(bytes) = encode_response(large.clone(), WsCompression::Gzip) else {
+            panic!("large response must be a binary gzip frame");
+        };
+        assert!(bytes.len() < large.len() / 10);
+        let mut text = String::new();
+        flate2::read::GzDecoder::new(&bytes[..])
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, large);
+
+        // Old clients never get binary frames.
+        assert!(matches!(
+            encode_response(large, WsCompression::Off),
+            Message::Text(_)
+        ));
+        // Small responses stay text: no async step on the client.
+        assert!(matches!(
+            encode_response(r#"{"type":"response"}"#.into(), WsCompression::Gzip),
+            Message::Text(_)
+        ));
     }
 }
 
@@ -185,12 +268,13 @@ pub async fn handle_ws_connection(
     socket: WebSocket,
     app: AppHandle,
     mut event_rx: broadcast::Receiver<WsEvent>,
+    compression: WsCompression,
 ) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // Channel for command dispatch responses. Unbounded because command
     // responses are infrequent (user-initiated) and must never be dropped.
-    let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<String>();
+    let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<Message>();
 
     // Tail of the per-connection ordered-command chain. Only `terminal_write`
     // (and any future `command_must_run_in_ws_order` entries) use this; other
@@ -235,6 +319,7 @@ pub async fn handle_ws_connection(
                                     args,
                                     &resp_tx,
                                     &mut ordered_dispatch_tail,
+                                    compression,
                                 );
                             }
                             Ok(WsClientMessage::TerminalReplay { terminal_id, last_seq }) => {
@@ -259,6 +344,7 @@ pub async fn handle_ws_connection(
                                             req.args,
                                             &resp_tx,
                                             &mut ordered_dispatch_tail,
+                                            compression,
                                         );
                                     }
                                     Err(_) => {
@@ -308,9 +394,9 @@ pub async fn handle_ws_connection(
             }
 
             // ── Command response from a spawned dispatch task ────────
-            Some(json) = resp_rx.recv() => {
+            Some(frame) = resp_rx.recv() => {
                 // Feed this response then drain any other pending messages.
-                if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, json).await.is_err() {
+                if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, frame).await.is_err() {
                     break;
                 }
             }
@@ -319,7 +405,7 @@ pub async fn handle_ws_connection(
             result = event_rx.recv() => {
                 match result {
                     Ok(first_event) => {
-                        if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, first_event.json.to_string()).await.is_err() {
+                        if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, Message::Text(first_event.json.to_string().into())).await.is_err() {
                             break;
                         }
                     }
@@ -344,10 +430,10 @@ const DRAIN_MAX: usize = 32;
 async fn feed_and_drain(
     ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     event_rx: &mut broadcast::Receiver<WsEvent>,
-    resp_rx: &mut mpsc::UnboundedReceiver<String>,
-    first: String,
+    resp_rx: &mut mpsc::UnboundedReceiver<Message>,
+    first: Message,
 ) -> Result<(), axum::Error> {
-    ws_tx.feed(Message::Text(first.into())).await?;
+    ws_tx.feed(first).await?;
 
     // Non-blocking drain: grab whatever is already pending.
     for _ in 0..DRAIN_MAX {
@@ -367,8 +453,8 @@ async fn feed_and_drain(
         }
         // Try command responses
         match resp_rx.try_recv() {
-            Ok(json) => {
-                ws_tx.feed(Message::Text(json.into())).await?;
+            Ok(frame) => {
+                ws_tx.feed(frame).await?;
                 continue;
             }
             Err(_) => break, // Nothing pending — stop draining

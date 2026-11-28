@@ -1,3 +1,4 @@
+use axum::serve::ListenerExt;
 use axum::{
     body::Body,
     extract::{ws::WebSocketUpgrade, DefaultBodyLimit, Path as AxumPath, Query, State},
@@ -19,7 +20,7 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use super::assets;
 use super::auth;
-use super::websocket::handle_ws_connection;
+use super::websocket::{handle_ws_connection, WsCompression};
 use super::EmitExt;
 use super::WsBroadcaster;
 
@@ -62,6 +63,9 @@ struct WsAuth {
     /// when the disk copy is stale. Used to scope the init payload to only the
     /// worktrees/sessions the user is currently viewing.
     selected_project: Option<String>,
+    /// `gzip` when the client can decompress binary frames (see
+    /// `websocket::WsCompression`). Old clients omit it and get text only.
+    compress: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -270,6 +274,14 @@ pub async fn start_server(
         log::info!(
             "HTTP server listening on {local_addr} (bind_host: {bind_host_for_log}, localhost_only: {localhost_only})"
         );
+        // Disable Nagle: a small frame (a response, a chat chunk) that follows
+        // another unacknowledged one would otherwise wait for its ACK, up to
+        // a round trip on a remote link.
+        let listener = listener.tap_io(|tcp| {
+            if let Err(e) = tcp.set_nodelay(true) {
+                log::trace!("Failed to set TCP_NODELAY: {e}");
+            }
+        });
         axum::serve(listener, router)
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
@@ -376,7 +388,8 @@ async fn ws_handler(
     };
 
     let app = state.app.clone();
-    ws.on_upgrade(move |socket| handle_ws_connection(socket, app, event_rx))
+    let compression = WsCompression::from_query(params.compress.as_deref());
+    ws.on_upgrade(move |socket| handle_ws_connection(socket, app, event_rx, compression))
 }
 
 /// Version of the headless `splitkick-server` binary, `None` on a desktop host.

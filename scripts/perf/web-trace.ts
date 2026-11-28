@@ -8,6 +8,7 @@
  * (scripts/perf/seed-remote-load.ts). Prints per step: command counts, total
  * bytes and the time until the network goes quiet.
  */
+import { gunzipSync } from 'node:zlib'
 import { chromium, type Page } from 'playwright'
 
 const [port, token] = process.argv.slice(2)
@@ -72,14 +73,18 @@ page.on('websocket', ws => {
     }
   })
   ws.on('framereceived', f => {
-    const text = String(f.payload)
+    // Binary frames are gzipped responses: count wire bytes, read the JSON.
+    const binary = typeof f.payload !== 'string'
+    const text = binary
+      ? gunzipSync(f.payload as Buffer).toString('utf8')
+      : f.payload
     try {
       const m = JSON.parse(text)
       const sent = m.id ? sentAt.get(m.id) : undefined
       frames.push({
         at: performance.now(),
         dir: 'in',
-        bytes: text.length,
+        bytes: binary ? (f.payload as Buffer).length : text.length,
         type: m.type,
         command: sent?.command,
         id: m.id,
