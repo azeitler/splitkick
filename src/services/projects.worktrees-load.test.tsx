@@ -17,14 +17,20 @@ vi.mock('@/lib/environment', async importOriginal => ({
 
 const PROJECTS = Array.from({ length: 80 }, (_, i) => `proj-${i}`)
 
+const worktreeOf = (projectId: string) => ({
+  id: `${projectId}-wt`,
+  project_id: projectId,
+  path: `/tmp/${projectId}`,
+  name: 'main',
+  branch: 'main',
+})
+
 function respond(command: string, args: { projectId: string }) {
-  const worktree = {
-    id: `${args.projectId}-wt`,
-    project_id: args.projectId,
-    path: `/tmp/${args.projectId}`,
-    name: 'main',
-    branch: 'main',
-  }
+  const worktree = worktreeOf(args?.projectId)
+  if (command === 'list_worktrees_by_project')
+    return Promise.resolve(
+      Object.fromEntries(PROJECTS.map(id => [id, [worktreeOf(id)]]))
+    )
   if (command === 'list_worktrees') return Promise.resolve([worktree])
   if (command === 'bootstrap_project')
     return Promise.resolve({ worktrees: [worktree], sessionsByWorktree: {} })
@@ -50,7 +56,7 @@ describe('useWorktrees load per sidebar project', () => {
     })
   })
 
-  it('bootstraps only the selected and the expanded project', async () => {
+  async function renderSidebar() {
     const { useWorktrees } = await import('./projects')
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -66,16 +72,40 @@ describe('useWorktrees load per sidebar project', () => {
     await waitFor(() =>
       expect(result.current.every(q => q.isSuccess)).toBe(true)
     )
+    return result
+  }
+
+  it('bootstraps the shown projects and lists the rest in one call', async () => {
+    const result = await renderSidebar()
 
     expect(commandCounts()).toEqual({
       bootstrap_project: 2,
-      list_worktrees: 78,
+      list_worktrees_by_project: 1,
     })
     const bootstrapped = invoke.mock.calls
       .filter(([command]) => command === 'bootstrap_project')
       .map(([, args]) => (args as { projectId: string }).projectId)
       .sort()
     expect(bootstrapped).toEqual(['proj-0', 'proj-1'])
-    expect(result.current[5]?.data).toHaveLength(1)
+    expect(result.current[5]?.data).toEqual([worktreeOf('proj-5')])
+  })
+
+  it('falls back to list_worktrees per project on an older server', async () => {
+    invoke.mockImplementation((command: string, args: { projectId: string }) =>
+      command === 'list_worktrees_by_project'
+        ? Promise.reject(
+            new Error('Unknown command: list_worktrees_by_project')
+          )
+        : respond(command, args)
+    )
+
+    const result = await renderSidebar()
+
+    expect(commandCounts()).toEqual({
+      bootstrap_project: 2,
+      list_worktrees_by_project: 1,
+      list_worktrees: 78,
+    })
+    expect(result.current[5]?.data).toEqual([worktreeOf('proj-5')])
   })
 })

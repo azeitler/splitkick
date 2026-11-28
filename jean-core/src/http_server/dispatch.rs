@@ -273,6 +273,10 @@ pub async fn dispatch_command(
             let result = crate::projects::list_worktrees(app.clone(), project_id).await?;
             to_value(result)
         }
+        "list_worktrees_by_project" => {
+            let result = crate::projects::list_worktrees_by_project(app.clone()).await?;
+            to_value(result)
+        }
         "bootstrap_project" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let result = crate::projects::bootstrap_project(app.clone(), project_id).await?;

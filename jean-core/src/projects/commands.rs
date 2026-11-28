@@ -996,6 +996,28 @@ pub async fn list_worktrees(app: AppHandle, project_id: String) -> Result<Vec<Wo
     Ok(worktrees)
 }
 
+/// Active worktrees of every project, keyed by project id.
+///
+/// The sidebar needs the worktree list of each collapsed project. One call
+/// replaces one `list_worktrees` per project: 80 round trips on a remote link.
+pub async fn list_worktrees_by_project(
+    app: AppHandle,
+) -> Result<HashMap<String, Vec<Worktree>>, String> {
+    let data = load_projects_data(&app)?;
+    let mut by_project: HashMap<String, Vec<Worktree>> = data
+        .projects
+        .iter()
+        .filter(|p| !p.is_folder)
+        .map(|p| (p.id.clone(), Vec::new()))
+        .collect();
+    for worktree in data.worktrees.iter().filter(|w| w.archived_at.is_none()) {
+        if let Some(list) = by_project.get_mut(&worktree.project_id) {
+            list.push(worktree.clone());
+        }
+    }
+    Ok(by_project)
+}
+
 /// One-shot project open payload: worktrees + session lists (with message counts).
 /// Avoids the frontend waterfall of `list_worktrees` then N× `get_sessions` over WS.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16418,5 +16440,75 @@ mod cached_status_tests {
         )
         .await
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod worktrees_by_project_tests {
+    use super::*;
+
+    fn worktree(root: &std::path::Path, id: &str, project_id: &str, archived: bool) -> Worktree {
+        let path = root.join(id);
+        std::fs::create_dir_all(&path).unwrap();
+        let mut value = serde_json::json!({
+            "id": id,
+            "project_id": project_id,
+            "name": id,
+            "path": path,
+            "branch": id,
+            "created_at": 0,
+        });
+        if archived {
+            value["archived_at"] = serde_json::json!(1);
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn project(id: &str, is_folder: bool) -> Project {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "name": id,
+            "path": format!("/tmp/{id}"),
+            "default_branch": "main",
+            "added_at": 0,
+            "is_folder": is_folder,
+        }))
+        .unwrap()
+    }
+
+    /// The sidebar loads all collapsed projects with this one call. It must
+    /// match `list_worktrees` per project: no archived worktrees, an empty
+    /// list for a project without any, and no entry for a folder.
+    #[tokio::test]
+    async fn lists_active_worktrees_of_every_project() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().join("data"), temp.path().join("res")).unwrap();
+        crate::projects::storage::save_projects_data(
+            &app,
+            &crate::projects::types::ProjectsData {
+                projects: vec![
+                    project("p1", false),
+                    project("p2", false),
+                    project("f", true),
+                ],
+                worktrees: vec![
+                    worktree(temp.path(), "a", "p1", false),
+                    worktree(temp.path(), "b", "p1", true),
+                    worktree(temp.path(), "c", "p1", false),
+                ],
+            },
+        )
+        .unwrap();
+
+        let by_project = list_worktrees_by_project(app.clone()).await.unwrap();
+
+        let ids: Vec<&str> = by_project["p1"].iter().map(|w| w.id.as_str()).collect();
+        assert_eq!(ids, ["a", "c"]);
+        assert!(by_project["p2"].is_empty());
+        assert!(!by_project.contains_key("f"));
+        assert_eq!(
+            by_project["p1"].len(),
+            list_worktrees(app, "p1".into()).await.unwrap().len()
+        );
     }
 }

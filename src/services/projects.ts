@@ -173,13 +173,50 @@ export function isProjectShown(projectId: string): boolean {
   return projectId === selectedProjectId || expandedProjectIds.has(projectId)
 }
 
-/** `list_worktrees` alone, keeping worktrees that are still being created. */
+/** The shared `list_worktrees_by_project` request while it is in flight. */
+let worktreesByProjectRequest: Promise<Record<string, Worktree[]>> | null = null
+
+/**
+ * Worktrees of every project in one request. The sidebar asks for each
+ * collapsed project at once; they share the request in flight instead of one
+ * `list_worktrees` round trip each. The next refetch asks again.
+ */
+function loadWorktreesByProject(): Promise<Record<string, Worktree[]>> {
+  if (!worktreesByProjectRequest) {
+    const request = invoke<Record<string, Worktree[]>>(
+      'list_worktrees_by_project'
+    )
+    worktreesByProjectRequest = request
+    request
+      .finally(() => {
+        if (worktreesByProjectRequest === request) {
+          worktreesByProjectRequest = null
+        }
+      })
+      .catch(() => undefined)
+  }
+  return worktreesByProjectRequest
+}
+
+/** One project's worktrees: the shared request, else `list_worktrees`. */
+async function loadProjectWorktrees(projectId: string): Promise<Worktree[]> {
+  try {
+    const byProject = await loadWorktreesByProject()
+    const worktrees = byProject[projectId]
+    if (worktrees) return worktrees
+  } catch {
+    // An older server has no list_worktrees_by_project.
+  }
+  return invoke<Worktree[]>('list_worktrees', { projectId })
+}
+
+/** The worktree list alone, keeping worktrees that are still being created. */
 async function fetchWorktreesOnly(
   projectId: string,
   queryClient: ReturnType<typeof useQueryClient>
 ): Promise<Worktree[]> {
   logger.debug('Loading worktrees for project', { projectId })
-  const worktrees = await invoke<Worktree[]>('list_worktrees', { projectId })
+  const worktrees = await loadProjectWorktrees(projectId)
   // Pending creations are client-only until git finishes; keep them when
   // something else invalidates this query mid-create (issue #528).
   const previous = queryClient.getQueryData<Worktree[]>(
