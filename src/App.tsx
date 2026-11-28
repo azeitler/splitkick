@@ -90,6 +90,7 @@ import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSa
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useServerUpdateCheck } from './hooks/useServerUpdateCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
+import { usePromptOutboxRecovery } from './hooks/usePromptOutboxRecovery'
 import { useSendingReconcile } from './hooks/useSendingReconcile'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
@@ -992,6 +993,9 @@ function App() {
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
+
+  // Prompt outbox: a submitted prompt is never lost (src/lib/prompt-outbox.ts)
+  usePromptOutboxRecovery()
 
   // The host is the source of truth for running sessions (#163)
   useSendingReconcile()

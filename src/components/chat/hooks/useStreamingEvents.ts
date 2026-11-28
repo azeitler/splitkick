@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { listen, useWsConnectionStatus } from '@/lib/transport'
+import { confirmSentMessage } from '@/lib/prompt-outbox'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
@@ -380,6 +381,8 @@ export default function useStreamingEvents({
     }>('chat:sending', event => {
       const { session_id, worktree_id: wtId, user_message } = event.payload
       cancelledUntaggedSessionIds.delete(session_id)
+      // The backend took the prompt: it leaves the outbox.
+      if (user_message) confirmSentMessage(session_id, user_message)
       // Check if THIS client initiated the send (sender calls addSendingSession
       // before sendMessage.mutate, so it's already in sendingSessionIds).
       const isSender = !!useChatStore.getState().sendingSessionIds[session_id]

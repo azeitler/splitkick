@@ -9,6 +9,13 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { generateId } from '@/lib/uuid'
+import {
+  confirmPrompt,
+  settlePrompt,
+  trackPrompt,
+  useOutboxStore,
+} from '@/lib/prompt-outbox'
+import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
 import { disposeTerminal } from '@/lib/terminal-instances'
 import {
   beginSessionStateHydration,
@@ -2002,6 +2009,10 @@ export function useSendMessage() {
       fromQueue?: boolean
       /** When false, skip the end-of-turn recap instruction. */
       includeRecap?: boolean
+      /** Prompt outbox id (the queued message id); one is made when absent. */
+      outboxId?: string
+      /** The prompt with its attachments, for the outbox to restore. */
+      queued?: QueuedMessage
     }): Promise<ChatMessage> => {
       if (!hasBackendTransport()) {
         throw new Error(NO_BACKEND_ERROR)
@@ -2048,14 +2059,27 @@ export function useSendMessage() {
     onMutate: async ({
       sessionId,
       worktreeId,
+      worktreePath,
       message,
       model,
       executionMode,
       thinkingLevel,
       effortLevel,
       backend,
+      outboxId: givenOutboxId,
+      queued,
     }) => {
       console.log(`[SendMutation] onMutate sessionId=${sessionId}`)
+      // The prompt stays in the outbox until the backend confirms it.
+      const outboxId = givenOutboxId ?? generateId()
+      trackPrompt({
+        id: outboxId,
+        sessionId,
+        worktreeId,
+        worktreePath,
+        message,
+        queued,
+      })
       // Cancel in-flight queries to avoid overwriting optimistic update
       await queryClient.cancelQueries({
         queryKey: chatQueryKeys.session(sessionId),
@@ -2125,9 +2149,10 @@ export function useSendMessage() {
         }
       )
 
-      return { previous, worktreeId }
+      return { previous, worktreeId, outboxId }
     },
-    onSuccess: (response, { sessionId, worktreeId }) => {
+    onSuccess: (response, { sessionId, worktreeId }, context) => {
+      if (context?.outboxId) confirmPrompt(context.outboxId)
       console.log(
         `[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`,
         {
@@ -2205,7 +2230,13 @@ export function useSendMessage() {
         }
       )
 
+      const outboxId = context?.outboxId
+      const inOutbox =
+        !!outboxId && !!useOutboxStore.getState().entries[outboxId]
+
       if (isCancellation) {
+        // The chat:cancelled / chat:undo-send handlers own the prompt now.
+        if (outboxId) confirmPrompt(outboxId)
         logger.debug('Message cancelled', { sessionId })
         // Don't rollback - the chat:cancelled event handler preserves the partial response
         return
@@ -2231,7 +2262,8 @@ export function useSendMessage() {
           const { selectedModels, removeSendingSession, clearExecutingMode } =
             useChatStore.getState()
           const queued: QueuedMessage = {
-            id: generateId(),
+            // The same outbox entry follows the prompt into the queue.
+            id: outboxId ?? generateId(),
             message: variables.message,
             pendingImages: [],
             pendingFiles: [],
@@ -2281,6 +2313,10 @@ export function useSendMessage() {
         errorStr.includes('timed out') || errorMessage.includes('timed out')
 
       if (isDisconnect || isTimeout) {
+        // Whether the backend got it is open: the outbox checks the session
+        // once the connection is back and restores the prompt if it is not
+        // there.
+        if (outboxId) settlePrompt(outboxId)
         logger.warn('Lost command response, refetching session', {
           sessionId,
           reason: isDisconnect ? 'disconnect' : 'timeout',
@@ -2300,6 +2336,8 @@ export function useSendMessage() {
       const hasStreamedContent =
         !!useChatStore.getState().streamingContents[sessionId]
       if (hasStreamedContent) {
+        // The CLI ran: the backend holds the prompt.
+        if (outboxId) confirmPrompt(outboxId)
         logger.warn(
           'Error after CLI produced content, refetching instead of rollback',
           {
@@ -2328,7 +2366,13 @@ export function useSendMessage() {
       // typed something new.
       const store = useChatStore.getState()
       const lastSent = store.lastSentMessages[sessionId]
-      if (lastSent) {
+      if (inOutbox && outboxId) {
+        // The outbox checks the session and restores the prompt with its
+        // attachments, or shows it as unsent when the user typed anew.
+        settlePrompt(outboxId)
+        store.clearLastSentMessage(sessionId)
+        store.clearLastSentAttachments(sessionId)
+      } else if (lastSent) {
         if (!store.inputDrafts[sessionId]?.trim()) {
           store.setInputDraft(sessionId, lastSent)
           store.restoreAttachments(sessionId)
@@ -3139,14 +3183,29 @@ export function persistEnqueue(
   sessionId: string,
   message: QueuedMessage
 ): void {
+  // The prompt stays in the outbox until the backend has it in its queue.
+  trackPrompt({
+    id: message.id,
+    sessionId,
+    worktreeId,
+    worktreePath,
+    message: buildMessageWithRefs(message),
+    queued: message,
+  })
   invoke('enqueue_message', {
     worktreeId,
     worktreePath,
     sessionId,
     message,
-  }).catch(err => {
-    logger.error('Failed to persist enqueue', { err, sessionId })
   })
+    .then(() => confirmPrompt(message.id))
+    .catch(err => {
+      logger.error('Failed to persist enqueue', { err, sessionId })
+      // The local copy would only vanish with the next queue:updated. The
+      // outbox checks the backend's queue and brings the prompt back.
+      useChatStore.getState().removeQueuedMessage(sessionId, message.id)
+      settlePrompt(message.id)
+    })
 }
 
 /**
@@ -3299,12 +3358,27 @@ export async function persistRequeueFront(
   sessionId: string,
   message: QueuedMessage
 ): Promise<void> {
-  await invoke('enqueue_message', {
+  trackPrompt({
+    id: message.id,
+    sessionId,
     worktreeId,
     worktreePath,
-    sessionId,
-    message,
+    message: buildMessageWithRefs(message),
+    queued: message,
   })
+  try {
+    await invoke('enqueue_message', {
+      worktreeId,
+      worktreePath,
+      sessionId,
+      message,
+    })
+  } catch (err) {
+    useChatStore.getState().removeQueuedMessage(sessionId, message.id)
+    settlePrompt(message.id)
+    throw err
+  }
+  confirmPrompt(message.id)
   await invoke('move_queued_message_front', {
     worktreeId,
     worktreePath,

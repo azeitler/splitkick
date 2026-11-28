@@ -191,6 +191,10 @@ export function useQueueProcessor(): void {
               chromeEnabled: preferences?.chrome_enabled ?? false,
               allowedTools,
               fromQueue: true,
+              // Out of the backend queue now: the outbox holds it until the
+              // send is accepted.
+              outboxId: msg.id,
+              queued: msg,
             },
             {
               onError: error => {

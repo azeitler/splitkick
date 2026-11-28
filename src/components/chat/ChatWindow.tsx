@@ -48,7 +48,9 @@ import {
   chatQueryKeys,
   reconnectNativeCliSession,
   canReconnectSession,
+  persistEnqueue,
 } from '@/services/chat'
+import { discardPrompt, type OutboxEntry } from '@/lib/prompt-outbox'
 import {
   useWorktree,
   useProjects,
@@ -138,6 +140,7 @@ import { ArtifactsButton } from './toolbar/ArtifactsButton'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
 import { ReviewMethodModal } from './ReviewMethodModal'
 import { QueuedPromptsPanel } from './QueuedPromptsPanel'
+import { UnsentPrompts } from './UnsentPrompts'
 import { FollowUpsPanel } from './FollowUpsPanel'
 import { useFollowUpsPlacement } from './follow-ups-placement'
 import { ADD_FOLLOW_UP_EVENT } from './message-thread-context-menu'
@@ -2982,6 +2985,31 @@ export function ChatWindow({
     },
     [activeSessionId, sendTextMessage]
   )
+  // "Send again" on an unsent message: the same outbox entry follows it, so
+  // it stays saved until the backend confirms this try.
+  const handleSendUnsent = useCallback(
+    (entry: OutboxEntry) => {
+      if (!entry.queued) {
+        discardPrompt(entry.id)
+        sendTextMessage(entry.text)
+        return
+      }
+      const queued = { ...entry.queued, id: entry.id, queuedAt: Date.now() }
+      const { isSending, enqueueMessage } = useChatStore.getState()
+      if (isSending(entry.sessionId)) {
+        enqueueMessage(entry.sessionId, queued)
+        persistEnqueue(
+          entry.worktreeId,
+          entry.worktreePath,
+          entry.sessionId,
+          queued
+        )
+      } else {
+        sendMessageNow(queued)
+      }
+    },
+    [sendMessageNow, sendTextMessage]
+  )
   const handleRunErrorLogin = useCallback(() => {
     void openBackendLoginModal(resolvedBackend)
   }, [resolvedBackend])
@@ -3879,6 +3907,13 @@ export function ChatWindow({
                                 onQueue={handleQueueFollowUp}
                               />
                             )}
+                          {/* Prompts the backend does not hold (prompt outbox) */}
+                          {activeSessionId && (
+                            <UnsentPrompts
+                              sessionId={activeSessionId}
+                              onSendAgain={handleSendUnsent}
+                            />
+                          )}
                           {/* Queued prompts - rendered as an extension above the chat input */}
                           {activeSessionId &&
                             currentQueuedMessages.length > 0 && (

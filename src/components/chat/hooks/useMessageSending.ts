@@ -17,6 +17,11 @@ import { skillQueryKeys } from '@/services/skills'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
 import {
+  confirmPrompt,
+  dropRestoredPrompts,
+  trackPrompt,
+} from '@/lib/prompt-outbox'
+import {
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   type CliBackend,
 } from '@/types/preferences'
@@ -221,6 +226,8 @@ export function useMessageSending({
           aiLanguage: preferences?.ai_language,
           allowedTools,
           backend: queuedMsg.backend,
+          outboxId: queuedMsg.id,
+          queued: queuedMsg,
         },
         {
           onSettled: () => {
@@ -590,6 +597,27 @@ export function useMessageSending({
         }
       }
 
+      const queuedMessage = buildQueuedMessage(message, {
+        images,
+        files,
+        skills,
+        textFiles,
+      })
+
+      // The safety net: the prompt is saved before the input is cleared, and
+      // stays saved until the backend confirms it (src/lib/prompt-outbox.ts).
+      // It replaces what an earlier failure put back into this input.
+      dropRestoredPrompts(activeSessionId)
+      trackPrompt({
+        id: queuedMessage.id,
+        sessionId: activeSessionId,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        text: textMessage,
+        message: buildMessageWithRefs(queuedMessage),
+        queued: queuedMessage,
+      })
+
       if (
         images.length > 0 ||
         files.length > 0 ||
@@ -619,13 +647,6 @@ export function useMessageSending({
         useChatStore.getState()
       setQuestionsSkipped(activeSessionId, false)
       setWaitingForInput(activeSessionId, false)
-
-      const queuedMessage = buildQueuedMessage(message, {
-        images,
-        files,
-        skills,
-        textFiles,
-      })
 
       markAtBottom()
 
@@ -687,6 +708,7 @@ export function useMessageSending({
             console.log(
               `[Send] handleSubmit STEERED into running ${backend} turn`
             )
+            confirmPrompt(queuedMessage.id)
             return
           } catch (err) {
             console.log(

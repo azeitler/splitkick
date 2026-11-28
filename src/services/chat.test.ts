@@ -42,6 +42,7 @@ import { toast } from 'sonner'
 import { disposeTerminal } from '@/lib/terminal-instances'
 import { isSessionStateHydrating } from '@/lib/session-state-hydration'
 import type { Session } from '@/types/chat'
+import { recoverOutbox } from '@/lib/prompt-outbox'
 
 const toastMock = toast as unknown as {
   success: ReturnType<typeof vi.fn>
@@ -198,6 +199,9 @@ describe('useSendMessage refused send', () => {
     })
 
     await waitFor(() => expect(useChatStore.getState().errors.s1).toBe(refusal))
+    // The prompt outbox checks the session (it does not hold the prompt) and
+    // puts it back; App runs this through usePromptOutboxRecovery.
+    await recoverOutbox()
     expect(useChatStore.getState().inputDrafts.s1).toBe('hello')
     expect(useChatStore.getState().lastSentMessages.s1).toBeUndefined()
   })

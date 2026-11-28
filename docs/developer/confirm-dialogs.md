@@ -44,7 +44,8 @@ confirmLabel })` resolves `true` on confirm, `false` on cancel; return
   middle-click. It keeps working.
 - **Anything in the chat flow**: cancelling a run (stop button, the cancel
   shortcut, "Skip to Next" with queued messages, the canvas), "Send now" on a
-  queued prompt, skipping or answering a question. These are frequent and keep
+  queued prompt, "Discard" on an unsent message, skipping or answering a
+  question. These are frequent and keep
   the output so far; a dialog there interrupts the work. (1.6.0 asked before
   cancelling a run; 1.6.1 removed it.)
 - **MCP tools** (`archive_session`, `delete_worktree`, `cancel_session_run`,

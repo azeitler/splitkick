@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The app shows when it is offline.** In web access and in a window
+  connected to a remote instance, a small sign "Offline. Reconnecting…" shows
+  below the title bar while the backend cannot be reached. A message sent then
+  says that it is saved and will send when the connection is back.
+
 ### Changed
 
 - **Remote clients load projects and sessions with far less traffic.** In web
@@ -20,6 +27,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   19 s to under 2 s and opening a session from 51 s to 4 s. (#161)
 
 ### Fixed
+
+- **A submitted prompt is never lost.** Every prompt is now saved on this device
+  before the input is cleared, and stays saved until the backend has it. Before,
+  a prompt was lost when the connection dropped or timed out during the send,
+  when the app was reloaded or quit before an answer, when a message sent
+  during a run could not reach the queue, when an answer to a question failed,
+  and when a failed send found new text in the input. Now the prompt comes back
+  into the input, or, when the input holds new text, it shows above the input
+  as "Unsent message" with "Send again", "Edit" and "Discard". A prompt that the
+  backend already has is not brought back, so nothing is sent twice. A failed
+  edit of a queued prompt is kept the same way.
 
 - **A session that loads slowly says so.** On a slow or lost connection, a
   session opened in web access showed only a spinner that did not move. The

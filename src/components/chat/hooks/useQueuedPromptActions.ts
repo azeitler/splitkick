@@ -13,6 +13,8 @@ import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
 import { useChatStore } from '@/store/chat-store'
 import { logger } from '@/lib/logger'
 import { invoke } from '@/lib/transport'
+import { addUnsentPrompt } from '@/lib/prompt-outbox'
+import { generateId } from '@/lib/uuid'
 import type { QueuedMessage } from '@/types/chat'
 
 /** The chat window that shows the queue: it knows its own worktree. */
@@ -111,6 +113,20 @@ export function useQueuedPromptActions(fallback?: QueueWorktreeFallback) {
       )
       if (!worktreeId || !worktreePath) return
 
+      // The editor is closed already. When the edit does not reach the queue,
+      // keep the edited text as an unsent message instead of dropping it.
+      const keepEdit = () => {
+        const edited = { ...msg, id: generateId(), message: trimmed }
+        addUnsentPrompt({
+          id: edited.id,
+          sessionId,
+          worktreeId,
+          worktreePath,
+          message: buildMessageWithRefs(edited),
+          queued: edited,
+        })
+      }
+
       try {
         const updated = await persistUpdateQueued(
           worktreeId,
@@ -122,6 +138,7 @@ export function useQueuedPromptActions(fallback?: QueueWorktreeFallback) {
         if (!updated) {
           // Another client already dequeued it — drop the stale local copy.
           store.removeQueuedMessage(sessionId, messageId)
+          if (trimmed !== msg.message) keepEdit()
           return
         }
         store.updateQueuedMessage(sessionId, messageId, trimmed)
@@ -131,6 +148,7 @@ export function useQueuedPromptActions(fallback?: QueueWorktreeFallback) {
           sessionId,
           messageId,
         })
+        keepEdit()
       }
     },
     []
