@@ -63,9 +63,24 @@ pub struct GitBranchStatus {
 /// waits; a few of them stop every worktree's status.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// `git fetch <remote> <branch>`, killed after [`FETCH_TIMEOUT`].
-fn run_fetch(repo_path: &str, remote: &str, branch: &str) -> Result<Output, String> {
-    run_fetch_with_timeout(repo_path, remote, branch, FETCH_TIMEOUT)
+/// `git fetch <remote> <branch>`, killed at `deadline`.
+///
+/// One status runs up to two fetches. They share one deadline, so a stalled
+/// remote costs [`FETCH_TIMEOUT`] once, not per fetch: two in a row made
+/// `get_worktree_changes` outlast the client's 60 s command timeout.
+fn run_fetch(
+    repo_path: &str,
+    remote: &str,
+    branch: &str,
+    deadline: Instant,
+) -> Result<Output, String> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(format!(
+            "git fetch {remote} {branch} skipped: the status fetch time is used up"
+        ));
+    }
+    run_fetch_with_timeout(repo_path, remote, branch, remaining)
 }
 
 fn run_fetch_with_timeout(
@@ -106,10 +121,10 @@ fn run_fetch_with_timeout(
         .map_err(|e| format!("Failed to read git fetch output: {e}"))
 }
 
-fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
+fn fetch_origin_branch(repo_path: &str, branch: &str, deadline: Instant) -> Result<(), String> {
     log::trace!("Fetching origin/{branch} in {repo_path}");
 
-    let output = run_fetch(repo_path, "origin", branch)?;
+    let output = run_fetch(repo_path, "origin", branch, deadline)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -133,10 +148,11 @@ fn fetch_origin_branch_from_remote(
     repo_path: &str,
     remote: &str,
     branch: &str,
+    deadline: Instant,
 ) -> Result<(), String> {
     log::trace!("Fetching {remote}/{branch} in {repo_path}");
 
-    let output = run_fetch(repo_path, remote, branch)?;
+    let output = run_fetch(repo_path, remote, branch, deadline)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -985,6 +1001,15 @@ fn has_head_commit(repo_path: &str) -> bool {
 /// This fetches the latest from origin and compares the current HEAD
 /// to origin/{base_branch} to determine ahead/behind counts.
 pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, String> {
+    get_branch_status_within(info, FETCH_TIMEOUT)
+}
+
+/// [`get_branch_status`] with all its fetches bounded by `fetch_budget`.
+fn get_branch_status_within(
+    info: &ActiveWorktreeInfo,
+    fetch_budget: Duration,
+) -> Result<GitBranchStatus, String> {
+    let fetch_deadline = Instant::now() + fetch_budget;
     let repo_path = &info.worktree_path;
     let base_branch = &info.base_branch;
     let base_remote = info.base_remote.as_deref();
@@ -992,8 +1017,10 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     // Fetch the latest base branch from the remote it belongs to
     // This is best-effort; if it fails, we'll compare with stale data
     let _ = match base_remote {
-        Some(remote) => fetch_origin_branch_from_remote(repo_path, remote, base_branch),
-        None => fetch_origin_branch(repo_path, base_branch),
+        Some(remote) => {
+            fetch_origin_branch_from_remote(repo_path, remote, base_branch, fetch_deadline)
+        }
+        None => fetch_origin_branch(repo_path, base_branch, fetch_deadline),
     };
 
     // Get current branch name
@@ -1036,9 +1063,9 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     let unpushed_count = if current_branch != *base_branch {
         if let (Some(remote), Some(branch)) = (&info.pr_push_remote, &info.pr_push_branch) {
             if remote == "origin" {
-                let _ = fetch_origin_branch(repo_path, branch);
+                let _ = fetch_origin_branch(repo_path, branch, fetch_deadline);
             } else {
-                let _ = fetch_origin_branch_from_remote(repo_path, remote, branch);
+                let _ = fetch_origin_branch_from_remote(repo_path, remote, branch, fetch_deadline);
             }
             let push_ref = format!("{remote}/{branch}");
             if ref_exists(repo_path, &push_ref) {
@@ -1053,15 +1080,20 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
                 // Fetch the remote for the upstream ref (e.g., "fork" from "fork/branch")
                 if let Some(remote) = upstream.split('/').next() {
                     if remote != "origin" {
-                        let _ = fetch_origin_branch_from_remote(repo_path, remote, &current_branch);
+                        let _ = fetch_origin_branch_from_remote(
+                            repo_path,
+                            remote,
+                            &current_branch,
+                            fetch_deadline,
+                        );
                     } else {
-                        let _ = fetch_origin_branch(repo_path, &current_branch);
+                        let _ = fetch_origin_branch(repo_path, &current_branch, fetch_deadline);
                     }
                 }
                 count_commits_between(repo_path, upstream, "HEAD")
             } else {
                 // No upstream configured — try origin/{current_branch}
-                let _ = fetch_origin_branch(repo_path, &current_branch);
+                let _ = fetch_origin_branch(repo_path, &current_branch, fetch_deadline);
                 let origin_current_ref = format!("origin/{current_branch}");
                 if ref_exists(repo_path, &origin_current_ref) {
                     count_commits_between(repo_path, &origin_current_ref, "HEAD")
@@ -1149,6 +1181,55 @@ mod tests {
         let error = result.expect_err("a stalled fetch must time out");
         assert!(error.contains("timed out after 1s"), "{error}");
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    /// A feature branch without upstream fetches twice (base and its own
+    /// branch). Over a stalled remote both must share one budget: two full
+    /// timeouts in a row outlasted the client's 60 s command timeout.
+    #[cfg(unix)]
+    #[test]
+    fn status_fetches_share_one_deadline() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo = temp.path();
+        run_test_git(repo, &["init", "--initial-branch", "main"]);
+        run_test_git(repo, &["config", "core.sshCommand", "sh -c 'sleep 30' --"]);
+        run_test_git(
+            repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "ssh://git@example.invalid/repo.git",
+            ],
+        );
+        std::fs::write(repo.join("file.txt"), "base\n").expect("write file");
+        run_test_git(repo, &["add", "."]);
+        run_test_git(repo, &["commit", "-m", "base"]);
+        run_test_git(repo, &["checkout", "-b", "feature"]);
+
+        let started = Instant::now();
+        let status = get_branch_status_within(
+            &ActiveWorktreeInfo {
+                worktree_id: "wt".to_string(),
+                worktree_path: repo.to_string_lossy().into_owned(),
+                base_branch: "main".to_string(),
+                base_remote: None,
+                pr_number: None,
+                pr_url: None,
+                pr_push_remote: None,
+                pr_push_branch: None,
+            },
+            Duration::from_secs(2),
+        )
+        .expect("status without the remote");
+
+        assert_eq!(status.current_branch, "feature");
+        // One budget of 2 s plus git's own work; two fetches would be 4 s+.
+        assert!(
+            started.elapsed() < Duration::from_millis(3500),
+            "status took {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
