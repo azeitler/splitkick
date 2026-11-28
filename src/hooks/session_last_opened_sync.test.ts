@@ -20,9 +20,10 @@ describe('set_session_last_opened multi-client sync', () => {
     // Scoped to the session's worktree so a session switch does not reload
     // every session list.
     // The worktree id may come from the metadata or from the atomic update
-    // closure (#101); what matters is the scoped broadcast.
+    // closure (#101); what matters is the scoped broadcast. It names no
+    // session: only the lists read last_opened_at, so no open chat refetches.
     expect(singleFn?.[0]).toMatch(
-      /emit_worktree_sessions_cache_invalidation\(&app, &(metadata\.)?worktree_id\)/
+      /emit_session_cache_invalidation\(&app, &(metadata\.)?worktree_id, &\[\]\)/
     )
   })
 
