@@ -15,6 +15,7 @@ import {
   precacheUrlsFromIndexHtml,
   renderServiceWorker,
 } from './scripts/web-service-worker.mjs'
+import { rewriteIndexHtmlForStartLoader } from './scripts/web-start-loader.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 const host = process.env.TAURI_DEV_HOST
@@ -154,6 +155,33 @@ function jeanServiceWorkerPlugin(): Plugin {
   }
 }
 
+/**
+ * The start loader (scripts/web-start-loader.mjs): a real progress bar for
+ * the app download in Web Access. Runs after Vite has put the asset tags into
+ * index.html, and before the service worker plugin reads it.
+ */
+function jeanStartLoaderPlugin(): Plugin {
+  return {
+    name: 'jean-start-loader',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const sizeOf = (url: string) => {
+          const item = ctx.bundle?.[url.replace(/^\//, '')]
+          if (!item) return 0
+          return item.type === 'chunk'
+            ? Buffer.byteLength(item.code)
+            : typeof item.source === 'string'
+              ? Buffer.byteLength(item.source)
+              : item.source.byteLength
+        }
+        return rewriteIndexHtmlForStartLoader(html, sizeOf)
+      },
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [
@@ -162,6 +190,7 @@ export default defineConfig(async () => ({
     jeanWebBuildInfoPlugin(),
     jeanWebBrandingPlugin(),
     jeanDevBrandingPlugin(),
+    jeanStartLoaderPlugin(),
     jeanServiceWorkerPlugin(),
   ],
   define: {

@@ -151,6 +151,9 @@ jobs:
       - name: Web service worker tests
         run: bun run test:web-service-worker
 
+      - name: Web start loader tests
+        run: bun run test:web-start-loader
+
       - name: Branding check
         run: bun run check:branding
 

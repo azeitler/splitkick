@@ -111,7 +111,7 @@ import {
 } from './lib/web-client-version'
 import { reloadApp } from './lib/web-reload-log'
 import { requestPersistentStorage } from './lib/service-worker'
-import { setAppSkeletonVisible } from './lib/app-skeleton'
+import { setAppSkeletonStep, setAppSkeletonVisible } from './lib/app-skeleton'
 import {
   collectExecutionModes,
   collectWorktreePaths,
@@ -1807,7 +1807,10 @@ function App() {
   // The start skeleton from index.html covers the app until it is up (#72).
   useEffect(() => {
     setAppSkeletonVisible(startGateClosed)
-  }, [startGateClosed])
+    if (startGateClosed) {
+      setAppSkeletonStep(isPreloading ? 'loadingProjects' : 'connecting')
+    }
+  }, [startGateClosed, isPreloading])
 
   if (startGateClosed) {
     return (

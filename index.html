@@ -170,6 +170,51 @@
         box-shadow: 0 0 0 0.5rem var(--background, #fff);
         background: var(--background, #fff);
       }
+      #app-skeleton [hidden] {
+        display: none;
+      }
+      #app-skeleton .sk-status {
+        position: absolute;
+        top: calc(50% + 1.5rem);
+        left: 50%;
+        width: min(16rem, 70vw);
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        background: var(--background, #fff);
+        text-align: center;
+        font:
+          0.8125rem/1.4 system-ui,
+          -apple-system,
+          sans-serif;
+        color: var(--muted-foreground, #737373);
+      }
+      #app-skeleton .sk-progress {
+        width: 100%;
+        height: 0.25rem;
+        border-radius: 9999px;
+        background: var(--sk-block);
+        overflow: hidden;
+      }
+      #app-skeleton .sk-progress-fill {
+        height: 100%;
+        background: var(--foreground, #171717);
+        opacity: 0.6;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.2s linear;
+      }
+      #app-skeleton .sk-step,
+      #app-skeleton .sk-hint {
+        margin: 0;
+      }
+      #app-skeleton .sk-step {
+        font-variant-numeric: tabular-nums;
+      }
       #app-skeleton .sk-hidden-text {
         position: absolute;
         width: 1px;
@@ -202,6 +247,9 @@
         }
         #app-skeleton .sk-spinner {
           animation-duration: 2.4s;
+        }
+        #app-skeleton .sk-progress-fill {
+          transition: none;
         }
       }
     </style>
@@ -268,6 +316,26 @@
         </div>
       </div>
       <div class="sk-spinner" aria-hidden="true"></div>
+      <!-- Start progress (scripts/web-start-loader.mjs, src/lib/app-skeleton.ts).
+           Hidden until the loader or the app names a step. -->
+      <div class="sk-status">
+        <div
+          class="sk-progress"
+          role="progressbar"
+          aria-label="Download"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          hidden
+        >
+          <div class="sk-progress-fill"></div>
+        </div>
+        <p class="sk-step" hidden></p>
+        <p class="sk-hint" hidden>
+          The first start after an update downloads the app. On a slow
+          connection this takes a moment.
+        </p>
+      </div>
     </div>
     <script>
       // The desktop app (Tauri) starts from its local bundle and keeps its own
