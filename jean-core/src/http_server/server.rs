@@ -246,6 +246,7 @@ pub async fn start_server(
         .fallback(get(static_handler))
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(cors)
+        .layer(axum::middleware::from_fn(assets_vary_without_origin))
         .with_state(state);
 
     let addr = SocketAddr::new(bind_ip, port);
@@ -303,6 +304,47 @@ pub async fn start_server(
         localhost_only,
         token_required,
     })
+}
+
+/// Static `/assets/*` files have content-hashed names and the same bytes
+/// for every page. Drop the origin entries the CORS layer adds to `Vary`:
+/// Chrome sends `Origin` with module scripts but not with `fetch`, so with
+/// `Vary: origin` the start loader's download (scripts/web-start-loader.mjs)
+/// missed the HTTP cache and every app file crossed the link twice.
+/// `Vary: accept-encoding` stays.
+async fn assets_vary_without_origin(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let is_asset = request.uri().path().starts_with("/assets/");
+    let mut response = next.run(request).await;
+    if is_asset {
+        drop_origin_from_vary(response.headers_mut());
+    }
+    response
+}
+
+fn drop_origin_from_vary(headers: &mut HeaderMap) {
+    const CORS_VARY: &[&str] = &[
+        "origin",
+        "access-control-request-method",
+        "access-control-request-headers",
+    ];
+    let kept: Vec<String> = headers
+        .get_all(header::VARY)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && !CORS_VARY.contains(&name.to_ascii_lowercase().as_str()))
+        .map(str::to_string)
+        .collect();
+    headers.remove(header::VARY);
+    if !kept.is_empty() {
+        if let Ok(value) = HeaderValue::from_str(&kept.join(", ")) {
+            headers.insert(header::VARY, value);
+        }
+    }
 }
 
 fn cors_layer_from_env() -> CorsLayer {
@@ -1865,6 +1907,31 @@ mod tests {
         let options = super::list_bind_host_options();
         assert!(options.iter().any(|option| option.host == "127.0.0.1"));
         assert!(options.iter().any(|option| option.host == "0.0.0.0"));
+    }
+
+    #[test]
+    fn asset_responses_vary_only_by_encoding() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            axum::http::header::VARY,
+            HeaderValue::from_static("accept-encoding"),
+        );
+        headers.append(
+            axum::http::header::VARY,
+            HeaderValue::from_static(
+                "origin, access-control-request-method, access-control-request-headers",
+            ),
+        );
+
+        super::drop_origin_from_vary(&mut headers);
+
+        let vary: Vec<_> = headers.get_all(axum::http::header::VARY).iter().collect();
+        assert_eq!(vary, [HeaderValue::from_static("accept-encoding")]);
+
+        let mut cors_only = HeaderMap::new();
+        cors_only.insert(axum::http::header::VARY, HeaderValue::from_static("Origin"));
+        super::drop_origin_from_vary(&mut cors_only);
+        assert!(cors_only.get(axum::http::header::VARY).is_none());
     }
 
     #[test]
