@@ -8,7 +8,7 @@ const { mockDisposeTerminal, mockInvoke } = vi.hoisted(() => ({
   mockInvoke: vi.fn().mockResolvedValue(true),
 }))
 
-vi.mock('@/lib/terminal-instances', () => ({
+vi.mock('@/lib/terminal-instances-lazy', () => ({
   disposeTerminal: mockDisposeTerminal,
 }))
 

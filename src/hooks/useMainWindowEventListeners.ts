@@ -27,7 +27,7 @@ import type {
   Session,
   WorktreeSessions,
 } from '@/types/chat'
-import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
+import { disposeTerminal, startHeadless } from '@/lib/terminal-instances-lazy'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'

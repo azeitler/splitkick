@@ -215,11 +215,13 @@ Totals on the slow link (400 kbit/s, 400 ms), first round start → now:
 
 Still open:
 
-- **The terminal chunk (cost 5)** is now the largest item on a first visit:
-  the sidebar shows after about 21 s on the slow link, and most of that is the
-  824 KB asset download. Cutting it needs lazy boundaries in `ChatWindow`,
-  `SessionChatModal` and `MainWindow` (`useTerminalThemeSync`) and dynamic
-  imports for `disposeTerminal` in the services.
+- **The terminal chunk (cost 5)** — done afterwards: the first visit
+  downloads 554 KB instead of 824 KB (Brotli). The terminal UI parts are
+  `lazy()`, the services and key handler use `terminal-instances-lazy`, the
+  background preference lives in `terminal-prefs`, and Vite's dynamic-import
+  helper has its own chunk (it had landed in `terminal`, so every lazy import
+  preloaded the whole terminal chunk). Guard:
+  `src/lib/terminal-chunk-boundary.test.ts`.
 - **A slim `list_all_sessions`** is not worth its risk now: 26 KB gzipped in
   the rig. Revisit if real data compresses much worse.
 

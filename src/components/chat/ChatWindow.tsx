@@ -8,6 +8,7 @@ import {
   useState,
   lazy,
   Suspense,
+  type ComponentProps,
 } from 'react'
 import { useConfirmKeyboard } from '@/components/ui/confirm-dialog'
 import { useQueryClient } from '@tanstack/react-query'
@@ -228,6 +229,35 @@ const LinkedProjectsModal = lazy(() =>
     default: mod.LinkedProjectsModal,
   }))
 )
+
+// The terminal surfaces pull in xterm and ghostty-web (the `terminal` chunk).
+// Loaded on first use, so the first screen does not download it.
+const LazyTerminalPanel = lazy(() =>
+  import('./TerminalPanel').then(mod => ({ default: mod.TerminalPanel }))
+)
+const LazyFullScreenTerminalSurface = lazy(() =>
+  import('./FullScreenTerminalSurface').then(mod => ({
+    default: mod.FullScreenTerminalSurface,
+  }))
+)
+
+function TerminalPanel(props: ComponentProps<typeof LazyTerminalPanel>) {
+  return (
+    <Suspense fallback={null}>
+      <LazyTerminalPanel {...props} />
+    </Suspense>
+  )
+}
+
+function FullScreenTerminalSurface(
+  props: ComponentProps<typeof LazyFullScreenTerminalSurface>
+) {
+  return (
+    <Suspense fallback={null}>
+      <LazyFullScreenTerminalSurface {...props} />
+    </Suspense>
+  )
+}
 import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
 import { SessionTodoToggle } from './SessionTodoToggle'
 import { ToolbarContent } from '@/components/toolbar/toolbar-slots'
@@ -237,8 +267,6 @@ import {
   ResizableHandle,
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
-import { TerminalPanel } from './TerminalPanel'
-import { FullScreenTerminalSurface } from './FullScreenTerminalSurface'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)

@@ -1,16 +1,14 @@
 import { useEffect, useMemo } from 'react'
 import { useTheme } from '@/hooks/use-theme'
 import { usePreferences } from '@/services/preferences'
-import {
-  applyThemeToAllTerminals,
-  setTerminalPreferences,
-} from '@/lib/terminal-instances'
+import { setTerminalPreferences } from '@/lib/terminal-prefs'
 import { resolveTerminalTheme } from '@/lib/terminal-theme'
 
 /**
- * Push the user's terminal background preference into the terminal-instances
- * module and repaint open terminals whenever the preference (or the app theme,
- * which Auto mode tracks) changes.
+ * Push the user's terminal background preference to the terminals and repaint
+ * open terminals whenever the preference (or the app theme, which Auto mode
+ * tracks) changes. Goes through `terminal-prefs`, so the main window does not
+ * load the terminal code.
  */
 export function useTerminalThemeSync(): void {
   const { theme } = useTheme()
@@ -22,7 +20,6 @@ export function useTerminalThemeSync(): void {
       terminal_background: preferences.terminal_background,
       terminal_background_custom: preferences.terminal_background_custom,
     })
-    applyThemeToAllTerminals()
   }, [preferences, theme])
 }
 

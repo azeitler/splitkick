@@ -41,6 +41,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   timed out after 60 s. Commands now run side by side, and the fetches of one
   status check share one 30-second limit.
 
+- **Web access starts with a third less to download.** The first visit after
+  each release no longer downloads the terminal code (about 270 KB); it loads
+  when you first open a terminal. On a slow link the app shows about 5 s
+  sooner.
+
 ### Fixed
 
 - **A submitted prompt is never lost.** Every prompt is now saved on this device

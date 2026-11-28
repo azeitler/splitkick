@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from '@/lib/transport'
 import { requestDebugSession } from '@/lib/debug-session'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
-import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances'
+import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances-lazy'
 import { toastActionLabel } from '@/lib/toast-action-label'
 import { isGhAuthError, toastGitHubError } from '@/lib/gh-cli-setup'
 import type {

@@ -16,7 +16,7 @@ import {
   useOutboxStore,
 } from '@/lib/prompt-outbox'
 import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal } from '@/lib/terminal-instances-lazy'
 import {
   beginSessionStateHydration,
   endSessionStateHydration,

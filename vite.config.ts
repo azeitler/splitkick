@@ -181,6 +181,11 @@ export default defineConfig(async () => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Vite's dynamic-import helper, used by every lazy import. Left
+          // alone, Rollup puts it into the first manual chunk that needs it
+          // (`terminal`, through ghostty-web), and the entry then preloads
+          // the whole terminal chunk on every first load.
+          if (id.includes('vite/preload-helper')) return 'preload-helper'
           if (!id.includes('node_modules')) return undefined
 
           if (id.includes('@xterm') || id.includes('ghostty-web')) {

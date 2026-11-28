@@ -47,6 +47,10 @@ import {
   type ResolvedTerminalTheme,
 } from '@/lib/terminal-theme'
 import { isArrowGestureActive } from '@/lib/terminal-arrow-gesture'
+import {
+  getTerminalPreferences,
+  onTerminalPreferencesChange,
+} from '@/lib/terminal-prefs'
 import { resolveSafeTerminalDimensions } from '@/lib/terminal-dimensions'
 
 type TerminalRenderer = 'xterm' | 'ghostty-web'
@@ -498,25 +502,10 @@ function ensureWakeHandler(): void {
 const FALLBACK_TERMINAL_BACKGROUND = '#1e1e1e'
 const FALLBACK_TERMINAL_FOREGROUND = '#fafafa'
 
-let cachedPrefs: Pick<
-  AppPreferences,
-  'terminal_background' | 'terminal_background_custom'
-> = {
-  terminal_background: 'auto',
-  terminal_background_custom: null,
-}
-
-export function setTerminalPreferences(
-  prefs: Pick<
-    AppPreferences,
-    'terminal_background' | 'terminal_background_custom'
-  >
-): void {
-  cachedPrefs = {
-    terminal_background: prefs.terminal_background,
-    terminal_background_custom: prefs.terminal_background_custom,
-  }
-}
+// The preference lives in terminal-prefs so the first screen needs no
+// terminal code; repaint the open terminals whenever it is set.
+export { setTerminalPreferences } from '@/lib/terminal-prefs'
+onTerminalPreferencesChange(() => applyThemeToAllTerminals())
 
 function getRootColorVariable(name: string, fallback: string): string {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -630,9 +619,7 @@ function sendTerminalWrite(terminalId: string, data: string): void {
 
 function flushPendingCriticalInput(terminalId?: string): void {
   if (!isTransportConnected()) return
-  const ids = terminalId
-    ? [terminalId]
-    : [...pendingCriticalInput.keys()]
+  const ids = terminalId ? [terminalId] : [...pendingCriticalInput.keys()]
   for (const id of ids) {
     const data = pendingCriticalInput.get(id)
     if (!data) continue
@@ -1009,7 +996,7 @@ export function requestRunTerminalDebugSession(terminalId: string): void {
 }
 
 function getTerminalTheme(): ResolvedTerminalTheme {
-  return resolveTerminalTheme(cachedPrefs, getThemeFromCss)
+  return resolveTerminalTheme(getTerminalPreferences(), getThemeFromCss)
 }
 
 export function applyThemeToAllTerminals(): void {

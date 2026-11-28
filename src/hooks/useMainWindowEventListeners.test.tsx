@@ -110,7 +110,7 @@ vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockEnvironment.mobile,
 }))
 
-vi.mock('@/lib/terminal-instances', () => ({
+vi.mock('@/lib/terminal-instances-lazy', () => ({
   disposeTerminal: mockDisposeTerminal,
   startHeadless: vi.fn(),
 }))

@@ -1,10 +1,13 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type MouseEvent,
   type MutableRefObject,
   type RefObject,
@@ -86,7 +89,6 @@ import { SessionRoleChip } from '@/components/graphs/SessionRoleChip'
 import { SessionGraphToggle } from '@/components/graphs/SessionGraphToggle'
 import { SessionTodoToggle } from './SessionTodoToggle'
 import { TodoGlyph } from './TodoGlyph'
-import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { ScriptsButton } from '@/components/open-in/ScriptsButton'
@@ -148,6 +150,24 @@ import {
   useHasWindowToolbar,
 } from '@/components/toolbar/toolbar-slots'
 import { ToolbarPaletteSearch } from '@/components/toolbar/ToolbarSearchField'
+
+// The terminal drawer pulls in xterm and ghostty-web (the `terminal` chunk).
+// Loaded on first use, so the first screen does not download it.
+const LazyModalTerminalDrawer = lazy(() =>
+  import('./ModalTerminalDrawer').then(mod => ({
+    default: mod.ModalTerminalDrawer,
+  }))
+)
+
+function ModalTerminalDrawer(
+  props: ComponentProps<typeof LazyModalTerminalDrawer>
+) {
+  return (
+    <Suspense fallback={null}>
+      <LazyModalTerminalDrawer {...props} />
+    </Suspense>
+  )
+}
 
 /** Track whether any waiting tabs are off-screen to the left or right */
 function useOffScreenWaiting(
