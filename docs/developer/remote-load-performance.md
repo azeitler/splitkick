@@ -25,8 +25,8 @@ bun scripts/perf/web-trace.ts 47811 t --throttle slow --steps startup,project,se
 # afterwards: stop the server, rm -rf /tmp/sk-perf, git checkout -- dist/.gitkeep
 ```
 
-Byte counts are the JSON text of WebSocket responses. WebSocket frames are not
-compressed, so this is what crosses the link. `/api/init` is HTTP and is
+Byte counts are what crosses the link: the JSON text of a text frame, or the
+size of a gzip binary frame (see "Second round"). `/api/init` is HTTP and is
 compressed (Brotli).
 
 ## Server time per command
@@ -189,12 +189,44 @@ this repeats only after a release. The terminal chunk is `modulepreload`ed in
 - **CLI version checks.** `get_available_codex_versions` took 11.4 s (network)
   about 10 s after start. Not on a load path, and on the server it runs on its
   own thread.
-- **WebSocket compression.** Frames are sent raw. permessage-deflate would cut
-  JSON traffic several times, but needs a transport change. Proposal only.
+- **WebSocket compression.** Done in the second round (below).
+
+## Second round (2026-11-28)
+
+The proposals above, implemented and measured with the same rig.
+
+| Commit      | Change                                                                                                                                                                                                                                 | Measured                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `b8b085594` | WebSocket compression. tungstenite (under axum) has no permessage-deflate, so a client that sends `?compress=gzip` gets every command response ≥ 8 KiB as a gzip binary frame. The client keeps the receive order. Also `TCP_NODELAY`. | Startup 692 → 154 KB; `list_all_sessions` 503 → 26 KB; a session window 82 → 4 KB.          |
+| `f441639fd` | `list_worktrees_by_project`: one call for the worktrees of all collapsed projects instead of one `list_worktrees` each.                                                                                                                | Startup 162 → 83 commands, 154 → 83 KB; 0.4 s on the slow link instead of up to 2.9 s.      |
+| `d7cd8ece6` | `/api/init` preloads only the active worktree's open session, with the 25-run window.                                                                                                                                                  | 723 → 124 KB raw.                                                                           |
+| `0c9aafcdf` | Scoped `cache:invalidate` names the changed sessions (`sessionIds`); an open session no longer refetches on a session open.                                                                                                            | Session open: `get_session` 2 → 1, 36 → 24 KB.                                              |
+| `bd6b51a5e` | Desktop: core commands run on the blocking pool, like the WebSocket server (lead 3).                                                                                                                                                   | Test: a 1.5 s blocking command no longer delays the next one. Not measured in the app.      |
+| `74b9593ca` | The fetches of one git status share one 30 s deadline.                                                                                                                                                                                 | `get_worktree_changes` against a dead remote 64.6 → 36.9 s, under the 60 s command timeout. |
+
+Totals on the slow link (400 kbit/s, 400 ms), first round start → now:
+
+| Action                   | 1.6.4                  | Now                         |
+| ------------------------ | ---------------------- | --------------------------- |
+| Startup, command traffic | 332 commands / 2.33 MB | 37 + ~60 late / ~92 KB      |
+| Open a session           | 121 / 1.73 MB / 51.2 s | 32 / 23 KB / 1.3 s          |
+| Back to a project        | 181 / 1.21 MB / 36.7 s | 16 / 4.5 KB / 1.4 s         |
+| Switch project           | –                      | 13–22 / 4–17 KB / 1.2–1.6 s |
+
+Still open:
+
+- **The terminal chunk (cost 5)** is now the largest item on a first visit:
+  the sidebar shows after about 21 s on the slow link, and most of that is the
+  824 KB asset download. Cutting it needs lazy boundaries in `ChatWindow`,
+  `SessionChatModal` and `MainWindow` (`useTerminalThemeSync`) and dynamic
+  imports for `disposeTerminal` in the services.
+- **A slim `list_all_sessions`** is not worth its risk now: 26 KB gzipped in
+  the rig. Revisit if real data compresses much worse.
 
 ## Not measured
 
 - A real remote host over a real slow network (the rig throttles the browser
   link on one machine).
-- The native desktop app's own command path (see lead 3).
+- The native desktop app's own command path (see lead 3; covered by a test
+  only).
 - Real data compressibility of `/api/init`.

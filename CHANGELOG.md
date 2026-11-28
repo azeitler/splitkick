@@ -7,13 +7,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Added
-
-- **The app shows when it is offline.** In web access and in a window
-  connected to a remote instance, a small sign "Offline. Reconnecting…" shows
-  below the title bar while the backend cannot be reached. A message sent then
-  says that it is saved and will send when the connection is back.
-
 ### Changed
 
 - **Remote clients load projects and sessions with far less traffic.** In web
@@ -26,18 +19,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the whole history. On a slow link (400 kbit/s), opening a project went from
   19 s to under 2 s and opening a session from 51 s to 4 s. (#161)
 
-### Fixed
+- **Remote connections compress large answers.** Web access and remote
+  windows now receive large answers (session lists, chat history) gzipped,
+  several times smaller. The sidebar loads the worktrees of all
+  collapsed projects in one request, the start of web access preloads only the
+  chat on screen, and opening a session no longer loads its messages twice.
+  On a slow link, opening a session went from 4 s to about 1.3 s.
 
-- **A submitted prompt is never lost.** Every prompt is now saved on this device
-  before the input is cleared, and stays saved until the backend has it. Before,
-  a prompt was lost when the connection dropped or timed out during the send,
-  when the app was reloaded or quit before an answer, when a message sent
-  during a run could not reach the queue, when an answer to a question failed,
-  and when a failed send found new text in the input. Now the prompt comes back
-  into the input, or, when the input holds new text, it shows above the input
-  as "Unsent message" with "Send again", "Edit" and "Discard". A prompt that the
-  backend already has is not brought back, so nothing is sent twice. A failed
-  edit of a queued prompt is kept the same way.
+- **The desktop app no longer stalls behind slow git fetches.** A git fetch to
+  an unreachable remote could hold up the app's other requests until they
+  timed out after 60 s. Commands now run side by side, and the fetches of one
+  status check share one 30-second limit.
+
+### Fixed
 
 - **A session that loads slowly says so.** On a slow or lost connection, a
   session opened in web access showed only a spinner that did not move. The
