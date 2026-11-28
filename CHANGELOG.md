@@ -11,9 +11,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Web access shows how far its start has come.** While web access starts,
   a bar under the spinner shows how much of the app has downloaded, then the
-  step ("Loading projects…", "Connecting…"). After a few seconds of download
-  it explains that the first start after an update downloads the app. This
-  works on the desktop layout and on the phone.
+  step ("Loading projects…", "Connecting…"). This works on the desktop layout
+  and on the phone.
 
 - **The app shows when it is offline.** In web access and in a window
   connected to a remote instance, the sidebar footer shows "Offline" while the

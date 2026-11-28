@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  SLOW_HINT_MS,
-  START_LOADER_SOURCE,
-} from '../../scripts/web-start-loader.mjs'
+import { START_LOADER_SOURCE } from '../../scripts/web-start-loader.mjs'
 
 /** The skeleton status markup from index.html and two built assets. */
 function mountPage() {
@@ -15,7 +12,6 @@ function mountPage() {
         <div class="sk-progress-fill"></div>
       </div>
       <p class="sk-step" hidden></p>
-      <p class="sk-hint" hidden></p>
     </div>`
 }
 
@@ -109,19 +105,5 @@ describe('Web Access start loader', () => {
     expect(document.querySelector<HTMLElement>('.sk-progress')?.hidden).toBe(
       true
     )
-  })
-
-  it('explains a slow download after a few seconds', () => {
-    vi.useFakeTimers()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise(() => undefined))
-    )
-
-    runLoader()
-    const hint = document.querySelector<HTMLElement>('.sk-hint')
-    expect(hint?.hidden).toBe(true)
-    vi.advanceTimersByTime(SLOW_HINT_MS)
-    expect(hint?.hidden).toBe(false)
   })
 })

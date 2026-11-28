@@ -24,8 +24,6 @@
 export const DOWNLOAD_LABEL = 'Loading app…'
 /** Text once the app code runs and before App.tsx names its own step. */
 export const STARTING_LABEL = 'Starting…'
-/** Shown below the step after this long in the download step. */
-export const SLOW_HINT_MS = 5000
 
 const ENTRY_RE =
   /\s*<script type="module" crossorigin src="(\/assets\/[^"]+\.js)"><\/script>/
@@ -76,12 +74,10 @@ export const START_LOADER_SOURCE = `
   const progress = skeleton && skeleton.querySelector('.sk-progress')
   const fill = progress && progress.querySelector('.sk-progress-fill')
   const step = skeleton && skeleton.querySelector('.sk-step')
-  const hint = skeleton && skeleton.querySelector('.sk-hint')
   let started = false
   const start = () => {
     if (started) return
     started = true
-    if (hint) hint.hidden = true
     if (step) step.textContent = ${JSON.stringify(STARTING_LABEL)}
     const script = document.createElement('script')
     script.type = 'module'
@@ -112,9 +108,6 @@ export const START_LOADER_SOURCE = `
   progress.hidden = false
   step.hidden = false
   show()
-  const hintTimer = setTimeout(() => {
-    if (hint && !started) hint.hidden = false
-  }, ${SLOW_HINT_MS})
   const read = url =>
     fetch(url, { credentials: 'same-origin' }).then(response => {
       if (!response.ok || !response.body) throw new Error(url)
@@ -134,9 +127,6 @@ export const START_LOADER_SOURCE = `
       show()
     })
     .catch(() => {})
-    .then(() => {
-      clearTimeout(hintTimer)
-      start()
-    })
+    .then(start)
 })()
 `

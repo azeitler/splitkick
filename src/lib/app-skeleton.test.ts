@@ -23,10 +23,10 @@ describe('setAppSkeletonVisible', () => {
 describe('setAppSkeletonStep', () => {
   afterEach(() => document.getElementById('app-skeleton')?.remove())
 
-  it('names the step and drops the slow-download hint', () => {
+  it('names the step', () => {
     const skeleton = document.createElement('div')
     skeleton.id = 'app-skeleton'
-    skeleton.innerHTML = '<p class="sk-step" hidden></p><p class="sk-hint"></p>'
+    skeleton.innerHTML = '<p class="sk-step" hidden></p>'
     document.body.append(skeleton)
 
     setAppSkeletonStep('loadingProjects')
@@ -34,7 +34,6 @@ describe('setAppSkeletonStep', () => {
     const step = skeleton.querySelector<HTMLElement>('.sk-step')
     expect(step?.hidden).toBe(false)
     expect(step?.textContent).toBe('Loading projects…')
-    expect(skeleton.querySelector<HTMLElement>('.sk-hint')?.hidden).toBe(true)
 
     setAppSkeletonStep('connecting')
     expect(step?.textContent).toBe('Connecting…')

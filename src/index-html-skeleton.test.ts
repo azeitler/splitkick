@@ -36,11 +36,10 @@ describe('index.html start skeleton', () => {
 
   // The build's start loader (scripts/web-start-loader.mjs) and App.tsx fill
   // these; before that nothing shows but the spinner.
-  it('has a hidden download bar, step and slow hint', () => {
+  it('has a hidden download bar and step', () => {
     expect(html).toMatch(/class="sk-progress"\s+role="progressbar"/)
     expect(html).toMatch(/aria-valuemin="0"\s+aria-valuemax="100"/)
     expect(html).toMatch(/<p class="sk-step" hidden><\/p>/)
-    expect(html).toMatch(/<p class="sk-hint" hidden>/)
     expect(html).toContain('#app-skeleton [hidden] {')
   })
 

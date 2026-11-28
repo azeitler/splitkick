@@ -17,7 +17,7 @@ export const START_STEP_LABELS = {
 /**
  * Name the current start step under the skeleton's progress bar. The start
  * loader (scripts/web-start-loader.mjs) has filled the bar for the download;
- * from here the steps are the app's own. The slow-download hint goes away.
+ * from here the steps are the app's own.
  */
 export function setAppSkeletonStep(step: keyof typeof START_STEP_LABELS): void {
   const skeleton = document.getElementById('app-skeleton')
@@ -27,6 +27,4 @@ export function setAppSkeletonStep(step: keyof typeof START_STEP_LABELS): void {
     label.textContent = START_STEP_LABELS[step]
     label.hidden = false
   }
-  const hint = skeleton.querySelector<HTMLElement>('.sk-hint')
-  if (hint) hint.hidden = true
 }
