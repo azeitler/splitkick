@@ -218,15 +218,21 @@ test.describe('Web access', () => {
     ).toHaveCount(0)
     await projectArchived.click()
     await expect(mockPage.getByTestId('archived-view')).toBeVisible()
+    // The Archived panel holds the project filter: the project's row there
+    // is the selected one, and the view has no Project select of its own.
+    await expect(
+      mockPage.getByTestId(`sidebar-archived-project-${projects[0].id}`)
+    ).toHaveAttribute('aria-current', 'page')
     await expect(
       mockPage
         .getByTestId('archived-view')
         .getByLabel('Project', { exact: true })
-    ).toHaveValue(projects[0].id)
+    ).toHaveCount(0)
     await expect(mockPage.getByTestId('archived-row')).toHaveCount(3)
-    await expect(projectArchived).toHaveAttribute('aria-current', 'page')
-    await expect(navItem(mockPage, 'archived')).not.toHaveAttribute(
-      'aria-current'
+    // The sidebar switched to its Archived tab.
+    await expect(navItem(mockPage, 'archived')).toHaveAttribute(
+      'aria-current',
+      'page'
     )
     await shot(mockPage, 'project-archived-row')
   })
@@ -283,6 +289,8 @@ test.describe('Vertical navigation, a project open', () => {
     )
     await expect(column.getByTestId('projects-sidebar')).toBeVisible()
     await navItem(mockPage, 'archived').click()
+    // The tab lists the projects; "All projects" opens the view.
+    await mockPage.getByTestId('sidebar-archived-all').click()
     await expect(mockPage.getByTestId('archived-view')).toBeVisible()
     await expect(mockPage.getByTestId('archived-row')).toHaveCount(3)
     await expect(navItem(mockPage, 'archived')).toHaveAttribute(

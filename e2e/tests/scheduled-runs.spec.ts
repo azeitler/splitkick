@@ -211,7 +211,10 @@ test('Scheduled is a sidebar tab: the list in the panel, a schedule with its run
   await navItem('archived').click()
   await expect(navItem('archived')).toHaveAttribute('aria-current', 'page')
   await expect(navItem('scheduled')).not.toHaveAttribute('aria-current')
-  await expect(mockPage.getByTestId('archived-view')).toBeVisible()
+  // Nothing is archived here: the tab says so, and the main area keeps the
+  // schedule (the Archived view opens from a row of the tab).
+  await expect(mockPage.getByTestId('sidebar-archived-empty')).toBeVisible()
+  await expect(mockPage.getByTestId('archived-view')).toHaveCount(0)
   await shot(mockPage, 'scheduled-tab-archived')
   await navItem('scheduled').click()
   await expect(navItem('scheduled')).toHaveAttribute('aria-current', 'page')

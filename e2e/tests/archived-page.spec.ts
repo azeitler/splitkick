@@ -28,7 +28,10 @@ test.describe('Archived page', () => {
 
   test.beforeEach(async ({ mockPage }) => {
     await ensureSidebarOpen(mockPage)
+    // The tab lists the projects with archived items; a row opens the view.
     await mockPage.getByTestId('vertical-nav-archived').first().click()
+    await expect(mockPage.getByTestId('archived-view')).toHaveCount(0)
+    await mockPage.getByTestId('sidebar-archived-all').click()
     await expect(mockPage.getByTestId('archived-view')).toBeVisible()
   })
 

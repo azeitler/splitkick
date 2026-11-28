@@ -158,6 +158,41 @@ test.describe('Phone: opening a session on a slow connection', () => {
     await expect(state).toHaveCount(0)
   })
 
+  // The view must name the real reason: a lost connection is not "slow".
+  test('says the connection is lost while offline, and goes back to loading when it returns', async ({
+    mockPage,
+  }) => {
+    const setOffline = (offline: boolean) =>
+      mockPage.evaluate(value => {
+        const mock = (window as any).__JEAN_E2E_MOCK__
+        mock.offline = value
+        mock.eventEmitter.dispatchEvent(new CustomEvent('e2e:connection'))
+      }, offline)
+
+    await stall(mockPage, PROJECT_LOAD)
+    await openFromHistory(mockPage, 'Session A')
+    const state = mockPage.getByTestId('loading-state')
+    await expect(state).toContainText('Loading session…', { timeout: 15_000 })
+
+    await setOffline(true)
+    await expect(state).toContainText('Connection lost. Reconnecting…')
+    await expect(state).not.toContainText('This is taking longer than usual…')
+    await shot(mockPage, 'session-loading-offline')
+
+    // Back online and still waiting: the slow hint, not the offline text.
+    await setOffline(false)
+    await expect(state).not.toContainText('Connection lost. Reconnecting…')
+    await expect(state).toContainText('This is taking longer than usual…', {
+      timeout: 10_000,
+    })
+
+    await releaseStall(mockPage, { answer: false })
+    await state.getByRole('button', { name: 'Retry' }).click()
+    await expect(mockPage.getByTestId('session-chat-modal-swipe')).toBeVisible({
+      timeout: 15_000,
+    })
+  })
+
   test('a late answer for the first tap does not replace the second', async ({
     mockPage,
   }) => {

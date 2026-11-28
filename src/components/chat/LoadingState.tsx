@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useWsConnectionStatus, usesWebSocketBackend } from '@/lib/transport'
+import { useBackendOffline } from '@/lib/backend-online'
 import { cn } from '@/lib/utils'
 import {
   SLOW_LOADING_MS,
@@ -79,8 +79,8 @@ export function LoadingState({
   className,
 }: LoadingStateProps) {
   const [isSlow, setIsSlow] = useState(false)
-  const wsConnected = useWsConnectionStatus()
-  const connected = !usesWebSocketBackend() || wsConnected
+  // The same rule as the offline sign, so both always agree.
+  const connected = !useBackendOffline()
 
   useEffect(() => {
     const timer = setTimeout(() => setIsSlow(true), SLOW_LOADING_MS)
