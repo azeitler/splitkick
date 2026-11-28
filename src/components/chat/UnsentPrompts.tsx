@@ -1,8 +1,12 @@
 import { memo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { CloudOff, Pencil, Send, TriangleAlert, X } from 'lucide-react'
+import { Pencil, Send, TriangleAlert, WifiOff, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useBackendOffline } from '@/lib/backend-online'
+import {
+  OFFLINE_TEXT,
+  useOfflineReason,
+  useSidebarFooterShown,
+} from '@/components/layout/OfflineIndicator'
 import {
   discardPrompt,
   editUnsentPrompt,
@@ -32,14 +36,18 @@ function attachmentCount(entry: OutboxEntry): number {
 /**
  * Prompts of this session that the backend does not hold, above the input:
  * "Send again", "Edit" (into the input) and "Discard" (no confirm: nothing in
- * the chat flow asks, see docs/developer/confirm-dialogs.md). While offline it
- * also says that a submitted message waits for the connection.
+ * the chat flow asks, see docs/developer/confirm-dialogs.md).
+ *
+ * It also carries the offline sign where no sidebar footer shows it (phone,
+ * hidden sidebar, zen mode), and says that a message sent while the backend
+ * is unreachable waits for the connection.
  */
 export const UnsentPrompts = memo(function UnsentPrompts({
   sessionId,
   onSendAgain,
 }: UnsentPromptsProps) {
-  const offline = useBackendOffline()
+  const reason = useOfflineReason()
+  const footerShown = useSidebarFooterShown()
   const unsent = useOutboxStore(
     useShallow(state => selectSessionUnsent(state, sessionId))
   )
@@ -47,23 +55,36 @@ export const UnsentPrompts = memo(function UnsentPrompts({
     selectSessionWaiting(state, sessionId)
   )
 
-  if (unsent.length === 0 && !(offline && waiting > 0)) return null
+  const showReason = !!reason && !footerShown
+  const showWaiting = reason === 'backend' && waiting > 0
+
+  if (unsent.length === 0 && !showReason && !showWaiting) return null
 
   return (
     <div
       data-testid="unsent-prompts"
       className="mb-2 flex flex-col gap-1.5 px-2 md:px-0"
     >
-      {offline && waiting > 0 && (
+      {(showReason || showWaiting) && (
         <div
           role="status"
-          data-testid="outbox-waiting"
+          data-testid="chat-offline-status"
           className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-foreground"
         >
-          <CloudOff className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <WifiOff className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
           <span>
-            Offline. Your message is saved and will send when the connection is
-            back.
+            {showReason && reason && (
+              <span data-testid="offline-indicator" data-reason={reason}>
+                {OFFLINE_TEXT[reason]}
+              </span>
+            )}
+            {showReason && showWaiting && ' '}
+            {showWaiting && (
+              <span data-testid="outbox-waiting">
+                {showReason ? '' : 'Offline. '}Your message is saved and will
+                send when the connection is back.
+              </span>
+            )}
           </span>
         </div>
       )}
@@ -97,7 +118,7 @@ export const UnsentPrompts = memo(function UnsentPrompts({
                 type="button"
                 size="sm"
                 className="h-7"
-                disabled={offline}
+                disabled={reason === 'backend'}
                 onClick={() => onSendAgain(entry)}
               >
                 <Send className="size-3.5" />

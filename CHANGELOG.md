@@ -10,8 +10,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Added
 
 - **The app shows when it is offline.** In web access and in a window
-  connected to a remote instance, a small sign "Offline. Reconnecting…" shows
-  below the title bar while the backend cannot be reached. A message sent then
+  connected to a remote instance, the sidebar footer shows "Offline" while the
+  backend cannot be reached. Without a sidebar (phone, hidden sidebar), the
+  chat shows "Offline. Reconnecting…" above the input. A message sent then
   says that it is saved and will send when the connection is back. The desktop
   app shows "No internet. The models cannot be reached." while the computer
   has no network.

@@ -54,17 +54,25 @@ submit ──track──▶ pending (in flight) ──confirm──▶ removed
 
 ## Offline
 
-`src/lib/backend-online.ts` has two signals. `OfflineIndicator` (in
-`MainWindow`) shows one sign below the title bar for either:
+`src/lib/backend-online.ts` has two signals. `useOfflineReason`
+(`src/components/layout/OfflineIndicator.tsx`) picks one: `backend` before
+`models`.
 
 - `useBackendOffline`: a WebSocket client (Web Access, a desktop window on a
-  remote server) lost its backend. Sign: "Offline. Reconnecting…".
+  remote server) lost its backend. Text: "Offline. Reconnecting…".
 - `useModelsOffline`: a local instance has no network (`navigator.onLine`
-  false), so the CLIs on this machine cannot reach the model APIs. Sign: "No
+  false), so the CLIs on this machine cannot reach the model APIs. Text: "No
   internet. The models cannot be reached." Not on a remote client: its own
   network says nothing about the host's. `onLine` false is reliable; true does
   not prove that the internet works, so a lost route with Wi-Fi still up shows
   no sign.
+
+Where the sign shows: in the sidebar footer, next to the usage item, as a short
+label ("Offline", "No internet") with the full text in the tooltip. Where no
+sidebar footer is on screen (phone, hidden sidebar, zen mode), the chat window
+shows the full text in a line above the input (`UnsentPrompts`). The footer
+item counts itself while mounted (`useSidebarFooterShown`), so the sign never
+shows twice. There is no floating pill: the app has none in other places.
 
 A submit while offline takes the normal path. The transport holds the request
 until the socket is back and sends it then; the outbox keeps the prompt

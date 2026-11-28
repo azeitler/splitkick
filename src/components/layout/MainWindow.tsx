@@ -254,7 +254,6 @@ import { useWindowTitle } from '@/hooks/use-window-title'
 import { isLinux, isWindows } from '@/lib/platform'
 import { ImportFromJeanDialog } from '@/components/onboarding/ImportFromJeanDialog'
 import { isPlainProject } from '@/types/projects'
-import { OfflineIndicator } from '@/components/layout/OfflineIndicator'
 
 // File browser sidebar resize constraints (pixels)
 const MIN_FILE_BROWSER_WIDTH = 180
@@ -927,7 +926,6 @@ export function MainWindow() {
       <BranchConflictDialog />
       <ClearContextConfirmDialog />
       <ConfirmDialogHost />
-      <OfflineIndicator />
       <TeardownOutputDialog />
       <Toaster
         position="bottom-right"

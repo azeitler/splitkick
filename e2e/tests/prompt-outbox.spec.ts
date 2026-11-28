@@ -143,6 +143,14 @@ async function openSession(page: Page, mode: Mode) {
 const calls = (page: Page) =>
   page.evaluate(() => ((window as any).__calls ?? []) as string[])
 
+/** Play a lost backend connection (the mock transport is always connected). */
+const setBackendOffline = (page: Page, offline: boolean) =>
+  page.evaluate(value => {
+    const mock = (window as any).__JEAN_E2E_MOCK__
+    mock.offline = value
+    mock.eventEmitter.dispatchEvent(new CustomEvent('e2e:connection'))
+  }, offline)
+
 const outboxEntries = (page: Page) =>
   page.evaluate(() =>
     Object.values(
@@ -256,53 +264,114 @@ for (const mode of ['web', 'desktop'] as const) {
       context,
     }) => {
       await openSession(page, mode)
-      const indicator = page.getByTestId('offline-indicator')
+      const footer = page.getByTestId('sidebar-footer')
+      const indicator = footer.getByTestId('offline-indicator')
       await expect(indicator).toHaveCount(0)
 
       await context.setOffline(true)
       if (mode === 'desktop') {
         // The local backend runs the CLIs on this machine: without internet
         // they cannot reach the model APIs.
-        await expect(indicator).toHaveText(
+        await expect(indicator).toHaveText('No internet')
+        await expect(indicator).toHaveAttribute(
+          'aria-label',
           'No internet. The models cannot be reached.'
         )
       } else {
         // A web client's own network says nothing about the host's. Its
         // backend connection has its own sign (next test).
         await page.waitForTimeout(500)
-        await expect(indicator).toHaveCount(0)
+        await expect(page.getByTestId('offline-indicator')).toHaveCount(0)
       }
 
       await context.setOffline(false)
-      await expect(indicator).toHaveCount(0)
+      await expect(page.getByTestId('offline-indicator')).toHaveCount(0)
     })
 
-    test('the offline indicator shows and hides', async ({
+    test('the offline sign shows in the sidebar footer, and in the chat when the sidebar is hidden', async ({
       mockPage: page,
     }) => {
       const input = await openSession(page, mode)
-      const setOffline = (offline: boolean) =>
-        page.evaluate(value => {
-          const mock = (window as any).__JEAN_E2E_MOCK__
-          mock.offline = value
-          mock.eventEmitter.dispatchEvent(new CustomEvent('e2e:connection'))
-        }, offline)
+      const footer = page.getByTestId('sidebar-footer')
+      const inFooter = footer.getByTestId('offline-indicator')
+      const chatStatus = page.getByTestId('chat-offline-status')
+      await expect(page.getByTestId('offline-indicator')).toHaveCount(0)
 
-      const indicator = page.getByTestId('offline-indicator')
-      await expect(indicator).toHaveCount(0)
+      await setBackendOffline(page, true)
+      await expect(inFooter).toHaveText('Offline')
+      await expect(inFooter).toHaveAttribute(
+        'aria-label',
+        'Offline. Reconnecting…'
+      )
+      // One sign only: the chat does not repeat it while the footer shows.
+      await expect(page.getByTestId('offline-indicator')).toHaveCount(1)
+      await expect(chatStatus).toHaveCount(0)
 
-      await setOffline(true)
-      await expect(indicator).toBeVisible()
-      await expect(indicator).toHaveText('Offline. Reconnecting…')
-
-      // A submit while offline is kept and says so.
+      // A submit while offline is kept and says so, at the input.
       await fakeBackend(page, { send: 'hang-silent' })
       await input.fill(PROMPT)
       await input.press('Enter')
       await expect(page.getByTestId('outbox-waiting')).toBeVisible()
 
-      await setOffline(false)
-      await expect(indicator).toHaveCount(0)
+      // Without the sidebar, the chat window carries the sign.
+      await page.evaluate(async () => {
+        const ui = (await import('/src/store/ui-store.ts' as string)).useUIStore
+        ui.setState({ leftSidebarVisible: false })
+      })
+      await expect(footer).toHaveCount(0)
+      await expect(chatStatus.getByTestId('offline-indicator')).toHaveText(
+        'Offline. Reconnecting…'
+      )
+
+      await setBackendOffline(page, false)
+      await expect(page.getByTestId('offline-indicator')).toHaveCount(0)
+      await expect(chatStatus).toHaveCount(0)
     })
   })
 }
+
+test.describe('prompt outbox (phone)', () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    responseOverrides: {
+      list_projects: [project],
+      list_worktrees: [worktree],
+      list_all_sessions: {
+        entries: [
+          {
+            project_id: project.id,
+            project_name: project.name,
+            worktree_id: worktree.id,
+            worktree_name: worktree.name,
+            worktree_path: worktree.path,
+            // History lists only sessions that were opened before.
+            sessions: [{ ...session, last_opened_at: 1_700_000_900 }],
+          },
+        ],
+      },
+      load_ui_state: { ...mockUIState, active_project_id: null },
+    },
+  })
+
+  test('the chat window shows the offline sign above the input', async ({
+    mockPage: page,
+  }) => {
+    await page.getByRole('tab', { name: 'History' }).click()
+    await page
+      .getByTestId('mobile-history-sessions')
+      .getByRole('button', { name: /Outbox session/ })
+      .click()
+    await expect(page.locator('textarea').first()).toBeVisible()
+
+    await setBackendOffline(page, true)
+    const status = page.getByTestId('chat-offline-status')
+    await expect(status.getByTestId('offline-indicator')).toHaveText(
+      'Offline. Reconnecting…'
+    )
+    await expect(page.getByTestId('offline-indicator')).toHaveCount(1)
+
+    await setBackendOffline(page, false)
+    await expect(status).toHaveCount(0)
+  })
+})

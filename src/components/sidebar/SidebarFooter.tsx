@@ -36,6 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { UsagePopover } from '@/components/titlebar/UsagePopover'
+import { SidebarOfflineStatus } from '@/components/layout/OfflineIndicator'
 import { RemoteConnectionsTrigger } from '@/components/remote/RemoteConnectionsDialog'
 import {
   CliUpdatesIndicator,
@@ -187,6 +188,7 @@ export function SidebarFooter({ compact = false }: { compact?: boolean }) {
       </Tooltip>
       {isNativeApp() && <RemoteConnectionsTrigger />}
       <UsagePopover className="ml-1.5" />
+      <SidebarOfflineStatus />
       <div className={compact ? 'w-3 shrink-0' : 'flex-1'} />
       <UpdatesButton />
       <UnreadBell />
