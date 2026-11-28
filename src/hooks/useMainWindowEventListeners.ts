@@ -224,14 +224,29 @@ export function applyCacheInvalidationKeys(
  * Refetches only those worktrees' session lists and splices them into
  * `['all-sessions']`, instead of re-reading every session of every project.
  * This runs on each session switch and run completion, so the full refresh
- * made the app slower as sessions piled up. Open session details refetch too,
- * because the event does not say which session changed.
+ * made the app slower as sessions piled up.
+ *
+ * `sessionIds` names the sessions whose detail changed (from the event's
+ * `sessionIds`; empty = only the lists). `'all'` refetches every open session
+ * detail: events without the field (older servers, some senders) do not say
+ * which session changed.
  */
 export function applyScopedSessionsInvalidation(
   queryClient: QueryClient,
-  worktreeIds: Iterable<string>
+  worktreeIds: Iterable<string>,
+  sessionIds: Iterable<string> | 'all' = 'all'
 ): void {
-  queryClient.invalidateQueries({ queryKey: [...chatQueryKeys.all, 'session'] })
+  if (sessionIds === 'all') {
+    queryClient.invalidateQueries({
+      queryKey: [...chatQueryKeys.all, 'session'],
+    })
+  } else {
+    for (const sessionId of sessionIds) {
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.session(sessionId),
+      })
+    }
+  }
   // A child can live in any worktree, so the open network always refetches.
   queryClient.invalidateQueries({ queryKey: sessionNetworkQueryKey })
   const allSessions = queryClient.getQueryData<AllSessionsResponse>([
@@ -1387,6 +1402,8 @@ export function useMainWindowEventListeners() {
           // Worktrees named by scoped `sessions` events. A plain `sessions`
           // key in the same window wins and refreshes everything.
           const pendingSessionWorktreeIds = new Set<string>()
+          // Sessions whose detail changed; 'all' once an event did not say.
+          let pendingSessionIds: Set<string> | 'all' = new Set<string>()
           let flushTimer: ReturnType<typeof setTimeout> | null = null
 
           const flushInvalidations = () => {
@@ -1398,21 +1415,29 @@ export function useMainWindowEventListeners() {
             ) {
               applyScopedSessionsInvalidation(
                 queryClient,
-                pendingSessionWorktreeIds
+                pendingSessionWorktreeIds,
+                pendingSessionIds
               )
             }
             pendingKeys.clear()
             pendingSessionWorktreeIds.clear()
+            pendingSessionIds = new Set<string>()
           }
 
           const unlisten = await listen<{
             keys: string[]
             worktreeIds?: string[]
+            sessionIds?: string[]
           }>('cache:invalidate', event => {
-            const { keys, worktreeIds } = event.payload
+            const { keys, worktreeIds, sessionIds } = event.payload
             for (const key of keys) {
               if (key === 'sessions' && worktreeIds?.length) {
                 for (const id of worktreeIds) pendingSessionWorktreeIds.add(id)
+                if (!sessionIds) {
+                  pendingSessionIds = 'all'
+                } else if (pendingSessionIds !== 'all') {
+                  for (const id of sessionIds) pendingSessionIds.add(id)
+                }
               } else {
                 pendingKeys.add(key)
               }

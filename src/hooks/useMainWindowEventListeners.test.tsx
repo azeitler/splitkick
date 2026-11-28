@@ -813,6 +813,49 @@ describe('applyScopedSessionsInvalidation', () => {
     expect(all?.entries[1]?.sessions).toEqual([])
   })
 
+  it('refetches only the open sessions the event names', () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyScopedSessionsInvalidation(queryClient, ['wt-1'], ['s1'])
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatQueryKeys.session('s1'),
+    })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: [...chatQueryKeys.all, 'session'],
+    })
+  })
+
+  // A session open changes only the lists (last_opened_at): the open chat
+  // must not load its messages again.
+  it('refetches no open session for an event with an empty list', () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyScopedSessionsInvalidation(queryClient, ['wt-1'], [])
+
+    const detailCalls = invalidateSpy.mock.calls.filter(([filters]) => {
+      const key = (filters as { queryKey?: readonly unknown[] }).queryKey
+      return key?.[1] === 'session'
+    })
+    expect(detailCalls).toEqual([])
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatQueryKeys.sessions('wt-1'),
+    })
+  })
+
+  it('refetches every open session when the event names none', () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyScopedSessionsInvalidation(queryClient, ['wt-1'])
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: [...chatQueryKeys.all, 'session'],
+    })
+  })
+
   it('refetches all-sessions when the worktree is not in it yet', () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
