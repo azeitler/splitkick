@@ -29,12 +29,35 @@ async fn dispatch_core_command(
     command: String,
     args: Option<Value>,
 ) -> Result<Value, String> {
-    jean_core::http_server::dispatch::dispatch_command(
-        &runtime.0,
-        &command,
-        args.unwrap_or_else(|| Value::Object(Default::default())),
-    )
+    let app = runtime.0.clone();
+    let args = args.unwrap_or_else(|| Value::Object(Default::default()));
+    // Terminal input keeps its old path: its chunks must not race each other
+    // on separate threads (see `command_must_run_in_ws_order` in jean-core).
+    if command == "terminal_write" {
+        return jean_core::http_server::dispatch::dispatch_command(&app, &command, args).await;
+    }
+    run_off_async_workers(move || async move {
+        jean_core::http_server::dispatch::dispatch_command(&app, &command, args).await
+    })
     .await
+}
+
+/// Run a command future on the blocking pool, as the WebSocket server does.
+///
+/// Many core commands are `async fn`s that block inside: git and CLI
+/// processes, file I/O, std locks. Awaited on the async workers, a few of them
+/// (a `git fetch` waits up to 30 s) held every worker, and unrelated reads
+/// such as `list_projects` hit the 60 s read timeout.
+async fn run_off_async_workers<T, F, Fut>(make: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || handle.block_on(make()))
+        .await
+        .map_err(|e| format!("Command task failed: {e}"))?
 }
 
 /// The background mode this process runs in, or `None` for the window app.
@@ -648,5 +671,40 @@ mod exit_tests {
     #[test]
     fn tray_quit_wins_over_everything() {
         assert_eq!(exit_action(Some(0), true, true, true), ExitAction::Quit);
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::run_off_async_workers;
+    use std::time::{Duration, Instant};
+
+    /// The async runtime has one thread here; a command blocks inside its
+    /// future (as a `git fetch` does). A second command must still answer at
+    /// once instead of after the first one.
+    #[test]
+    fn a_blocking_command_does_not_hold_up_the_next() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let started = Instant::now();
+            let slow = tokio::spawn(run_off_async_workers(|| async {
+                std::thread::sleep(Duration::from_millis(1500));
+                Ok::<_, String>("slow")
+            }));
+            tokio::task::yield_now().await;
+            let fast = tokio::spawn(run_off_async_workers(|| async { Ok::<_, String>("fast") }))
+                .await
+                .unwrap();
+            assert_eq!(fast, Ok("fast"));
+            assert!(
+                started.elapsed() < Duration::from_millis(700),
+                "fast command waited {:?}",
+                started.elapsed()
+            );
+            assert_eq!(slow.await.unwrap(), Ok("slow"));
+        });
     }
 }
