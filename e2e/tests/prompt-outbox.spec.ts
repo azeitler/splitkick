@@ -251,6 +251,32 @@ for (const mode of ['web', 'desktop'] as const) {
       await expect(page.getByTestId('unsent-prompt')).toHaveCount(0)
     })
 
+    test('no internet: a local instance says the models cannot be reached', async ({
+      mockPage: page,
+      context,
+    }) => {
+      await openSession(page, mode)
+      const indicator = page.getByTestId('offline-indicator')
+      await expect(indicator).toHaveCount(0)
+
+      await context.setOffline(true)
+      if (mode === 'desktop') {
+        // The local backend runs the CLIs on this machine: without internet
+        // they cannot reach the model APIs.
+        await expect(indicator).toHaveText(
+          'No internet. The models cannot be reached.'
+        )
+      } else {
+        // A web client's own network says nothing about the host's. Its
+        // backend connection has its own sign (next test).
+        await page.waitForTimeout(500)
+        await expect(indicator).toHaveCount(0)
+      }
+
+      await context.setOffline(false)
+      await expect(indicator).toHaveCount(0)
+    })
+
     test('the offline indicator shows and hides', async ({
       mockPage: page,
     }) => {

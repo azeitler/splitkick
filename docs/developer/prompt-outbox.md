@@ -54,9 +54,17 @@ submit ──track──▶ pending (in flight) ──confirm──▶ removed
 
 ## Offline
 
-`src/lib/backend-online.ts` (`useBackendOffline`): only a WebSocket client (Web
-Access, a desktop window on a remote server) can be offline. `OfflineIndicator`
-(in `MainWindow`) shows "Offline. Reconnecting…" below the title bar.
+`src/lib/backend-online.ts` has two signals. `OfflineIndicator` (in
+`MainWindow`) shows one sign below the title bar for either:
+
+- `useBackendOffline`: a WebSocket client (Web Access, a desktop window on a
+  remote server) lost its backend. Sign: "Offline. Reconnecting…".
+- `useModelsOffline`: a local instance has no network (`navigator.onLine`
+  false), so the CLIs on this machine cannot reach the model APIs. Sign: "No
+  internet. The models cannot be reached." Not on a remote client: its own
+  network says nothing about the host's. `onLine` false is reliable; true does
+  not prove that the internet works, so a lost route with Wi-Fi still up shows
+  no sign.
 
 A submit while offline takes the normal path. The transport holds the request
 until the socket is back and sends it then; the outbox keeps the prompt

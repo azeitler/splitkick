@@ -41,3 +41,32 @@ export function useBackendOffline(): boolean {
 export function isBackendOffline(): boolean {
   return getE2eOffline() || !isTransportConnected()
 }
+
+function subscribeNetwork(callback: () => void): () => void {
+  window.addEventListener('online', callback)
+  window.addEventListener('offline', callback)
+  return () => {
+    window.removeEventListener('online', callback)
+    window.removeEventListener('offline', callback)
+  }
+}
+
+const getNetworkOffline = () =>
+  typeof navigator !== 'undefined' && navigator.onLine === false
+
+/**
+ * React hook: true while this machine has no network, so the AI backends
+ * (Claude, Codex, …) cannot reach their model APIs.
+ *
+ * Only for a local instance: there this machine runs the CLIs. A remote
+ * client's network says nothing about the host's. `navigator.onLine` false is
+ * a reliable sign of no network; true does not prove that the internet works
+ * (https://developer.mozilla.org/docs/Web/API/Navigator/onLine).
+ */
+export function useModelsOffline(): boolean {
+  const networkOffline = useSyncExternalStore(
+    subscribeNetwork,
+    getNetworkOffline
+  )
+  return networkOffline && !usesWebSocketBackend()
+}
