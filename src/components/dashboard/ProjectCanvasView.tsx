@@ -3299,7 +3299,8 @@ export function ProjectCanvasView({
         error={loadError}
         onRetry={retryLoad}
         onBack={onDismiss}
-        className="h-full bg-background"
+        layout="page"
+        body={mobilePresentation === 'push' ? 'messages' : 'list'}
       />
     )
   }

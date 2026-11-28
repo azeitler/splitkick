@@ -3409,7 +3409,7 @@ export function ChatWindow({
                             isSessionsLoading ||
                             isSessionSwitching ||
                             (sessionError && !session) ? (
-                              <div className="flex justify-center py-10">
+                              <div className="flex justify-center">
                                 <LoadingState
                                   key={deferredSessionId ?? 'none'}
                                   subject="session"

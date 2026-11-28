@@ -52,6 +52,31 @@ describe('LoadingState', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows a skeleton of the session while it loads', () => {
+    const { container } = render(
+      <LoadingState subject="session" layout="page" onBack={vi.fn()} />
+    )
+    expect(
+      container.querySelectorAll('[data-slot="skeleton"]').length
+    ).toBeGreaterThan(0)
+    expect(container.querySelector('.animate-spin')).toBeNull()
+    // The page has its own Back from the start.
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
+  it('replaces the skeleton with the error', () => {
+    const { container } = render(
+      <LoadingState
+        subject="session"
+        layout="page"
+        error={new Error('timed out')}
+        onRetry={vi.fn()}
+      />
+    )
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
   it('shows an error at once, with Retry and Back', () => {
     const onBack = vi.fn()
     render(

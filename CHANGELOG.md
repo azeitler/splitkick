@@ -57,10 +57,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   session opened in web access showed only a spinner that did not move. The
   spinner stood still because the web client paused all animations when the
   browser window lost focus, and a phone does that for the keyboard or an app
-  switch; only the desktop app pauses them now. With reduced motion, an
-  hourglass takes the place of the spinner. The view now covers the whole
-  screen, so a tap cannot reach the list behind it, and says "Loading
-  session…". After a few seconds it says "This is taking longer than usual…"
+  switch; only the desktop app pauses them now. A session that loads now
+  shows a skeleton of the session view instead of a spinner. It covers the
+  whole screen, so a tap cannot reach the list behind it, has its own Back,
+  and says "Loading session…". After a few seconds it says "This is taking longer than usual…"
   or "Connection lost. Reconnecting…" and offers Retry and Back. A load that
   fails shows the error and Retry. Retry now also works when the first answer
   never comes.

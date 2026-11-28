@@ -135,7 +135,9 @@ test.describe('Phone: opening a session on a slow connection', () => {
       timeout: 15_000,
     })
     await expect(state).toContainText('Loading session…')
-    await expect(state.locator('.animate-spin')).toBeVisible()
+    // A skeleton of the session, not a spinner.
+    await expect(state.locator('[data-slot="skeleton"]').first()).toBeVisible()
+    await expect(state.locator('.animate-spin')).toHaveCount(0)
     await shot(mockPage, 'session-loading')
 
     await expect(state).toHaveAttribute('data-phase', 'slow', {
@@ -279,9 +281,12 @@ test.describe('Phone: opening a session on a slow connection', () => {
     const state = mockPage.getByTestId('loading-state')
     await expect(state).toHaveAttribute('role', 'status')
     await expect(state).toContainText('Loading session…')
-    // No spinner that stands still: a still hourglass replaces it.
-    await expect(state.locator('.animate-spin')).toBeHidden()
-    await expect(state.locator('svg.lucide-hourglass')).toBeVisible()
+    // The skeleton stands still, and the words say it loads.
+    const skeleton = state.locator('[data-slot="skeleton"]').first()
+    await expect(skeleton).toBeVisible()
+    expect(
+      await skeleton.evaluate(el => getComputedStyle(el).animationName)
+    ).toBe('none')
     await expect(state).toContainText('This is taking longer than usual…', {
       timeout: 10_000,
     })
@@ -302,6 +307,7 @@ test.describe('Phone: opening a session on a slow connection', () => {
       timeout: 10_000,
     })
 
+    await shot(mockPage, 'session-messages-loading-slow')
     await releaseStall(mockPage, { answer: false })
     await state.getByRole('button', { name: 'Retry' }).click()
     await expect(state).toHaveCount(0)

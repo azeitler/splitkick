@@ -206,7 +206,7 @@ export function MobileProjectLayer({
             <LoadingState
               subject="session"
               onBack={returnToTabRoot}
-              className="h-full bg-background"
+              layout="page"
             />
           ) : (
             <JeanLoadingScreen />
