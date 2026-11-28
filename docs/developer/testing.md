@@ -15,6 +15,7 @@ bun run test        # TypeScript tests (watch mode)
 bun run test:run    # TypeScript tests (single run)
 bun run test:e2e    # E2E browser tests (Playwright, mocked backend)
 bun run test:e2e:local  # Two real instances, transfer etc. (see e2e-local.md)
+bun run release:check   # Everything a release needs, with the full e2e suite
 bun run rust:test   # Rust tests
 ```
 
@@ -30,6 +31,27 @@ test('renders button with text', () => {
   expect(screen.getByRole('button', { name: 'Click me' })).toBeInTheDocument()
 })
 ```
+
+## Release checks
+
+`bun run release:check` (`scripts/release-checks.sh`) runs every check a
+release needs and ends with a summary: typecheck, lint, branding, the
+changelog format, all unit tests, the script tests, `cargo fmt`, the lock
+files, clippy and the Rust tests for all three crates, and the **whole** e2e
+suite. Run it on the release commit before the push.
+
+- The CI preflight runs only two e2e specs (`test:e2e:release-guards`). The
+  full suite runs here. Three specs were stale from 1.6.2 to 1.6.4 because
+  nothing ran them.
+- CI uses the newest stable clippy. Name it when the local default is older:
+  `RELEASE_CLIPPY_TOOLCHAINS="1.99.1 1.100.0" bun run release:check`.
+- The e2e harness is the **web** client. A path that only the desktop app
+  takes (its own queue processor, for example) needs a spec that switches to
+  desktop mode: see `desktopMode()` in
+  `e2e/tests/queue-send-now-desktop.spec.ts`.
+- A spec can play a dropped connection: set `__JEAN_E2E_MOCK__.offline` and
+  dispatch `e2e:connection` on the mock's event emitter (see
+  `src/lib/backend-online.ts`).
 
 ## E2E Testing
 

@@ -61,6 +61,7 @@
     "test:server-ci": "node --test scripts/server-ci-assets.test.mjs",
     "test:splitkick-version": "node --test scripts/splitkick-version.test.mjs",
     "test:changelog-notes": "node --test scripts/changelog-notes.test.mjs",
+    "release:check": "bash scripts/release-checks.sh",
     "release:cut": "node scripts/release-cut.mjs",
     "test:release-cut": "node --test scripts/release-cut.test.mjs",
     "test:updater-manifest": "node --test scripts/updater-manifest.test.mjs",
